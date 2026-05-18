@@ -1,0 +1,3 @@
+﻿ATTRIBUTION
+-----------
+fighter_aliases.csv is sourced from the upstream Tiger Millionaire project by Matt Dabbert (shortlikeafox/tiger-millionaire), MIT-licensed. Vendored for normalize_name_key alias resolution only.

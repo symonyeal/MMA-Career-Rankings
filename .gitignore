@@ -1,0 +1,18 @@
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+.pytest_cache/
+.test_tmp/
+pytest-tmp/
+probe700/
+*.egg-info/
+.venv/
+.env
+
+# Data: raw scrapes and snapshots are large/reproducible.
+data/raw/
+data/snapshots/
+data/ufc_rank_engine.sqlite
+
+# Accidental pip install artifacts (e.g. pip install pkg ==version)
+=*

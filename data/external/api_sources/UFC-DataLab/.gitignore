@@ -1,0 +1,22 @@
+# Virtual environment
+venv/
+.python-version
+
+# MacOS utils
+.DS_Store
+
+# Python bytecode
+__pycache__/
+
+# .ipynb stuff
+.eda.ipynb.layout
+.virtual_documents/
+.ipynb_checkpoints/
+
+# Test artifacts
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Vscode stuff
+.vscode/
