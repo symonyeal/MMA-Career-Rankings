@@ -322,13 +322,22 @@ def _observe(widget, callback, names="value"):
 # Each section registers a draw function plus the set of global-control keys it
 # depends on. The Control Room broadcasts a key when its widget changes; every
 # subscriber interested in that key redraws.
-SUBSCRIBERS = []   # list of (name, draw_fn, keys:set)
+SUBSCRIBERS = []     # list of (name, draw_fn, keys:set) — Control-Room key deps
+SECTION_DRAWS = []   # list of (name, draw_fn) — every section, for full redraw
+
+
+def register_section(name, fn):
+    "Register a section's primary draw so a model recompute can refresh it."
+    global SECTION_DRAWS
+    SECTION_DRAWS = [s for s in SECTION_DRAWS if s[0] != name]
+    SECTION_DRAWS.append((name, fn))
 
 
 def subscribe(name, fn, keys):
     global SUBSCRIBERS
     SUBSCRIBERS = [s for s in SUBSCRIBERS if s[0] != name]
     SUBSCRIBERS.append((name, fn, set(keys)))
+    register_section(name, fn)
 
 
 def _run_draw(name, fn):
@@ -345,6 +354,12 @@ def broadcast(key):
     for name, fn, keys in list(SUBSCRIBERS):
         if key in keys:
             _run_draw(name, fn)
+
+
+def redraw_all():
+    "Re-run every registered section draw (used after a model recompute)."
+    for name, fn in list(SECTION_DRAWS):
+        _run_draw(name, fn)
 
 
 # Canvas-wide CSS so markdown, tables, headings, and widgets share the dark
@@ -402,35 +417,35 @@ CONTROL_ROOM = r"""
 # ---- Global controls -------------------------------------------------------
 g_lens = widgets.Dropdown(
     options=list(PUBLIC_RATING_LENSES), value="complete",
-    description="Scoring:", style={"description_width": "70px"},
-    layout=widgets.Layout(width="220px"))
+    description="Rank by:", style={"description_width": "70px"},
+    layout=widgets.Layout(width="230px"))
 g_time = widgets.Dropdown(
     options=list(PUBLIC_TIME_VIEWS), value="current",
-    description="Window:", style={"description_width": "70px"},
+    description="Form:", style={"description_width": "70px"},
     layout=widgets.Layout(width="200px"))
 g_division = widgets.Dropdown(
     options=["All divisions"] + list(DIVISIONS), value="All divisions",
-    description="Division:", style={"description_width": "70px"},
-    layout=widgets.Layout(width="300px"))
+    description="Weight class:", style={"description_width": "90px"},
+    layout=widgets.Layout(width="320px"))
 g_gender = widgets.ToggleButtons(
     options=[("Both", "both"), ("Men", "M"), ("Women", "F")], value="both",
-    description="Gender:", style={"description_width": "70px"})
+    description="Roster:", style={"description_width": "70px"})
 g_top_n = widgets.IntSlider(
-    value=25, min=5, max=100, step=5, description="Top N:",
-    continuous_update=False, style={"description_width": "70px"},
-    layout=widgets.Layout(width="320px"))
+    value=25, min=5, max=100, step=5, description="Show top:",
+    continuous_update=False, style={"description_width": "80px"},
+    layout=widgets.Layout(width="330px"))
 g_min_fights = widgets.IntSlider(
-    value=3, min=0, max=20, step=1, description="Min fights:",
-    continuous_update=False, style={"description_width": "80px"},
-    layout=widgets.Layout(width="320px"))
+    value=3, min=0, max=20, step=1, description="Min UFC bouts:",
+    continuous_update=False, style={"description_width": "110px"},
+    layout=widgets.Layout(width="350px"))
 g_prime_years = widgets.IntSlider(
-    value=10, min=6, max=15, step=1, description="Prime yrs:",
-    continuous_update=False, style={"description_width": "80px"},
-    layout=widgets.Layout(width="320px"))
+    value=10, min=6, max=15, step=1, description="Prime span (yrs):",
+    continuous_update=False, style={"description_width": "120px"},
+    layout=widgets.Layout(width="350px"))
 g_prime_min = widgets.IntSlider(
-    value=13, min=5, max=30, step=1, description="Prime min:",
-    continuous_update=False, style={"description_width": "80px"},
-    layout=widgets.Layout(width="320px"))
+    value=13, min=5, max=30, step=1, description="Min prime bouts:",
+    continuous_update=False, style={"description_width": "120px"},
+    layout=widgets.Layout(width="350px"))
 
 GLOBAL_WIDGETS = {
     "lens": g_lens, "time": g_time, "division": g_division, "gender": g_gender,
@@ -548,15 +563,15 @@ display(widgets.VBox([
 display(Markdown(
     f"<div style='font-family:{THEME['font']};color:{THEME['text_caption']};"
     f"font-size:0.82em;line-height:1.6;margin-top:8px'>"
-    f"<b style='color:{THEME['text_2']}'>Scoring</b> picks the ranking lens — "
-    f"<b>Wins</b> (result only), <b>Finishes</b> (how it ended), <b>Clean</b> "
-    f"(de-weights tainted wins), <b>Strength</b> (opponent + market context), "
-    f"<b>Complete</b> (all context), <b>Legacy</b> (whole-history WHR). "
-    f"<b style='color:{THEME['text_2']}'>Window</b>: <b>Now</b> = current form, "
-    f"<b>Peak</b> = best fixed 5-year burst, <b>Prime</b> = a sustained N-year run "
-    f"set by the <b>Prime</b> sliders. <b style='color:{THEME['text_2']}'>Top N</b>, "
-    f"<b>Min fights</b>, <b>Division</b>, and <b>Gender</b> filter the leaderboards "
-    f"and placement views. Change anything and the dependent sections refresh.</div>"
+    f"<b style='color:{THEME['text_2']}'>Rank by</b> picks how a win is scored — "
+    f"<b>Wins</b> (just the W), <b>Finishes</b> (KO/sub vs decision), <b>Clean</b> "
+    f"(discounts PED/DQ/missed-weight wins), <b>Strength</b> (quality of opposition + "
+    f"the betting line), <b>Complete</b> (all of it), <b>Legacy</b> (whole-career résumé). "
+    f"<b style='color:{THEME['text_2']}'>Form</b>: <b>Now</b> = where they sit today, "
+    f"<b>Peak</b> = their best 5-year run, <b>Prime</b> = a sustained run you size with "
+    f"the <b>Prime</b> sliders. <b style='color:{THEME['text_2']}'>Show top</b>, "
+    f"<b>Min UFC bouts</b>, <b>Weight class</b>, and <b>Roster</b> filter the rankings. "
+    f"Change anything and every section re-ranks instantly.</div>"
 ))
 """
 
@@ -873,10 +888,11 @@ def draw_placement():
 
 
 display(plc_scatter)
-display(html_box(note("Each point is a ranked fighter: x = number of rated fights, y = rating. "
-                     "Larger, higher points are the strongest deep-resume fighters.")))
+display(html_box(note("Each dot is a fighter — across is how many UFC bouts they've been rated on (résumé "
+                     "depth), up is their rating. Top-right is the holy grail: an elite rating built over a "
+                     "long, proven résumé, not a hot 3-fight start.")))
 display(plc_density)
-display(html_box(note("Share of the current top-100 occupied by each division.")))
+display(html_box(note("How the current top 100 splits across the weight classes.")))
 draw_placement()
 subscribe("placement", draw_placement, {"lens", "time", "prime_years", "prime_min", "top_n", "min_fights"})
 """
@@ -963,8 +979,9 @@ def draw_divx():
 
 display(widgets.HBox([divx, widgets.VBox([divx_year, divx_index])]))
 display(divx_timeline)
-display(html_box(note("Average rating of each division's Top N over time. Switch Scale to Index to compare the "
-                     "shape of each division's rise and fall rather than the absolute level.")))
+display(html_box(note("Each weight class's top-tier strength over time. Flip to Index to compare how divisions "
+                     "rose and fell regardless of absolute level — handy for 'was the 2010s lightweight era "
+                     "deeper than today's?'.")))
 display(divx_snapshot)
 display(divx_table)
 draw_divx()
@@ -1070,6 +1087,7 @@ display(widgets.HBox([cmp_a_odds, cmp_b_odds]))
 draw_compare()
 _observe(cmp_a, lambda *_: draw_compare())
 _observe(cmp_b, lambda *_: draw_compare())
+register_section("compare", draw_compare)
 """
 
 
@@ -1084,41 +1102,67 @@ attr_fw = chart_widget(height=420)
 attr_html = html_box()
 
 
+def _signed_chip(label, value):
+    if value is None or pd.isna(value):
+        return ""
+    color = THEME["positive"] if value > 0 else THEME["negative"] if value < 0 else THEME["text_muted"]
+    return (f"<span style='display:inline-block;margin-right:16px;color:{THEME['text_muted']};"
+            f"font-size:0.9em'>{label} <b style='color:{color}'>{value:+.1f}</b></span>")
+
+
 def _style_attribution_rows(df):
     if df.empty:
         return None
-    rename = {
-        "event_date": "Date", "opponent": "Opponent", "base_method_delta": "Base",
-        "integrity_delta": "Clean", "performance_delta": "Strength",
-        "interaction_delta": "Overlap", "combined_delta": "Net", "combined_weight": "Weight",
-    }
+    rename = {"event_date": "Date", "opponent": "Opponent",
+              "integrity_delta": "Clean", "performance_delta": "Strength", "combined_delta": "Net"}
     out = df.rename(columns=rename)
-    show = [c for c in ["Date", "Opponent", "Base", "Clean", "Strength", "Overlap", "Net", "Weight"] if c in out.columns]
-    out = out[show]
-    return (
+    show = [c for c in ["Date", "Opponent", "Clean", "Strength", "Net"] if c in out.columns]
+    out = out[show].copy()
+    if "Date" in out.columns:
+        out["Date"] = pd.to_datetime(out["Date"], errors="coerce").dt.date
+    def sign_color(v):
+        if pd.isna(v) or v == 0:
+            return f"color:{THEME['text_muted']}"
+        return f"color:{THEME['positive']};font-weight:600" if v > 0 else f"color:{THEME['negative']};font-weight:600"
+    sty = (
         out.style.hide(axis="index")
-        .format({"Base": "{:+.2f}", "Clean": "{:+.2f}", "Strength": "{:+.2f}",
-                 "Overlap": "{:+.2f}", "Net": "{:+.2f}", "Weight": "{:.2f}"}, na_rep="")
+        .format({"Clean": "{:+.2f}", "Strength": "{:+.2f}", "Net": "{:+.2f}"}, na_rep="—")
         .set_properties(subset=["Opponent"], **{"font-weight": "600", "color": THEME["text"]})
         .set_table_styles(_BASE_TABLE_STYLES)
     )
+    for c in ("Clean", "Strength", "Net"):
+        if c in out.columns:
+            sty = sty.map(sign_color, subset=[c])
+    return sty
 
 
 def draw_attribution():
     show_fig(attr_fw, sleeve_attribution_waterfall(sleeve_attribution, attr_fighter.value))
     rows = sleeve_attribution_table(sleeve_attribution, attr_fighter.value, n=attr_rows.value)
+    if rows is None or rows.empty:
+        attr_html.value = msg("no attribution rows for this fighter")
+        return
+    clean = pd.to_numeric(rows.get("integrity_delta"), errors="coerce").sum()
+    strength = pd.to_numeric(rows.get("performance_delta"), errors="coerce").sum()
+    net = pd.to_numeric(rows.get("combined_delta"), errors="coerce").sum()
+    summary = (f"<div style='font-family:{THEME['font']};margin:2px 0 10px'>"
+               f"<span style='color:{THEME['text_2']};font-size:0.82em;text-transform:uppercase;"
+               f"letter-spacing:0.06em;margin-right:14px'>Across shown fights</span>"
+               f"{_signed_chip('Clean', clean)}{_signed_chip('Strength', strength)}{_signed_chip('Net', net)}</div>")
     styled = _style_attribution_rows(rows)
-    attr_html.value = table_html(styled) if styled is not None else msg("no attribution rows")
+    attr_html.value = summary + (table_html(styled) if styled is not None else "")
 
 
 display(widgets.HBox([attr_fighter, attr_rows]))
 display(attr_fw)
-display(html_box(note("Right = adjustment helped the rating, left = it hurt. Base is the raw method result; "
-                     "Clean and Strength are the integrity/opponent-context layers.")))
+display(html_box(note("Bars to the right helped the rating, to the left hurt it. <b>Clean</b> is the integrity "
+                     "layer (tainted-win discounts), <b>Strength</b> is the opponent-quality layer, and "
+                     "<b>Net</b> is their combined effect on each fight.")))
 display(attr_html)
 draw_attribution()
 _observe(attr_fighter, lambda *_: draw_attribution())
 _observe(attr_rows, lambda *_: draw_attribution())
+register_section("rating_story", draw_attribution)
 """
 
 
@@ -1137,45 +1181,51 @@ audit_html = html_box()
 def _style_audit_summary(df):
     if df.empty:
         return None
-    show = df[[c for c in ["group", "factor", "direction", "appearances",
-                           "median_effect_pct", "min_effect_pct", "max_effect_pct"] if c in df.columns]].copy()
-    show = show.rename(columns={"group": "Group", "factor": "Factor", "direction": "Direction",
-                                "appearances": "Uses", "median_effect_pct": "Typical",
-                                "min_effect_pct": "Low", "max_effect_pct": "High"})
-    return (
+    show = df[[c for c in ["group", "factor", "direction", "appearances", "median_effect_pct"]
+               if c in df.columns]].copy()
+    show = show.rename(columns={"group": "Layer", "factor": "Factor", "direction": "Direction",
+                                "appearances": "Uses", "median_effect_pct": "Typical"})
+    def dir_color(v):
+        return (f"color:{THEME['positive']}" if v == "Boost"
+                else f"color:{THEME['negative']}" if v == "Penalty" else f"color:{THEME['text_muted']}")
+    sty = (
         show.style.hide(axis="index")
         .bar(subset=["Uses"], color="rgba(56,189,248,0.28)")
-        .format({"Typical": "{:+.1f}%", "Low": "{:+.1f}%", "High": "{:+.1f}%"})
+        .format({"Typical": "{:+.1f}%"})
         .set_properties(subset=["Factor"], **{"font-weight": "600", "color": THEME["text"]})
-        .set_properties(subset=["Group", "Direction"], **{"color": THEME["text_2"]})
+        .set_properties(subset=["Layer"], **{"color": THEME["text_2"]})
         .set_table_styles(_BASE_TABLE_STYLES)
     )
+    if "Direction" in show.columns:
+        sty = sty.map(dir_color, subset=["Direction"])
+    return sty
 
 
 def _style_audit_detail(df):
     if df.empty:
         return None
-    show_cols = [c for c in ["event_date", "fighter", "opponent", "outcome", "direction",
-                             "combined_effect_pct", "factors", "sleeves", "division"] if c in df.columns]
+    show_cols = [c for c in ["event_date", "fighter", "opponent", "combined_effect_pct", "factors", "sleeves"]
+                 if c in df.columns]
     out = df[show_cols].rename(columns={
-        "event_date": "Date", "fighter": "Fighter", "opponent": "Opponent", "outcome": "Result",
-        "direction": "Direction", "combined_effect_pct": "Net", "factors": "Factors",
-        "sleeves": "Layer", "division": "Division"}).copy()
-    def effect_color(v):
-        if v == "Boost":
-            return f"color:{THEME['positive']};font-weight:600"
-        if v == "Penalty":
-            return f"color:{THEME['negative']};font-weight:600"
-        return f"color:{THEME['text_muted']}"
-    return (
+        "event_date": "Date", "fighter": "Fighter", "opponent": "Opponent",
+        "combined_effect_pct": "Net", "factors": "Why", "sleeves": "Layer"}).copy()
+    if "Date" in out.columns:
+        out["Date"] = pd.to_datetime(out["Date"], errors="coerce").dt.date
+    def net_color(v):
+        if pd.isna(v) or v == 0:
+            return f"color:{THEME['text_muted']}"
+        return f"color:{THEME['positive']};font-weight:600" if v > 0 else f"color:{THEME['negative']};font-weight:600"
+    sty = (
         out.style.hide(axis="index")
-        .map(effect_color, subset=["Direction"])
         .format({"Net": "{:+.1f}%"})
         .set_properties(subset=["Fighter"], **{"font-weight": "600", "color": THEME["text"]})
-        .set_properties(subset=["Opponent", "Division", "Layer"], **{"color": THEME["text_2"]})
-        .set_properties(subset=["Factors"], **{"color": THEME["text_2"], "font-size": "0.9em"})
+        .set_properties(subset=["Opponent", "Layer"], **{"color": THEME["text_2"]})
+        .set_properties(subset=["Why"], **{"color": THEME["text_2"], "font-size": "0.9em"})
         .set_table_styles(_BASE_TABLE_STYLES)
     )
+    if "Net" in out.columns:
+        sty = sty.map(net_color, subset=["Net"])
+    return sty
 
 
 def draw_audit():
@@ -1206,6 +1256,7 @@ display(audit_html)
 draw_audit()
 for _w in (audit_sleeve, audit_effect, audit_fighter, audit_n):
     _observe(_w, lambda *_: draw_audit())
+register_section("adjustments", draw_audit)
 """
 
 
@@ -1239,8 +1290,9 @@ def draw_era():
 
 display(widgets.HBox([era_divisions, widgets.VBox([era_year_min, era_year_max])]))
 display(era_fw)
-display(html_box(note("Color is normalized within each year: 100 = strongest division that year; lower = how far "
-                     "behind that year's leader. Top N comes from the Control Room.")))
+display(html_box(note("Read each column (a year): 100 = the deepest weight class that year, lower = how far a "
+                     "division trailed the era's best. Shows which division ruled the sport, year by year. "
+                     "'Show top' (Control Room) sets how many fighters define each division's top tier.")))
 draw_era()
 for _w in (era_divisions, era_year_min, era_year_max):
     _observe(_w, lambda *_: draw_era())
@@ -1248,96 +1300,343 @@ subscribe("era", draw_era, {"top_n"})
 """
 
 
+MODEL_TUNING = r'''
+# ---- Model Tuning ----------------------------------------------------------
+# Unlike the Control Room (which only changes the VIEW), these knobs change the
+# MODEL. Applying them re-runs the full rating engine, so it takes a few
+# minutes. The recompute writes into a throwaway local-temp snapshot, so the
+# on-disk baseline is never modified; Reset restores the default model instantly.
+import importlib
+import shutil
+import tempfile
+import time as _time
+
+import ratings.constants as _C
+from ratings.glicko2_engine import DEFAULT_TAU as _TAU_DEFAULT
+
+_ENGINE_MODULES = [
+    "ratings.constants", "ratings.opponent_quality", "ratings.integrity_adjustment",
+    "ratings.performance_adjustment", "ratings.division_resume", "ratings.whr",
+    "ratings.peaks", "ratings.rate_snapshot",
+]
+for _mn in _ENGINE_MODULES:
+    importlib.import_module(_mn)
+
+
+def _set_const(name, value):
+    # Engine modules do `from ratings.constants import X`, binding X in their own
+    # namespace at import. Rebind X in every module that has it (no reload).
+    for _mn in _ENGINE_MODULES:
+        _mod = sys.modules.get(_mn)
+        if _mod is not None and hasattr(_mod, name):
+            setattr(_mod, name, value)
+
+
+def _rebuild_method_scores():
+    # The base method stream maps method_class through a precomputed METHOD_SCORES
+    # dict (built once at loader import), so changing the tier constants needs an
+    # explicit rebuild + rebind wherever that dict is referenced.
+    import loaders.ufcstats_loader as _ufc
+    import ratings.rate_snapshot as _rs
+    ms = {
+        "KO/TKO": _C.METHOD_SCORE_FINISH,
+        "Submission": _C.METHOD_SCORE_FINISH,
+        "Decision - Unanimous": _C.METHOD_SCORE_UNANIMOUS,
+        "Decision - Majority": _C.METHOD_SCORE_NON_UNANIMOUS_DECISION,
+        "Decision - Split": _C.METHOD_SCORE_NON_UNANIMOUS_DECISION,
+        "DQ": _C.METHOD_SCORE_DQ,
+    }
+    _ufc.METHOD_SCORES = ms
+    if hasattr(_rs, "METHOD_SCORES"):
+        _rs.METHOD_SCORES = ms
+
+
+# (const_name | "tau", label, min, max, step, group)
+_KNOBS = [
+    ("tau", "How fast ratings swing", 0.2, 1.2, 0.05, "Finish vs decision · volatility"),
+    ("METHOD_SCORE_UNANIMOUS", "Credit for a unanimous-decision win", 0.80, 1.00, 0.01, "Finish vs decision · volatility"),
+    ("METHOD_SCORE_NON_UNANIMOUS_DECISION", "Credit for a split/majority win", 0.70, 1.00, 0.01, "Finish vs decision · volatility"),
+    ("INTEGRITY_PED_WIN_SCORE", "Credit for a PED-tainted win", 0.30, 1.00, 0.05, "Integrity (tainted wins)"),
+    ("INTEGRITY_DQ_WIN_SCORE", "Credit for a win by DQ", 0.30, 1.00, 0.05, "Integrity (tainted wins)"),
+    ("INTEGRITY_MISSED_WEIGHT_WIN_SCORE", "Credit for a win after missing weight", 0.30, 1.00, 0.05, "Integrity (tainted wins)"),
+    ("PERF_OPPONENT_QUALITY_AMPLITUDE", "Reward for beating elite competition", 0.00, 0.20, 0.01, "Opposition & upsets"),
+    ("PERF_UPSET_AMPLITUDE", "Reward for pulling an upset", 0.00, 0.10, 0.005, "Opposition & upsets"),
+    ("SUSTAINED_PEAK_OPP_MAX_WEIGHT", "Reward for a title-level schedule", 1.0, 4.0, 0.1, "Prime / résumé weighting"),
+    ("PERIOD_TITLE_FIGHT_WEIGHT_MULT", "How much title fights count", 1.0, 2.0, 0.05, "Prime / résumé weighting"),
+    ("PERIOD_TITLE_WIN_BONUS", "Bonus for winning a title", 0.0, 120.0, 5.0, "Prime / résumé weighting"),
+    ("PERIOD_LOSS_PENALTY", "Penalty for a loss", 0.0, 120.0, 5.0, "Prime / résumé weighting"),
+]
+_TUNE_DEFAULTS = {k: (float(_TAU_DEFAULT) if k == "tau" else float(getattr(_C, k))) for k, *_rest in _KNOBS}
+
+# Snapshot the baseline frames once so Reset is instant (no recompute).
+_FRAME_KEYS = ["rc", "ratings_history", "ratings_histories", "sleeve_attribution",
+               "integrity_appearances", "performance_appearances", "fighter_dominance"]
+if "_BASELINE_FRAMES" not in globals():
+    _BASELINE_FRAMES = {k: globals().get(k) for k in _FRAME_KEYS}
+
+# Persist widgets across cell re-runs so a Run-All does not wipe the user's tuning.
+if "TUNE_WIDGETS" not in globals():
+    TUNE_WIDGETS = {}
+    for _name, _label, _lo, _hi, _step, _group in _KNOBS:
+        TUNE_WIDGETS[_name] = widgets.FloatSlider(
+            value=_TUNE_DEFAULTS[_name], min=_lo, max=_hi, step=_step,
+            description=_label, continuous_update=False, readout_format=".3g",
+            style={"description_width": "240px"}, layout=widgets.Layout(width="540px"))
+
+tune_status = html_box()
+tune_preview = html_box()
+_apply_btn = widgets.Button(description="Apply & recompute", button_style="warning",
+                            icon="bolt", layout=widgets.Layout(width="200px"))
+_reset_btn = widgets.Button(description="Reset to defaults", layout=widgets.Layout(width="170px"))
+
+
+def _ensure_scratch():
+    global _SCRATCH
+    sc = globals().get("_SCRATCH")
+    if sc is None or not Path(sc).exists():
+        sc = Path(tempfile.mkdtemp(prefix="ufc_tune_"))
+        shutil.copytree(SNAPSHOT_DIR, sc, dirs_exist_ok=True)
+        _SCRATCH = sc
+    return Path(sc)
+
+
+def _rebind_frames(snap_dir):
+    snap = load_project_data(snap_dir, DATABASE_PATH, prefer_database=False)
+    rh = snap.get("ratings_history", pd.DataFrame())
+    whr_path = Path(snap_dir) / "ratings_history_whr.parquet"
+    globals().update({
+        "rc": snap["ratings_current"],
+        "ratings_history": rh,
+        "ratings_histories": {
+            "ratings_history": rh,
+            "ratings_history_method_integrity": snap.get("ratings_history_method_integrity", pd.DataFrame()),
+            "ratings_history_method_performance": snap.get("ratings_history_method_performance", pd.DataFrame()),
+            "ratings_history_method_integrity_performance": snap.get("ratings_history_method_integrity_performance", pd.DataFrame()),
+            "ratings_history_whr": pd.read_parquet(whr_path) if whr_path.exists() else pd.DataFrame(),
+        },
+        "sleeve_attribution": snap.get("sleeve_attribution", pd.DataFrame()),
+        "integrity_appearances": snap.get("integrity_appearances", pd.DataFrame()),
+        "performance_appearances": snap.get("performance_appearances", pd.DataFrame()),
+        "fighter_dominance": snap.get("fighter_dominance", pd.DataFrame()),
+    })
+    _prime_cache.clear()
+
+
+def _current_tuning():
+    return {name: TUNE_WIDGETS[name].value for name, *_rest in _KNOBS}
+
+
+def _changed_vs_default(tuning):
+    return [(label, _TUNE_DEFAULTS[name], tuning[name])
+            for name, label, *_rest in _KNOBS
+            if abs(float(tuning[name]) - _TUNE_DEFAULTS[name]) > 1e-9]
+
+
+def _set_status(html, color=None):
+    tune_status.value = (f"<div style='font-family:{THEME['font']};font-size:0.9em;"
+                         f"color:{color or THEME['text_2']};padding:6px 0'>{html}</div>")
+
+
+def _top5(rc_frame, label):
+    col = ("mu_method_integrity_performance" if "mu_method_integrity_performance" in rc_frame.columns
+           else "mu_canonical")
+    men = rc_frame[rc_frame["gender"].eq("M")] if "gender" in rc_frame.columns else rc_frame
+    top = men.dropna(subset=[col]).sort_values(col, ascending=False).head(5)
+    names = " &middot; ".join(f"{i + 1}. {r.fighter}" for i, r in enumerate(top.itertuples()))
+    return f"<b style='color:{THEME['text']}'>{label}</b> &nbsp;{names}"
+
+
+def _recompute(_btn=None):
+    tuning = _current_tuning()
+    changed = _changed_vs_default(tuning)
+    if not changed:
+        _set_status("All knobs are at their defaults - move a slider, then Apply.", THEME["text_muted"])
+        return
+    before = _top5(rc, "Top 5 men before:")
+    _apply_btn.disabled = _reset_btn.disabled = True
+    _set_status("Recomputing the full model (5 rating streams + WHR + peaks). "
+                "This takes a few minutes; every section refreshes when it finishes.", THEME["accent"])
+    try:
+        for name, *_rest in _KNOBS:
+            if name != "tau":
+                _set_const(name, float(tuning[name]))
+        _rebuild_method_scores()
+        from ratings.rate_snapshot import run as _run
+        scratch = _ensure_scratch()
+        t0 = _time.time()
+        _run(scratch, tau=float(tuning["tau"]))
+        dt = _time.time() - t0
+        _rebind_frames(scratch)
+        redraw_all()
+        rows = "".join(
+            f"<tr><td style='padding:1px 14px 1px 0;color:{THEME['text_2']}'>{lab}</td>"
+            f"<td style='padding:1px 14px 1px 0;color:{THEME['text_muted']}'>{d:g}</td>"
+            f"<td style='padding:1px 0;color:{THEME['accent']};font-weight:600'>{v:g}</td></tr>"
+            for lab, d, v in changed)
+        tune_preview.value = (
+            f"<div style='font-family:{THEME['font']};font-size:0.85em'>"
+            f"<table style='border-collapse:collapse;margin-bottom:8px'><thead><tr>"
+            f"<th style='text-align:left;color:{THEME['text_muted']};font-size:0.85em;padding-right:14px'>Changed knob</th>"
+            f"<th style='text-align:left;color:{THEME['text_muted']};font-size:0.85em;padding-right:14px'>Default</th>"
+            f"<th style='text-align:left;color:{THEME['text_muted']};font-size:0.85em'>Applied</th></tr></thead>"
+            f"<tbody>{rows}</tbody></table>"
+            f"<div style='color:{THEME['text_caption']};line-height:1.6'>{before}<br>{_top5(rc, 'Top 5 men after:&nbsp;')}</div></div>")
+        _set_status(f"Recomputed in {dt:.0f}s. Every section below now reflects the tuned model.",
+                    THEME["positive"])
+    except Exception as exc:
+        traceback.print_exc()
+        _set_status(f"Recompute failed: {exc}", THEME["negative"])
+    finally:
+        _apply_btn.disabled = _reset_btn.disabled = False
+
+
+def _reset(_btn=None):
+    for name, *_rest in _KNOBS:
+        TUNE_WIDGETS[name].value = _TUNE_DEFAULTS[name]
+        if name != "tau":
+            _set_const(name, _TUNE_DEFAULTS[name])
+    _rebuild_method_scores()
+    globals().update(dict(_BASELINE_FRAMES))
+    _prime_cache.clear()
+    redraw_all()
+    tune_preview.value = ""
+    _set_status("Reset to the default model (instant - no recompute).", THEME["text_muted"])
+
+
+_apply_btn.on_click(_recompute)
+_reset_btn.on_click(_reset)
+
+_groups = {}
+for _name, _label, _lo, _hi, _step, _group in _KNOBS:
+    _groups.setdefault(_group, []).append(TUNE_WIDGETS[_name])
+_group_boxes = [
+    widgets.VBox([widgets.HTML(heading(_g))] + _ws,
+                 layout=widgets.Layout(border=f"1px solid {THEME['border']}",
+                                       padding="6px 12px 10px", margin="0 10px 10px 0"))
+    for _g, _ws in _groups.items()
+]
+
+display(Markdown(
+    f"<div style='font-family:{THEME['font']};color:{THEME['text_caption']};font-size:0.82em;"
+    f"line-height:1.6;margin-bottom:8px'>These change the <b>model</b>, not just the view. "
+    f"Decision/integrity scores are on a 0-1 win scale (1 = a clean, decisive win); lower integrity "
+    f"scores discount tainted wins. Adjust, then <b>Apply &amp; recompute</b> - the full engine reruns "
+    f"(a few minutes) and every section updates. <b>Reset</b> restores defaults instantly.</div>"))
+display(widgets.Box(_group_boxes, layout=widgets.Layout(display="flex", flex_flow="row wrap")))
+display(widgets.HBox([_apply_btn, _reset_btn]))
+display(tune_status)
+display(tune_preview)
+_set_status("Model is at defaults. Adjust a knob and Apply to recompute.", THEME["text_muted"])
+'''
+
+
 CELLS = [
     md("""
 # Symon UFC Rank Engine — Interactive Dashboard
 
-One **Control Room** at the top drives every section. Pick a **scoring method**,
-a **time window**, a **division**, **Top N**, and minimum fights, and the
-leaderboards, movers, placement, division and era views all refresh together.
-Each section keeps a few local controls for things that only make sense there
-(streak sort, fighters to compare, attribution rows).
+Two control layers sit at the top. The **Control Room** changes the *view* — how
+wins are scored, current form vs prime, weight class, how many fighters — and
+re-ranks every section instantly. **Model Tuning** changes the *model itself* —
+how much a finish, a tainted win, a title fight or beating elite competition is
+worth; hit **Apply & recompute** and the whole rating engine re-runs so every
+board and chart reflects your version of the model. Each section also keeps a few
+local controls (streak sort, the two fighters to compare).
 
-> Charts are live `FigureWidget`s and tables are HTML widgets, so toggles update
-> in place. Run the cells top to bottom once, then drive it from the controls.
+> Run the cells top to bottom once, then drive everything from the top. View
+> toggles update instantly; a model recompute takes a few minutes.
 """),
     code(DATA_LOAD),
     code(RUNTIME),
     md("## 🎛️ Control Room"),
     code(CONTROL_ROOM),
     md("""
-## Leaderboard
+## 🛠️ Model Tuning
 
-The ranked board for the current Control-Room selection. **Rating** is the
-selected scoring lens; **vs Wins** shows how far context (Clean/Strength) moved a
-fighter off the raw win-based number. Use **Gender**, **Division**, **Top N**, and
-**Min fights** above to reshape it.
+The Control Room changes what you **look at**. This panel changes the **model
+itself** — how wins, finishes, opponents, integrity and prime windows are
+scored. Adjust the knobs and hit **Apply & recompute**: the full rating engine
+re-runs and every table and chart below updates to the tuned model.
+"""),
+    code(MODEL_TUNING),
+    md("""
+## The Rankings
+
+The pound-for-pound board for whatever you've set up top. **Rating** is the lens
+you picked in **Rank by**; **vs Wins** shows how much the context layers
+(Clean/Strength) moved a fighter off the raw win count — positive means context
+helped their case. Reshape it with **Roster**, **Weight class**, **Show top**,
+and **Min UFC bouts**.
 """),
     code(LEADERBOARD),
     md("""
-## Career Overlay
+## Career Arcs
 
-Pick any set of fighters to overlay their rating arcs. The line follows whatever
-**Scoring** lens is selected in the Control Room.
+Overlay any set of fighters and watch their ratings rise and fall fight by fight
+— who peaked highest, who stayed at the top longest, who fell off. The line
+follows whatever **Rank by** lens is selected up top.
 """),
     code(TRAJECTORY),
     md("""
-## Movers
+## Risers & Fallers
 
-The largest rank changes versus the previous snapshot, for the selected scoring
-view. Needs a comparable prior snapshot for the same view.
+Who's climbing and who's sliding since the previous snapshot, for the lens you've
+selected. Needs a comparable prior snapshot for the same view.
 """),
     code(MOVERS),
     md("""
 ## Win Streaks
 
-The longest unbeaten runs, filtered by the Control-Room **Division**/**Gender** and
-ranked by your chosen **Sort**. Pick a row — or type any fighter — to see that
-fighter's rating arc with the streak window shaded gold.
+The longest unbeaten runs in the books, filtered by **Weight class** / **Roster**
+and ranked by your **Sort** (length, toughness of the schedule, or title wins).
+Pick a run — or type any fighter — to see their rating climb through it, with the
+streak window shaded gold.
 """),
     code(STREAKS),
     md("""
-## Placement
+## Résumé vs Rating
 
-Resume depth vs rating for the top group, plus how the top-100 splits across
-divisions. Driven by **Scoring**, **Window**, **Top N**, and **Min fights**.
+Who's the real deal vs the hot start. Each fighter plotted by résumé depth (UFC
+bouts rated) against rating, plus how the current top 100 is spread across the
+weight classes. Driven by **Rank by**, **Form**, **Show top**, and **Min UFC bouts**.
 """),
     code(PLACEMENT),
     md("""
-## Divisions
+## Weight Classes
 
-Compare divisions like a dashboard: choose the divisions and a year, switch
-between absolute **Score** and shape-only **Index**, and the timeline, the
-single-year ranking, and the current leaders table all update.
+Stack the divisions side by side: pick the weight classes and a year, toggle
+absolute **Score** vs shape-only **Index**, and the strength-over-time chart, the
+single-year pecking order, and the current contenders table all update together.
 """),
     code(DIVISIONS_SECTION),
     md("""
-## Compare Fighters
+## Tale of the Tape
 
-Pick two fighters for a head-to-head: predicted win probability, **closeness**
-(1 = coin-flip, 0 = lopsided), side-by-side resumes, and each fighter's rating
-profile and market history.
+Pick two fighters for a head-to-head: the model's win probability, **closeness**
+(1 = a coin-flip, 0 = a blowout on paper), side-by-side résumés, and each
+fighter's rating profile and how the betting market saw them.
 """),
     code(COMPARE),
     md("""
-## Rating Story
+## What Moved a Fighter's Rating
 
-For one fighter, which adjustments helped or hurt over their career. Right is
-positive, left is negative.
+Pick a fighter and see which fights helped or hurt them. Bars to the right are
+gains, to the left are hits — split into the **Clean** (tainted-win) and
+**Strength** (quality-of-opposition) layers.
 """),
     code(RATING_STORY),
     md("""
-## Adjustments
+## Under the Hood
 
-Where the Clean and Strength layers fire, how often, and how large the effects
-are — with the biggest individual fights called out.
+Where the **Clean** and **Strength** adjustments actually fire, how often, and
+how hard — with the biggest single-fight swings called out. This is the audit
+trail behind the Model Tuning knobs.
 """),
     code(ADJUSTMENTS),
     md("""
-## Top-End Strength by Era
+## Era Check
 
-Year × division heatmap of top-end strength, normalized within each year so you
-can read which division led the sport season by season.
+A weight-class × year heat map of top-tier strength, scored within each year so
+you can read which division ruled the sport season by season.
 """),
     code(ERA),
 ]
