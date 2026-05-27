@@ -74,7 +74,6 @@ from analysis.viz import (
     PUBLIC_TIME_VIEWS,
     SCORING_METHODS,
     calibration_residuals_chart,
-    division_entropy_chart,
     division_strength_timeline_chart,
     division_year_snapshot_chart,
     era_heatmap_chart,
@@ -83,7 +82,6 @@ from analysis.viz import (
     fighter_profile_chart,
     fighter_detail,
     fighter_search,
-    glicko_fightmatrix_scatter,
     h2h_prediction,
     integrity_factor_audit_table,
     load_project_data,
@@ -95,7 +93,6 @@ from analysis.viz import (
     public_rating_label,
     public_rating_stream,
     rank_movement_chart,
-    rank_delta_table,
     recent_division_by_fighter,
     select_modular_rating_column,
     select_public_rating_column,
@@ -133,7 +130,6 @@ rc = SNAP["ratings_current"]
 previous_rc = PREV.get("ratings_current", pd.DataFrame())
 calibration_residuals = SNAP.get("calibration_residuals", pd.DataFrame())
 sleeve_attribution = SNAP.get("sleeve_attribution", pd.DataFrame())
-division_entropy = SNAP.get("division_entropy", pd.DataFrame())
 division_resume = SNAP.get("division_resume", pd.DataFrame())
 performance_appearances = SNAP.get("performance_appearances", pd.DataFrame())
 integrity_appearances = SNAP.get("integrity_appearances", pd.DataFrame())
@@ -671,8 +667,9 @@ spotlight = widgets.SelectMultiple(
     options=_spot_names, value=_default_spotlight, description="Fighters:",
     rows=7, layout=widgets.Layout(width="420px"), style={"description_width": "70px"})
 traj_fw = chart_widget(height=520)
-traj_cap = html_box(note("Shaded band = 1σ rating uncertainty (±φ); dots colored by finish method. "
-                         "The rating stream follows the Scoring lens in the Control Room."))
+traj_cap = html_box(note("The line is each fighter's rating over time; the shaded band is how confident the "
+                         "model is (wider = less certain, e.g. early career or after a layoff). Dots are fights, "
+                         "colored by how they ended. The rating follows the Scoring lens in the Control Room."))
 
 
 def draw_trajectory():
@@ -901,7 +898,6 @@ divx_year = (widgets.IntSlider(value=max(_years), min=min(_years), max=max(_year
 divx_timeline = chart_widget(height=460)
 divx_snapshot = chart_widget(height=440)
 divx_table = html_box()
-divx_entropy = chart_widget(height=360)
 
 
 def _divx_stream_col():
@@ -918,7 +914,6 @@ def draw_divx():
         divx_table.value = msg("select at least one division")
         show_fig(divx_timeline, go.Figure())
         show_fig(divx_snapshot, go.Figure())
-        show_fig(divx_entropy, go.Figure())
         return
     fig_tl = division_strength_timeline_chart(hist, all_bouts, rating_col=col,
              top_n_per_division=g_top_n.value, divisions=selected,
@@ -964,21 +959,14 @@ def draw_divx():
             .set_table_styles(_BASE_TABLE_STYLES)
         )
         divx_table.value = heading("Current leaders by selected division") + table_html(styled)
-    if division_entropy is not None and not division_entropy.empty:
-        show_fig(divx_entropy, division_entropy_chart(division_entropy, divisions=selected))
-    else:
-        show_fig(divx_entropy, go.Figure())
 
 
 display(widgets.HBox([divx, widgets.VBox([divx_year, divx_index])]))
 display(divx_timeline)
-display(html_box(note("Top-N average rating per division over time. Switch Scale to Index to compare shapes "
-                     "rather than absolute level.")))
+display(html_box(note("Average rating of each division's Top N over time. Switch Scale to Index to compare the "
+                     "shape of each division's rise and fall rather than the absolute level.")))
 display(divx_snapshot)
 display(divx_table)
-display(divx_entropy)
-display(html_box(note("Crowdedness: how tightly packed the top of each division is (higher = more contenders "
-                     "bunched together).")))
 draw_divx()
 for _w in (divx, divx_year, divx_index):
     _observe(_w, lambda *_: draw_divx())
@@ -1221,69 +1209,6 @@ for _w in (audit_sleeve, audit_effect, audit_fighter, audit_n):
 """
 
 
-FIGHTMATRIX = r"""
-gfm_fw = chart_widget(height=520)
-gfm_html = html_box()
-
-
-def _style_rank_delta(df):
-    if df.empty:
-        return None
-    rename = {"fighter": "Fighter", "glicko_rank": "Our rank", "mu_canonical": "Our rating",
-              "fightmatrix_rank": "FightMatrix rank", "fightmatrix_points": "FightMatrix points",
-              "fightmatrix_division": "Division", "glicko_vs_fm_rank_delta": "Rank gap",
-              "delta_mu_method_integrity": "Integrity adj.", "ped_confirmed_fights": "PED",
-              "dq_wins": "DQ", "missed_weight_wins": "MW"}
-    show_cols = [c for c in ["fighter", "glicko_rank", "fightmatrix_rank", "glicko_vs_fm_rank_delta",
-                             "mu_canonical", "fightmatrix_points", "fightmatrix_division",
-                             "delta_mu_method_integrity", "ped_confirmed_fights", "dq_wins", "missed_weight_wins"]
-                 if c in df.columns]
-    out = df[show_cols].rename(columns=rename).copy()
-    def delta_color(v):
-        if pd.isna(v):
-            return ""
-        if v > 0:
-            return f"color:{THEME['negative']};font-weight:600"
-        if v < 0:
-            return f"color:{THEME['positive']};font-weight:600"
-        return f"color:{THEME['text_muted']}"
-    fmt = {}
-    if "Our rating" in out.columns: fmt["Our rating"] = "{:.1f}"
-    if "FightMatrix points" in out.columns: fmt["FightMatrix points"] = "{:.0f}"
-    if "Integrity adj." in out.columns: fmt["Integrity adj."] = "{:+.1f}"
-    if "Rank gap" in out.columns: fmt["Rank gap"] = "{:+.0f}"
-    styled = (
-        out.style.hide(axis="index").format(fmt, na_rep="—")
-        .set_properties(subset=["Fighter"], **{"font-weight": "600", "color": THEME["text"]})
-        .set_table_styles(_BASE_TABLE_STYLES)
-    )
-    if "Rank gap" in out.columns:
-        styled = styled.map(delta_color, subset=["Rank gap"])
-    return styled
-
-
-def draw_gfm():
-    if fightmatrix_rankings is None or fightmatrix_rankings.empty:
-        gfm_html.value = msg("no FightMatrix data in this snapshot")
-        show_fig(gfm_fw, go.Figure())
-        return
-    fig = glicko_fightmatrix_scatter(rc, fightmatrix_rankings, min_fights=g_min_fights.value, label_outliers=0)
-    fig.update_layout(title="Our rating vs FightMatrix points", xaxis_title="Our rating", yaxis_title="FightMatrix points")
-    show_fig(gfm_fw, fig)
-    deltas = rank_delta_table(rc, fightmatrix_rankings, min_fights=g_min_fights.value, limit=g_top_n.value)
-    styled = _style_rank_delta(deltas)
-    gfm_html.value = (heading("Biggest rank disagreements") + table_html(styled)) if styled is not None else msg("no rank-disagreement rows available")
-
-
-display(gfm_fw)
-display(html_box(note("Each dot is a fighter both systems rate. Dots far from the cloud are the biggest "
-                     "disagreements; the table lists them. Min-fights and Top N come from the Control Room.")))
-display(gfm_html)
-draw_gfm()
-subscribe("fightmatrix", draw_gfm, {"min_fights", "top_n"})
-"""
-
-
 ERA = r"""
 era_divisions = widgets.SelectMultiple(options=list(DIVISIONS), value=tuple(list(DIVISIONS)[:8]),
                                        description="Divisions:", rows=8, layout=widgets.Layout(width="340px"),
@@ -1383,7 +1308,7 @@ divisions. Driven by **Scoring**, **Window**, **Top N**, and **Min fights**.
 
 Compare divisions like a dashboard: choose the divisions and a year, switch
 between absolute **Score** and shape-only **Index**, and the timeline, the
-single-year ranking, the current leaders table, and crowdedness all update.
+single-year ranking, and the current leaders table all update.
 """),
     code(DIVISIONS_SECTION),
     md("""
@@ -1408,13 +1333,6 @@ Where the Clean and Strength layers fire, how often, and how large the effects
 are — with the biggest individual fights called out.
 """),
     code(ADJUSTMENTS),
-    md("""
-## FightMatrix Check
-
-A sanity check against an outside ranking. Far-from-the-cloud dots are the
-biggest disagreements; the table lists them explicitly.
-"""),
-    code(FIGHTMATRIX),
     md("""
 ## Top-End Strength by Era
 

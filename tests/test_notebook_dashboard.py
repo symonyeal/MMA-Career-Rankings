@@ -67,7 +67,6 @@ def test_all_cells_execute_and_render(nb_ns):
     assert _n_traces(nb_ns["traj_fw"]) > 0
     assert _n_traces(nb_ns["plc_scatter"]) > 0
     assert _n_traces(nb_ns["divx_timeline"]) > 0
-    assert _n_traces(nb_ns["gfm_fw"]) > 0
     assert _n_traces(nb_ns["era_fw"]) > 0
     assert nb_ns["streak_html"].value
 
