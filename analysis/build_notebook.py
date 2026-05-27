@@ -34,77 +34,12 @@ def _split(src: str) -> list[str]:
 
 SHARED_HELPERS = """
 # Shared styling helpers ----------------------------------------------------
-# Dark corporate theme tokens. Single source of truth for the notebook's
-# visual identity.
+# Visual identity (THEME tokens + the dark "ufc_dark" Plotly template) lives in
+# analysis.viz so the notebook chrome and every chart share ONE source of
+# truth. Importing viz (done in the cell above) already registers and defaults
+# the Plotly template; here we just pull THEME in for the HTML/CSS chrome.
 
-THEME = {
-    # canvas
-    "bg":            "#0f172a",  # slate-900 (primary canvas)
-    "surface":       "#1e293b",  # slate-800 (cards, table rows)
-    "surface_alt":   "#172033",  # slightly darker for zebra striping
-    "hover":         "#334155",  # slate-700 hover
-    # text
-    "text":          "#f1f5f9",  # slate-100 (primary)
-    "text_2":        "#cbd5e1",  # slate-300 (secondary)
-    "text_muted":    "#94a3b8",  # slate-400 (muted labels)
-    "text_caption":  "#64748b",  # slate-500 (captions/footnotes)
-    # lines
-    "border":        "#334155",  # slate-700 (faint dividers)
-    "border_strong": "#475569",  # slate-600
-    # palette
-    "primary":       "#38bdf8",  # sky-400 (primary accent, fighter A, bars)
-    "secondary":     "#a78bfa",  # violet-400 (fighter B, secondary series)
-    "accent":        "#fbbf24",  # amber-400 (champion/major shift ONLY)
-    "positive":      "#34d399",  # emerald-400 (gains)
-    "negative":      "#f87171",  # red-400 (losses)
-    "neutral":       "#94a3b8",  # slate-400 (zero/neutral)
-    # font stack
-    "font":          '-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
-}
-
-
-# Plotly default template applied once for all interactive charts.
-try:
-    import plotly.graph_objects as _go
-    import plotly.io as _pio
-    _UFC_DARK = _go.layout.Template()
-    _UFC_DARK.layout = dict(
-        paper_bgcolor=THEME["bg"],
-        plot_bgcolor=THEME["bg"],
-        font=dict(family=THEME["font"], color=THEME["text"], size=13),
-        title=dict(font=dict(family=THEME["font"], color=THEME["text"], size=16)),
-        colorway=[
-            THEME["primary"], THEME["secondary"], THEME["positive"],
-            THEME["accent"], THEME["negative"], THEME["text_2"],
-        ],
-        xaxis=dict(
-            gridcolor=THEME["border"], zerolinecolor=THEME["border_strong"],
-            linecolor=THEME["border_strong"], tickcolor=THEME["border_strong"],
-            tickfont=dict(color=THEME["text_2"], size=11),
-            title=dict(font=dict(color=THEME["text_2"], size=12)),
-            showspikes=False,
-        ),
-        yaxis=dict(
-            gridcolor=THEME["border"], zerolinecolor=THEME["border_strong"],
-            linecolor=THEME["border_strong"], tickcolor=THEME["border_strong"],
-            tickfont=dict(color=THEME["text_2"], size=11),
-            title=dict(font=dict(color=THEME["text_2"], size=12)),
-            showspikes=False,
-        ),
-        legend=dict(
-            bgcolor="rgba(0,0,0,0)", bordercolor=THEME["border"], borderwidth=0,
-            font=dict(color=THEME["text_2"], size=11),
-        ),
-        hoverlabel=dict(
-            bgcolor=THEME["surface"], bordercolor=THEME["border_strong"],
-            font=dict(family=THEME["font"], color=THEME["text"], size=12),
-        ),
-        margin=dict(t=48, b=44, l=56, r=20),
-    )
-    _pio.templates["ufc_dark"] = _UFC_DARK
-    _pio.templates.default = "ufc_dark"
-except Exception:
-    pass
+from analysis.viz import THEME
 
 
 def _rank_chip(n):
@@ -289,6 +224,7 @@ from analysis.viz import (
     fighter_odds_history_chart,
     fighter_profile_chart,
     fighter_detail,
+    fighter_search,
     glicko_fightmatrix_scatter,
     h2h_prediction,
     integrity_factor_audit_table,
@@ -296,14 +232,19 @@ from analysis.viz import (
     modular_rating_context,
     performance_factor_audit_table,
     rank_delta_table,
+    recent_division_by_fighter,
     select_modular_rating_column,
     sleeve_attribution_table,
     sleeve_attribution_waterfall,
     sleeve_effects_by_fight_table,
     sleeve_factor_summary_table,
+    streak_timeline_chart,
     top100_division_density_chart,
     top_fighter_placement_scatter,
     trajectory_chart,
+    weight_class_strength_chart,
+    win_streaks,
+    win_streaks_table,
 )
 
 SNAPSHOT_BASE = PROJECT_ROOT / "data" / "snapshots"
@@ -374,6 +315,12 @@ gender = widgets.ToggleButtons(
     value="both",
     description="Gender:",
 )
+division_filter = widgets.Dropdown(
+    options=["All divisions"] + list(DIVISIONS),
+    value="All divisions",
+    description="Division:",
+    layout=widgets.Layout(width="320px"),
+)
 n_men = widgets.IntSlider(value=30, min=5, max=100, step=5, description="Top N (M):")
 n_women = widgets.IntSlider(value=15, min=5, max=100, step=5, description="Top N (F):")
 min_fights = widgets.IntSlider(value=0, min=0, max=20, step=1, description="Min fights:")
@@ -392,10 +339,16 @@ out_top = widgets.Output()
 out_spot = widgets.Output()
 
 
-def _build_top_view(df_subset, rating_col, n, min_fights_val):
+def _build_top_view(df_subset, rating_col, n, min_fights_val, division_val="All divisions"):
     df = df_subset.copy()
     df["rating_periods"] = pd.to_numeric(df.get("rating_periods"), errors="coerce").fillna(0)
     df = df[df["rating_periods"] >= min_fights_val]
+    if division_val and division_val != "All divisions":
+        div_series = df.get("recent_division")
+        if div_series is None:
+            div_series = pd.Series(index=df.index, dtype=object)
+        div_series = div_series.fillna(df.get("primary_division", ""))
+        df = df[div_series.eq(division_val)]
     df = df.dropna(subset=[rating_col])
     df = df.sort_values(rating_col, ascending=False).head(n).reset_index(drop=True)
     if df.empty:
@@ -493,11 +446,11 @@ def draw_top(*_):
 
             if gender.value in ("both", "M"):
                 display(Markdown("#### Men"))
-                v = _build_top_view(men, col, n_men.value, min_fights.value)
+                v = _build_top_view(men, col, n_men.value, min_fights.value, division_filter.value)
                 display(_style_top(v) if not v.empty else Markdown("_no fighters match the current filters_"))
             if gender.value in ("both", "F"):
                 display(Markdown("#### Women"))
-                v = _build_top_view(women, col, n_women.value, min_fights.value)
+                v = _build_top_view(women, col, n_women.value, min_fights.value, division_filter.value)
                 display(_style_top(v) if not v.empty else Markdown("_no fighters match the current filters_"))
 
 
@@ -533,7 +486,7 @@ def draw_spotlight(*_):
 controls = widgets.VBox([
     widgets.HBox([scoring, peak]),
     widgets.HBox([integrity, performance]),
-    gender,
+    widgets.HBox([gender, division_filter]),
     widgets.HBox([n_men, n_women, min_fights]),
 ])
 display(controls)
@@ -546,9 +499,147 @@ display(out_spot)
 draw_top()
 draw_spotlight()
 
-for w in (scoring, peak, integrity, performance, gender, n_men, n_women, min_fights):
+for w in (scoring, peak, integrity, performance, gender, division_filter, n_men, n_women, min_fights):
     _observe_once(w, draw_top, names="value")
 _observe_once(spotlight, draw_spotlight, names="value")
+"""),
+    md("""
+## Win Streaks
+
+The longest unbeaten runs in the database, rank-ordered. **Sort** switches
+between raw streak length, the average quality of the opponents beaten, and the
+number of title wins inside the run. Filter by division and gender. Then pick
+any streak below — or type a fighter — to see that fighter's rating climb and
+fall on the timeline, with the streak window shaded gold.
+"""),
+    code(r"""
+streak_div = widgets.Dropdown(
+    options=["All divisions"] + list(DIVISIONS), value="All divisions",
+    description="Division:", layout=widgets.Layout(width="320px"))
+streak_gender = widgets.ToggleButtons(
+    options=[("Both", "both"), ("Men", "M"), ("Women", "F")], value="both", description="Gender:")
+streak_sort = widgets.Dropdown(
+    options=[("Longest", "length"), ("Toughest schedule", "quality"), ("Most title wins", "title_wins")],
+    value="length", description="Sort:")
+streak_min_len = widgets.IntSlider(value=5, min=2, max=15, step=1, description="Min wins:")
+streak_n = widgets.IntSlider(value=20, min=5, max=60, step=5, description="Rows:")
+streak_pick = widgets.Dropdown(options=[], description="Timeline:",
+                               layout=widgets.Layout(width="460px"), style={"description_width": "80px"})
+streak_search = widgets.Text(value="", placeholder="…or type any fighter", description="Fighter:",
+                             layout=widgets.Layout(width="360px"), style={"description_width": "80px"})
+out_streaks = widgets.Output()
+out_streak_tl = widgets.Output()
+_streak_state = {"rows": None}
+
+
+def _style_streaks(df):
+    if df is None or df.empty:
+        return Markdown("_no streaks match the current filters_")
+    rows = df.reset_index(drop=True)
+    def _yr(d):
+        d = pd.to_datetime(d, errors="coerce")
+        return "" if pd.isna(d) else d.strftime("%Y")
+    view = pd.DataFrame({
+        "#": [_rank_chip(i) for i in range(1, len(rows) + 1)],
+        "Fighter": rows["fighter"],
+        "Streak": rows["length"].astype(int),
+        "Division": rows["division"].fillna("—"),
+        "Span": [f"{_yr(s)}–{_yr(e)}" for s, e in zip(rows["start_date"], rows["end_date"])],
+        "Avg opp": pd.to_numeric(rows["avg_opp_rating"], errors="coerce"),
+        "Titles": rows["title_wins"].astype(int),
+        "Finishes": rows["finishes"].astype(int),
+        "Status": [("Active" if og else eb) for og, eb in zip(rows["ongoing"], rows["ended_by"])],
+    })
+    def status_color(v):
+        return (f"color:{THEME['positive']};font-weight:600" if v == "Active"
+                else f"color:{THEME['text_muted']}")
+    smax = max(int(view["Streak"].max()), 1)
+    return (
+        view.style.hide(axis="index")
+        .bar(subset=["Streak"], color="rgba(251,191,36,0.32)", vmin=0, vmax=smax)
+        .map(status_color, subset=["Status"])
+        .format({"Avg opp": "{:.0f}"}, na_rep="—")
+        .format(lambda s: s, subset=["#"], escape=None)
+        .format(lambda s: s, subset=["Fighter"], escape=None)
+        .set_properties(subset=["Fighter"], **{"font-weight": "600", "color": THEME["text"]})
+        .set_properties(subset=["Streak"], **{"font-weight": "700", "color": THEME["accent"]})
+        .set_properties(subset=["Division", "Span", "Status"], **{"color": THEME["text_2"]})
+        .set_properties(subset=["Avg opp", "Titles", "Finishes"], **{"color": THEME["text_muted"]})
+        .set_properties(subset=["#"], **{"text-align": "center"})
+        .set_table_styles(_BASE_TABLE_STYLES)
+    )
+
+
+def draw_streak_timeline(*_):
+    _clear_output(out_streak_tl)
+    with out_streak_tl:
+        q = (streak_search.value or "").strip()
+        if q:
+            matches = fighter_search(rc, q, limit=1)
+            if not matches:
+                display(Markdown(f"_no fighter matches_ **{q}**"))
+                return
+            name = matches[0]
+            fr = win_streaks(fights, rc, min_len=1)
+            fr = fr[fr["fighter"].eq(name)]
+            hs = he = None
+            ln = None
+            if not fr.empty:
+                top = fr.sort_values("length", ascending=False).iloc[0]
+                hs, he, ln = top["start_date"], top["end_date"], int(top["length"])
+            streak_timeline_chart(name, ratings_history, fights,
+                                  highlight_start=hs, highlight_end=he, streak_len=ln).show()
+            return
+        rows = _streak_state.get("rows")
+        if rows is None or rows.empty or streak_pick.value is None:
+            display(Markdown("_pick a streak above, or type a fighter_"))
+            return
+        r = rows.iloc[int(streak_pick.value)]
+        streak_timeline_chart(r["fighter"], ratings_history, fights,
+                              highlight_start=r["start_date"], highlight_end=r["end_date"],
+                              streak_len=int(r["length"])).show()
+
+
+def draw_streaks(*_):
+    with _draw_guard("streaks") as ok:
+        if not ok:
+            return
+        g = None if streak_gender.value == "both" else streak_gender.value
+        t = win_streaks_table(fights, rc, min_len=streak_min_len.value, n=streak_n.value,
+                              division=streak_div.value, gender=g, sort_by=streak_sort.value)
+        t = t.reset_index(drop=True) if t is not None else None
+        _streak_state["rows"] = t
+        opts = []
+        if t is not None and not t.empty:
+            for i, r in t.iterrows():
+                sy = pd.to_datetime(r["start_date"], errors="coerce")
+                ey = pd.to_datetime(r["end_date"], errors="coerce")
+                span = f"{'' if pd.isna(sy) else sy.year}–{'' if pd.isna(ey) else ey.year}"
+                opts.append((f"{r['fighter']} — {int(r['length'])} wins ({span})", i))
+        streak_pick.unobserve_all()
+        streak_pick.options = opts
+        if opts:
+            streak_pick.value = opts[0][1]
+        _observe_once(streak_pick, draw_streak_timeline, names="value")
+        _clear_output(out_streaks)
+        with out_streaks:
+            display(_style_streaks(t))
+        draw_streak_timeline()
+
+
+display(widgets.VBox([
+    widgets.HBox([streak_div, streak_gender]),
+    widgets.HBox([streak_sort, streak_min_len, streak_n]),
+]))
+display(out_streaks)
+display(Markdown("#### Rating timeline"))
+display(widgets.HBox([streak_pick, streak_search]))
+display(out_streak_tl)
+
+draw_streaks()
+for w in (streak_div, streak_gender, streak_sort, streak_min_len, streak_n):
+    _observe_once(w, draw_streaks, names="value")
+_observe_once(streak_search, draw_streak_timeline, names="value")
 """),
     md("""
 ## Top Fighter Placement
@@ -598,6 +689,80 @@ display(out_placement)
 draw_placement()
 for w in (placement_n, placement_min_fights, scoring, peak, integrity, performance):
     _observe_once(w, draw_placement, names="value")
+"""),
+    md("""
+## Division Explorer
+
+Drill into a single division: its current top of the rankings, how its top-end
+strength has moved year over year, and how crowded the top has become. Switch
+divisions to navigate the whole roster one weight class at a time.
+"""),
+    code(r"""
+divx = widgets.Dropdown(
+    options=list(DIVISIONS),
+    value="Lightweight" if "Lightweight" in DIVISIONS else list(DIVISIONS)[0],
+    description="Division:", layout=widgets.Layout(width="340px"))
+divx_n = widgets.IntSlider(value=15, min=5, max=40, step=5, description="Top N:")
+out_divx = widgets.Output()
+
+
+def _divx_col():
+    for c in ("sustained_peak_headline_mu_whr",
+              "sustained_peak_mu_method_integrity_performance", "mu_canonical"):
+        if c in rc.columns:
+            return c
+    return "mu_canonical"
+
+
+def draw_divx(*_):
+    with _draw_guard("divx") as ok:
+        if not ok:
+            return
+        _clear_output(out_divx)
+        with out_divx:
+            col = _divx_col()
+            recent = recent_division_by_fighter(fights)
+            d = rc.merge(recent, on="fighter", how="left")
+            d["division"] = d["division"].fillna(d.get("primary_division"))
+            d = d[d["division"].eq(divx.value)].dropna(subset=[col])
+            d = d.sort_values(col, ascending=False).head(divx_n.value).reset_index(drop=True)
+            if d.empty:
+                display(Markdown("_no rated fighters in this division_"))
+            else:
+                view = pd.DataFrame({
+                    "#": [_rank_chip(i) for i in range(1, len(d) + 1)],
+                    "Fighter": d["fighter"],
+                    "Rating": pd.to_numeric(d[col], errors="coerce").round(1),
+                    "Fights": pd.to_numeric(d.get("rating_periods"), errors="coerce").fillna(0).astype(int),
+                    "Last fight": pd.to_datetime(d.get("last_event_date"), errors="coerce").dt.date,
+                })
+                rmin, rmax = view["Rating"].min(), view["Rating"].max()
+                styled = (
+                    view.style.hide(axis="index")
+                    .bar(subset=["Rating"], color="rgba(56,189,248,0.28)", vmin=rmin, vmax=rmax)
+                    .format({"Rating": "{:.1f}"})
+                    .format(lambda s: s, subset=["#"], escape=None)
+                    .format(lambda s: s, subset=["Fighter"], escape=None)
+                    .set_properties(subset=["Fighter"], **{"font-weight": "600", "color": THEME["text"]})
+                    .set_properties(subset=["Fights", "Last fight"], **{"color": THEME["text_muted"]})
+                    .set_properties(subset=["#"], **{"text-align": "center"})
+                    .set_table_styles(_BASE_TABLE_STYLES)
+                )
+                display(Markdown(f"#### Top {len(d)} — {divx.value}"))
+                display(styled)
+            try:
+                weight_class_strength_chart(ratings_history, fights, divisions=[divx.value]).show()
+            except Exception as exc:
+                display(_debug_caption(f"strength chart unavailable: {exc}"))
+            if division_entropy is not None and not division_entropy.empty:
+                division_entropy_chart(division_entropy, divisions=[divx.value]).show()
+
+
+display(widgets.HBox([divx, divx_n]))
+display(out_divx)
+draw_divx()
+for w in (divx, divx_n):
+    _observe_once(w, draw_divx, names="value")
 """),
     md("""
 ## Compare Fighters

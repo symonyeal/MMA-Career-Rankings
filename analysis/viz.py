@@ -31,25 +31,114 @@ from ratings.constants import (
 )
 from ratings.glicko2_engine import predict_win_prob_from_ratings, matchup_quality_from_ratings
 
+# ---------------------------------------------------------------------------
+# Visual identity — single source of truth (ESPN-style dark analytics theme).
+#
+# Both this module's Plotly charts AND the notebook's HTML/markdown chrome read
+# from THEME so the whole surface stays consistent. The notebook imports THEME
+# from here (see analysis/build_notebook.py) rather than redefining it.
+
+THEME = {
+    # canvas
+    "bg":            "#0b1220",  # deep broadcast navy (primary canvas)
+    "surface":       "#161f33",  # cards, table rows
+    "surface_alt":   "#111a2b",  # zebra striping (slightly darker)
+    "hover":         "#243049",  # row / point hover
+    # text
+    "text":          "#f8fafc",  # primary
+    "text_2":        "#cbd5e1",  # secondary
+    "text_muted":    "#94a3b8",  # muted labels
+    "text_caption":  "#64748b",  # captions / footnotes
+    # lines
+    "border":        "#2a3650",  # faint dividers / gridlines
+    "border_strong": "#3b4a6b",  # axis lines, strong dividers
+    # palette
+    "primary":       "#38bdf8",  # sky — primary series / fighter A / bars
+    "secondary":     "#a78bfa",  # violet — secondary series / fighter B
+    "accent":        "#fbbf24",  # amber/gold — #1, champion, key highlight
+    "positive":      "#34d399",  # emerald — gains / wins
+    "negative":      "#f87171",  # red — losses / penalties
+    "neutral":       "#94a3b8",  # zero / neutral
+    # font stack
+    "font":          '-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
+}
+
+# Vibrant categorical colorway that reads cleanly on the dark canvas.
+CHART_COLORWAY = [
+    "#38bdf8",  # sky
+    "#fbbf24",  # amber
+    "#34d399",  # emerald
+    "#a78bfa",  # violet
+    "#fb7185",  # rose
+    "#f97316",  # orange
+    "#22d3ee",  # cyan
+    "#a3e635",  # lime
+    "#e879f9",  # fuchsia
+    "#60a5fa",  # blue
+]
+
+# Named series colors used by specific charts (rating streams, market lines).
 STREAM_PALETTE = {
-    "canonical": "#12355b",
-    "method": "#0f766e",
-    "ped_adjusted": "#d97706",
-    "odds_adjusted": "#7c3aed",
-    "quality_adjusted": "#be123c",
+    "canonical":        THEME["primary"],
+    "method":           THEME["positive"],
+    "ped_adjusted":     THEME["accent"],
+    "odds_adjusted":    THEME["secondary"],
+    "quality_adjusted": THEME["negative"],
 }
 
 SIGN_COLORS = {
-    "positive": "#15803d",
-    "negative": "#b91c1c",
+    "positive": THEME["positive"],
+    "negative": THEME["negative"],
 }
 
-CHART_COLORWAY = [
-    "#1d4ed8", "#0f766e", "#b45309", "#7c3aed", "#be123c",
-    "#475569", "#0891b2", "#65a30d", "#c2410c", "#4f46e5",
+# Dark→bright sequential ramp for heatmaps (strength indices, densities).
+HEATMAP_COLORSCALE = [
+    [0.0, THEME["surface_alt"]],
+    [0.45, "#1d4ed8"],
+    [1.0, THEME["primary"]],
 ]
 
-CHART_TEMPLATE = "plotly_white"
+CHART_TEMPLATE = "ufc_dark"
+
+
+def _register_plotly_template() -> None:
+    """Register (once) and default the dark ESPN template for all charts."""
+    import plotly.graph_objects as _go
+    import plotly.io as _pio
+
+    if "ufc_dark" not in _pio.templates:
+        tpl = _go.layout.Template()
+        axis = dict(
+            gridcolor=THEME["border"],
+            zerolinecolor=THEME["border_strong"],
+            linecolor=THEME["border_strong"],
+            tickcolor=THEME["border_strong"],
+            tickfont=dict(color=THEME["text_2"], size=11),
+            title=dict(font=dict(color=THEME["text_2"], size=12)),
+        )
+        tpl.layout = dict(
+            paper_bgcolor=THEME["bg"],
+            plot_bgcolor=THEME["bg"],
+            font=dict(family=THEME["font"], color=THEME["text"], size=13),
+            title=dict(font=dict(family=THEME["font"], color=THEME["text"], size=16)),
+            colorway=CHART_COLORWAY,
+            xaxis=axis,
+            yaxis=axis,
+            legend=dict(
+                bgcolor="rgba(0,0,0,0)", bordercolor=THEME["border"], borderwidth=0,
+                font=dict(color=THEME["text_2"], size=11),
+            ),
+            hoverlabel=dict(
+                bgcolor=THEME["surface"], bordercolor=THEME["border_strong"],
+                font=dict(family=THEME["font"], color=THEME["text"], size=12),
+            ),
+            margin=dict(t=56, r=36, b=48, l=56),
+        )
+        _pio.templates["ufc_dark"] = tpl
+    _pio.templates.default = "ufc_dark"
+
+
+_register_plotly_template()
 
 EMPTY_FIGURE_LAYOUT = dict(
     template=CHART_TEMPLATE,
@@ -114,9 +203,9 @@ def _apply_chart_layout(fig: go.Figure, *, height: int | None = None) -> go.Figu
     layout = dict(
         template=CHART_TEMPLATE,
         colorway=CHART_COLORWAY,
-        font=dict(family="Inter, Segoe UI, Arial, sans-serif", color="#111827"),
-        paper_bgcolor="white",
-        plot_bgcolor="white",
+        font=dict(family=THEME["font"], color=THEME["text"]),
+        paper_bgcolor=THEME["bg"],
+        plot_bgcolor=THEME["bg"],
         margin=dict(t=64, r=36, b=56, l=64),
     )
     if height is not None:
@@ -124,15 +213,15 @@ def _apply_chart_layout(fig: go.Figure, *, height: int | None = None) -> go.Figu
     fig.update_layout(**layout)
     fig.update_xaxes(
         showgrid=True,
-        gridcolor="#e5e7eb",
-        zerolinecolor="#cbd5e1",
-        linecolor="#cbd5e1",
+        gridcolor=THEME["border"],
+        zerolinecolor=THEME["border_strong"],
+        linecolor=THEME["border_strong"],
     )
     fig.update_yaxes(
         showgrid=True,
-        gridcolor="#e5e7eb",
-        zerolinecolor="#cbd5e1",
-        linecolor="#cbd5e1",
+        gridcolor=THEME["border"],
+        zerolinecolor=THEME["border_strong"],
+        linecolor=THEME["border_strong"],
     )
     return fig
 
@@ -540,9 +629,7 @@ def trajectory_chart(
     fig = go.Figure()
     rating_name = _metric_label(rating_col)
 
-    palette = [STREAM_PALETTE["canonical"], STREAM_PALETTE["method"],
-               STREAM_PALETTE["ped_adjusted"], STREAM_PALETTE["odds_adjusted"],
-               "#334155", "#64748b"]
+    palette = CHART_COLORWAY
 
     fights_indexed = fights.copy() if fights is not None else pd.DataFrame()
     if not fights_indexed.empty and "event_date" in fights_indexed.columns:
@@ -1493,11 +1580,7 @@ def era_heatmap_chart(
         x=matrix.columns.astype(str),
         y=matrix.index,
         customdata=matrix.values,
-        colorscale=[
-            [0.0, "#f8fafc"],
-            [0.45, "#94a3b8"],
-            [1.0, STREAM_PALETTE["canonical"]],
-        ],
+        colorscale=HEATMAP_COLORSCALE,
         zmin=max(80, float(np.nanmin(indexed.values)) if np.isfinite(indexed.values).any() else 0),
         zmax=100,
         colorbar_title="Strength index",
@@ -1572,12 +1655,13 @@ def datalab_scorecard_insight_chart(scorecards: pd.DataFrame) -> go.Figure:
         subplot_titles=("Decision types", "Judge-score total margin"),
     )
     fig.add_trace(
-        go.Bar(x=counts.index, y=counts.values, marker_color=["#1f77b4", "#d62728", "#ff7f0e", "#7f7f7f"]),
+        go.Bar(x=counts.index, y=counts.values,
+               marker_color=[THEME["primary"], THEME["negative"], THEME["accent"], THEME["neutral"]]),
         row=1,
         col=1,
     )
     fig.add_trace(
-        go.Histogram(x=decisions["abs_total_margin"], nbinsx=20, marker_color="#0f766e"),
+        go.Histogram(x=decisions["abs_total_margin"], nbinsx=20, marker_color=THEME["positive"]),
         row=1,
         col=2,
     )
@@ -2515,7 +2599,7 @@ def sleeve_attribution_waterfall(
         yref="paper",
         showarrow=False,
         align="right",
-        font=dict(size=13, color="#111827"),
+        font=dict(size=13, color=THEME["text"]),
     )
     _apply_chart_layout(fig, height=460)
     fig.update_layout(
@@ -2800,6 +2884,248 @@ def favorite_underdog_performance_table(
         }
 
     return pd.DataFrame([_agg("favorite"), _agg("underdog")], columns=cols)
+
+
+# ---------------------------------------------------------------------------
+# Win streaks — ranking + per-fighter rating timeline
+#
+# A win streak is a maximal run of consecutive wins in a fighter's
+# chronological record. Draws and losses break a streak; no-contests and
+# excluded bouts are skipped (they neither extend nor break it), matching how
+# streaks are conventionally counted. Streaks are scored both by raw length
+# and by the average strength of the opponents beaten, so the notebook can
+# rank "longest" or "most impressive".
+
+def _fighter_results_long(fights: pd.DataFrame) -> pd.DataFrame:
+    """One row per fighter appearance with a clean win/loss/draw/nc outcome."""
+    if fights is None or fights.empty:
+        return pd.DataFrame(columns=[
+            "fighter", "opponent", "event_date", "event_name", "division",
+            "outcome", "is_title_fight", "method_class",
+        ])
+    f = add_division_to_fights(fights)
+    if "is_excluded" in f.columns:
+        f = f[~f["is_excluded"].fillna(False).astype(bool)]
+    f["event_date"] = pd.to_datetime(f["event_date"], errors="coerce")
+    keep = [
+        "event_date", "event_name", "division", "winner", "loser",
+        "is_draw", "is_nc", "is_title_fight", "method_class",
+    ]
+    keep = [c for c in keep if c in f.columns]
+    frames = []
+    for side, opp in (("fighter_a", "fighter_b"), ("fighter_b", "fighter_a")):
+        sub = f[keep + [side, opp]].rename(columns={side: "fighter", opp: "opponent"})
+        frames.append(sub)
+    long = pd.concat(frames, ignore_index=True).dropna(subset=["fighter"])
+    is_draw = long.get("is_draw", pd.Series(False, index=long.index)).fillna(False).astype(bool)
+    is_nc = long.get("is_nc", pd.Series(False, index=long.index)).fillna(False).astype(bool)
+    is_win = long["winner"].eq(long["fighter"]) if "winner" in long.columns else pd.Series(False, index=long.index)
+    long["outcome"] = np.select(
+        [is_nc, is_draw, is_win],
+        ["nc", "draw", "win"],
+        default="loss",
+    )
+    return long.sort_values(["fighter", "event_date"]).reset_index(drop=True)
+
+
+def win_streaks(
+    fights: pd.DataFrame,
+    ratings_current: pd.DataFrame | None = None,
+    *,
+    min_len: int = 2,
+) -> pd.DataFrame:
+    """Return every win streak (>= ``min_len``) as one row, scored by quality.
+
+    Columns: fighter, length, start_date, end_date, division (modal), divisions,
+    opponents, title_wins, finishes, avg_opp_rating, ongoing, ended_by, gender.
+    """
+    cols = [
+        "fighter", "length", "start_date", "end_date", "division", "divisions",
+        "opponents", "title_wins", "finishes", "avg_opp_rating", "ongoing",
+        "ended_by", "gender",
+    ]
+    long = _fighter_results_long(fights)
+    if long.empty:
+        return pd.DataFrame(columns=cols)
+
+    opp_mu: dict[str, float] = {}
+    gender_map: dict[str, str] = {}
+    if ratings_current is not None and not ratings_current.empty:
+        if "mu_canonical" in ratings_current.columns:
+            opp_mu = dict(zip(ratings_current["fighter"], pd.to_numeric(
+                ratings_current["mu_canonical"], errors="coerce")))
+        if "gender" in ratings_current.columns:
+            gender_map = dict(zip(ratings_current["fighter"], ratings_current["gender"]))
+
+    finish_methods = {"KO/TKO", "Submission"}
+    records: list[dict] = []
+
+    def _emit(fighter: str, run: list, ended_by: str, ongoing: bool) -> None:
+        if len(run) < min_len:
+            return
+        divisions = [r.division for r in run if isinstance(r.division, str)]
+        modal_div = pd.Series(divisions).mode().iloc[0] if divisions else None
+        opp_ratings = [opp_mu.get(r.opponent) for r in run]
+        opp_ratings = [v for v in opp_ratings if v is not None and not pd.isna(v)]
+        records.append({
+            "fighter": fighter,
+            "length": len(run),
+            "start_date": run[0].event_date,
+            "end_date": run[-1].event_date,
+            "division": modal_div,
+            "divisions": sorted(set(divisions)),
+            "opponents": [r.opponent for r in run],
+            "title_wins": int(sum(bool(getattr(r, "is_title_fight", False)) for r in run)),
+            "finishes": int(sum(str(getattr(r, "method_class", "")) in finish_methods for r in run)),
+            "avg_opp_rating": float(np.mean(opp_ratings)) if opp_ratings else float("nan"),
+            "ongoing": ongoing,
+            "ended_by": ended_by,
+            "gender": gender_map.get(fighter),
+        })
+
+    for fighter, g in long.groupby("fighter", sort=False):
+        run: list = []
+        for row in g.itertuples(index=False):
+            oc = row.outcome
+            if oc == "win":
+                run.append(row)
+            elif oc == "nc":
+                continue
+            else:  # loss or draw breaks the streak
+                verb = "Draw with" if oc == "draw" else "Loss to"
+                _emit(fighter, run, f"{verb} {row.opponent}", ongoing=False)
+                run = []
+        _emit(fighter, run, "Active", ongoing=True)
+
+    out = pd.DataFrame(records, columns=cols)
+    if out.empty:
+        return out
+    return out.sort_values(
+        ["length", "avg_opp_rating", "title_wins"],
+        ascending=[False, False, False],
+    ).reset_index(drop=True)
+
+
+def win_streaks_table(
+    fights: pd.DataFrame,
+    ratings_current: pd.DataFrame | None = None,
+    *,
+    min_len: int = 3,
+    n: int = 25,
+    division: str | None = None,
+    gender: str | None = None,
+    sort_by: str = "length",
+) -> pd.DataFrame:
+    """Display-ready, filtered, ranked win-streak table."""
+    streaks = win_streaks(fights, ratings_current, min_len=min_len)
+    if streaks.empty:
+        return streaks
+    if division and division != "All":
+        streaks = streaks[streaks["divisions"].apply(lambda ds: division in (ds or []))]
+    if gender in ("M", "F"):
+        streaks = streaks[streaks["gender"].eq(gender)]
+    if streaks.empty:
+        return streaks.iloc[0:0]
+    if sort_by == "quality":
+        streaks = streaks.sort_values(
+            ["avg_opp_rating", "length", "title_wins"], ascending=False)
+    elif sort_by == "title_wins":
+        streaks = streaks.sort_values(
+            ["title_wins", "length", "avg_opp_rating"], ascending=False)
+    else:
+        streaks = streaks.sort_values(
+            ["length", "avg_opp_rating", "title_wins"], ascending=False)
+    return streaks.head(n).reset_index(drop=True)
+
+
+def streak_timeline_chart(
+    fighter: str,
+    ratings_history: pd.DataFrame,
+    fights: pd.DataFrame,
+    *,
+    rating_col: str = "mu_canonical",
+    highlight_start=None,
+    highlight_end=None,
+    streak_len: int | None = None,
+) -> go.Figure:
+    """Single-fighter rating timeline with win/loss/draw markers.
+
+    When a streak window is supplied it is shaded so the rating arc over that
+    run is obvious. This is the chart driven by the win-streak selector.
+    """
+    title = f"{fighter}: rating timeline"
+    if ratings_history is None or ratings_history.empty or not fighter:
+        return _empty_figure("rating history unavailable", title=title, height=420)
+    if rating_col not in ratings_history.columns:
+        rating_col = "mu_canonical"
+    h = ratings_history[ratings_history["fighter"].eq(fighter)].copy()
+    if h.empty:
+        return _empty_figure(f"no rating history for {fighter}", title=title, height=420)
+    h["event_date"] = pd.to_datetime(h["event_date"], errors="coerce")
+    h = h.sort_values("event_date")
+
+    results = _fighter_results_long(fights)
+    results = results[results["fighter"].eq(fighter)][["event_date", "opponent", "outcome"]]
+    merged = h.merge(results, on="event_date", how="left")
+
+    fig = go.Figure()
+    # rating line
+    fig.add_trace(go.Scatter(
+        x=h["event_date"], y=h[rating_col],
+        mode="lines",
+        line=dict(color=THEME["primary"], width=2.5, shape="spline", smoothing=0.4),
+        name="rating",
+        hoverinfo="skip",
+        showlegend=False,
+    ))
+    # outcome markers
+    outcome_color = {
+        "win": THEME["positive"], "loss": THEME["negative"],
+        "draw": THEME["neutral"], "nc": THEME["text_caption"],
+    }
+    for outcome, label in (("win", "Win"), ("loss", "Loss"), ("draw", "Draw"), ("nc", "No contest")):
+        seg = merged[merged["outcome"].eq(outcome)]
+        if seg.empty:
+            continue
+        fig.add_trace(go.Scatter(
+            x=seg["event_date"], y=seg[rating_col],
+            mode="markers",
+            name=label,
+            marker=dict(size=10, color=outcome_color[outcome],
+                        line=dict(color=THEME["bg"], width=1.5)),
+            customdata=seg["opponent"].fillna("").to_numpy()[:, None],
+            hovertemplate=(
+                f"<b>{label}</b> vs %{{customdata[0]}}<br>"
+                "%{x|%b %d, %Y}<br>"
+                f"{_metric_label(rating_col)}=%{{y:.1f}}<extra></extra>"
+            ),
+        ))
+
+    if highlight_start is not None and highlight_end is not None:
+        hs = pd.to_datetime(highlight_start)
+        he = pd.to_datetime(highlight_end)
+        fig.add_vrect(
+            x0=hs, x1=he,
+            fillcolor=_hex_to_rgba(THEME["accent"], 0.14),
+            line_width=0,
+            layer="below",
+        )
+        label = "win streak" if streak_len is None else f"{streak_len}-fight win streak"
+        fig.add_annotation(
+            x=hs + (he - hs) / 2, y=1.0, yref="paper",
+            text=label, showarrow=False, yanchor="bottom",
+            font=dict(color=THEME["accent"], size=12),
+        )
+
+    _apply_chart_layout(fig, height=460)
+    fig.update_layout(
+        title=title,
+        xaxis_title="Date",
+        yaxis_title=_metric_label(rating_col),
+        hovermode="closest",
+        legend=dict(orientation="h", y=1.08, x=0, yanchor="bottom"),
+    )
+    return fig
 
 
 # ---------------------------------------------------------------------------
