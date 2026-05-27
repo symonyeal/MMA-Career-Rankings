@@ -108,6 +108,29 @@ def _attach_appearance_weights(
     out = out.merge(b, on=["fight_url", "fighter_b"], how="left")
     out["weight_a"] = out["weight_a"].fillna(1.0).astype(float)
     out["weight_b"] = out["weight_b"].fillna(1.0).astype(float)
+    # Cross-org down-weight: a non-UFC bout updates ratings at a bridge-
+    # calibrated percentile of a UFC bout. UFC bouts carry org_weight 1.0, so
+    # this is a no-op for them. Applied on top of the sleeve weight so it
+    # scales the whole per-fight update in both the weighted Glicko engine and
+    # the WHR likelihood.
+    if "org_weight" in out.columns:
+        ow = pd.to_numeric(out["org_weight"], errors="coerce").fillna(1.0)
+        out["weight_a"] = out["weight_a"] * ow
+        out["weight_b"] = out["weight_b"] * ow
+    return out
+
+
+def _attach_org_only_weights(fights: pd.DataFrame) -> pd.DataFrame:
+    """Set ``weight_a``/``weight_b`` to the per-fight ``org_weight`` only.
+
+    Used for the base (sleeve-free) WHR headline so cross-org bouts are
+    down-weighted there too; UFC bouts (org_weight 1.0) are unaffected.
+    """
+    out = fights.copy()
+    ow = pd.to_numeric(out.get("org_weight", 1.0), errors="coerce")
+    ow = ow.fillna(1.0) if hasattr(ow, "fillna") else 1.0
+    out["weight_a"] = ow
+    out["weight_b"] = ow
     return out
 
 
@@ -263,6 +286,23 @@ def run(
     excluded_path = snapshot_dir / "_excluded_bouts.csv"
     excluded = pd.read_csv(excluded_path) if excluded_path.exists() else pd.DataFrame()
 
+    # UFC bouts are the elite reference: org_weight 1.0. Cross-org bouts (if a
+    # crossorg_fights.parquet was staged) carry their own bridge-calibrated
+    # org_weight < 1.0 and are concatenated into the canonical fight table so
+    # they flow through every stream, sleeve, and period score.
+    fights["org_weight"] = 1.0
+    if "source" not in fights.columns:
+        fights["source"] = "ufc"
+    crossorg_path = snapshot_dir / "crossorg_fights.parquet"
+    if crossorg_path.exists():
+        crossorg = pd.read_parquet(crossorg_path)
+        if not crossorg.empty:
+            if "org_weight" not in crossorg.columns:
+                crossorg["org_weight"] = 1.0
+            fights = pd.concat([fights, crossorg], ignore_index=True, sort=False)
+            print(f"[rate] merged {len(crossorg):,} cross-org bouts "
+                  f"(orgs: {sorted(crossorg.get('org', pd.Series(dtype=str)).dropna().unique())})")
+
     fights["event_date"] = pd.to_datetime(fights["event_date"])
     if "method_class" in fights.columns:
         recalculated_method_scores = fights["method_class"].map(METHOD_SCORES)
@@ -377,7 +417,9 @@ def run(
     # streams. The canonical method/integrity Glicko stream remains binary;
     # the integrity penalty here is the WHR analog of the Glicko-2 method
     # stream's quality_score_winner damp.
-    whr_history = run_whr(rated_with_qs)
+    # Base (sleeve-free) WHR is the headline ranking — down-weight cross-org
+    # bouts here too via org-only weights (UFC stays 1.0).
+    whr_history = run_whr(_attach_org_only_weights(rated_with_qs))
     whr_history.to_parquet(snapshot_dir / "ratings_history_whr.parquet", index=False)
     whr_current = (
         whr_history.sort_values(["fighter", "event_date"])

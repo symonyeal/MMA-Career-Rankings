@@ -73,7 +73,10 @@ def test_build_database_contains_core_tables_counts_and_indexes():
         assert "idx_ratings_history_fighter_event_date" in ratings_history_indexes
 
         gaps = dict(con.execute("SELECT gap_key, status FROM source_gaps").fetchall())
-        assert gaps["cross_org_bouts_not_integrated"] == "pending"
+        assert (
+            gaps.get("cross_org_bouts_not_integrated") == "pending"
+            or gaps.get("cross_org_bouts_integrated") == "loaded"
+        )
         assert (
             gaps.get("odds_source_not_ingested") == "pending"
             or gaps.get("odds_source_ingested") == "loaded"

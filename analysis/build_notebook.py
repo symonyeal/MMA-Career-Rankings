@@ -185,8 +185,8 @@ CELLS = [
     md("""
 # Symon UFC Rank Engine
 
-A read-only diagnostic view of the latest ratings snapshot. Each section
-answers one question; controls live right above the output they drive.
+A polished view of the latest rankings snapshot. Short labels are used in the
+notebook; exact parquet column names stay in the source files.
 """),
     code(r"""
 import re
@@ -216,9 +216,13 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from analysis.viz import (
     DIVISIONS,
     PEAK_VIEWS,
+    PUBLIC_RATING_LENSES,
+    PUBLIC_TIME_VIEWS,
     SCORING_METHODS,
     calibration_residuals_chart,
     division_entropy_chart,
+    division_strength_timeline_chart,
+    division_year_snapshot_chart,
     era_heatmap_chart,
     favorite_underdog_performance_table,
     fighter_odds_history_chart,
@@ -231,9 +235,13 @@ from analysis.viz import (
     load_project_data,
     modular_rating_context,
     performance_factor_audit_table,
+    public_history_key,
+    public_rating_label,
+    rank_movement_chart,
     rank_delta_table,
     recent_division_by_fighter,
     select_modular_rating_column,
+    select_public_rating_column,
     sleeve_attribution_table,
     sleeve_attribution_waterfall,
     sleeve_effects_by_fight_table,
@@ -253,12 +261,19 @@ SNAPSHOT_CANDIDATES = [
     if p.is_dir() and re.fullmatch(r"\d{4}-\d{2}-\d{2}", p.name)
 ]
 SNAPSHOT_DIR = sorted(SNAPSHOT_CANDIDATES, key=lambda p: p.name)[-1]
+PREVIOUS_SNAPSHOT_DIR = (
+    sorted([p for p in SNAPSHOT_CANDIDATES if p.name < SNAPSHOT_DIR.name], key=lambda p: p.name)[-1]
+    if any(p.name < SNAPSHOT_DIR.name for p in SNAPSHOT_CANDIDATES)
+    else None
+)
 DATABASE_PATH = PROJECT_ROOT / "data" / "ufc_rank_engine.sqlite"
 SNAP = load_project_data(SNAPSHOT_DIR, DATABASE_PATH, prefer_database=False)
+PREV = load_project_data(PREVIOUS_SNAPSHOT_DIR, DATABASE_PATH, prefer_database=False) if PREVIOUS_SNAPSHOT_DIR else {}
 
 fights = SNAP["fights"]
 fighters = SNAP["fighters"]
 rc = SNAP["ratings_current"]
+previous_rc = PREV.get("ratings_current", pd.DataFrame())
 calibration_residuals = SNAP.get("calibration_residuals", pd.DataFrame())
 sleeve_attribution = SNAP.get("sleeve_attribution", pd.DataFrame())
 division_entropy = SNAP.get("division_entropy", pd.DataFrame())
@@ -268,48 +283,51 @@ integrity_appearances = SNAP.get("integrity_appearances", pd.DataFrame())
 fightmatrix_rankings = SNAP.get("fightmatrix_rankings", pd.DataFrame())
 odds_lines = SNAP.get("odds_lines", pd.DataFrame())
 ratings_history = SNAP.get("ratings_history", pd.DataFrame())
+ratings_histories = {
+    "ratings_history": ratings_history,
+    "ratings_history_method_integrity": SNAP.get("ratings_history_method_integrity", pd.DataFrame()),
+    "ratings_history_method_performance": SNAP.get("ratings_history_method_performance", pd.DataFrame()),
+    "ratings_history_method_integrity_performance": SNAP.get("ratings_history_method_integrity_performance", pd.DataFrame()),
+}
 fighter_dominance = SNAP.get("fighter_dominance", pd.DataFrame())
 ped_confirmed_bouts = SNAP.get("ped_confirmed_bouts", pd.DataFrame())
+crossorg_fights = SNAP.get("crossorg_fights", pd.DataFrame())
 
 _whr_path = SNAPSHOT_DIR / "ratings_history_whr.parquet"
 ratings_history_whr = pd.read_parquet(_whr_path) if _whr_path.exists() else pd.DataFrame()
+ratings_histories["ratings_history_whr"] = ratings_history_whr
+all_bouts = pd.concat([fights, crossorg_fights], ignore_index=True, sort=False) if not crossorg_fights.empty else fights
 
 display(Markdown(
     f"<div style='color:#cbd5e1;font-size:0.95em;"
     f"font-family:-apple-system,BlinkMacSystemFont,\"Segoe UI\",system-ui,sans-serif'>"
-    f"<b style='color:#f1f5f9'>Snapshot:</b> <code>{SNAPSHOT_DIR.name}</code> &middot; "
-    f"<b style='color:#f1f5f9'>{len(fights):,}</b> fights &middot; "
-    f"<b style='color:#f1f5f9'>{len(rc):,}</b> rated fighters"
+    f"<b style='color:#f1f5f9'>Snapshot</b> <code>{SNAPSHOT_DIR.name}</code> &middot; "
+    f"<b style='color:#f1f5f9'>{len(fights):,}</b> UFC bouts &middot; "
+    f"<b style='color:#f1f5f9'>{len(crossorg_fights):,}</b> cross-org bouts &middot; "
+    f"<b style='color:#f1f5f9'>{len(rc):,}</b> fighters"
     f"</div>"
 ))
 """),
     code(SHARED_HELPERS),
     md("""
-## Top 30 Leaderboard
+## Leaderboard
 
-The headline ranking. **Scoring** picks how ratings are computed (plain Glicko-2
-versus method-bonus, which rewards finishes over decisions). The two sleeve
-toggles add adjustments on top: the **integrity sleeve** dampens
-PED-confirmed wins, DQ wins, and missed-weight wins; the **performance sleeve**
-adds quality-of-opponent, market-upset, and rank-context bonuses. **Window**
-picks current rating vs a peak from a specific career window. Use
-**Spotlight overlay** to compare multiple career curves below the table.
+Public labels are short and contextual: **Wins** is result only, **Finishes**
+adds how the fight ended, **Clean** adjusts tainted wins, **Strength** adds
+opponent and market context, and **Complete** combines the context. **Now**
+means current form; **Prime** means best 10-year run.
 """),
     code("""
-scoring = widgets.Dropdown(
-    options=list(SCORING_METHODS),
-    value="method",
-    description="Scoring:",
-    layout=widgets.Layout(width="320px"),
+lens = widgets.ToggleButtons(
+    options=list(PUBLIC_RATING_LENSES),
+    value="complete",
+    description="Rating:",
 )
-peak = widgets.Dropdown(
-    options=list(PEAK_VIEWS),
-    value="sustained_peak",
-    description="Window:",
-    layout=widgets.Layout(width="320px"),
+time_view = widgets.ToggleButtons(
+    options=list(PUBLIC_TIME_VIEWS),
+    value="current",
+    description="Time:",
 )
-integrity = widgets.Checkbox(value=True, description="Integrity sleeve (PED/DQ/missed-weight)")
-performance = widgets.Checkbox(value=True, description="Performance sleeve (quality/market/rank)")
 gender = widgets.ToggleButtons(
     options=[("Both", "both"), ("Men", "M"), ("Women", "F")],
     value="both",
@@ -321,9 +339,9 @@ division_filter = widgets.Dropdown(
     description="Division:",
     layout=widgets.Layout(width="320px"),
 )
-n_men = widgets.IntSlider(value=30, min=5, max=100, step=5, description="Top N (M):")
-n_women = widgets.IntSlider(value=15, min=5, max=100, step=5, description="Top N (F):")
-min_fights = widgets.IntSlider(value=0, min=0, max=20, step=1, description="Min fights:")
+n_men = widgets.IntSlider(value=30, min=5, max=100, step=5, description="Men:")
+n_women = widgets.IntSlider(value=15, min=5, max=100, step=5, description="Women:")
+min_fights = widgets.IntSlider(value=3, min=0, max=20, step=1, description="Min:")
 _top_names = sorted(rc["fighter"].dropna().unique().tolist())
 _default_spotlight = tuple([n for n in ["Georges St-Pierre", "Jon Jones", "Khabib Nurmagomedov"] if n in _top_names])
 spotlight = widgets.SelectMultiple(
@@ -337,6 +355,23 @@ spotlight = widgets.SelectMultiple(
 
 out_top = widgets.Output()
 out_spot = widgets.Output()
+
+
+def _selected_rating_col():
+    return select_public_rating_column(rc, lens.value, time_view.value)
+
+
+def _selected_history():
+    return ratings_histories.get(public_history_key(lens.value), ratings_history)
+
+
+def _selected_stream_col():
+    col = _selected_rating_col()
+    if col and col.startswith("sustained_peak"):
+        return "mu_" + col.split("_mu_", 1)[1]
+    if col and col.startswith("five_year_peak"):
+        return "mu_" + col.split("_mu_", 1)[1]
+    return col
 
 
 def _build_top_view(df_subset, rating_col, n, min_fights_val, division_val="All divisions"):
@@ -359,9 +394,9 @@ def _build_top_view(df_subset, rating_col, n, min_fights_val, division_val="All 
         "#": [_rank_chip(i) for i in range(1, len(df) + 1)],
         "Fighter": df["fighter"],
         "Rating": rating_vals.round(1),
-        "vs plain Glicko": (rating_vals - baseline_vals).round(1),
+        "vs Wins": (rating_vals - baseline_vals).round(1),
         "Division": df.get("recent_division").fillna(df.get("primary_division", "")),
-        "Last fight": pd.to_datetime(df["last_event_date"], errors="coerce").dt.date,
+        "Last": pd.to_datetime(df["last_event_date"], errors="coerce").dt.date,
         "Fights": df["rating_periods"].astype(int),
     })
 
@@ -382,12 +417,12 @@ def _style_top(lean):
         lean.style
         .hide(axis="index")
         .bar(subset=["Rating"], color="rgba(56,189,248,0.28)", vmin=rmin, vmax=rmax)
-        .map(delta_color, subset=["vs plain Glicko"])
-        .format({"Rating": "{:.1f}", "vs plain Glicko": "{:+.1f}"})
+        .map(delta_color, subset=["vs Wins"])
+        .format({"Rating": "{:.1f}", "vs Wins": "{:+.1f}"})
         .format(lambda s: s, subset=["#"], escape=None)
         .format(lambda s: s, subset=["Fighter"], escape=None)
         .set_properties(subset=["Fighter"], **{"font-weight": "600", "color": THEME["text"]})
-        .set_properties(subset=["Last fight", "Fights"], **{"color": THEME["text_muted"], "font-size": "0.88em"})
+        .set_properties(subset=["Last", "Fights"], **{"color": THEME["text_muted"], "font-size": "0.88em"})
         .set_properties(subset=["Division"], **{"color": THEME["text_2"]})
         .set_properties(subset=["#"], **{"text-align": "center", "padding-right": "4px"})
         .set_table_styles(_BASE_TABLE_STYLES)
@@ -398,27 +433,11 @@ def draw_top(*_):
     with _draw_guard("top") as ok:
         if not ok:
             return
-        # Lock sleeves to canonical without retriggering self
-        if scoring.value == "canonical":
-            if integrity.value:
-                integrity.value = False
-            if performance.value:
-                performance.value = False
-            integrity.disabled = True
-            performance.disabled = True
-        else:
-            integrity.disabled = False
-            performance.disabled = False
 
         _clear_output(out_top)
         with out_top:
             try:
-                col = select_modular_rating_column(
-                    rc, scoring.value,
-                    use_integrity=integrity.value,
-                    use_performance=performance.value,
-                    peak=peak.value,
-                )
+                col = _selected_rating_col()
             except ValueError as exc:
                 display(Markdown(f"**Invalid selection:** {exc}"))
                 return
@@ -426,19 +445,13 @@ def draw_top(*_):
                 display(Markdown("**No matching rating column in this snapshot.**"))
                 return
 
-            ctx = modular_rating_context(
-                scoring.value,
-                use_integrity=integrity.value,
-                use_performance=performance.value,
-            )
-            window_label = dict(PEAK_VIEWS).get(peak.value, peak.value)
+            view_label = public_rating_label(lens.value, time_view.value)
             display(Markdown(
                 f"<div style='color:{THEME[\"text_2\"]};font-size:0.95em;"
                 f"font-family:{THEME[\"font\"]};margin-bottom:6px'>"
-                f"<b style='color:{THEME[\"text\"]}'>{window_label}</b> &middot; {ctx['label']}"
+                f"<b style='color:{THEME[\"text\"]}'>{view_label}</b>"
                 f"</div>"
             ))
-            display(_debug_caption(f"sorted by column <code>{col}</code>"))
 
             has_gender = "gender" in rc.columns
             men = rc[rc["gender"].eq("M")].copy() if has_gender else rc.copy()
@@ -463,13 +476,16 @@ def draw_spotlight(*_):
         if ratings_history is None or ratings_history.empty:
             display(Markdown("_no rating history available_"))
             return
-        available = set(ratings_history.get("fighter", pd.Series(dtype=str)))
+        hist = _selected_history()
+        available = set(hist.get("fighter", pd.Series(dtype=str)))
         names = [name for name in names if name in available]
         if not names:
             display(Markdown("_no selected fighters have rating history_"))
             return
-        fig = trajectory_chart(ratings_history, fights, names,
-                              show_phi_band=True, show_method_markers=True)
+        stream_col = _selected_stream_col()
+        fig = trajectory_chart(hist, all_bouts, names,
+                              show_phi_band=True, show_method_markers=True,
+                              rating_col=stream_col if stream_col in hist.columns else "mu_canonical")
         fig.update_layout(
             title="Career rating overlay",
             xaxis_title="Date",
@@ -484,24 +500,65 @@ def draw_spotlight(*_):
 
 
 controls = widgets.VBox([
-    widgets.HBox([scoring, peak]),
-    widgets.HBox([integrity, performance]),
+    widgets.HBox([time_view, lens]),
     widgets.HBox([gender, division_filter]),
     widgets.HBox([n_men, n_women, min_fights]),
 ])
 display(controls)
 display(out_top)
 display(Markdown("---"))
-display(Markdown("#### Fighter Spotlight Overlay"))
+display(Markdown("#### Career Overlay"))
 display(spotlight)
 display(out_spot)
 
 draw_top()
 draw_spotlight()
 
-for w in (scoring, peak, integrity, performance, gender, division_filter, n_men, n_women, min_fights):
+for w in (lens, time_view, gender, division_filter, n_men, n_women, min_fights):
     _observe_once(w, draw_top, names="value")
 _observe_once(spotlight, draw_spotlight, names="value")
+"""),
+    md("""
+## Movers
+
+The largest top-50 changes from the previous snapshot, using the same rating
+view selected above. Switch to **Now + Complete** for current form, or
+**Prime + Complete** for the best-run view.
+"""),
+    code("""
+movers_n = widgets.IntSlider(value=20, min=10, max=50, step=5, description="Rows:")
+out_movers = widgets.Output()
+
+
+def draw_movers(*_):
+    with _draw_guard("movers") as ok:
+        if not ok:
+            return
+        _clear_output(out_movers)
+        with out_movers:
+            try:
+                col = _selected_rating_col()
+            except ValueError as exc:
+                display(Markdown(f"**Invalid selection:** {exc}"))
+                return
+            if not col:
+                display(Markdown("_no matching rating view_"))
+                return
+            rank_movement_chart(
+                previous_rc,
+                rc,
+                rating_col=col,
+                top_k=50,
+                n=movers_n.value,
+                min_fights=min_fights.value,
+            ).show()
+
+
+display(movers_n)
+display(out_movers)
+draw_movers()
+for w in (lens, time_view, min_fights, movers_n):
+    _observe_once(w, draw_movers, names="value")
 """),
     md("""
 ## Win Streaks
@@ -642,27 +699,20 @@ for w in (streak_div, streak_gender, streak_sort, streak_min_len, streak_n):
 _observe_once(streak_search, draw_streak_timeline, names="value")
 """),
     md("""
-## Top Fighter Placement
+## Placement
 
-A placement view for the top fighters: rating score vertically, UFC sample
-size horizontally, color by division. This is meant to show *where* a fighter
-sits, not just their row number. The density chart below shows which divisions
-actually occupy the top 100.
+Score, sample size, and division in one view. Larger points are higher ranked;
+the bar chart shows which divisions occupy the top group.
 """),
     code("""
-placement_n = widgets.IntSlider(value=100, min=25, max=200, step=25, description="Top N:")
-placement_min_fights = widgets.IntSlider(value=0, min=0, max=20, step=1, description="Min fights:")
+placement_n = widgets.IntSlider(value=100, min=25, max=200, step=25, description="Top:")
+placement_min_fights = widgets.IntSlider(value=3, min=0, max=20, step=1, description="Min:")
 out_placement = widgets.Output()
 
 
 def _placement_col():
     try:
-        return select_modular_rating_column(
-            rc, scoring.value,
-            use_integrity=integrity.value,
-            use_performance=performance.value,
-            peak=peak.value,
-        ) or "sustained_peak_headline_mu_whr"
+        return _selected_rating_col() or "sustained_peak_headline_mu_whr"
     except ValueError:
         return "sustained_peak_headline_mu_whr"
 
@@ -687,30 +737,37 @@ def draw_placement(*_):
 display(widgets.HBox([placement_n, placement_min_fights]))
 display(out_placement)
 draw_placement()
-for w in (placement_n, placement_min_fights, scoring, peak, integrity, performance):
+for w in (placement_n, placement_min_fights, lens, time_view):
     _observe_once(w, draw_placement, names="value")
 """),
     md("""
-## Division Explorer
+## Divisions
 
-Drill into a single division: its current top of the rankings, how its top-end
-strength has moved year over year, and how crowded the top has become. Switch
-divisions to navigate the whole roster one weight class at a time.
+Compare divisions like an executive dashboard: pick the divisions, choose a
+year, switch between score and index, and use the same `Now / Peak / Prime`
+and rating lens selected above.
 """),
     code(r"""
-divx = widgets.Dropdown(
+_default_divisions = tuple([d for d in ["Lightweight", "Welterweight", "Middleweight", "Light Heavyweight", "Heavyweight", "Featherweight", "Bantamweight", "Flyweight"] if d in DIVISIONS])
+divx = widgets.SelectMultiple(
     options=list(DIVISIONS),
-    value="Lightweight" if "Lightweight" in DIVISIONS else list(DIVISIONS)[0],
-    description="Division:", layout=widgets.Layout(width="340px"))
-divx_n = widgets.IntSlider(value=15, min=5, max=40, step=5, description="Top N:")
+    value=_default_divisions[:6] if _default_divisions else tuple(list(DIVISIONS)[:6]),
+    description="Divisions:",
+    rows=9,
+    layout=widgets.Layout(width="360px"),
+)
+divx_n = widgets.IntSlider(value=15, min=5, max=30, step=5, description="Top:")
+divx_index = widgets.ToggleButtons(options=[("Score", False), ("Index", True)], value=False, description="Scale:")
+_years = sorted(pd.to_datetime(all_bouts["event_date"], errors="coerce").dt.year.dropna().astype(int).unique().tolist())
+divx_year = widgets.IntSlider(value=max(_years), min=min(_years), max=max(_years), step=1, description="Year:") if _years else widgets.IntSlider(value=2026, min=2000, max=2026, description="Year:")
 out_divx = widgets.Output()
 
 
-def _divx_col():
-    for c in ("sustained_peak_headline_mu_whr",
-              "sustained_peak_mu_method_integrity_performance", "mu_canonical"):
-        if c in rc.columns:
-            return c
+def _divx_stream_col():
+    hist = _selected_history()
+    stream_col = _selected_stream_col()
+    if stream_col in hist.columns:
+        return stream_col
     return "mu_canonical"
 
 
@@ -720,21 +777,54 @@ def draw_divx(*_):
             return
         _clear_output(out_divx)
         with out_divx:
-            col = _divx_col()
+            hist = _selected_history()
+            col = _divx_stream_col()
+            selected = list(divx.value or [])
+            if not selected:
+                display(Markdown("_select at least one division_"))
+                return
+            display(Markdown(
+                f"#### {public_rating_label(lens.value, time_view.value)} — division view"
+            ))
+            division_strength_timeline_chart(
+                hist,
+                all_bouts,
+                rating_col=col,
+                top_n_per_division=divx_n.value,
+                divisions=selected,
+                year_min=divx_year.min,
+                year_max=divx_year.max,
+                indexed=divx_index.value,
+            ).show()
+            division_year_snapshot_chart(
+                hist,
+                all_bouts,
+                rating_col=col,
+                year=divx_year.value,
+                top_n_per_division=divx_n.value,
+                divisions=selected,
+            ).show()
+
             recent = recent_division_by_fighter(fights)
             d = rc.merge(recent, on="fighter", how="left")
             d["division"] = d["division"].fillna(d.get("primary_division"))
-            d = d[d["division"].eq(divx.value)].dropna(subset=[col])
-            d = d.sort_values(col, ascending=False).head(divx_n.value).reset_index(drop=True)
+            d = d[d["division"].isin(selected)]
+            rank_col = _selected_rating_col()
+            if rank_col not in d.columns:
+                rank_col = "mu_canonical"
+            d = d.dropna(subset=[rank_col])
+            d = d.sort_values(["division", rank_col], ascending=[True, False])
+            d = d.groupby("division", as_index=False).head(8).reset_index(drop=True)
             if d.empty:
-                display(Markdown("_no rated fighters in this division_"))
+                display(Markdown("_no rated fighters in the selected divisions_"))
             else:
                 view = pd.DataFrame({
-                    "#": [_rank_chip(i) for i in range(1, len(d) + 1)],
+                    "#": d.groupby("division").cumcount().add(1).map(_rank_chip),
+                    "Division": d["division"],
                     "Fighter": d["fighter"],
-                    "Rating": pd.to_numeric(d[col], errors="coerce").round(1),
+                    "Rating": pd.to_numeric(d[rank_col], errors="coerce").round(1),
                     "Fights": pd.to_numeric(d.get("rating_periods"), errors="coerce").fillna(0).astype(int),
-                    "Last fight": pd.to_datetime(d.get("last_event_date"), errors="coerce").dt.date,
+                    "Last": pd.to_datetime(d.get("last_event_date"), errors="coerce").dt.date,
                 })
                 rmin, rmax = view["Rating"].min(), view["Rating"].max()
                 styled = (
@@ -744,24 +834,21 @@ def draw_divx(*_):
                     .format(lambda s: s, subset=["#"], escape=None)
                     .format(lambda s: s, subset=["Fighter"], escape=None)
                     .set_properties(subset=["Fighter"], **{"font-weight": "600", "color": THEME["text"]})
-                    .set_properties(subset=["Fights", "Last fight"], **{"color": THEME["text_muted"]})
+                    .set_properties(subset=["Division"], **{"color": THEME["text_2"]})
+                    .set_properties(subset=["Fights", "Last"], **{"color": THEME["text_muted"]})
                     .set_properties(subset=["#"], **{"text-align": "center"})
                     .set_table_styles(_BASE_TABLE_STYLES)
                 )
-                display(Markdown(f"#### Top {len(d)} — {divx.value}"))
+                display(Markdown("#### Current leaders by selected division"))
                 display(styled)
-            try:
-                weight_class_strength_chart(ratings_history, fights, divisions=[divx.value]).show()
-            except Exception as exc:
-                display(_debug_caption(f"strength chart unavailable: {exc}"))
             if division_entropy is not None and not division_entropy.empty:
-                division_entropy_chart(division_entropy, divisions=[divx.value]).show()
+                division_entropy_chart(division_entropy, divisions=selected).show()
 
 
-display(widgets.HBox([divx, divx_n]))
+display(widgets.HBox([divx, widgets.VBox([divx_n, divx_year, divx_index])]))
 display(out_divx)
 draw_divx()
-for w in (divx, divx_n):
+for w in (divx, divx_n, divx_year, divx_index, lens, time_view):
     _observe_once(w, draw_divx, names="value")
 """),
     md("""
@@ -954,12 +1041,10 @@ _observe_once(cmp_a, draw_compare, names="value")
 _observe_once(cmp_b, draw_compare, names="value")
 """),
     md("""
-## Why a Fighter is Where They Are
+## Rating Story
 
-Pick a fighter. The waterfall below breaks down each sleeve adjustment that
-moved their rating away from the plain method baseline — PED damp, DQ
-penalty, quality-of-win bonus, market-upset bonus, championship context,
-and so on. Bars to the right are boosts; bars to the left are penalties.
+Pick a fighter to see which adjustments helped or hurt. Right is positive,
+left is negative.
 """),
     code("""
 attr_fighter = widgets.Dropdown(
@@ -979,31 +1064,31 @@ def _style_attribution_rows(df):
         "event_date": "Date",
         "event_name": "Event",
         "opponent": "Opponent",
-        "base_method_delta": "Result/method",
-        "integrity_delta": "Integrity",
-        "performance_delta": "Performance",
+        "base_method_delta": "Base",
+        "integrity_delta": "Clean",
+        "performance_delta": "Strength",
         "interaction_delta": "Overlap",
-        "combined_delta": "Net movement",
-        "integrity_weight": "Integrity weight",
-        "performance_weight": "Performance weight",
-        "combined_weight": "Final weight",
+        "combined_delta": "Net",
+        "integrity_weight": "Clean wt.",
+        "performance_weight": "Strength wt.",
+        "combined_weight": "Weight",
     }
     out = df.rename(columns=rename)
     show = [c for c in [
-        "Date", "Opponent", "Result/method", "Integrity", "Performance",
-        "Overlap", "Net movement", "Final weight",
+        "Date", "Opponent", "Base", "Clean", "Strength",
+        "Overlap", "Net", "Weight",
     ] if c in out.columns]
     out = out[show]
     return (
         out.style
         .hide(axis="index")
         .format({
-            "Result/method": "{:+.2f}",
-            "Integrity": "{:+.2f}",
-            "Performance": "{:+.2f}",
+            "Base": "{:+.2f}",
+            "Clean": "{:+.2f}",
+            "Strength": "{:+.2f}",
             "Overlap": "{:+.2f}",
-            "Net movement": "{:+.2f}",
-            "Final weight": "{:.2f}",
+            "Net": "{:+.2f}",
+            "Weight": "{:.2f}",
         }, na_rep="")
         .set_properties(subset=["Opponent"], **{"font-weight": "600", "color": THEME["text"]})
         .set_table_styles(_BASE_TABLE_STYLES)
@@ -1028,18 +1113,15 @@ _observe_once(attr_fighter, draw_attribution, names="value")
 _observe_once(attr_rows, draw_attribution, names="value")
 """),
     md("""
-## Sleeve Adjustments — Where They Fire
+## Adjustments
 
-Every adjustment factor in the model — PED, DQ, missed-weight on the integrity
-side; quality of win, market upset, rank context, championship context, P4P,
-weight-class movement, post-layoff loss on the performance side — and how
-often each one actually fires. The summary shows appearance counts and the
-multiplier range; the detail table shows the largest individual effects.
+Where Clean and Strength adjustments fire, how often, and how large
+the effects are.
 """),
     code("""
 audit_sleeve = widgets.Dropdown(
-    options=[("All", "all"), ("Integrity", "integrity"), ("Performance", "performance")],
-    value="all", description="Sleeve:",
+    options=[("All", "all"), ("Clean", "integrity"), ("Strength", "performance")],
+    value="all", description="Layer:",
 )
 audit_effect = widgets.Dropdown(
     options=[("Boost + penalty", "all"), ("Boost only", "boost"), ("Penalty only", "penalty")],
@@ -1092,9 +1174,9 @@ def _style_audit_detail(df):
         "opponent": "Opponent",
         "outcome": "Result",
         "direction": "Direction",
-        "combined_effect_pct": "Net effect",
+        "combined_effect_pct": "Net",
         "factors": "Factors",
-        "sleeves": "Sleeves",
+        "sleeves": "Layer",
         "division": "Division",
     }).copy()
     def effect_color(v):
@@ -1107,9 +1189,9 @@ def _style_audit_detail(df):
         out.style
         .hide(axis="index")
         .map(effect_color, subset=["Direction"])
-        .format({"Net effect": "{:+.1f}%"})
+        .format({"Net": "{:+.1f}%"})
         .set_properties(subset=["Fighter"], **{"font-weight": "600", "color": THEME["text"]})
-        .set_properties(subset=["Opponent", "Division", "Sleeves"], **{"color": THEME["text_2"]})
+        .set_properties(subset=["Opponent", "Division", "Layer"], **{"color": THEME["text_2"]})
         .set_properties(subset=["Factors"], **{"color": THEME["text_2"], "font-size": "0.9em"})
         .set_table_styles(_BASE_TABLE_STYLES)
     )
@@ -1127,7 +1209,7 @@ def draw_audit(*_):
             if summary.empty:
                 display(Markdown("_no sleeve activity in this snapshot_"))
             else:
-                display(Markdown("#### Factor summary"))
+                display(Markdown("#### Factors"))
                 display(_style_audit_summary(summary))
 
             fighter_filter = (audit_fighter.value or "").strip() or None
@@ -1139,7 +1221,7 @@ def draw_audit(*_):
                 effect=audit_effect.value,
             )
             if not detail.empty:
-                display(Markdown("#### Largest fight-level effects"))
+                display(Markdown("#### Biggest fights"))
                 display(_style_audit_detail(detail))
             else:
                 display(Markdown("_no factor effects match the current filters_"))
@@ -1155,7 +1237,7 @@ for w in (audit_sleeve, audit_effect, audit_fighter, audit_n):
     _observe_once(w, draw_audit, names="value")
 """),
     md("""
-## Our Rankings vs FightMatrix
+## FightMatrix Check
 
 A sanity check against an outside ranking. Each dot is a fighter both systems
 rate; hover over a dot to see the fighter, both rankings, and the rating
@@ -1163,8 +1245,8 @@ numbers. The further a dot is from the cloud, the more the two systems
 disagree — the table lists the biggest disagreements explicitly.
 """),
     code("""
-gfm_min_fights = widgets.IntSlider(value=3, min=0, max=15, step=1, description="Min fights:")
-gfm_table_n = widgets.IntSlider(value=20, min=5, max=60, step=5, description="Table rows:")
+gfm_min_fights = widgets.IntSlider(value=3, min=0, max=15, step=1, description="Min:")
+gfm_table_n = widgets.IntSlider(value=20, min=5, max=60, step=5, description="Rows:")
 out_gfm = widgets.Output()
 
 
@@ -1262,7 +1344,16 @@ each year: 100 means the strongest division that year, lower values show how
 far a division sat behind that year's leader.
 """),
     code("""
-era_top_n = widgets.IntSlider(value=15, min=5, max=30, step=5, description="Top N:")
+era_top_n = widgets.IntSlider(value=15, min=5, max=30, step=5, description="Top:")
+era_divisions = widgets.SelectMultiple(
+    options=list(DIVISIONS),
+    value=tuple(list(DIVISIONS)[:8]),
+    description="Divisions:",
+    rows=8,
+    layout=widgets.Layout(width="360px"),
+)
+era_year_min = widgets.IntSlider(value=min(_years), min=min(_years), max=max(_years), step=1, description="From:")
+era_year_max = widgets.IntSlider(value=max(_years), min=min(_years), max=max(_years), step=1, description="To:")
 out_era = widgets.Output()
 
 
@@ -1275,7 +1366,15 @@ def draw_era(*_):
             if ratings_history is None or ratings_history.empty:
                 display(Markdown("_no ratings history in this snapshot_"))
                 return
-            fig = era_heatmap_chart(ratings_history, fights, top_n=era_top_n.value)
+            ymin, ymax = sorted([era_year_min.value, era_year_max.value])
+            fig = era_heatmap_chart(
+                ratings_history,
+                all_bouts,
+                top_n=era_top_n.value,
+                divisions=list(era_divisions.value or []),
+                year_min=ymin,
+                year_max=ymax,
+            )
             fig.update_layout(
                 title=f"Top-end division strength index (top {era_top_n.value})",
                 coloraxis_colorbar=dict(
@@ -1295,88 +1394,11 @@ def draw_era(*_):
             ))
 
 
-display(era_top_n)
+display(widgets.HBox([era_divisions, widgets.VBox([era_top_n, era_year_min, era_year_max])]))
 display(out_era)
 draw_era()
-_observe_once(era_top_n, draw_era, names="value")
-"""),
-    md("""
-## PED Curation Gap
-
-**Diagnostic, not for general audiences.** The integrity sleeve can only damp
-PED-confirmed wins for bouts curated in `ped_confirmed_bouts.csv`. This cell
-shows what's currently curated and a candidate set of fighters publicly
-associated with PEDs who don't yet have rows. No data is written here —
-this is a visibility-only queue.
-"""),
-    code("""
-out_ped = widgets.Output()
-
-
-def _style_curated(df):
-    return (
-        df.style
-        .hide(axis="index")
-        .set_properties(subset=["fighter_a", "fighter_b", "winner"], **{"font-weight": "600", "color": THEME["text"]})
-        .set_properties(subset=["ped_confirmation_detail"], **{"color": THEME["text_2"], "font-size": "0.88em"})
-        .set_table_styles(_BASE_TABLE_STYLES)
-    )
-
-
-with out_ped:
-    if ped_confirmed_bouts is None or ped_confirmed_bouts.empty:
-        display(Markdown("**No `ped_confirmed_bouts.csv` in this snapshot.**"))
-    else:
-        n_rows = len(ped_confirmed_bouts)
-        curated_fighters = set(ped_confirmed_bouts["ped_flagged_fighter"].dropna().unique())
-        display(Markdown(
-            f"<div style='color:#cbd5e1;font-size:0.95em;"
-            f"font-family:-apple-system,BlinkMacSystemFont,\\\"Segoe UI\\\",system-ui,sans-serif'>"
-            f"<b style='color:#f1f5f9'>{n_rows}</b> PED-confirmed bouts currently curated, "
-            f"covering <b style='color:#f1f5f9'>{len(curated_fighters)}</b> distinct fighters."
-            f"</div>"
-        ))
-        show = ped_confirmed_bouts[[
-            "event_date", "event_name", "fighter_a", "fighter_b", "winner",
-            "ped_flagged_fighter", "ped_confirmation_detail",
-        ]].copy()
-        show["event_date"] = pd.to_datetime(show["event_date"], errors="coerce").dt.date
-        display(Markdown("#### Currently curated"))
-        display(_style_curated(show))
-
-        if "ped_confirmed_fights" in rc.columns:
-            rc_with_ped = rc[pd.to_numeric(rc["ped_confirmed_fights"], errors="coerce").fillna(0) > 0]
-            uncovered = sorted(set(rc_with_ped["fighter"]) - curated_fighters)
-            display(Markdown("#### Candidates not yet in CSV"))
-            known_candidates = [
-                "Jon Jones", "Anderson Silva", "Brock Lesnar", "Chael Sonnen",
-                "Alistair Overeem", "Frank Mir", "Josh Barnett", "Stephan Bonnar",
-                "Cris Cyborg", "Lyoto Machida", "Yoel Romero", "Tim Means",
-                "Hector Lombard", "Thiago Silva", "Cung Le",
-            ]
-            rc_names = set(rc["fighter"].dropna().unique())
-            rows = []
-            for name in uncovered:
-                rows.append({"source": "rc flag (no CSV row)", "fighter": name})
-            for name in known_candidates:
-                if name not in curated_fighters and name in rc_names:
-                    rows.append({"source": "public-reporting candidate", "fighter": name})
-            queue = pd.DataFrame(rows).drop_duplicates(subset=["fighter"]).reset_index(drop=True)
-            if queue.empty:
-                display(Markdown("_no candidates surface from current heuristics_"))
-            else:
-                display(queue.style.hide(axis="index").set_table_styles(_BASE_TABLE_STYLES))
-                display(Markdown(
-                    f"<div style='color:#94a3b8;font-size:0.85em;margin-top:6px;"
-                    f"font-family:-apple-system,BlinkMacSystemFont,\\\"Segoe UI\\\",system-ui,sans-serif'>"
-                    f"Curation queue ({len(queue)} fighters). Add a row per "
-                    f"<code>fight_url</code> to <code>data/snapshots/&lt;date&gt;/ped_confirmed_bouts.csv</code> "
-                    f"and rebuild ratings to apply the integrity damper."
-                    f"</div>"
-                ))
-
-
-display(out_ped)
+for w in (era_top_n, era_divisions, era_year_min, era_year_max):
+    _observe_once(w, draw_era, names="value")
 """),
 ]
 

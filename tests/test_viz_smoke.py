@@ -12,6 +12,8 @@ from analysis.viz import (
     datalab_scorecard_decision_summary,
     datalab_scorecard_insight_chart,
     division_strength_comparison_chart,
+    division_strength_timeline_chart,
+    division_year_snapshot_chart,
     external_source_coverage_dashboard,
     favorite_underdog_performance_table,
     favorite_underdog_performance_chart,
@@ -32,7 +34,9 @@ from analysis.viz import (
     sleeve_effects_by_fight_table,
     weight_class_context_impact_table,
     normalize_division,
+    public_history_key,
     select_modular_rating_column,
+    select_public_rating_column,
     select_rating_column,
     sleeve_ranking_table,
     striker_grappler_scatter,
@@ -77,6 +81,8 @@ def test_viz_builders_smoke(snapshot):
     figures = [
         trajectory_chart(rh, fights, ["Jon Jones", "Anderson Silva"]),
         weight_class_strength_chart(rh, fights, divisions=["Lightweight"]),
+        division_strength_timeline_chart(rh, fights, rating_col="mu_canonical", divisions=["Lightweight"]),
+        division_year_snapshot_chart(rh, fights, rating_col="mu_canonical", year=2024, divisions=["Lightweight"]),
         striker_grappler_scatter(rounds, fights, rc, fighters),
         calibration_plot(rh, fights),
         glicko_fightmatrix_scatter(rc, snapshot["fightmatrix_rankings"]),
@@ -255,6 +261,14 @@ def test_modular_lookup_resolves_to_method_streams(snapshot):
         assert select_modular_rating_column(rc, "method", use_integrity=True) == "mu_method_integrity"
     if "mu_method_performance" in rc.columns:
         assert select_modular_rating_column(rc, "method", use_performance=True) == "mu_method_performance"
+
+
+def test_public_rating_lookup_resolves_casual_views(snapshot):
+    rc = snapshot["ratings_current"]
+    assert select_public_rating_column(rc, "wins", "current") == "mu_canonical"
+    if "mu_method_integrity_performance" in rc.columns:
+        assert select_public_rating_column(rc, "complete", "current") == "mu_method_integrity_performance"
+    assert public_history_key("complete") == "ratings_history_method_integrity_performance"
 
 
 def test_method_peak_columns_resolve_when_present(snapshot):

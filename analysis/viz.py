@@ -56,6 +56,7 @@ THEME = {
     "primary":       "#38bdf8",  # sky — primary series / fighter A / bars
     "secondary":     "#a78bfa",  # violet — secondary series / fighter B
     "accent":        "#fbbf24",  # amber/gold — #1, champion, key highlight
+    "accent_2":      "#f472b6",  # rose — secondary highlight / movement
     "positive":      "#34d399",  # emerald — gains / wins
     "negative":      "#f87171",  # red — losses / penalties
     "neutral":       "#94a3b8",  # zero / neutral
@@ -79,11 +80,15 @@ CHART_COLORWAY = [
 
 # Named series colors used by specific charts (rating streams, market lines).
 STREAM_PALETTE = {
-    "canonical":        THEME["primary"],
-    "method":           THEME["positive"],
+    "canonical":        "#94a3b8",
+    "method":           THEME["primary"],
+    "integrity":        THEME["accent"],
+    "performance":      THEME["positive"],
+    "full_context":     THEME["accent_2"],
+    "whr":              THEME["secondary"],
     "ped_adjusted":     THEME["accent"],
     "odds_adjusted":    THEME["secondary"],
-    "quality_adjusted": THEME["negative"],
+    "quality_adjusted": THEME["positive"],
 }
 
 SIGN_COLORS = {
@@ -187,13 +192,13 @@ def _empty_figure(message: str, *, title: str | None = None, height: int = 360) 
 def _metric_label(column: str) -> str:
     """Human label for rating-like columns used in chart titles and hovers."""
     labels = {
-        "mu_canonical": "Canonical rating",
+        "mu_canonical": "Wins rating",
         "phi_canonical": "Rating uncertainty",
-        "mu_method": "Method rating",
-        "mu_method_integrity": "Method + integrity rating",
-        "mu_method_performance": "Method + performance rating",
-        "mu_method_integrity_performance": "Method + both sleeves rating",
-        "mu_whr": "WHR rating",
+        "mu_method": "Finishes rating",
+        "mu_method_integrity": "Clean rating",
+        "mu_method_performance": "Strength rating",
+        "mu_method_integrity_performance": "Complete rating",
+        "mu_whr": "Legacy rating",
     }
     return labels.get(column, rating_label(column).replace("_", " "))
 
@@ -231,6 +236,7 @@ def _apply_chart_layout(fig: go.Figure, *, height: int | None = None) -> go.Figu
 
 TABLE_KEY_MAP = [
     ("canonical_fights", "fights"),
+    ("crossorg_fights", "crossorg_fights"),
     ("canonical_rounds", "rounds"),
     ("canonical_fighters", "fighters"),
     ("canonical_events", "events"),
@@ -604,12 +610,12 @@ def fighter_detail(
 
 # Method colors for the markers (Tab B item #4)
 METHOD_COLOR = {
-    "KO/TKO":               "#d62728",   # red
-    "Submission":           "#9467bd",   # purple
-    "Decision - Unanimous": "#2ca02c",   # green
-    "Decision - Majority":  "#17becf",   # cyan
-    "Decision - Split":     "#bcbd22",   # olive
-    "DQ":                   "#7f7f7f",   # grey
+    "KO/TKO":               "#fb7185",
+    "Submission":           "#a78bfa",
+    "Decision - Unanimous": "#34d399",
+    "Decision - Majority":  "#22d3ee",
+    "Decision - Split":     "#fbbf24",
+    "DQ":                   "#94a3b8",
 }
 
 def trajectory_chart(
@@ -864,6 +870,194 @@ def weight_class_strength_chart(
         xaxis_title="Year",
         yaxis_title="Mean canonical rating",
         hovermode="x unified",
+    )
+    return fig
+
+
+def _division_strength_frame(
+    ratings_history: pd.DataFrame,
+    fights: pd.DataFrame,
+    *,
+    rating_col: str,
+    top_n_per_division: int = 15,
+    divisions: list[str] | None = None,
+    year_min: int | None = None,
+    year_max: int | None = None,
+) -> pd.DataFrame:
+    if ratings_history is None or ratings_history.empty or fights is None or fights.empty:
+        return pd.DataFrame(columns=["division", "year", "score", "fighters"])
+    if rating_col not in ratings_history.columns:
+        return pd.DataFrame(columns=["division", "year", "score", "fighters"])
+
+    f = add_division_to_fights(fights)
+    f["event_date"] = pd.to_datetime(f["event_date"], errors="coerce")
+    f["year"] = f["event_date"].dt.year
+    a = f[["year", "division", "fighter_a"]].rename(columns={"fighter_a": "fighter"})
+    b = f[["year", "division", "fighter_b"]].rename(columns={"fighter_b": "fighter"})
+    long = pd.concat([a, b], ignore_index=True).dropna(subset=["fighter", "division", "year"])
+    if divisions:
+        long = long[long["division"].isin(divisions)]
+    if year_min is not None:
+        long = long[long["year"] >= year_min]
+    if year_max is not None:
+        long = long[long["year"] <= year_max]
+    if long.empty:
+        return pd.DataFrame(columns=["division", "year", "score", "fighters"])
+
+    rh = ratings_history.copy()
+    rh["event_date"] = pd.to_datetime(rh["event_date"], errors="coerce")
+    rh["year"] = rh["event_date"].dt.year
+    rh[rating_col] = pd.to_numeric(rh[rating_col], errors="coerce")
+    eoy = (
+        rh.dropna(subset=[rating_col, "year"])
+        .sort_values("event_date")
+        .groupby(["fighter", "year"], as_index=False)
+        .last()[["fighter", "year", rating_col]]
+    )
+    merged = long.merge(eoy, on=["fighter", "year"], how="inner").drop_duplicates(
+        subset=["fighter", "year", "division"]
+    )
+    rows = []
+    for (division, year), g in merged.groupby(["division", "year"], dropna=False):
+        top = g.sort_values(rating_col, ascending=False).head(top_n_per_division)
+        if len(top) < min(5, top_n_per_division):
+            continue
+        rows.append({
+            "division": division,
+            "year": int(year),
+            "score": float(top[rating_col].mean()),
+            "fighters": int(top["fighter"].nunique()),
+        })
+    return pd.DataFrame(rows).sort_values(["division", "year"]).reset_index(drop=True)
+
+
+def division_strength_timeline_chart(
+    ratings_history: pd.DataFrame,
+    fights: pd.DataFrame,
+    *,
+    rating_col: str,
+    top_n_per_division: int = 15,
+    divisions: list[str] | None = None,
+    year_min: int | None = None,
+    year_max: int | None = None,
+    indexed: bool = False,
+) -> go.Figure:
+    """Consulting-style comparison line chart for selected divisions over time."""
+    plot_df = _division_strength_frame(
+        ratings_history,
+        fights,
+        rating_col=rating_col,
+        top_n_per_division=top_n_per_division,
+        divisions=divisions,
+        year_min=year_min,
+        year_max=year_max,
+    )
+    if plot_df.empty:
+        return _empty_figure("no selected divisions have enough rated fighters", title="Division strength")
+    metric_label = _metric_label(rating_col)
+    if indexed:
+        plot_df = plot_df.copy()
+        plot_df["score_raw"] = plot_df["score"]
+        plot_df["score"] = plot_df.groupby("year")["score"].transform(
+            lambda s: (s / s.max() * 100.0) if s.max() else s
+        )
+        y_title = "Strength index"
+        title = f"Division strength index — top {top_n_per_division}"
+        hover_score = "index=%{y:.1f}<br>rating=%{customdata[0]:.1f}"
+    else:
+        plot_df["score_raw"] = plot_df["score"]
+        y_title = metric_label
+        title = f"Division strength timeline — top {top_n_per_division}"
+        hover_score = f"{metric_label}=%{{y:.1f}}"
+
+    latest_year = int(plot_df["year"].max())
+    latest = plot_df[plot_df["year"].eq(latest_year)].sort_values("score", ascending=False)
+    subtitle = ""
+    if not latest.empty:
+        leader = latest.iloc[0]
+        subtitle = f"Leader in {latest_year}: {leader['division']} ({leader['score']:.1f})"
+
+    fig = go.Figure()
+    for i, (division, dfd) in enumerate(plot_df.groupby("division", sort=False)):
+        dfd = dfd.sort_values("year")
+        fig.add_trace(go.Scatter(
+            x=dfd["year"],
+            y=dfd["score"],
+            mode="lines+markers",
+            name=str(division),
+            line=dict(color=CHART_COLORWAY[i % len(CHART_COLORWAY)], width=2.5),
+            marker=dict(size=7),
+            customdata=np.stack([
+                dfd["score_raw"].round(1).astype("string"),
+                dfd["fighters"].astype(int).astype("string"),
+            ], axis=-1),
+            hovertemplate=(
+                "<b>%{fullData.name}</b><br>"
+                "year=%{x}<br>"
+                f"{hover_score}<br>"
+                "fighters=%{customdata[1]}<extra></extra>"
+            ),
+        ))
+        end = dfd.iloc[-1]
+        fig.add_annotation(
+            x=end["year"],
+            y=end["score"],
+            text=str(division),
+            showarrow=False,
+            xanchor="left",
+            xshift=8,
+            font=dict(color=CHART_COLORWAY[i % len(CHART_COLORWAY)], size=11),
+        )
+    _apply_chart_layout(fig, height=560)
+    fig.update_layout(
+        title={"text": f"{title}<br><sup>{subtitle}</sup>" if subtitle else title},
+        xaxis_title="Year",
+        yaxis_title=y_title,
+        hovermode="x unified",
+        margin=dict(r=170),
+        legend=dict(orientation="h", y=-0.22),
+    )
+    return fig
+
+
+def division_year_snapshot_chart(
+    ratings_history: pd.DataFrame,
+    fights: pd.DataFrame,
+    *,
+    rating_col: str,
+    year: int,
+    top_n_per_division: int = 15,
+    divisions: list[str] | None = None,
+) -> go.Figure:
+    """Selected-year division ranking for bar-chart comparison."""
+    plot_df = _division_strength_frame(
+        ratings_history,
+        fights,
+        rating_col=rating_col,
+        top_n_per_division=top_n_per_division,
+        divisions=divisions,
+        year_min=year,
+        year_max=year,
+    )
+    if plot_df.empty:
+        return _empty_figure("no division data for selected year", title=f"{year} division strength")
+    plot_df = plot_df.sort_values("score", ascending=True)
+    fig = go.Figure(go.Bar(
+        x=plot_df["score"],
+        y=plot_df["division"],
+        orientation="h",
+        marker_color=STREAM_PALETTE["full_context"],
+        text=plot_df["score"].map(lambda v: f"{v:.0f}"),
+        textposition="outside",
+        customdata=plot_df["fighters"].astype(int),
+        hovertemplate="<b>%{y}</b><br>score=%{x:.1f}<br>fighters=%{customdata}<extra></extra>",
+    ))
+    _apply_chart_layout(fig, height=max(420, 34 * len(plot_df)))
+    fig.update_layout(
+        title=f"{year} division strength — top {top_n_per_division}",
+        xaxis_title=_metric_label(rating_col),
+        yaxis_title="",
+        showlegend=False,
     )
     return fig
 
@@ -1453,6 +1647,7 @@ def top_fighter_placement_scatter(
     df["division_display"] = df.get("recent_division", df.get("primary_division", "")).fillna("Unknown")
     df["rank"] = np.arange(1, len(df) + 1)
     df["rating_display"] = pd.to_numeric(df[rating_col], errors="coerce")
+    rating_name = _metric_label(rating_col)
     fig = go.Figure()
     for division, g in df.groupby("division_display", dropna=False):
         fig.add_trace(go.Scatter(
@@ -1475,15 +1670,28 @@ def top_fighter_placement_scatter(
                 "<b>#%{customdata[0]} %{customdata[1]}</b><br>"
                 "division=%{customdata[2]}<br>"
                 "rated fights=%{x}<br>"
-                "rating score=%{y:.1f}<br>"
+                f"{rating_name}=%{{y:.1f}}<br>"
                 "last fight=%{customdata[3]}<extra></extra>"
             ),
         ))
+    top_labels = df.head(10)
+    for row in top_labels.itertuples(index=False):
+        is_leader = int(row.rank) == 1
+        fig.add_annotation(
+            x=row.rating_periods,
+            y=row.rating_display,
+            text=str(int(row.rank)),
+            showarrow=False,
+            font=dict(size=10, color=THEME["bg"] if is_leader else THEME["text"]),
+            bgcolor=THEME["accent"] if is_leader else THEME["surface"],
+            bordercolor=THEME["border_strong"],
+            borderpad=2,
+        )
     _apply_chart_layout(fig, height=560)
     fig.update_layout(
-        title=f"Top {len(df)} fighter placement",
-        xaxis_title="Rated UFC fights",
-        yaxis_title="Rating score",
+        title=f"Top {len(df)} placement — {rating_name}",
+        xaxis_title="Rated bouts",
+        yaxis_title=rating_name,
         legend=dict(orientation="h", y=-0.24),
     )
     return fig
@@ -1517,7 +1725,7 @@ def top100_division_density_chart(
         x=density["share_pct"],
         y=density["division"],
         orientation="h",
-        marker_color=STREAM_PALETTE["canonical"],
+        marker_color=STREAM_PALETTE["method"],
         text=density["share_pct"].map(lambda v: f"{v:.1f}%"),
         textposition="outside",
         customdata=np.stack([
@@ -1533,8 +1741,8 @@ def top100_division_density_chart(
     ))
     _apply_chart_layout(fig, height=max(420, 30 * len(density)))
     fig.update_layout(
-        title=f"Division density inside the top {len(df)}",
-        xaxis_title="Share of top fighters",
+        title=f"Division share inside top {len(df)}",
+        xaxis_title="Share",
         yaxis_title="Division",
         showlegend=False,
     )
@@ -1542,10 +1750,93 @@ def top100_division_density_chart(
     return fig
 
 
+def rank_movement_chart(
+    previous: pd.DataFrame,
+    current: pd.DataFrame,
+    *,
+    rating_col: str,
+    top_k: int = 50,
+    n: int = 20,
+    min_fights: int = 3,
+) -> go.Figure:
+    """Largest rank moves between two snapshots for one public rating view."""
+    if previous is None or previous.empty or current is None or current.empty:
+        return _empty_figure("previous snapshot unavailable", title="Movers")
+    if rating_col not in previous.columns or rating_col not in current.columns:
+        return _empty_figure("rating view unavailable in both snapshots", title="Movers")
+
+    def _rank(df: pd.DataFrame) -> pd.DataFrame:
+        out = df.copy()
+        out["rating_periods"] = pd.to_numeric(out.get("rating_periods"), errors="coerce").fillna(0)
+        out = out[out["rating_periods"] >= min_fights].dropna(subset=[rating_col])
+        out = out.sort_values(rating_col, ascending=False).head(top_k).reset_index(drop=True)
+        out["rank"] = np.arange(1, len(out) + 1)
+        return out[["fighter", "rank", rating_col]]
+
+    old = _rank(previous)
+    new = _rank(current)
+    if old.empty or new.empty:
+        return _empty_figure("no ranked fighters to compare", title="Movers")
+
+    merged = old.merge(new, on="fighter", how="outer", suffixes=("_old", "_new"))
+    outside = top_k + 1
+    merged["rank_old_filled"] = merged["rank_old"].fillna(outside)
+    merged["rank_new_filled"] = merged["rank_new"].fillna(outside)
+    merged["move"] = merged["rank_old_filled"] - merged["rank_new_filled"]
+    merged = merged[merged["move"].ne(0)].copy()
+    if merged.empty:
+        return _empty_figure("top group did not move", title="Movers")
+    merged["abs_move"] = merged["move"].abs()
+    merged["status"] = np.select(
+        [merged["rank_old"].isna(), merged["rank_new"].isna(), merged["move"].gt(0)],
+        ["Entered", "Left", "Up"],
+        default="Down",
+    )
+    plot = merged.sort_values(["abs_move", "rank_new_filled"], ascending=[False, True]).head(n)
+    plot = plot.sort_values("move")
+    colors = np.where(plot["move"].ge(0), THEME["positive"], THEME["negative"])
+    labels = [
+        f"{fighter} ({status})" if status in {"Entered", "Left"} else fighter
+        for fighter, status in zip(plot["fighter"], plot["status"])
+    ]
+    fig = go.Figure(go.Bar(
+        x=plot["move"],
+        y=labels,
+        orientation="h",
+        marker_color=colors,
+        text=plot["move"].map(lambda v: f"{v:+.0f}"),
+        textposition="outside",
+        customdata=np.stack([
+            plot["rank_old"].fillna(0).astype(int).astype(str),
+            plot["rank_new"].fillna(0).astype(int).astype(str),
+            pd.to_numeric(plot.get(f"{rating_col}_new"), errors="coerce").round(1).astype("string"),
+        ], axis=-1),
+        hovertemplate=(
+            "<b>%{y}</b><br>"
+            "move=%{x:+.0f}<br>"
+            "old rank=%{customdata[0]}<br>"
+            "new rank=%{customdata[1]}<br>"
+            "new score=%{customdata[2]}<extra></extra>"
+        ),
+    ))
+    fig.add_vline(x=0, line_color=THEME["border_strong"], line_width=1)
+    _apply_chart_layout(fig, height=max(430, 26 * len(plot)))
+    fig.update_layout(
+        title=f"Top-{top_k} movers — {_metric_label(rating_col)}",
+        xaxis_title="Rank move",
+        yaxis_title="",
+        showlegend=False,
+    )
+    return fig
+
+
 def era_heatmap_chart(
     ratings_history: pd.DataFrame,
     fights: pd.DataFrame,
     top_n: int = 15,
+    divisions: list[str] | None = None,
+    year_min: int | None = None,
+    year_max: int | None = None,
 ) -> go.Figure:
     """Heatmap of year x division mean mu_canonical among top-N fighters."""
     f = add_division_to_fights(fights)
@@ -1555,6 +1846,12 @@ def era_heatmap_chart(
     b = f[["event_date", "division", "fighter_b"]].rename(columns={"fighter_b": "fighter"})
     appearances = pd.concat([a, b], ignore_index=True).dropna()
     appearances["year"] = pd.to_datetime(appearances["event_date"], errors="coerce").dt.year
+    if divisions:
+        appearances = appearances[appearances["division"].isin(divisions)]
+    if year_min is not None:
+        appearances = appearances[appearances["year"] >= year_min]
+    if year_max is not None:
+        appearances = appearances[appearances["year"] <= year_max]
     rh = ratings_history.copy()
     rh["event_date"] = pd.to_datetime(rh["event_date"], errors="coerce")
     rh["year"] = rh["event_date"].dt.year
@@ -1685,23 +1982,79 @@ def datalab_scorecard_insight_chart(scorecards: pd.DataFrame) -> go.Figure:
 # Peak views resolve only against the two base streams (canonical / method).
 
 RATING_STREAMS: tuple[tuple[str, str], ...] = (
-    ("Canonical Glicko (W/L/D)", "canonical"),
-    ("Method-bonus", "method"),
-    ("Method + integrity sleeve", "method_integrity"),
-    ("Method + performance sleeve", "method_performance"),
-    ("Method + both sleeves", "method_integrity_performance"),
+    ("Wins", "canonical"),
+    ("Finishes", "method"),
+    ("Clean", "method_integrity"),
+    ("Strength", "method_performance"),
+    ("Complete", "method_integrity_performance"),
 )
 
 PEAK_VIEWS: tuple[tuple[str, str], ...] = (
-    ("10-Yr Period", "sustained_peak"),
-    ("5-Yr Period", "five_year_peak"),
-    ("Current/debug state", "current"),
+    ("Prime", "sustained_peak"),
+    ("Peak", "five_year_peak"),
+    ("Now", "current"),
 )
 
 SCORING_METHODS: tuple[tuple[str, str], ...] = (
-    ("Strict W/L/D (canonical)", "canonical"),
-    ("Method bonus", "method"),
+    ("Wins", "canonical"),
+    ("Finishes", "method"),
 )
+
+PUBLIC_RATING_LENSES: tuple[tuple[str, str], ...] = (
+    ("Wins", "wins"),
+    ("Finishes", "finishes"),
+    ("Clean", "clean"),
+    ("Strength", "strength"),
+    ("Complete", "complete"),
+    ("Legacy", "legacy"),
+)
+
+PUBLIC_TIME_VIEWS: tuple[tuple[str, str], ...] = (
+    ("Now", "current"),
+    ("Peak", "five_year_peak"),
+    ("Prime", "sustained_peak"),
+)
+
+_PUBLIC_LENS_STREAM = {
+    "wins": "canonical",
+    "finishes": "method",
+    "clean": "method_integrity",
+    "strength": "method_performance",
+    "complete": "method_integrity_performance",
+    "legacy": "whr",
+}
+
+_PUBLIC_LENS_HISTORY_KEY = {
+    "wins": "ratings_history",
+    "finishes": "ratings_history",
+    "clean": "ratings_history_method_integrity",
+    "strength": "ratings_history_method_performance",
+    "complete": "ratings_history_method_integrity_performance",
+    "legacy": "ratings_history_whr",
+}
+
+
+def public_rating_label(lens: str, time_view: str) -> str:
+    lens_label = dict(PUBLIC_RATING_LENSES).get(lens, lens)
+    time_label = dict(PUBLIC_TIME_VIEWS).get(time_view, time_view)
+    return f"{time_label} {lens_label}"
+
+
+def select_public_rating_column(
+    ratings_current: pd.DataFrame,
+    lens: str,
+    time_view: str,
+) -> str | None:
+    """Resolve public notebook controls to the backing ratings_current column."""
+    stream = _PUBLIC_LENS_STREAM.get(lens)
+    if stream is None:
+        raise ValueError(f"unknown rating lens: {lens!r}")
+    return select_rating_column(ratings_current, stream, time_view)
+
+
+def public_history_key(lens: str) -> str:
+    """Return the SNAP key for the time-series table backing a public lens."""
+    return _PUBLIC_LENS_HISTORY_KEY.get(lens, "ratings_history")
 
 
 def compose_rating_stream(
@@ -1744,20 +2097,27 @@ def modular_rating_context(
         use_performance=use_performance,
     )
     if scoring_method == "canonical":
-        scoring_label = "strict W/L/D scoring"
-        baseline_col, baseline_label = "mu_canonical", "canonical baseline"
+        scoring_label = "Wins"
+        baseline_col, baseline_label = "mu_canonical", "Wins"
     else:
-        scoring_label = "method-bonus scoring"
-        baseline_col, baseline_label = "mu_method", "method baseline"
+        scoring_label = "Finishes"
+        baseline_col, baseline_label = "mu_method", "Finishes"
     sleeves = []
     if use_integrity:
-        sleeves.append("integrity sleeve (PED + DQ + missed-weight damp)")
+        sleeves.append("Clean")
     if use_performance:
-        sleeves.append("performance sleeve (quality + market + rank/champ/P4P context)")
-    sleeve_label = " + ".join(sleeves) if sleeves else "no adjustment sleeves"
+        sleeves.append("Strength")
+    sleeve_label = " + ".join(sleeves) if sleeves else "No context"
+    if use_integrity and use_performance:
+        display_label = "Complete"
+    elif use_integrity or use_performance:
+        display_label = sleeve_label
+    else:
+        display_label = scoring_label
     return {
         "stream": stream,
-        "label": f"{scoring_label}; {sleeve_label}",
+        "label": display_label,
+        "detail": f"{scoring_label} with {sleeve_label.lower()}",
         "baseline_col": baseline_col,
         "baseline_label": baseline_label,
     }
@@ -2567,10 +2927,10 @@ def sleeve_attribution_waterfall(
         return _empty_figure(f"fighter not found: {fighter}", title="Sleeve attribution")
     actual = df["fighter"].iloc[0]
     components = [
-        ("Fight results + method", "base_method_delta"),
-        ("Integrity penalties", "integrity_delta"),
-        ("Performance context", "performance_delta"),
-        ("Clipping / overlap", "interaction_delta"),
+        ("Base", "base_method_delta"),
+        ("Clean", "integrity_delta"),
+        ("Strength", "performance_delta"),
+        ("Overlap", "interaction_delta"),
     ]
     rows = []
     for label, col in components:
@@ -2603,8 +2963,8 @@ def sleeve_attribution_waterfall(
     )
     _apply_chart_layout(fig, height=460)
     fig.update_layout(
-        title=f"What moved {actual}'s rating",
-        xaxis_title="Career rating movement, in points",
+        title=f"{actual}: rating story",
+        xaxis_title="Rating points",
         yaxis_title="",
         showlegend=False,
     )

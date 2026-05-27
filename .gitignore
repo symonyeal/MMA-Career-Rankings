@@ -1,6 +1,7 @@
 __pycache__/
 *.py[cod]
 .ipynb_checkpoints/
+analysis/notebook_with_output.ipynb
 .pytest_cache/
 .test_tmp/
 pytest-tmp/
@@ -12,6 +13,7 @@ probe700/
 # Data: raw scrapes and snapshots are large/reproducible.
 data/raw/
 data/snapshots/
+data/external/sherdog/
 data/ufc_rank_engine.sqlite
 
 # Accidental pip install artifacts (e.g. pip install pkg ==version)

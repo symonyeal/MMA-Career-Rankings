@@ -1,8 +1,8 @@
 """Build the local SQLite database from a snapshot bundle.
 
 The database is a structured, queryable copy of the current parquet/CSV
-snapshot. It does not alter the UFC-only rating stream; external sources are
-loaded as staged comparison tables and documented in metadata/source_gaps.
+snapshot. External sources are loaded either as staged comparison tables or,
+when the snapshot contains them, as rated cross-organization bout inputs.
 """
 from __future__ import annotations
 
@@ -37,6 +37,7 @@ class TableSpec:
 TABLE_SPECS = [
     TableSpec("canonical_events", "canonical_events.parquet", "Greco", "canonical"),
     TableSpec("canonical_fights", "canonical_fights.parquet", "Greco", "canonical"),
+    TableSpec("crossorg_fights", "crossorg_fights.parquet", "Sherdog", "canonical_extension", required=False),
     TableSpec("canonical_rounds", "canonical_rounds.parquet", "Greco", "canonical"),
     TableSpec("canonical_fighters", "canonical_fighters.parquet", "Greco", "canonical"),
     TableSpec("ratings_current", "ratings_current.parquet", "Rating engine", "ratings"),
@@ -135,6 +136,7 @@ INDEX_CANDIDATES = [
 
 COMPOSITE_INDEXES = {
     "canonical_fights": [("event_date", "event_name"), ("fighter_a", "fighter_b"), ("fight_url",)],
+    "crossorg_fights": [("event_date", "event_name"), ("fighter_a", "fighter_b"), ("fight_url",), ("org",)],
     "canonical_rounds": [("fight_url", "fighter"), ("fighter", "event_date")],
     "ratings_history": [("fighter", "event_date")],
     "ratings_history_method_integrity": [("fighter", "event_date")],
@@ -274,16 +276,29 @@ def _row_counts(con: sqlite3.Connection, table_names: Iterable[str]) -> pd.DataF
 
 
 def _source_gaps(missing_optional: list[TableSpec]) -> pd.DataFrame:
-    rows = [
-        {
+    missing_table_names = {spec.table_name for spec in missing_optional}
+    if "crossorg_fights" in missing_table_names:
+        crossorg_row = {
             "gap_key": "cross_org_bouts_not_integrated",
             "severity": "known_gap",
             "status": "pending",
             "notes": (
-                "FightMatrix/DataLab are staged for comparison; pre-UFC and cross-org bouts "
-                "are not merged into the headline Glicko stream."
+                "No crossorg_fights.parquet in this snapshot; PRIDE, Strikeforce, "
+                "WEC, and other non-UFC bouts are not merged into the headline stream."
             ),
-        },
+        }
+    else:
+        crossorg_row = {
+            "gap_key": "cross_org_bouts_integrated",
+            "severity": "info",
+            "status": "loaded",
+            "notes": (
+                "crossorg_fights.parquet is present; Sherdog-derived non-UFC bouts "
+                "are merged into the rating streams with per-fight caliber weights."
+            ),
+        }
+    rows = [
+        crossorg_row,
         {
             "gap_key": "fightmatrix_per_bout_history_not_loaded",
             "severity": "known_gap",
@@ -307,7 +322,6 @@ def _source_gaps(missing_optional: list[TableSpec]) -> pd.DataFrame:
             "notes": "UFC-DataLab tables are retained as external comparison/scorecard sources.",
         },
     ]
-    missing_table_names = {spec.table_name for spec in missing_optional}
     # Promote the absence of `odds_lines` to a named gap (more useful to a
     # human reader than a generic `missing_optional_odds_lines` row).
     if "odds_lines" in missing_table_names:

@@ -5,8 +5,9 @@ only populate where the authority is null/absent, and every fallback is
 logged. Loader merge step asserts: for every (fight_url, field) pair, at most
 one source produced a non-null value.
 
-Priority: **Greco** (UFC granular) > **DataLab** (career / cross-org)
-        > **FightMatrix** (pre-UFC bouts) > **mmadecoded** (tertiary fallback).
+Priority: **Greco** (UFC granular) > **Sherdog** (rated cross-org bouts)
+        > **DataLab** (career / comparison) > **FightMatrix** (rankings / future pre-UFC bouts)
+        > **mmadecoded** (tertiary fallback).
 
 ## 1. Event / fight identity
 
@@ -81,6 +82,11 @@ Priority: **Greco** (UFC granular) > **DataLab** (career / cross-org)
 
 | Field                       | Source     | Notes |
 |-----------------------------|------------|-------|
+| crossorg_fights             | Sherdog    | `build_crossorg.py` stages PRIDE/Strikeforce/WEC bouts as canonical-shaped rows. |
+| method_raw / method_class   | Sherdog    | Parsed from fighter history pages for cross-org bouts. |
+| end_round / end_time_seconds| Sherdog    | Parsed from fighter history pages for cross-org bouts. |
+| is_title_fight              | Sherdog (derived) | Derived from event-title patterns for cross-org bouts. |
+| org_weight                  | Sherdog + UFC ratings | Per-fight participant-caliber weight; UFC bouts remain 1.0. |
 | datalab_bouts_all           | DataLab    | UFC-DataLab `stats_processed_all_bouts.csv`; staged in snapshot as parquet. |
 | datalab_merged_stats_scorecards | DataLab | UFC-DataLab merged stats + scorecards export; staged in snapshot as parquet. |
 | datalab_fighter_details     | DataLab    | UFC-DataLab fighter details export; staged in snapshot as parquet. |
@@ -88,7 +94,7 @@ Priority: **Greco** (UFC granular) > **DataLab** (career / cross-org)
 | career_wins / losses / draws / ncs | DataLab | Pending derived career summary from staged DataLab bouts. |
 | pro_debut_date              | DataLab    | Pending derived career summary. |
 | organizations               | DataLab    | Pending; DataLab UFC export does not yet provide cross-org organizations. |
-| pre_ufc_record_summary      | DataLab    | Pending; requires FightMatrix/cross-org bout merge. |
+| pre_ufc_record_summary      | DataLab    | Pending derived summary from staged cross-org bouts plus future broader sources. |
 
 ## 6. Pre-UFC bouts (per-bout, for Glicko seeding)
 
@@ -100,6 +106,11 @@ Priority: **Greco** (UFC granular) > **DataLab** (career / cross-org)
 | pre_ufc_method       | FightMatrix                 | |
 | pre_ufc_date         | FightMatrix                 | |
 | pre_ufc_organization | FightMatrix                 | |
+
+Current Sherdog staging: `loaders/sherdog_loader.py` resolves fighter pages,
+caches HTML under `data/external/sherdog/`, parses non-UFC histories, and
+`build_crossorg.py` writes `crossorg_fights.parquet`. `ratings/rate_snapshot.py`
+merges that file into all rating streams when present.
 
 Current FightMatrix staging: `loaders/fightmatrix_loader.py` fetches public
 FightMatrix ranking pages, caches the HTML under `data/external/fightmatrix/`,
@@ -115,6 +126,7 @@ not a separate source of truth. Tables include:
 
 - Canonical UFC tables: `canonical_events`, `canonical_fights`,
   `canonical_rounds`, `canonical_fighters`.
+- Canonical extension tables: `crossorg_fights` when present.
 - Rating and derived tables: `ratings_current`, `ratings_history`,
   `ratings_history_method_integrity`, `ratings_history_method_performance`,
   `ratings_history_method_integrity_performance`, `ratings_history_whr`,

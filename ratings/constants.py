@@ -56,21 +56,19 @@ SUSTAINED_PEAK_TITLE_EFFECTIVE_MIN_RAW_FIGHTS: int = 10
 # print blocks, chat output — the rendering layer maps the long names through
 # RATING_COLUMN_LABELS so the visible header is short.
 #
-# Scheme: `<engine>_<sleeves>`.
-#   engine  : wl (canonical W/L), method (Glicko-2 + method bonus), whr (smoother)
-#   sleeves : rating (no sleeve), clean (integrity), perf (performance),
-#             full (integrity + performance)
+# Internal parquet columns keep the exact stream names. Public labels use
+# sentence-case product names so reports and notebooks do not leak model jargon.
 
 RATING_COLUMN_LABELS: dict[str, str] = {
-    "sustained_peak_headline_mu_canonical":                       "wl_rating",
-    "sustained_peak_headline_mu_method":                          "method_rating",
-    "sustained_peak_headline_mu_method_integrity":                "method_clean",
-    "sustained_peak_headline_mu_method_performance":              "method_perf",
-    "sustained_peak_headline_mu_method_integrity_performance":    "method_full",
-    "sustained_peak_headline_mu_whr":                             "whr_rating",
-    "sustained_peak_headline_mu_whr_integrity":                   "whr_clean",
-    "sustained_peak_headline_mu_whr_performance":                 "whr_perf",
-    "sustained_peak_headline_mu_whr_integrity_performance":       "whr_full",
+    "sustained_peak_headline_mu_canonical":                       "Prime Wins",
+    "sustained_peak_headline_mu_method":                          "Prime Finishes",
+    "sustained_peak_headline_mu_method_integrity":                "Prime Clean",
+    "sustained_peak_headline_mu_method_performance":              "Prime Strength",
+    "sustained_peak_headline_mu_method_integrity_performance":    "Prime Complete",
+    "sustained_peak_headline_mu_whr":                             "Legacy",
+    "sustained_peak_headline_mu_whr_integrity":                   "Legacy Clean",
+    "sustained_peak_headline_mu_whr_performance":                 "Legacy Strength",
+    "sustained_peak_headline_mu_whr_integrity_performance":       "Legacy Complete",
 }
 
 # Reverse lookup: short label -> on-disk column.
