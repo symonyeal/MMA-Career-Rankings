@@ -2040,21 +2040,96 @@ def public_rating_label(lens: str, time_view: str) -> str:
     return f"{time_label} {lens_label}"
 
 
+def public_rating_stream(lens: str) -> str:
+    """Return the internal rating stream behind a public lens label."""
+    stream = _PUBLIC_LENS_STREAM.get(lens)
+    if stream is None:
+        raise ValueError(f"unknown rating lens: {lens!r}")
+    return stream
+
+
 def select_public_rating_column(
     ratings_current: pd.DataFrame,
     lens: str,
     time_view: str,
 ) -> str | None:
     """Resolve public notebook controls to the backing ratings_current column."""
-    stream = _PUBLIC_LENS_STREAM.get(lens)
-    if stream is None:
-        raise ValueError(f"unknown rating lens: {lens!r}")
+    stream = public_rating_stream(lens)
     return select_rating_column(ratings_current, stream, time_view)
 
 
 def public_history_key(lens: str) -> str:
     """Return the SNAP key for the time-series table backing a public lens."""
     return _PUBLIC_LENS_HISTORY_KEY.get(lens, "ratings_history")
+
+
+def prime_window_min_fights(years: int | float) -> int:
+    """Minimum appearances for an adjustable Prime window.
+
+    The fixed 10-year Prime view qualifies at 13 fights, so the adjustable
+    control scales from that same density while keeping a practical floor.
+    """
+    import math
+
+    return max(8, int(math.ceil(float(years) * 1.25)))
+
+
+def prime_window_title_min_fights(
+    years: int | float,
+    min_fights: int | None = None,
+) -> int:
+    """Title-heavy effective minimum for an adjustable Prime window."""
+    import math
+
+    base = prime_window_min_fights(years) if min_fights is None else int(min_fights)
+    return max(6, int(math.ceil(base * 0.75)))
+
+
+def prime_window_column_names(
+    stream: str,
+    years: int | float,
+    min_fights: int | None = None,
+) -> tuple[str, str]:
+    """Raw/headline column names for a notebook-calculated N-year Prime view."""
+    y = int(years)
+    suffix = f"prime_{y}yr"
+    if min_fights is not None:
+        suffix = f"{suffix}_{int(min_fights)}f"
+    return f"{suffix}_mu_{stream}", f"{suffix}_headline_mu_{stream}"
+
+
+def n_year_prime_scores(
+    history: pd.DataFrame,
+    canonical_history: pd.DataFrame,
+    canonical_fights: pd.DataFrame,
+    *,
+    mu_col: str,
+    stream: str,
+    years: int | float,
+    min_fights: int | None = None,
+    appearance_quality: pd.DataFrame | None = None,
+) -> pd.DataFrame:
+    """Calculate an adjustable N-year Prime score for notebook controls.
+
+    This uses the same period-scoring machinery as the persisted 5-year Peak
+    and 10-year Prime columns; only the window length changes.
+    """
+    from ratings.peaks import rolling_peak
+
+    min_fights = prime_window_min_fights(years) if min_fights is None else int(min_fights)
+    raw_col, headline_col = prime_window_column_names(stream, years, min_fights)
+    return rolling_peak(
+        history,
+        canonical_history,
+        canonical_fights,
+        mu_col=mu_col,
+        out_col=raw_col,
+        headline_col=headline_col,
+        window_days=int(round(float(years) * 365.25)),
+        min_fights=min_fights,
+        title_effective_min_raw_fights=prime_window_title_min_fights(years, min_fights),
+        appearance_quality=appearance_quality,
+    )
 
 
 def compose_rating_stream(

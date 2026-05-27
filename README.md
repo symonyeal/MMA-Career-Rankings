@@ -29,7 +29,7 @@ The notebook auto-loads the newest snapshot under `data/snapshots/`.
 |---|---|---|
 | Now | Current form | Latest rating after the fighter's most recent bout. |
 | Peak | Best 5 years | A fighter's strongest five-year run. |
-| Prime | Best 10 years | A fighter's strongest proven decade. |
+| Prime | Best N years | A fighter's strongest sustained run, with year and fight-count controls. |
 | Wins | Simple results | Win, loss, draw only. |
 | Finishes | Result plus method | Rewards how the fight ended. |
 | Clean | Integrity checked | Adjusts PED, DQ, and missed-weight wins. |
@@ -40,7 +40,8 @@ The notebook auto-loads the newest snapshot under `data/snapshots/`.
 Recommended audience defaults:
 
 - **Now + Complete** for current rankings.
-- **Prime + Complete** for all-time debate.
+- **Prime + Complete** for all-time debate; adjust **Prime yr** and
+  **Prime min** when you want a stricter or looser sustained-run definition.
 - **Peak + Complete** for short-run dominance.
 - **Legacy** when comparing old eras to modern eras.
 
@@ -53,6 +54,7 @@ The notebook is built to work like a dashboard:
 
 - Select **Now**, **Peak**, **Prime**, or **Legacy**.
 - Select **Wins**, **Finishes**, **Clean**, **Strength**, or **Complete**.
+- Adjust **Prime yr** and **Prime min** to define the Prime window.
 - Filter leaderboards by division.
 - Compare rank movement before and after cross-organization enrichment.
 - Trace a fighter's career line against the selected rating view.

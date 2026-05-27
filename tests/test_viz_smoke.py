@@ -34,7 +34,11 @@ from analysis.viz import (
     sleeve_effects_by_fight_table,
     weight_class_context_impact_table,
     normalize_division,
+    n_year_prime_scores,
+    prime_window_column_names,
+    prime_window_min_fights,
     public_history_key,
+    public_rating_stream,
     select_modular_rating_column,
     select_public_rating_column,
     select_rating_column,
@@ -269,6 +273,29 @@ def test_public_rating_lookup_resolves_casual_views(snapshot):
     if "mu_method_integrity_performance" in rc.columns:
         assert select_public_rating_column(rc, "complete", "current") == "mu_method_integrity_performance"
     assert public_history_key("complete") == "ratings_history_method_integrity_performance"
+    assert public_rating_stream("complete") == "method_integrity_performance"
+
+
+def test_adjustable_prime_window_uses_distinct_columns(snapshot):
+    assert prime_window_column_names("canonical", 7) == (
+        "prime_7yr_mu_canonical",
+        "prime_7yr_headline_mu_canonical",
+    )
+    raw, headline = prime_window_column_names("canonical", 7, 9)
+    assert raw == "prime_7yr_9f_mu_canonical"
+    assert headline == "prime_7yr_9f_headline_mu_canonical"
+    assert prime_window_min_fights(10) == 13
+
+    scores = n_year_prime_scores(
+        snapshot["ratings_history"],
+        snapshot["ratings_history"],
+        snapshot["fights"],
+        mu_col="mu_canonical",
+        stream="canonical",
+        years=7,
+        min_fights=9,
+    )
+    assert {"fighter", raw, headline}.issubset(scores.columns)
 
 
 def test_method_peak_columns_resolve_when_present(snapshot):

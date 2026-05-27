@@ -234,9 +234,12 @@ from analysis.viz import (
     integrity_factor_audit_table,
     load_project_data,
     modular_rating_context,
+    prime_window_column_names,
+    n_year_prime_scores,
     performance_factor_audit_table,
     public_history_key,
     public_rating_label,
+    public_rating_stream,
     rank_movement_chart,
     rank_delta_table,
     recent_division_by_fighter,
@@ -289,14 +292,36 @@ ratings_histories = {
     "ratings_history_method_performance": SNAP.get("ratings_history_method_performance", pd.DataFrame()),
     "ratings_history_method_integrity_performance": SNAP.get("ratings_history_method_integrity_performance", pd.DataFrame()),
 }
+previous_fights = PREV.get("fights", pd.DataFrame())
+previous_ratings_history = PREV.get("ratings_history", pd.DataFrame())
+previous_ratings_histories = {
+    "ratings_history": previous_ratings_history,
+    "ratings_history_method_integrity": PREV.get("ratings_history_method_integrity", pd.DataFrame()),
+    "ratings_history_method_performance": PREV.get("ratings_history_method_performance", pd.DataFrame()),
+    "ratings_history_method_integrity_performance": PREV.get("ratings_history_method_integrity_performance", pd.DataFrame()),
+}
 fighter_dominance = SNAP.get("fighter_dominance", pd.DataFrame())
 ped_confirmed_bouts = SNAP.get("ped_confirmed_bouts", pd.DataFrame())
 crossorg_fights = SNAP.get("crossorg_fights", pd.DataFrame())
+previous_crossorg_fights = PREV.get("crossorg_fights", pd.DataFrame())
 
 _whr_path = SNAPSHOT_DIR / "ratings_history_whr.parquet"
 ratings_history_whr = pd.read_parquet(_whr_path) if _whr_path.exists() else pd.DataFrame()
 ratings_histories["ratings_history_whr"] = ratings_history_whr
 all_bouts = pd.concat([fights, crossorg_fights], ignore_index=True, sort=False) if not crossorg_fights.empty else fights
+previous_all_bouts = (
+    pd.concat([previous_fights, previous_crossorg_fights], ignore_index=True, sort=False)
+    if not previous_crossorg_fights.empty
+    else previous_fights
+)
+
+_prev_whr_path = PREVIOUS_SNAPSHOT_DIR / "ratings_history_whr.parquet" if PREVIOUS_SNAPSHOT_DIR else None
+previous_ratings_history_whr = (
+    pd.read_parquet(_prev_whr_path)
+    if _prev_whr_path is not None and _prev_whr_path.exists()
+    else pd.DataFrame()
+)
+previous_ratings_histories["ratings_history_whr"] = previous_ratings_history_whr
 
 display(Markdown(
     f"<div style='color:#cbd5e1;font-size:0.95em;"
@@ -315,7 +340,8 @@ display(Markdown(
 Public labels are short and contextual: **Wins** is result only, **Finishes**
 adds how the fight ended, **Clean** adjusts tainted wins, **Strength** adds
 opponent and market context, and **Complete** combines the context. **Now**
-means current form; **Prime** means best 10-year run.
+means current form. **Peak** is a fixed 5-year burst. **Prime** is a chosen
+N-year sustained run, controlled by the year and fight-count sliders.
 """),
     code("""
 lens = widgets.ToggleButtons(
@@ -327,6 +353,22 @@ time_view = widgets.ToggleButtons(
     options=list(PUBLIC_TIME_VIEWS),
     value="current",
     description="Time:",
+)
+prime_years = widgets.IntSlider(
+    value=10,
+    min=6,
+    max=15,
+    step=1,
+    description="Prime yr:",
+    continuous_update=False,
+)
+prime_min = widgets.IntSlider(
+    value=13,
+    min=5,
+    max=30,
+    step=1,
+    description="Prime min:",
+    continuous_update=False,
 )
 gender = widgets.ToggleButtons(
     options=[("Both", "both"), ("Men", "M"), ("Women", "F")],
@@ -355,10 +397,94 @@ spotlight = widgets.SelectMultiple(
 
 out_top = widgets.Output()
 out_spot = widgets.Output()
+_prime_cache = {}
+
+
+def _prime_mu_col(stream):
+    return f"mu_{stream}"
+
+
+def _rating_label():
+    lens_label = dict(PUBLIC_RATING_LENSES).get(lens.value, lens.value)
+    if time_view.value == "sustained_peak":
+        return f"{int(prime_years.value)}-Yr Prime {lens_label}"
+    if time_view.value == "five_year_peak":
+        return f"5-Yr Peak {lens_label}"
+    return public_rating_label(lens.value, time_view.value)
+
+
+def _ensure_prime_column(frame, histories, canonical_history, bout_frame, *, cache_label):
+    years = int(prime_years.value)
+    min_req = int(prime_min.value)
+    stream = public_rating_stream(lens.value)
+    raw_col, headline_col = prime_window_column_names(stream, years, min_req)
+    if headline_col in frame.columns:
+        return headline_col
+    if raw_col in frame.columns:
+        return raw_col
+
+    hist = histories.get(public_history_key(lens.value), pd.DataFrame())
+    mu_col = _prime_mu_col(stream)
+    if (
+        frame is None or frame.empty
+        or hist is None or hist.empty
+        or canonical_history is None or canonical_history.empty
+        or bout_frame is None or bout_frame.empty
+        or mu_col not in hist.columns
+    ):
+        return None
+
+    key = (cache_label, lens.value, years, min_req)
+    if key not in _prime_cache:
+        _prime_cache[key] = n_year_prime_scores(
+            hist,
+            canonical_history,
+            bout_frame,
+            mu_col=mu_col,
+            stream=stream,
+            years=years,
+            min_fights=min_req,
+        )
+    scores = _prime_cache[key]
+    if scores is None or scores.empty:
+        return None
+    mapped = scores.set_index("fighter")
+    for col in (raw_col, headline_col):
+        if col in mapped.columns:
+            frame[col] = frame["fighter"].map(mapped[col])
+    return headline_col if headline_col in frame.columns else raw_col if raw_col in frame.columns else None
 
 
 def _selected_rating_col():
+    if (
+        time_view.value == "sustained_peak"
+        and (int(prime_years.value) != 10 or int(prime_min.value) != 13)
+    ):
+        return _ensure_prime_column(
+            rc,
+            ratings_histories,
+            ratings_history,
+            all_bouts,
+            cache_label="current",
+        )
     return select_public_rating_column(rc, lens.value, time_view.value)
+
+
+def _selected_previous_rating_col():
+    if previous_rc is None or previous_rc.empty:
+        return None
+    if (
+        time_view.value == "sustained_peak"
+        and (int(prime_years.value) != 10 or int(prime_min.value) != 13)
+    ):
+        return _ensure_prime_column(
+            previous_rc,
+            previous_ratings_histories,
+            previous_ratings_history,
+            previous_all_bouts,
+            cache_label="previous",
+        )
+    return select_public_rating_column(previous_rc, lens.value, time_view.value)
 
 
 def _selected_history():
@@ -370,6 +496,8 @@ def _selected_stream_col():
     if col and col.startswith("sustained_peak"):
         return "mu_" + col.split("_mu_", 1)[1]
     if col and col.startswith("five_year_peak"):
+        return "mu_" + col.split("_mu_", 1)[1]
+    if col and col.startswith("prime_") and "_mu_" in col:
         return "mu_" + col.split("_mu_", 1)[1]
     return col
 
@@ -445,11 +573,12 @@ def draw_top(*_):
                 display(Markdown("**No matching rating column in this snapshot.**"))
                 return
 
-            view_label = public_rating_label(lens.value, time_view.value)
+            view_label = _rating_label()
             display(Markdown(
                 f"<div style='color:{THEME[\"text_2\"]};font-size:0.95em;"
                 f"font-family:{THEME[\"font\"]};margin-bottom:6px'>"
                 f"<b style='color:{THEME[\"text\"]}'>{view_label}</b>"
+                f" &middot; Prime minimum: {int(prime_min.value)} fights"
                 f"</div>"
             ))
 
@@ -501,6 +630,7 @@ def draw_spotlight(*_):
 
 controls = widgets.VBox([
     widgets.HBox([time_view, lens]),
+    widgets.HBox([prime_years, prime_min]),
     widgets.HBox([gender, division_filter]),
     widgets.HBox([n_men, n_women, min_fights]),
 ])
@@ -514,7 +644,7 @@ display(out_spot)
 draw_top()
 draw_spotlight()
 
-for w in (lens, time_view, gender, division_filter, n_men, n_women, min_fights):
+for w in (lens, time_view, prime_years, prime_min, gender, division_filter, n_men, n_women, min_fights):
     _observe_once(w, draw_top, names="value")
 _observe_once(spotlight, draw_spotlight, names="value")
 """),
@@ -523,7 +653,8 @@ _observe_once(spotlight, draw_spotlight, names="value")
 
 The largest top-50 changes from the previous snapshot, using the same rating
 view selected above. Switch to **Now + Complete** for current form, or
-**Prime + Complete** for the best-run view.
+**Prime + Complete** and adjust **Prime yr** / **Prime min** for the
+sustained-window view.
 """),
     code("""
 movers_n = widgets.IntSlider(value=20, min=10, max=50, step=5, description="Rows:")
@@ -544,6 +675,10 @@ def draw_movers(*_):
             if not col:
                 display(Markdown("_no matching rating view_"))
                 return
+            prev_col = _selected_previous_rating_col()
+            if not prev_col or prev_col != col:
+                display(Markdown("_no matching prior-snapshot view for this Prime window_"))
+                return
             rank_movement_chart(
                 previous_rc,
                 rc,
@@ -557,7 +692,7 @@ def draw_movers(*_):
 display(movers_n)
 display(out_movers)
 draw_movers()
-for w in (lens, time_view, min_fights, movers_n):
+for w in (lens, time_view, prime_years, prime_min, min_fights, movers_n):
     _observe_once(w, draw_movers, names="value")
 """),
     md("""
@@ -737,7 +872,7 @@ def draw_placement(*_):
 display(widgets.HBox([placement_n, placement_min_fights]))
 display(out_placement)
 draw_placement()
-for w in (placement_n, placement_min_fights, lens, time_view):
+for w in (placement_n, placement_min_fights, lens, time_view, prime_years, prime_min):
     _observe_once(w, draw_placement, names="value")
 """),
     md("""
@@ -745,7 +880,8 @@ for w in (placement_n, placement_min_fights, lens, time_view):
 
 Compare divisions like an executive dashboard: pick the divisions, choose a
 year, switch between score and index, and use the same `Now / Peak / Prime`
-and rating lens selected above.
+and rating lens selected above. Peak stays fixed at 5 years; Prime uses the
+year and fight-count sliders.
 """),
     code(r"""
 _default_divisions = tuple([d for d in ["Lightweight", "Welterweight", "Middleweight", "Light Heavyweight", "Heavyweight", "Featherweight", "Bantamweight", "Flyweight"] if d in DIVISIONS])
@@ -784,7 +920,7 @@ def draw_divx(*_):
                 display(Markdown("_select at least one division_"))
                 return
             display(Markdown(
-                f"#### {public_rating_label(lens.value, time_view.value)} — division view"
+                f"#### {_rating_label()} — division view"
             ))
             division_strength_timeline_chart(
                 hist,
@@ -848,7 +984,7 @@ def draw_divx(*_):
 display(widgets.HBox([divx, widgets.VBox([divx_n, divx_year, divx_index])]))
 display(out_divx)
 draw_divx()
-for w in (divx, divx_n, divx_year, divx_index, lens, time_view):
+for w in (divx, divx_n, divx_year, divx_index, lens, time_view, prime_years, prime_min):
     _observe_once(w, draw_divx, names="value")
 """),
     md("""
