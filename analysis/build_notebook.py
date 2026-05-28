@@ -68,6 +68,7 @@ PROJECT_ROOT = find_project_root(Path.cwd())
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from analysis.viz import (
+    DIV_SHORT,
     DIVISIONS,
     PEAK_VIEWS,
     PUBLIC_RATING_LENSES,
@@ -108,6 +109,7 @@ from analysis.viz import (
     weight_class_strength_chart,
     win_streaks,
     win_streaks_table,
+    yearly_rating_delta_scatter,
 )
 
 SNAPSHOT_BASE = PROJECT_ROOT / "data" / "snapshots"
@@ -217,6 +219,19 @@ def chart_widget(height=CHART_H):
 
 def show_fig(fw, fig):
     "Sync a freshly built go.Figure into a live FigureWidget (no re-display)."
+    # Replace NaN/inf in customdata before pushing to the widget — jupyter_client
+    # rejects non-finite floats during JSON serialization and emits a UserWarning.
+    for _trace in (fig.data or []):
+        _cd = getattr(_trace, "customdata", None)
+        if _cd is not None:
+            try:
+                _arr = np.asarray(_cd, dtype=object)
+                _mask = pd.isnull(_arr)
+                if _mask.any():
+                    _arr[_mask] = ""
+                    _trace.customdata = _arr
+            except Exception:
+                pass
     with fw.batch_update():
         fw.data = ()
         if getattr(fig, "data", None):
@@ -425,9 +440,10 @@ g_time = widgets.Dropdown(
     description="Form:", style={"description_width": "70px"},
     layout=widgets.Layout(width="200px"))
 g_division = widgets.Dropdown(
-    options=["All divisions"] + list(DIVISIONS), value="All divisions",
+    options=[("All", "All divisions")] + [(DIV_SHORT.get(d, d), d) for d in DIVISIONS],
+    value="All divisions",
     description="Weight class:", style={"description_width": "90px"},
-    layout=widgets.Layout(width="320px"))
+    layout=widgets.Layout(width="240px"))
 g_gender = widgets.ToggleButtons(
     options=[("Both", "both"), ("Men", "M"), ("Women", "F")], value="both",
     description="Roster:", style={"description_width": "70px"})
@@ -611,9 +627,10 @@ def _build_top_view(df_subset, rating_col, n, min_fights_val, division_val):
         "Fighter": df["fighter"],
         "Rating": rating_vals.round(1),
         "vs Wins": (rating_vals - baseline_vals).round(1),
-        "Division": (
+        "Div": (
             (df["career_division"] if "career_division" in df.columns else pd.Series(pd.NA, index=df.index))
             .fillna(df["recent_division"] if "recent_division" in df.columns else pd.Series("", index=df.index))
+            .map(lambda v: DIV_SHORT.get(v, v) if isinstance(v, str) else "")
         ),
         "Last": pd.to_datetime(df["last_event_date"], errors="coerce").dt.date,
         "Fights": df["rating_periods"].astype(int),
@@ -641,7 +658,7 @@ def _style_top(lean):
         .format(lambda s: s, subset=["Fighter"], escape=None)
         .set_properties(subset=["Fighter"], **{"font-weight": "600", "color": THEME["text"]})
         .set_properties(subset=["Last", "Fights"], **{"color": THEME["text_muted"], "font-size": "0.88em"})
-        .set_properties(subset=["Division"], **{"color": THEME["text_2"]})
+        .set_properties(subset=["Div"], **{"color": THEME["text_2"]})
         .set_properties(subset=["#"], **{"text-align": "center", "padding-right": "4px"})
         .set_table_styles(_BASE_TABLE_STYLES)
     )
@@ -663,7 +680,7 @@ def draw_leaderboard():
         f"<div style='font-family:{THEME['font']};color:{THEME['text_2']};font-size:0.95em;margin-bottom:6px'>"
         f"<b style='color:{THEME['text']}'>{rating_label()}</b>"
         f" &middot; min {int(g_min_fights.value)} fights"
-        f"{'' if g_division.value == 'All divisions' else ' &middot; ' + g_division.value}</div>"
+        f"{'' if g_division.value == 'All divisions' else ' &middot; ' + DIV_SHORT.get(g_division.value, g_division.value)}</div>"
     ]
     if g_gender.value in ("both", "M"):
         v = _build_top_view(men, col, g_top_n.value, g_min_fights.value, g_division.value)
@@ -726,37 +743,45 @@ subscribe("trajectory", draw_trajectory, {"lens", "time", "prime_years", "prime_
 
 
 MOVERS = r"""
-mov_html = html_box()
-mov_fw = chart_widget(height=460)
+_years_list = sorted(pd.to_datetime(all_bouts["event_date"], errors="coerce").dt.year.dropna().astype(int).unique().tolist(), reverse=True)
+movers_year = widgets.Dropdown(
+    options=_years_list,
+    value=(_years_list[0] if _years_list else 2025),
+    description="Year:",
+    layout=widgets.Layout(width="180px"),
+    style={"description_width": "50px"})
+movers_fw = chart_widget(height=460)
 
 
 def draw_movers():
     try:
         col = selected_rating_col()
     except ValueError as exc:
-        mov_html.value = msg(f"Invalid selection: {exc}")
-        show_fig(mov_fw, go.Figure())
+        show_fig(movers_fw, go.Figure())
         return
     if not col:
-        mov_html.value = msg("no matching rating view")
-        show_fig(mov_fw, go.Figure())
+        show_fig(movers_fw, go.Figure())
         return
-    prev_col = selected_previous_rating_col()
-    if not prev_col or prev_col != col:
-        mov_html.value = msg("no matching prior-snapshot view for this selection")
-        show_fig(mov_fw, go.Figure())
+    hist = selected_history()
+    if hist is None or hist.empty or col not in hist.columns:
+        show_fig(movers_fw, go.Figure())
         return
-    mov_html.value = ""
-    fig = rank_movement_chart(previous_rc, rc, rating_col=col, top_k=50,
-                              n=g_top_n.value, min_fights=g_min_fights.value)
-    fig.update_layout(title=f"Biggest movers — {rating_label()}")
-    show_fig(mov_fw, fig)
+    fig = yearly_rating_delta_scatter(
+        hist, all_bouts, rating_col=col, year=int(movers_year.value))
+    show_fig(movers_fw, fig)
 
 
-display(mov_html)
-display(mov_fw)
+display(movers_year)
+display(movers_fw)
+display(html_box(note(
+    "Each dot is a fighter. y = total rating change for the selected year "
+    "(positive = rose, negative = fell). Sorted left→right: biggest fallers "
+    "on the left, biggest risers on the right. Hover for individual fights "
+    "with opponent, result, and per-fight delta."
+)))
 draw_movers()
-subscribe("movers", draw_movers, {"lens", "time", "prime_years", "prime_min", "min_fights", "top_n"})
+_observe(movers_year, lambda *_: draw_movers())
+subscribe("movers", draw_movers, {"lens", "time", "prime_years", "prime_min"})
 """
 
 
@@ -927,9 +952,9 @@ DIVISIONS_SECTION = r"""
 # ---- Local controls --------------------------------------------------------
 _default_divisions = tuple([d for d in ["Lightweight", "Welterweight", "Middleweight", "Light Heavyweight", "Heavyweight", "Featherweight", "Bantamweight", "Flyweight"] if d in DIVISIONS])
 divx = widgets.SelectMultiple(
-    options=list(DIVISIONS),
+    options=[(DIV_SHORT.get(d, d), d) for d in DIVISIONS],
     value=_default_divisions[:6] if _default_divisions else tuple(list(DIVISIONS)[:6]),
-    description="Divisions:", rows=9, layout=widgets.Layout(width="320px"),
+    description="Divisions:", rows=9, layout=widgets.Layout(width="260px"),
     style={"description_width": "70px"})
 _years = sorted(pd.to_datetime(all_bouts["event_date"], errors="coerce").dt.year.dropna().astype(int).unique().tolist())
 _yr_min, _yr_max = (min(_years), max(_years)) if _years else (2000, 2026)
@@ -946,20 +971,12 @@ divx_year_snapshot = widgets.IntSlider(
     continuous_update=False,
     layout=widgets.Layout(width="380px"),
     style={"description_width": "110px"})
-divx_leader_pick = widgets.Dropdown(
-    options=list(DIVISIONS),
-    value=(_default_divisions[0] if _default_divisions
-           else (list(DIVISIONS)[0] if DIVISIONS else "Lightweight")),
-    description="Show top 15 of:",
-    layout=widgets.Layout(width="320px"),
-    style={"description_width": "120px"})
 
 # ---- Output widgets --------------------------------------------------------
 divx_timeline = chart_widget(height=540)
 divx_snapshot = chart_widget(height=560)
 divx_era = chart_widget(height=520)
 divx_density = chart_widget(height=380)
-divx_leader_table = html_box()
 
 
 def _divx_stream_col():
@@ -1016,81 +1033,96 @@ def draw_divx():
     fig_den = top100_division_density_chart(rc, rating_col=col, n=100)
     show_fig(divx_density, fig_den)
 
-    # ---- Single-division leaders (top 15) ---------------------------------
-    div = divx_leader_pick.value
-    if not div:
-        divx_leader_table.value = msg("pick a division for the leader board")
-    else:
-        rank_col = selected_rating_col()
-        if not rank_col or rank_col not in rc.columns:
-            rank_col = "mu_canonical"
-        d = rc.copy()
-        d["_career"] = d.get("career_division", pd.Series(pd.NA, index=d.index))
-        d = d[d["_career"].eq(div)].dropna(subset=[rank_col]).copy()
-        d = d.sort_values(rank_col, ascending=False).head(15).reset_index(drop=True)
-        if d.empty:
-            divx_leader_table.value = msg(f"no rated fighters in {div}")
-        else:
-            view = pd.DataFrame({
-                "#": [_rank_chip(i) for i in range(1, len(d) + 1)],
-                "Fighter": d["fighter"],
-                "Rating": pd.to_numeric(d[rank_col], errors="coerce").round(1),
-                "Fights": pd.to_numeric(d.get("rating_periods"), errors="coerce").fillna(0).astype(int),
-                "Last": pd.to_datetime(d.get("last_event_date"), errors="coerce").dt.date,
-                "Now competes": d.get("current_division", pd.Series("—", index=d.index)).fillna("—"),
-            })
-            rmin, rmax = view["Rating"].min(), view["Rating"].max()
-            styled = (
-                view.style.hide(axis="index")
-                .bar(subset=["Rating"], color="rgba(56,189,248,0.28)", vmin=rmin, vmax=rmax)
-                .format({"Rating": "{:.1f}"})
-                .format(lambda s: s, subset=["#"], escape=None)
-                .format(lambda s: s, subset=["Fighter"], escape=None)
-                .set_properties(subset=["Fighter"], **{"font-weight": "600", "color": THEME["text"]})
-                .set_properties(subset=["Fights", "Last", "Now competes"], **{"color": THEME["text_muted"]})
-                .set_properties(subset=["#"], **{"text-align": "center"})
-                .set_table_styles(_BASE_TABLE_STYLES)
-            )
-            divx_leader_table.value = (
-                heading(f"Top 15 — {div} (career division)") + table_html(styled)
-            )
 
-
-# ---- Layout: one cohesive Weight Classes section ---------------------------
+# ---- Layout ----------------------------------------------------------------
 display(html_box(heading("Strength over time")))
 display(widgets.HBox([divx, widgets.VBox([divx_year_range, divx_index])]))
 display(divx_timeline)
 display(html_box(note("Each selected weight class's top-tier strength over the chosen year range. "
-                     "Flip to Index to compare how divisions rose and fell regardless of absolute level "
-                     "— handy for 'was the 2010s lightweight era deeper than today's?'.")))
+                     "Flip to Index to compare how divisions rose and fell regardless of absolute level.")))
 
 display(html_box(heading("Single-year ranking")))
 display(divx_year_snapshot)
 display(divx_snapshot)
-display(html_box(note("The actual top fighters of the snapshot year in each selected class — not just an "
-                     "aggregate. Read each block as a mini-leaderboard for that division that year.")))
+display(html_box(note("Top fighters per class in the snapshot year — read each block as a mini-leaderboard.")))
 
 display(html_box(heading("Era heat map")))
 display(divx_era)
-display(html_box(note("100 = the deepest weight class that year; lower = how far a division trailed the "
-                     "era's best. Shows which division ruled the sport season by season.")))
+display(html_box(note("100 = the deepest division that year; shows which class ruled season by season.")))
 
 display(html_box(heading("Top 100 by career division")))
 display(divx_density)
-display(html_box(note("How the current top 100 splits across the weight classes (by career division — where "
-                     "the fighter built their résumé, not their most recent bout's class).")))
-
-display(html_box(heading("Division leaders right now")))
-display(divx_leader_pick)
-display(divx_leader_table)
-display(html_box(note("Top 15 of the picked class by the lens up top. 'Now competes' shows whether that "
-                     "fighter currently fights in a different class than their career home — a flagged title "
-                     "mover.")))
+display(html_box(note("How the current top 100 splits across weight classes (career division — where the "
+                     "fighter built their résumé).")))
 
 draw_divx()
-for _w in (divx, divx_year_range, divx_index, divx_year_snapshot, divx_leader_pick):
+for _w in (divx, divx_year_range, divx_index, divx_year_snapshot):
     _observe(_w, lambda *_: draw_divx())
 subscribe("divisions", draw_divx, {"lens", "time", "prime_years", "prime_min", "top_n"})
+"""
+
+
+DIVISION_LEADERS = r"""
+# Standalone: single-division top-15, fully decoupled from the multi-division
+# charts above so selecting a class here doesn't trigger those redraws.
+divx_leader_pick = widgets.Dropdown(
+    options=[(DIV_SHORT.get(d, d), d) for d in DIVISIONS],
+    value=("Lightweight" if "Lightweight" in DIVISIONS else (list(DIVISIONS)[0] if DIVISIONS else "Lightweight")),
+    description="Division:",
+    layout=widgets.Layout(width="210px"),
+    style={"description_width": "75px"})
+divx_leader_table = html_box()
+
+
+def draw_division_leaders():
+    div = divx_leader_pick.value
+    if not div:
+        divx_leader_table.value = msg("pick a division")
+        return
+    rank_col = selected_rating_col()
+    if not rank_col or rank_col not in rc.columns:
+        rank_col = "mu_canonical"
+    d = rc.copy()
+    d["_career"] = d.get("career_division", pd.Series(pd.NA, index=d.index))
+    d = d[d["_career"].eq(div)].dropna(subset=[rank_col]).copy()
+    d = d.sort_values(rank_col, ascending=False).head(15).reset_index(drop=True)
+    div_s = DIV_SHORT.get(div, div)
+    if d.empty:
+        divx_leader_table.value = msg(f"no rated fighters in {div_s}")
+    else:
+        view = pd.DataFrame({
+            "#": [_rank_chip(i) for i in range(1, len(d) + 1)],
+            "Fighter": d["fighter"],
+            "Rating": pd.to_numeric(d[rank_col], errors="coerce").round(1),
+            "Fights": pd.to_numeric(d.get("rating_periods"), errors="coerce").fillna(0).astype(int),
+            "Last": pd.to_datetime(d.get("last_event_date"), errors="coerce").dt.date,
+            "Now in": d.get("current_division", pd.Series("—", index=d.index)).fillna("—").map(
+                lambda v: DIV_SHORT.get(v, v) if isinstance(v, str) else "—"),
+        })
+        rmin, rmax = view["Rating"].min(), view["Rating"].max()
+        styled = (
+            view.style.hide(axis="index")
+            .bar(subset=["Rating"], color="rgba(56,189,248,0.28)", vmin=rmin, vmax=rmax)
+            .format({"Rating": "{:.1f}"})
+            .format(lambda s: s, subset=["#"], escape=None)
+            .format(lambda s: s, subset=["Fighter"], escape=None)
+            .set_properties(subset=["Fighter"], **{"font-weight": "600", "color": THEME["text"]})
+            .set_properties(subset=["Fights", "Last", "Now in"], **{"color": THEME["text_muted"]})
+            .set_properties(subset=["#"], **{"text-align": "center"})
+            .set_table_styles(_BASE_TABLE_STYLES)
+        )
+        divx_leader_table.value = heading(f"Top 15 — {div_s}") + table_html(styled)
+
+
+display(divx_leader_pick)
+display(divx_leader_table)
+display(html_box(note(
+    "'Now in' flags when a fighter currently competes in a different class than their career home — e.g. "
+    "a title mover. Career home drives division rankings; current class is informational."
+)))
+draw_division_leaders()
+_observe(divx_leader_pick, lambda *_: draw_division_leaders())
+subscribe("division_leaders", draw_division_leaders, {"lens", "time", "prime_years", "prime_min"})
 """
 
 
@@ -1655,8 +1687,9 @@ follows whatever **Rank by** lens is selected up top.
     md("""
 ## Risers & Fallers
 
-Who's climbing and who's sliding since the previous snapshot, for the lens you've
-selected. Needs a comparable prior snapshot for the same view.
+Who moved — and by how much. Pick a year to see every fighter's cumulative
+rating change for that season. Dot above zero = rose, below = fell. Hover
+for the individual fights behind the move.
 """),
     code(MOVERS),
     md("""
@@ -1671,12 +1704,17 @@ own streak on top, so you can compare two runs head to head on the same axes.
     md("""
 ## Weight Classes
 
-All the division views in one place. Pick the weight classes and a year range
-to drive the strength-over-time chart, the single-year ranking, the era heat
-map, the top-100 share, and a single-division leaderboard (pick a class, see
-its top 15 right now).
+Pick weight classes and a year range to drive the strength-over-time chart,
+the single-year ranking, the era heat map, and the top-100 share.
 """),
     code(DIVISIONS_SECTION),
+    md("""
+## Division Leaders
+
+Pick a class to see its top 15 right now. **Now in** flags fighters whose
+current weight class differs from their career home — title movers.
+"""),
+    code(DIVISION_LEADERS),
     md("""
 ## Tale of the Tape
 

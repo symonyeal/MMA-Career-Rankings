@@ -347,6 +347,24 @@ DIVISIONS = [
     "Catch Weight", "Open Weight",
 ]
 
+DIV_SHORT: dict[str, str] = {
+    "Strawweight":          "STW",
+    "Flyweight":            "FLY",
+    "Bantamweight":         "BW",
+    "Featherweight":        "FW",
+    "Lightweight":          "LW",
+    "Welterweight":         "WW",
+    "Middleweight":         "MW",
+    "Light Heavyweight":    "LHW",
+    "Heavyweight":          "HW",
+    "Women's Strawweight":  "W.STW",
+    "Women's Flyweight":    "W.FLY",
+    "Women's Bantamweight": "W.BW",
+    "Women's Featherweight":"W.FW",
+    "Catch Weight":         "CW",
+    "Open Weight":          "OW",
+}
+
 FIGHTMATRIX_DIVISION_MAP = {
     "heavyweight": "Heavyweight",
     "light-heavyweight": "Light Heavyweight",
@@ -1094,12 +1112,13 @@ def division_year_top_fighters_chart(
         block = top_per_div[top_per_div["division"].eq(division)].sort_values(rating_col, ascending=False)
         if block.empty:
             continue
-        labels = [f"{i+1}. {fighter}  ·  {division}" for i, fighter in enumerate(block["fighter"].tolist())]
+        div_short = DIV_SHORT.get(division, division)
+        labels = [f"{i+1}. {fighter}  ·  {div_short}" for i, fighter in enumerate(block["fighter"].tolist())]
         fig.add_trace(go.Bar(
             x=block[rating_col].astype(float),
             y=labels,
             orientation="h",
-            name=str(division),
+            name=div_short,
             text=[f"{v:.0f}" for v in block[rating_col]],
             textposition="outside",
             hovertemplate=(
@@ -1120,6 +1139,7 @@ def division_year_top_fighters_chart(
         margin=dict(l=220, r=80, t=70, b=80),
         showlegend=True,
     )
+    fig.update_xaxes(range=[1300, 1700])
     return fig
 
 
@@ -1967,6 +1987,136 @@ def rank_movement_chart(
         xaxis_title="Rank move",
         yaxis_title="",
         showlegend=False,
+    )
+    return fig
+
+
+def yearly_rating_delta_scatter(
+    ratings_history: pd.DataFrame,
+    fights: pd.DataFrame,
+    *,
+    rating_col: str,
+    year: int,
+) -> go.Figure:
+    """Per-fighter cumulative rating delta for all fights in a year.
+
+    One dot per fighter sorted by total delta (fallers left, risers right).
+    y = net rating change for the year, with a zero-line at center.
+    Hover shows each individual fight with opponent, result, and per-fight Δ.
+    """
+    title = f"{year} — rating moves"
+    if ratings_history is None or ratings_history.empty:
+        return _empty_figure("rating history unavailable", title=title)
+    if rating_col not in ratings_history.columns:
+        return _empty_figure(f"{rating_col!r} not in history", title=title)
+
+    rh = ratings_history.copy()
+    rh["event_date"] = pd.to_datetime(rh["event_date"], errors="coerce")
+    rh["_year"] = rh["event_date"].dt.year
+    rh[rating_col] = pd.to_numeric(rh[rating_col], errors="coerce")
+
+    year_rows = rh[rh["_year"] == year].dropna(subset=[rating_col]).copy()
+    year_rows = year_rows.sort_values(["fighter", "event_date"])
+    if year_rows.empty:
+        return _empty_figure(f"no rating data for {year}", title=title)
+
+    # Last rating each fighter had before the year starts (their baseline)
+    before = (
+        rh[rh["_year"] < year]
+        .dropna(subset=[rating_col])
+        .sort_values("event_date")
+        .groupby("fighter", as_index=False)
+        .last()[["fighter", rating_col]]
+        .rename(columns={rating_col: "_mu_start"})
+    )
+    year_rows = year_rows.merge(before, on="fighter", how="left")
+    # Per-fight previous rating: shift within fighter group, fall back to baseline
+    year_rows["_mu_prev"] = year_rows.groupby("fighter")[rating_col].shift(1)
+    year_rows["_mu_prev"] = year_rows["_mu_prev"].fillna(year_rows["_mu_start"])
+    year_rows = year_rows.dropna(subset=["_mu_prev"])
+    year_rows["_fight_delta"] = year_rows[rating_col] - year_rows["_mu_prev"]
+
+    # Opponent and result from canonical fights
+    if fights is not None and not fights.empty:
+        fdf = fights.copy()
+        fdf["event_date"] = pd.to_datetime(fdf["event_date"], errors="coerce")
+        fdf = fdf[fdf["event_date"].dt.year == year]
+        fa = fdf[["fight_url", "event_date", "fighter_a", "fighter_b", "winner"]].rename(
+            columns={"fighter_a": "fighter", "fighter_b": "opponent"})
+        fb = fdf[["fight_url", "event_date", "fighter_a", "fighter_b", "winner"]].rename(
+            columns={"fighter_b": "fighter", "fighter_a": "opponent"})
+        fl = pd.concat([fa, fb], ignore_index=True)
+        fl["_result"] = np.where(fl["winner"].eq(fl["fighter"]), "W", "L")
+        joined = year_rows.merge(
+            fl[["fighter", "event_date", "opponent", "_result"]],
+            on=["fighter", "event_date"], how="left"
+        )
+    else:
+        joined = year_rows.copy()
+        joined["opponent"] = pd.NA
+        joined["_result"] = pd.NA
+
+    # Aggregate per fighter
+    rows = []
+    for fighter, g in joined.groupby("fighter"):
+        total = float(g["_fight_delta"].sum())
+        lines = []
+        for _, row in g.sort_values("event_date").iterrows():
+            opp = str(row.get("opponent") or "?")
+            res = str(row.get("_result") or "?")
+            d = float(row["_fight_delta"])
+            lines.append(f"vs {opp}  {res}  Δ{d:+.1f}")
+        rows.append({
+            "fighter": fighter,
+            "total_delta": total,
+            "n_fights": len(g),
+            "hover_lines": "<br>".join(lines),
+        })
+
+    df = pd.DataFrame(rows)
+    if df.empty:
+        return _empty_figure(f"no qualified fighters in {year}", title=title)
+    df = df.sort_values("total_delta").reset_index(drop=True)
+    df["x_idx"] = np.arange(len(df))
+    colors = np.where(df["total_delta"] >= 0, THEME["positive"], THEME["negative"])
+
+    fig = go.Figure(go.Scatter(
+        x=df["x_idx"],
+        y=df["total_delta"],
+        mode="markers",
+        marker=dict(size=9, color=colors.tolist(), opacity=0.85, line=dict(color="white", width=0.6)),
+        customdata=np.column_stack([
+            df["fighter"].values,
+            df["hover_lines"].values,
+            df["n_fights"].astype(str).values,
+        ]),
+        hovertemplate=(
+            "<b>%{customdata[0]}</b> (%{customdata[2]} fights)<br>"
+            "%{customdata[1]}<br>"
+            "<b>Total Δ%{y:+.1f}</b><extra></extra>"
+        ),
+        showlegend=False,
+    ))
+
+    # Label biggest risers and fallers (last-name only to save space)
+    label_n = min(6, max(1, len(df) // 8))
+    for row in pd.concat([df.tail(label_n), df.head(label_n)]).drop_duplicates("fighter").itertuples():
+        name_short = str(row.fighter).split()[-1]
+        fig.add_annotation(
+            x=row.x_idx, y=row.total_delta,
+            text=name_short,
+            showarrow=False,
+            yshift=13 if row.total_delta >= 0 else -13,
+            font=dict(size=9, color=THEME["text_2"]),
+        )
+
+    fig.add_hline(y=0, line_color=THEME["border_strong"], line_width=1.5)
+    _apply_chart_layout(fig, height=460)
+    fig.update_layout(
+        title=title,
+        xaxis=dict(visible=False),
+        yaxis_title=f"Δ {_metric_label(rating_col)}",
+        hovermode="closest",
     )
     return fig
 
@@ -3370,59 +3520,113 @@ def fighter_odds_history_chart(
     odds_lines: pd.DataFrame | None,
     fights: pd.DataFrame,
 ) -> go.Figure:
-    """Market-implied win probability over time for one fighter."""
-    if odds_lines is None or odds_lines.empty or fights is None or fights.empty:
-        return _empty_figure("market history unavailable", title=f"{fighter}: market history", height=300)
-    needed = {"fight_url", "fighter_a", "fighter_b", "implied_prob_a_no_vig", "implied_prob_b_no_vig", "odds_data_quality"}
-    if not needed.issubset(odds_lines.columns):
-        return _empty_figure("market probability columns unavailable", title=f"{fighter}: market history", height=300)
-    ok = odds_lines[odds_lines["odds_data_quality"].eq("ok")].copy()
-    a = ok[ok["fighter_a"].eq(fighter)][["fight_url", "implied_prob_a_no_vig"]].rename(
-        columns={"implied_prob_a_no_vig": "market_prob"}
-    )
-    b = ok[ok["fighter_b"].eq(fighter)][["fight_url", "implied_prob_b_no_vig"]].rename(
-        columns={"implied_prob_b_no_vig": "market_prob"}
-    )
-    long = pd.concat([a, b], ignore_index=True).dropna(subset=["market_prob"])
-    if long.empty:
-        return _empty_figure("no odds-covered fights for this fighter", title=f"{fighter}: market history", height=300)
-    cols = ["fight_url", "event_date", "event_name", "winner", "is_draw", "fighter_a", "fighter_b"]
-    joined = long.merge(fights[[c for c in cols if c in fights.columns]], on="fight_url", how="inner")
-    if joined.empty:
-        return _empty_figure("no matching canonical fights", title=f"{fighter}: market history", height=300)
-    joined["event_date"] = pd.to_datetime(joined["event_date"], errors="coerce")
-    joined["opponent"] = np.where(joined.get("fighter_a").eq(fighter), joined.get("fighter_b"), joined.get("fighter_a"))
-    joined["result"] = np.select(
+    """Market-implied win probability over time for one fighter.
+
+    Shows ALL canonical fights for the fighter. Where odds data is available
+    the line plots the market win probability; fights without odds appear as
+    diamond markers near the bottom so the complete fight history is visible
+    even when the odds snapshot hasn't caught up yet.
+    """
+    title = f"{fighter}: market history"
+    if fights is None or fights.empty:
+        return _empty_figure("fight history unavailable", title=title, height=300)
+
+    # All canonical fights for this fighter
+    cols = ["fight_url", "event_date", "event_name", "fighter_a", "fighter_b", "winner", "is_draw"]
+    fa = fights[fights["fighter_a"].eq(fighter)][[c for c in cols if c in fights.columns]].rename(
+        columns={"fighter_b": "opponent"})
+    fb = fights[fights["fighter_b"].eq(fighter)][[c for c in cols if c in fights.columns]].rename(
+        columns={"fighter_a": "opponent"})
+    all_fights = pd.concat([fa, fb], ignore_index=True)
+    if all_fights.empty:
+        return _empty_figure("no fights found", title=title, height=300)
+
+    all_fights["event_date"] = pd.to_datetime(all_fights["event_date"], errors="coerce")
+    result_colors = {"Win": SIGN_COLORS["positive"], "Loss": SIGN_COLORS["negative"], "Draw": THEME["neutral"]}
+    all_fights["result"] = np.select(
         [
-            joined.get("is_draw", pd.Series(False, index=joined.index)).fillna(False).astype(bool),
-            joined["winner"].eq(fighter),
+            all_fights.get("is_draw", pd.Series(False, index=all_fights.index)).fillna(False).astype(bool),
+            all_fights["winner"].eq(fighter),
         ],
         ["Draw", "Win"],
         default="Loss",
     )
-    joined = joined.sort_values("event_date")
-    colors = joined["result"].map({"Win": SIGN_COLORS["positive"], "Loss": SIGN_COLORS["negative"], "Draw": "#64748b"})
-    fig = go.Figure(go.Scatter(
-        x=joined["event_date"],
-        y=joined["market_prob"] * 100,
-        mode="lines+markers",
-        line=dict(color=STREAM_PALETTE["odds_adjusted"], width=2),
-        marker=dict(size=9, color=colors, line=dict(color="white", width=0.8)),
-        customdata=np.stack([
-            joined["opponent"].fillna(""),
-            joined["result"],
-            joined["event_name"].fillna(""),
-        ], axis=-1),
-        hovertemplate=(
-            "<b>%{customdata[2]}</b><br>"
-            "vs %{customdata[0]}: %{customdata[1]}<br>"
-            "market win probability=%{y:.1f}%<extra></extra>"
-        ),
-    ))
+
+    # Merge odds where available
+    all_fights["market_prob"] = np.nan
+    if odds_lines is not None and not odds_lines.empty:
+        needed = {"fight_url", "fighter_a", "fighter_b", "implied_prob_a_no_vig", "implied_prob_b_no_vig", "odds_data_quality"}
+        if needed.issubset(odds_lines.columns):
+            ok = odds_lines[odds_lines["odds_data_quality"].eq("ok")].copy()
+            oa = ok[ok["fighter_a"].eq(fighter)][["fight_url", "implied_prob_a_no_vig"]].rename(
+                columns={"implied_prob_a_no_vig": "market_prob_merge"})
+            ob = ok[ok["fighter_b"].eq(fighter)][["fight_url", "implied_prob_b_no_vig"]].rename(
+                columns={"implied_prob_b_no_vig": "market_prob_merge"})
+            odds_long = pd.concat([oa, ob], ignore_index=True).dropna(subset=["market_prob_merge"])
+            if not odds_long.empty:
+                all_fights = all_fights.merge(odds_long, on="fight_url", how="left")
+                all_fights["market_prob"] = all_fights.get("market_prob_merge", pd.Series(dtype=float))
+                all_fights = all_fights.drop(columns=["market_prob_merge"], errors="ignore")
+
+    all_fights = all_fights.sort_values("event_date")
+    has_odds = all_fights.dropna(subset=["market_prob"])
+    no_odds = all_fights[all_fights["market_prob"].isna()]
+
+    fig = go.Figure()
+
+    # Probability line + markers for fights with odds
+    if not has_odds.empty:
+        colors_odds = has_odds["result"].map(result_colors).fillna(THEME["text_muted"])
+        fig.add_trace(go.Scatter(
+            x=has_odds["event_date"],
+            y=has_odds["market_prob"] * 100,
+            mode="lines+markers",
+            line=dict(color=STREAM_PALETTE["odds_adjusted"], width=2),
+            marker=dict(size=9, color=colors_odds.tolist(), line=dict(color="white", width=0.8)),
+            customdata=np.column_stack([
+                has_odds["opponent"].fillna("").values,
+                has_odds["result"].values,
+                has_odds["event_name"].fillna("").values,
+            ]),
+            hovertemplate=(
+                "<b>%{customdata[2]}</b><br>"
+                "vs %{customdata[0]}: %{customdata[1]}<br>"
+                "market win probability=%{y:.1f}%<extra></extra>"
+            ),
+            showlegend=False,
+            name="odds",
+        ))
+
+    # Diamond markers at y=5 for fights without odds (preserves full history)
+    if not no_odds.empty:
+        colors_no = no_odds["result"].map(result_colors).fillna(THEME["text_muted"])
+        fig.add_trace(go.Scatter(
+            x=no_odds["event_date"],
+            y=[5.0] * len(no_odds),
+            mode="markers",
+            marker=dict(size=10, color=colors_no.tolist(), symbol="diamond",
+                        line=dict(color="white", width=0.8)),
+            customdata=np.column_stack([
+                no_odds["opponent"].fillna("").values,
+                no_odds["result"].values,
+                no_odds["event_name"].fillna("").values,
+            ]),
+            hovertemplate=(
+                "<b>%{customdata[2]}</b><br>"
+                "vs %{customdata[0]}: %{customdata[1]}<br>"
+                "no odds data<extra></extra>"
+            ),
+            showlegend=False,
+            name="no odds",
+        ))
+
+    if not fig.data:
+        return _empty_figure("no fight data available", title=title, height=300)
+
     fig.add_hline(y=50, line_dash="dash", line_color="#94a3b8")
     _apply_chart_layout(fig, height=300)
     fig.update_layout(
-        title=f"{fighter}: market history",
+        title=title,
         xaxis_title="Date",
         yaxis_title="Market win probability",
         showlegend=False,
