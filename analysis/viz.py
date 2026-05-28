@@ -524,7 +524,7 @@ def top_n_table(
 
     display_cols = [
         "rank", "fighter", "mu_canonical", "phi_canonical",
-        "gender", "primary_division", "recent_division",
+        "gender", "career_division", "current_division", "recent_division",
         "sustained_peak_headline_mu_whr", "five_year_peak_headline_mu_whr",
         "sustained_peak_mu_method_integrity_performance",
         "five_year_peak_mu_method_integrity_performance",
@@ -1016,6 +1016,109 @@ def division_strength_timeline_chart(
         hovermode="x unified",
         margin=dict(r=170),
         legend=dict(orientation="h", y=-0.22),
+    )
+    return fig
+
+
+def division_year_top_fighters_chart(
+    ratings_history: pd.DataFrame,
+    fights: pd.DataFrame,
+    *,
+    rating_col: str,
+    year: int,
+    divisions: list[str] | None = None,
+    top_n: int = 5,
+) -> go.Figure:
+    """Single-year snapshot showing the actual top-N fighters per division.
+
+    Replaces the old "one bar per division aggregate" view (which the user
+    found unreadable) with a horizontal bar per *fighter*, grouped by division
+    so each weight class reads as its own mini-leaderboard. Top of each block
+    is the year's #1 in that class.
+    """
+    title = f"{year} division ranking — top {top_n} per class"
+    if ratings_history is None or ratings_history.empty or fights is None or fights.empty:
+        return _empty_figure("ratings unavailable", title=title)
+    if rating_col not in ratings_history.columns:
+        return _empty_figure(f"{rating_col!r} not in history", title=title)
+
+    f = add_division_to_fights(fights)
+    f["event_date"] = pd.to_datetime(f["event_date"], errors="coerce")
+    f["year"] = f["event_date"].dt.year
+    a = f[["year", "division", "fighter_a"]].rename(columns={"fighter_a": "fighter"})
+    b = f[["year", "division", "fighter_b"]].rename(columns={"fighter_b": "fighter"})
+    long = pd.concat([a, b], ignore_index=True).dropna(subset=["fighter", "division", "year"])
+    long = long[long["year"].eq(year)]
+    if divisions:
+        long = long[long["division"].isin(divisions)]
+    if long.empty:
+        return _empty_figure(f"no fighters in the selected classes in {year}", title=title)
+
+    rh = ratings_history.copy()
+    rh["event_date"] = pd.to_datetime(rh["event_date"], errors="coerce")
+    rh["year"] = rh["event_date"].dt.year
+    rh[rating_col] = pd.to_numeric(rh[rating_col], errors="coerce")
+    eoy = (
+        rh.dropna(subset=[rating_col, "year"])
+        .sort_values("event_date")
+        .groupby(["fighter", "year"], as_index=False)
+        .last()[["fighter", "year", rating_col]]
+    )
+    merged = long.merge(eoy, on=["fighter", "year"], how="inner").drop_duplicates(
+        subset=["fighter", "year", "division"]
+    )
+    if merged.empty:
+        return _empty_figure(f"no rated fighters in the selected classes in {year}", title=title)
+
+    # Order divisions by their #1 fighter (strongest division on top); within a
+    # division order by rating ascending so the top fighter appears at the top
+    # of its block when the y-axis is reversed.
+    top_per_div = (
+        merged.sort_values(rating_col, ascending=False)
+        .groupby("division", as_index=False)
+        .head(top_n)
+        .copy()
+    )
+    div_order = (
+        top_per_div.groupby("division")[rating_col].max().sort_values(ascending=False).index.tolist()
+    )
+    if divisions:
+        # Honor the caller's order when they pinned a selection (matches the
+        # other division charts).
+        div_order = [d for d in divisions if d in div_order] + [d for d in div_order if d not in divisions]
+
+    fig = go.Figure()
+    rating_name = _metric_label(rating_col)
+    y_labels: list[str] = []
+    for division in div_order:
+        block = top_per_div[top_per_div["division"].eq(division)].sort_values(rating_col, ascending=False)
+        if block.empty:
+            continue
+        labels = [f"{i+1}. {fighter}  ·  {division}" for i, fighter in enumerate(block["fighter"].tolist())]
+        fig.add_trace(go.Bar(
+            x=block[rating_col].astype(float),
+            y=labels,
+            orientation="h",
+            name=str(division),
+            text=[f"{v:.0f}" for v in block[rating_col]],
+            textposition="outside",
+            hovertemplate=(
+                f"<b>%{{y}}</b><br>{rating_name}=%{{x:.1f}}<extra></extra>"
+            ),
+        ))
+        y_labels.extend(labels)
+    # Reverse so the strongest division and #1 within it sit at the top.
+    fig.update_yaxes(categoryorder="array", categoryarray=list(reversed(y_labels)))
+    height = max(380, 34 * len(y_labels) + 80)
+    _apply_chart_layout(fig, height=height)
+    fig.update_layout(
+        title=title,
+        xaxis_title=rating_name,
+        yaxis_title="",
+        barmode="stack",
+        legend=dict(orientation="h", y=-0.18, font=dict(size=11)),
+        margin=dict(l=220, r=80, t=70, b=80),
+        showlegend=True,
     )
     return fig
 
@@ -1567,9 +1670,11 @@ def division_strength_comparison_chart(
     rc = _current_rank_frame(ratings_current, min_fights=min_fights)
     recent_div = recent_division_by_fighter(fights).rename(columns={"division": "_recent_division"})
     ufc = rc.merge(recent_div, on="fighter", how="left")
-    # Bucket by home division (permanent-move-aware), falling back to the most
-    # recent division when the home label is missing.
-    home = ufc["primary_division"] if "primary_division" in ufc.columns else pd.Series(pd.NA, index=ufc.index)
+    # Bucket by career division — where the bulk of the UFC career happened —
+    # so fighters surface under the class they made their name in (Makhachev
+    # under Lightweight, GSP under Welterweight) regardless of a recent
+    # cameo. Fall back to recent division only when career isn't known.
+    home = ufc["career_division"] if "career_division" in ufc.columns else pd.Series(pd.NA, index=ufc.index)
     ufc["division"] = home.fillna(ufc["_recent_division"])
     ufc = ufc.dropna(subset=["division"])
     ufc_rows = []
@@ -1636,7 +1741,13 @@ def top_fighter_placement_scatter(
     n: int = 100,
     min_fights: int = 0,
 ) -> go.Figure:
-    """Top-fighter placement: resume size vs rating, colored by division."""
+    """Top-fighter placement: résumé depth vs rating, colored by career division.
+
+    Top-right is the holy grail — an elite rating built over a long, proven
+    résumé, not a hot 3-fight start. The top six fighters get their names on
+    the chart; ranks #1–#10 get a numbered chip; everyone else is a sized dot
+    you can hover for details.
+    """
     if ratings_current is None or ratings_current.empty:
         return _empty_figure("ratings unavailable", title="Top fighter placement")
     df = ratings_current.copy()
@@ -1649,20 +1760,29 @@ def top_fighter_placement_scatter(
     df = df.sort_values(rating_col, ascending=False).head(n).reset_index(drop=True)
     if df.empty:
         return _empty_figure("no fighters match the current filters", title="Top fighter placement")
-    df["division_display"] = df.get("primary_division", df.get("recent_division", "")).fillna("Unknown")
+    df["division_display"] = df.get("career_division", df.get("recent_division", "")).fillna("Unknown")
     df["rank"] = np.arange(1, len(df) + 1)
     df["rating_display"] = pd.to_numeric(df[rating_col], errors="coerce")
     rating_name = _metric_label(rating_col)
     fig = go.Figure()
-    for division, g in df.groupby("division_display", dropna=False):
+    # Stable color order = stable division legend across redraws. Sort by mean
+    # rating so the strongest division leads the legend.
+    division_order = (
+        df.groupby("division_display")["rating_display"].mean().sort_values(ascending=False).index.tolist()
+    )
+    for division in division_order:
+        g = df[df["division_display"].eq(division)]
         fig.add_trace(go.Scatter(
             x=g["rating_periods"],
             y=g["rating_display"],
             mode="markers",
             name=str(division),
             marker=dict(
-                size=(22 - np.sqrt(g["rank"]).clip(1, 15)).clip(7, 20),
-                opacity=0.76,
+                # Top-10 markers are bigger so they read at a glance; the long
+                # tail is uniformly small to avoid the old "every dot fights for
+                # space" cluster.
+                size=np.where(g["rank"].le(10), 16, 9),
+                opacity=0.82,
                 line=dict(color="white", width=0.8),
             ),
             customdata=np.stack([
@@ -1679,8 +1799,8 @@ def top_fighter_placement_scatter(
                 "last fight=%{customdata[3]}<extra></extra>"
             ),
         ))
-    top_labels = df.head(10)
-    for row in top_labels.itertuples(index=False):
+    # Numbered chips for the top 10.
+    for row in df.head(10).itertuples(index=False):
         is_leader = int(row.rank) == 1
         fig.add_annotation(
             x=row.rating_periods,
@@ -1692,13 +1812,29 @@ def top_fighter_placement_scatter(
             bordercolor=THEME["border_strong"],
             borderpad=2,
         )
+    # Names for the top 6 (anchored to one side so labels don't collide with
+    # each other or with the chip).
+    for i, row in enumerate(df.head(6).itertuples(index=False)):
+        fig.add_annotation(
+            x=row.rating_periods,
+            y=row.rating_display,
+            text=str(row.fighter),
+            showarrow=False,
+            xanchor="left",
+            yanchor="middle",
+            xshift=14,
+            yshift=10 if i % 2 == 0 else -10,
+            font=dict(size=11, color=THEME["text"]),
+        )
     _apply_chart_layout(fig, height=560)
     fig.update_layout(
         title=f"Top {len(df)} placement — {rating_name}",
         xaxis_title="Rated bouts",
         yaxis_title=rating_name,
-        legend=dict(orientation="h", y=-0.24),
+        legend=dict(orientation="h", y=-0.22, font=dict(size=11)),
+        margin=dict(l=80, r=40, t=70, b=110),
     )
+    fig.update_xaxes(rangemode="tozero")
     return fig
 
 
@@ -1719,7 +1855,7 @@ def top100_division_density_chart(
     df = df.dropna(subset=[rating_col]).sort_values(rating_col, ascending=False).head(n)
     if df.empty:
         return _empty_figure("no top-fighter rows available", title="Top-100 division density")
-    df["division"] = df.get("primary_division", df.get("recent_division", "")).fillna("Unknown")
+    df["division"] = df.get("career_division", df.get("recent_division", "")).fillna("Unknown")
     density = (
         df.groupby("division", as_index=False)
         .agg(fighters=("fighter", "nunique"), avg_score=(rating_col, "mean"))
@@ -2007,9 +2143,6 @@ SCORING_METHODS: tuple[tuple[str, str], ...] = (
 
 PUBLIC_RATING_LENSES: tuple[tuple[str, str], ...] = (
     ("Wins", "wins"),
-    ("Finishes", "finishes"),
-    ("Clean", "clean"),
-    ("Strength", "strength"),
     ("Complete", "complete"),
     ("Legacy", "legacy"),
 )
@@ -2020,20 +2153,26 @@ PUBLIC_TIME_VIEWS: tuple[tuple[str, str], ...] = (
     ("Prime", "sustained_peak"),
 )
 
+# Public lens -> internal stream:
+#   * Wins (canonical Glicko-2) — just the W; no method, no integrity, no
+#     opponent-quality sleeve.
+#   * Complete (method + integrity + performance) — the full-context view:
+#     finish quality, PED/DQ/missed-weight discounting, and opponent-strength
+#     all baked in.
+#   * Legacy (whole-history WHR smoother) — everything Complete carries plus
+#     whole-career résumé bonuses; era-comparable.
+# Finishes / Clean / Strength used to be exposed separately, but Complete
+# already combines those signals and the PED list at the bottom of the
+# notebook surfaces the integrity layer directly — exposing them as their own
+# top-level lenses just multiplied near-identical leaderboards.
 _PUBLIC_LENS_STREAM = {
     "wins": "canonical",
-    "finishes": "method",
-    "clean": "method_integrity",
-    "strength": "method_performance",
     "complete": "method_integrity_performance",
     "legacy": "whr",
 }
 
 _PUBLIC_LENS_HISTORY_KEY = {
     "wins": "ratings_history",
-    "finishes": "ratings_history",
-    "clean": "ratings_history_method_integrity",
-    "strength": "ratings_history_method_performance",
     "complete": "ratings_history_method_integrity_performance",
     "legacy": "ratings_history_whr",
 }
@@ -2281,13 +2420,13 @@ def sleeve_ranking_table(
         cutoff = pd.Timestamp(fights["event_date"].max()) - pd.Timedelta(days=active_within_days)
         df = df[pd.to_datetime(df["last_event_date"], errors="coerce") >= cutoff]
     if division is not None:
-        # Bucket by the fighter's home division (the permanent-move-aware
-        # primary_division), so a champion who moved up is listed under the
-        # division they now belong to, not whichever class their last bout
-        # happened to fall in. Fall back to most-recent division only when the
-        # home label is unavailable.
-        if "primary_division" in df.columns:
-            home = df["primary_division"]
+        # Bucket by career division: where the bulk of the UFC career happened.
+        # A long-tenured Lightweight who just won the Welterweight belt still
+        # surfaces under Lightweight in the divisional leaderboard, because that
+        # is the class the resume was built in. Fall back to most-recent
+        # division only when career isn't known.
+        if "career_division" in df.columns:
+            home = df["career_division"]
         else:
             home = pd.Series(pd.NA, index=df.index)
         if fights is not None:
@@ -3492,6 +3631,60 @@ def win_streaks_table(
     return streaks.head(n).reset_index(drop=True)
 
 
+def _add_streak_traces(
+    fig: go.Figure,
+    fighter: str,
+    history: pd.DataFrame,
+    fights: pd.DataFrame,
+    rating_col: str,
+    *,
+    line_color: str,
+    marker_label_prefix: str = "",
+    outcome_overrides: dict | None = None,
+) -> None:
+    """Add a fighter's rating line + outcome markers to an existing figure."""
+    h = history[history["fighter"].eq(fighter)].copy()
+    if h.empty:
+        return
+    h["event_date"] = pd.to_datetime(h["event_date"], errors="coerce")
+    h = h.sort_values("event_date")
+    results = _fighter_results_long(fights)
+    results = results[results["fighter"].eq(fighter)][["event_date", "opponent", "outcome"]]
+    merged = h.merge(results, on="event_date", how="left")
+
+    fig.add_trace(go.Scatter(
+        x=h["event_date"], y=h[rating_col],
+        mode="lines",
+        line=dict(color=line_color, width=2.5, shape="spline", smoothing=0.4),
+        name=f"{fighter} rating",
+        hoverinfo="skip",
+        showlegend=True,
+    ))
+    outcome_color = outcome_overrides or {
+        "win": THEME["positive"], "loss": THEME["negative"],
+        "draw": THEME["neutral"], "nc": THEME["text_caption"],
+    }
+    for outcome, label in (("win", "Win"), ("loss", "Loss"), ("draw", "Draw"), ("nc", "No contest")):
+        seg = merged[merged["outcome"].eq(outcome)]
+        if seg.empty:
+            continue
+        trace_label = f"{marker_label_prefix}{label}" if marker_label_prefix else label
+        fig.add_trace(go.Scatter(
+            x=seg["event_date"], y=seg[rating_col],
+            mode="markers",
+            name=trace_label,
+            marker=dict(size=10, color=outcome_color[outcome],
+                        line=dict(color=THEME["bg"], width=1.5)),
+            customdata=seg["opponent"].fillna("").to_numpy()[:, None],
+            hovertemplate=(
+                f"<b>{fighter} — {label}</b> vs %{{customdata[0]}}<br>"
+                "%{x|%b %d, %Y}<br>"
+                f"{_metric_label(rating_col)}=%{{y:.1f}}<extra></extra>"
+            ),
+            showlegend=False,
+        ))
+
+
 def streak_timeline_chart(
     fighter: str,
     ratings_history: pd.DataFrame,
@@ -3501,60 +3694,37 @@ def streak_timeline_chart(
     highlight_start=None,
     highlight_end=None,
     streak_len: int | None = None,
+    overlay_fighter: str | None = None,
+    overlay_highlight_start=None,
+    overlay_highlight_end=None,
+    overlay_streak_len: int | None = None,
 ) -> go.Figure:
-    """Single-fighter rating timeline with win/loss/draw markers.
+    """Rating timeline for a fighter, with optional overlay of a second fighter.
 
-    When a streak window is supplied it is shaded so the rating arc over that
-    run is obvious. This is the chart driven by the win-streak selector.
+    The primary fighter's streak window is shaded in the accent color so their
+    rating arc over the run is obvious. When ``overlay_fighter`` is provided
+    (the win-streak section's fighter search), that fighter's full rating
+    timeline is drawn on the same axes in a contrasting color so the two runs
+    can be compared head to head — outcome markers are kept separate per
+    fighter, and a second streak window can be shaded.
     """
     title = f"{fighter}: rating timeline"
+    if overlay_fighter and overlay_fighter != fighter:
+        title = f"{fighter} vs {overlay_fighter}: rating timelines"
     if ratings_history is None or ratings_history.empty or not fighter:
         return _empty_figure("rating history unavailable", title=title, height=420)
     if rating_col not in ratings_history.columns:
         rating_col = "mu_canonical"
-    h = ratings_history[ratings_history["fighter"].eq(fighter)].copy()
-    if h.empty:
+    if ratings_history[ratings_history["fighter"].eq(fighter)].empty:
         return _empty_figure(f"no rating history for {fighter}", title=title, height=420)
-    h["event_date"] = pd.to_datetime(h["event_date"], errors="coerce")
-    h = h.sort_values("event_date")
-
-    results = _fighter_results_long(fights)
-    results = results[results["fighter"].eq(fighter)][["event_date", "opponent", "outcome"]]
-    merged = h.merge(results, on="event_date", how="left")
 
     fig = go.Figure()
-    # rating line
-    fig.add_trace(go.Scatter(
-        x=h["event_date"], y=h[rating_col],
-        mode="lines",
-        line=dict(color=THEME["primary"], width=2.5, shape="spline", smoothing=0.4),
-        name="rating",
-        hoverinfo="skip",
-        showlegend=False,
-    ))
-    # outcome markers
-    outcome_color = {
-        "win": THEME["positive"], "loss": THEME["negative"],
-        "draw": THEME["neutral"], "nc": THEME["text_caption"],
-    }
-    for outcome, label in (("win", "Win"), ("loss", "Loss"), ("draw", "Draw"), ("nc", "No contest")):
-        seg = merged[merged["outcome"].eq(outcome)]
-        if seg.empty:
-            continue
-        fig.add_trace(go.Scatter(
-            x=seg["event_date"], y=seg[rating_col],
-            mode="markers",
-            name=label,
-            marker=dict(size=10, color=outcome_color[outcome],
-                        line=dict(color=THEME["bg"], width=1.5)),
-            customdata=seg["opponent"].fillna("").to_numpy()[:, None],
-            hovertemplate=(
-                f"<b>{label}</b> vs %{{customdata[0]}}<br>"
-                "%{x|%b %d, %Y}<br>"
-                f"{_metric_label(rating_col)}=%{{y:.1f}}<extra></extra>"
-            ),
-        ))
+    _add_streak_traces(
+        fig, fighter, ratings_history, fights, rating_col,
+        line_color=THEME["primary"],
+    )
 
+    # Shade the primary streak window.
     if highlight_start is not None and highlight_end is not None:
         hs = pd.to_datetime(highlight_start)
         he = pd.to_datetime(highlight_end)
@@ -3567,9 +3737,35 @@ def streak_timeline_chart(
         label = "win streak" if streak_len is None else f"{streak_len}-fight win streak"
         fig.add_annotation(
             x=hs + (he - hs) / 2, y=1.0, yref="paper",
-            text=label, showarrow=False, yanchor="bottom",
+            text=f"{fighter}: {label}", showarrow=False, yanchor="bottom",
             font=dict(color=THEME["accent"], size=12),
         )
+
+    # Overlay a second fighter — full timeline so the comparison is honest, not
+    # just the streak window. Marker outcome colors stay the same so wins still
+    # read green / losses red regardless of which fighter the marker belongs to.
+    if overlay_fighter and overlay_fighter != fighter:
+        if not ratings_history[ratings_history["fighter"].eq(overlay_fighter)].empty:
+            _add_streak_traces(
+                fig, overlay_fighter, ratings_history, fights, rating_col,
+                line_color=THEME["secondary"],
+                marker_label_prefix=f"{overlay_fighter} ",
+            )
+            if overlay_highlight_start is not None and overlay_highlight_end is not None:
+                ohs = pd.to_datetime(overlay_highlight_start)
+                ohe = pd.to_datetime(overlay_highlight_end)
+                fig.add_vrect(
+                    x0=ohs, x1=ohe,
+                    fillcolor=_hex_to_rgba(THEME["secondary"], 0.10),
+                    line_width=0, layer="below",
+                )
+                olabel = ("win streak" if overlay_streak_len is None
+                          else f"{overlay_streak_len}-fight win streak")
+                fig.add_annotation(
+                    x=ohs + (ohe - ohs) / 2, y=0.96, yref="paper",
+                    text=f"{overlay_fighter}: {olabel}", showarrow=False, yanchor="bottom",
+                    font=dict(color=THEME["secondary"], size=11),
+                )
 
     _apply_chart_layout(fig, height=460)
     fig.update_layout(
@@ -3577,7 +3773,7 @@ def streak_timeline_chart(
         xaxis_title="Date",
         yaxis_title=_metric_label(rating_col),
         hovermode="closest",
-        legend=dict(orientation="h", y=1.08, x=0, yanchor="bottom"),
+        legend=dict(orientation="h", y=1.10, x=0, yanchor="bottom"),
     )
     return fig
 

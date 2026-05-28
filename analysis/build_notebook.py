@@ -76,6 +76,7 @@ from analysis.viz import (
     calibration_residuals_chart,
     division_strength_timeline_chart,
     division_year_snapshot_chart,
+    division_year_top_fighters_chart,
     era_heatmap_chart,
     favorite_underdog_performance_table,
     fighter_odds_history_chart,
@@ -564,9 +565,10 @@ display(Markdown(
     f"<div style='font-family:{THEME['font']};color:{THEME['text_caption']};"
     f"font-size:0.82em;line-height:1.6;margin-top:8px'>"
     f"<b style='color:{THEME['text_2']}'>Rank by</b> picks how a win is scored — "
-    f"<b>Wins</b> (just the W), <b>Finishes</b> (KO/sub vs decision), <b>Clean</b> "
-    f"(discounts PED/DQ/missed-weight wins), <b>Strength</b> (quality of opposition + "
-    f"the betting line), <b>Complete</b> (all of it), <b>Legacy</b> (whole-career résumé). "
+    f"<b>Wins</b> (just the W, no method or context), "
+    f"<b>Complete</b> (the full picture: finish quality + integrity discounts for "
+    f"PED/DQ/missed-weight + opponent strength), "
+    f"<b>Legacy</b> (Complete plus a whole-career résumé bonus, era-comparable). "
     f"<b style='color:{THEME['text_2']}'>Form</b>: <b>Now</b> = where they sit today, "
     f"<b>Peak</b> = their best 5-year run, <b>Prime</b> = a sustained run you size with "
     f"the <b>Prime</b> sliders. <b style='color:{THEME['text_2']}'>Show top</b>, "
@@ -590,10 +592,13 @@ def _build_top_view(df_subset, rating_col, n, min_fights_val, division_val):
     df["rating_periods"] = pd.to_numeric(df.get("rating_periods"), errors="coerce").fillna(0)
     df = df[df["rating_periods"] >= min_fights_val]
     if division_val and division_val != "All divisions":
-        div_series = df.get("recent_division")
-        if div_series is None:
-            div_series = pd.Series(index=df.index, dtype=object)
-        div_series = div_series.fillna(df.get("primary_division", ""))
+        # Filter by career division: the class the fighter made their name in.
+        # A long-tenured Lightweight who just won the Welterweight belt still
+        # shows under Lightweight here. Fall back to recent_division for any
+        # fighter whose career label is missing.
+        career = df["career_division"] if "career_division" in df.columns else pd.Series(pd.NA, index=df.index)
+        recent = df["recent_division"] if "recent_division" in df.columns else pd.Series(pd.NA, index=df.index)
+        div_series = career.fillna(recent).fillna("")
         df = df[div_series.eq(division_val)]
     df = df.dropna(subset=[rating_col])
     df = df.sort_values(rating_col, ascending=False).head(n).reset_index(drop=True)
@@ -606,7 +611,10 @@ def _build_top_view(df_subset, rating_col, n, min_fights_val, division_val):
         "Fighter": df["fighter"],
         "Rating": rating_vals.round(1),
         "vs Wins": (rating_vals - baseline_vals).round(1),
-        "Division": df.get("recent_division").fillna(df.get("primary_division", "")),
+        "Division": (
+            (df["career_division"] if "career_division" in df.columns else pd.Series(pd.NA, index=df.index))
+            .fillna(df["recent_division"] if "recent_division" in df.columns else pd.Series("", index=df.index))
+        ),
         "Last": pd.to_datetime(df["last_event_date"], errors="coerce").dt.date,
         "Fights": df["rating_periods"].astype(int),
     })
@@ -806,29 +814,51 @@ def _style_streaks(df):
 
 
 def draw_streak_timeline():
+    # The picked streak (from the table dropdown) is the primary timeline. The
+    # search box overlays a second fighter on the same axes so the two runs can
+    # be compared head to head — picking from the table and typing a fighter
+    # are no longer either/or.
+    primary = None
+    rows = _streak_state.get("rows")
+    if rows is not None and not rows.empty and streak_pick.value is not None:
+        r = rows.iloc[int(streak_pick.value)]
+        primary = {
+            "fighter": r["fighter"],
+            "start": r["start_date"], "end": r["end_date"], "len": int(r["length"]),
+        }
+
+    overlay = None
     q = (streak_search.value or "").strip()
     if q:
         matches = fighter_search(rc, q, limit=1)
-        if not matches:
-            show_fig(streak_fw, go.Figure())
-            return
-        name = matches[0]
-        fr = win_streaks(fights, rc, min_len=1)
-        fr = fr[fr["fighter"].eq(name)]
-        hs = he = ln = None
-        if not fr.empty:
-            top = fr.sort_values("length", ascending=False).iloc[0]
-            hs, he, ln = top["start_date"], top["end_date"], int(top["length"])
-        show_fig(streak_fw, streak_timeline_chart(name, ratings_history, fights,
-                 highlight_start=hs, highlight_end=he, streak_len=ln))
-        return
-    rows = _streak_state.get("rows")
-    if rows is None or rows.empty or streak_pick.value is None:
+        if matches:
+            name = matches[0]
+            fr = win_streaks(fights, rc, min_len=1)
+            fr = fr[fr["fighter"].eq(name)]
+            ostart = oend = olen = None
+            if not fr.empty:
+                top = fr.sort_values("length", ascending=False).iloc[0]
+                ostart, oend, olen = top["start_date"], top["end_date"], int(top["length"])
+            overlay = {"fighter": name, "start": ostart, "end": oend, "len": olen}
+
+    if primary is None and overlay is not None:
+        # No picked row but a search match — promote the search to primary so
+        # the chart is never blank when the user typed a fighter.
+        primary, overlay = overlay, None
+
+    if primary is None:
         show_fig(streak_fw, go.Figure())
         return
-    r = rows.iloc[int(streak_pick.value)]
-    show_fig(streak_fw, streak_timeline_chart(r["fighter"], ratings_history, fights,
-             highlight_start=r["start_date"], highlight_end=r["end_date"], streak_len=int(r["length"])))
+
+    show_fig(streak_fw, streak_timeline_chart(
+        primary["fighter"], ratings_history, fights,
+        highlight_start=primary["start"], highlight_end=primary["end"],
+        streak_len=primary["len"],
+        overlay_fighter=(overlay["fighter"] if overlay else None),
+        overlay_highlight_start=(overlay["start"] if overlay else None),
+        overlay_highlight_end=(overlay["end"] if overlay else None),
+        overlay_streak_len=(overlay["len"] if overlay else None),
+    ))
 
 
 def draw_streaks():
@@ -867,8 +897,7 @@ subscribe("streaks", draw_streaks, {"division", "gender", "top_n"})
 
 
 PLACEMENT = r"""
-plc_scatter = chart_widget(height=520)
-plc_density = chart_widget(height=360)
+plc_scatter = chart_widget(height=560)
 
 
 def _placement_col():
@@ -880,40 +909,57 @@ def _placement_col():
 
 def draw_placement():
     col = _placement_col()
-    fig1 = top_fighter_placement_scatter(rc, rating_col=col, n=g_top_n.value, min_fights=g_min_fights.value)
-    fig1.update_layout(title=f"Placement — {rating_label()} (top {g_top_n.value})")
-    show_fig(plc_scatter, fig1)
-    fig2 = top100_division_density_chart(rc, rating_col=col, n=100)
-    show_fig(plc_density, fig2)
+    fig = top_fighter_placement_scatter(rc, rating_col=col, n=g_top_n.value, min_fights=g_min_fights.value)
+    fig.update_layout(title=f"Résumé vs Rating — {rating_label()} (top {g_top_n.value})")
+    show_fig(plc_scatter, fig)
 
 
 display(plc_scatter)
 display(html_box(note("Each dot is a fighter — across is how many UFC bouts they've been rated on (résumé "
                      "depth), up is their rating. Top-right is the holy grail: an elite rating built over a "
-                     "long, proven résumé, not a hot 3-fight start.")))
-display(plc_density)
-display(html_box(note("How the current top 100 splits across the weight classes.")))
+                     "long, proven résumé, not a hot 3-fight start. Dots are colored by career division.")))
 draw_placement()
 subscribe("placement", draw_placement, {"lens", "time", "prime_years", "prime_min", "top_n", "min_fights"})
 """
 
 
 DIVISIONS_SECTION = r"""
+# ---- Local controls --------------------------------------------------------
 _default_divisions = tuple([d for d in ["Lightweight", "Welterweight", "Middleweight", "Light Heavyweight", "Heavyweight", "Featherweight", "Bantamweight", "Flyweight"] if d in DIVISIONS])
 divx = widgets.SelectMultiple(
     options=list(DIVISIONS),
     value=_default_divisions[:6] if _default_divisions else tuple(list(DIVISIONS)[:6]),
-    description="Divisions:", rows=9, layout=widgets.Layout(width="340px"),
+    description="Divisions:", rows=9, layout=widgets.Layout(width="320px"),
     style={"description_width": "70px"})
-divx_index = widgets.ToggleButtons(options=[("Score", False), ("Index", True)], value=False, description="Scale:",
-                                   style={"description_width": "60px"})
 _years = sorted(pd.to_datetime(all_bouts["event_date"], errors="coerce").dt.year.dropna().astype(int).unique().tolist())
-divx_year = (widgets.IntSlider(value=max(_years), min=min(_years), max=max(_years), step=1, description="Year:",
-                               continuous_update=False, style={"description_width": "60px"})
-             if _years else widgets.IntSlider(value=2026, min=2000, max=2026, description="Year:"))
-divx_timeline = chart_widget(height=460)
-divx_snapshot = chart_widget(height=440)
-divx_table = html_box()
+_yr_min, _yr_max = (min(_years), max(_years)) if _years else (2000, 2026)
+divx_year_range = widgets.IntRangeSlider(
+    value=(max(_yr_min, _yr_max - 10), _yr_max), min=_yr_min, max=_yr_max, step=1,
+    description="Years:", continuous_update=False,
+    layout=widgets.Layout(width="420px"),
+    style={"description_width": "60px"})
+divx_index = widgets.ToggleButtons(
+    options=[("Score", False), ("Index", True)], value=False, description="Scale:",
+    style={"description_width": "60px"})
+divx_year_snapshot = widgets.IntSlider(
+    value=_yr_max, min=_yr_min, max=_yr_max, step=1, description="Snapshot year:",
+    continuous_update=False,
+    layout=widgets.Layout(width="380px"),
+    style={"description_width": "110px"})
+divx_leader_pick = widgets.Dropdown(
+    options=list(DIVISIONS),
+    value=(_default_divisions[0] if _default_divisions
+           else (list(DIVISIONS)[0] if DIVISIONS else "Lightweight")),
+    description="Show top 15 of:",
+    layout=widgets.Layout(width="320px"),
+    style={"description_width": "120px"})
+
+# ---- Output widgets --------------------------------------------------------
+divx_timeline = chart_widget(height=540)
+divx_snapshot = chart_widget(height=560)
+divx_era = chart_widget(height=520)
+divx_density = chart_widget(height=380)
+divx_leader_table = html_box()
 
 
 def _divx_stream_col():
@@ -926,66 +972,123 @@ def draw_divx():
     hist = selected_history()
     col = _divx_stream_col()
     selected = list(divx.value or [])
-    if not selected:
-        divx_table.value = msg("select at least one division")
-        show_fig(divx_timeline, go.Figure())
-        show_fig(divx_snapshot, go.Figure())
-        return
-    fig_tl = division_strength_timeline_chart(hist, all_bouts, rating_col=col,
-             top_n_per_division=g_top_n.value, divisions=selected,
-             year_min=divx_year.min, year_max=divx_year.max, indexed=divx_index.value)
-    fig_tl.update_layout(title=f"{rating_label()} — division strength over time")
-    show_fig(divx_timeline, fig_tl)
-    fig_snap = division_year_snapshot_chart(hist, all_bouts, rating_col=col,
-               year=divx_year.value, top_n_per_division=g_top_n.value, divisions=selected)
-    fig_snap.update_layout(title=f"Division ranking — {divx_year.value}")
-    show_fig(divx_snapshot, fig_snap)
+    ymin, ymax = sorted([int(v) for v in divx_year_range.value])
 
-    recent = recent_division_by_fighter(fights)
-    d = rc.merge(recent, on="fighter", how="left")
-    d["division"] = d["division"].fillna(d.get("primary_division"))
-    d = d[d["division"].isin(selected)]
-    rank_col = selected_rating_col()
-    if rank_col not in d.columns:
-        rank_col = "mu_canonical"
-    d = d.dropna(subset=[rank_col]).sort_values(["division", rank_col], ascending=[True, False])
-    d = d.groupby("division", as_index=False).head(8).reset_index(drop=True)
-    if d.empty:
-        divx_table.value = msg("no rated fighters in the selected divisions")
+    # ---- Strength over time (year-range, multi-division) -------------------
+    if selected:
+        fig_tl = division_strength_timeline_chart(
+            hist, all_bouts, rating_col=col,
+            top_n_per_division=g_top_n.value, divisions=selected,
+            year_min=ymin, year_max=ymax, indexed=divx_index.value)
+        fig_tl.update_layout(title=f"{rating_label()} — division strength {ymin}-{ymax}")
+        show_fig(divx_timeline, fig_tl)
     else:
-        view = pd.DataFrame({
-            "#": d.groupby("division").cumcount().add(1).map(_rank_chip),
-            "Division": d["division"],
-            "Fighter": d["fighter"],
-            "Rating": pd.to_numeric(d[rank_col], errors="coerce").round(1),
-            "Fights": pd.to_numeric(d.get("rating_periods"), errors="coerce").fillna(0).astype(int),
-            "Last": pd.to_datetime(d.get("last_event_date"), errors="coerce").dt.date,
-        })
-        rmin, rmax = view["Rating"].min(), view["Rating"].max()
-        styled = (
-            view.style.hide(axis="index")
-            .bar(subset=["Rating"], color="rgba(56,189,248,0.28)", vmin=rmin, vmax=rmax)
-            .format({"Rating": "{:.1f}"})
-            .format(lambda s: s, subset=["#"], escape=None)
-            .format(lambda s: s, subset=["Fighter"], escape=None)
-            .set_properties(subset=["Fighter"], **{"font-weight": "600", "color": THEME["text"]})
-            .set_properties(subset=["Division"], **{"color": THEME["text_2"]})
-            .set_properties(subset=["Fights", "Last"], **{"color": THEME["text_muted"]})
-            .set_properties(subset=["#"], **{"text-align": "center"})
-            .set_table_styles(_BASE_TABLE_STYLES)
-        )
-        divx_table.value = heading("Current leaders by selected division") + table_html(styled)
+        show_fig(divx_timeline, go.Figure())
+
+    # ---- Single-year ranking — actual top fighters per class --------------
+    snap_year = max(ymin, min(ymax, int(divx_year_snapshot.value)))
+    if selected:
+        fig_snap = division_year_top_fighters_chart(
+            hist, all_bouts, rating_col=col,
+            year=snap_year, divisions=selected, top_n=5)
+        show_fig(divx_snapshot, fig_snap)
+    else:
+        show_fig(divx_snapshot, go.Figure())
+
+    # ---- Era heat map (shares the year range) ------------------------------
+    era_divs = selected or list(DIVISIONS)
+    fig_era = era_heatmap_chart(
+        ratings_history, all_bouts, top_n=g_top_n.value,
+        divisions=era_divs, year_min=ymin, year_max=ymax)
+    fig_era.update_layout(
+        title=f"Era strength index — {ymin}-{ymax}",
+        coloraxis_colorbar=dict(
+            title=dict(text="Strength index", font=dict(color="#cbd5e1")),
+            tickfont=dict(color="#cbd5e1")))
+    for tr in fig_era.data:
+        if hasattr(tr, "colorbar"):
+            tr.colorbar = dict(
+                title=dict(text="Strength index", font=dict(color="#cbd5e1")),
+                tickfont=dict(color="#cbd5e1"))
+    show_fig(divx_era, fig_era)
+
+    # ---- Top-100 split by career division ---------------------------------
+    fig_den = top100_division_density_chart(rc, rating_col=col, n=100)
+    show_fig(divx_density, fig_den)
+
+    # ---- Single-division leaders (top 15) ---------------------------------
+    div = divx_leader_pick.value
+    if not div:
+        divx_leader_table.value = msg("pick a division for the leader board")
+    else:
+        rank_col = selected_rating_col()
+        if not rank_col or rank_col not in rc.columns:
+            rank_col = "mu_canonical"
+        d = rc.copy()
+        d["_career"] = d.get("career_division", pd.Series(pd.NA, index=d.index))
+        d = d[d["_career"].eq(div)].dropna(subset=[rank_col]).copy()
+        d = d.sort_values(rank_col, ascending=False).head(15).reset_index(drop=True)
+        if d.empty:
+            divx_leader_table.value = msg(f"no rated fighters in {div}")
+        else:
+            view = pd.DataFrame({
+                "#": [_rank_chip(i) for i in range(1, len(d) + 1)],
+                "Fighter": d["fighter"],
+                "Rating": pd.to_numeric(d[rank_col], errors="coerce").round(1),
+                "Fights": pd.to_numeric(d.get("rating_periods"), errors="coerce").fillna(0).astype(int),
+                "Last": pd.to_datetime(d.get("last_event_date"), errors="coerce").dt.date,
+                "Now competes": d.get("current_division", pd.Series("—", index=d.index)).fillna("—"),
+            })
+            rmin, rmax = view["Rating"].min(), view["Rating"].max()
+            styled = (
+                view.style.hide(axis="index")
+                .bar(subset=["Rating"], color="rgba(56,189,248,0.28)", vmin=rmin, vmax=rmax)
+                .format({"Rating": "{:.1f}"})
+                .format(lambda s: s, subset=["#"], escape=None)
+                .format(lambda s: s, subset=["Fighter"], escape=None)
+                .set_properties(subset=["Fighter"], **{"font-weight": "600", "color": THEME["text"]})
+                .set_properties(subset=["Fights", "Last", "Now competes"], **{"color": THEME["text_muted"]})
+                .set_properties(subset=["#"], **{"text-align": "center"})
+                .set_table_styles(_BASE_TABLE_STYLES)
+            )
+            divx_leader_table.value = (
+                heading(f"Top 15 — {div} (career division)") + table_html(styled)
+            )
 
 
-display(widgets.HBox([divx, widgets.VBox([divx_year, divx_index])]))
+# ---- Layout: one cohesive Weight Classes section ---------------------------
+display(html_box(heading("Strength over time")))
+display(widgets.HBox([divx, widgets.VBox([divx_year_range, divx_index])]))
 display(divx_timeline)
-display(html_box(note("Each weight class's top-tier strength over time. Flip to Index to compare how divisions "
-                     "rose and fell regardless of absolute level — handy for 'was the 2010s lightweight era "
-                     "deeper than today's?'.")))
+display(html_box(note("Each selected weight class's top-tier strength over the chosen year range. "
+                     "Flip to Index to compare how divisions rose and fell regardless of absolute level "
+                     "— handy for 'was the 2010s lightweight era deeper than today's?'.")))
+
+display(html_box(heading("Single-year ranking")))
+display(divx_year_snapshot)
 display(divx_snapshot)
-display(divx_table)
+display(html_box(note("The actual top fighters of the snapshot year in each selected class — not just an "
+                     "aggregate. Read each block as a mini-leaderboard for that division that year.")))
+
+display(html_box(heading("Era heat map")))
+display(divx_era)
+display(html_box(note("100 = the deepest weight class that year; lower = how far a division trailed the "
+                     "era's best. Shows which division ruled the sport season by season.")))
+
+display(html_box(heading("Top 100 by career division")))
+display(divx_density)
+display(html_box(note("How the current top 100 splits across the weight classes (by career division — where "
+                     "the fighter built their résumé, not their most recent bout's class).")))
+
+display(html_box(heading("Division leaders right now")))
+display(divx_leader_pick)
+display(divx_leader_table)
+display(html_box(note("Top 15 of the picked class by the lens up top. 'Now competes' shows whether that "
+                     "fighter currently fights in a different class than their career home — a flagged title "
+                     "mover.")))
+
 draw_divx()
-for _w in (divx, divx_year, divx_index):
+for _w in (divx, divx_year_range, divx_index, divx_year_snapshot, divx_leader_pick):
     _observe(_w, lambda *_: draw_divx())
 subscribe("divisions", draw_divx, {"lens", "time", "prime_years", "prime_min", "top_n"})
 """
@@ -1260,44 +1363,8 @@ register_section("adjustments", draw_audit)
 """
 
 
-ERA = r"""
-era_divisions = widgets.SelectMultiple(options=list(DIVISIONS), value=tuple(list(DIVISIONS)[:8]),
-                                       description="Divisions:", rows=8, layout=widgets.Layout(width="340px"),
-                                       style={"description_width": "70px"})
-era_year_min = widgets.IntSlider(value=min(_years), min=min(_years), max=max(_years), step=1, description="From:",
-                                 continuous_update=False, style={"description_width": "60px"})
-era_year_max = widgets.IntSlider(value=max(_years), min=min(_years), max=max(_years), step=1, description="To:",
-                                 continuous_update=False, style={"description_width": "60px"})
-era_fw = chart_widget(height=460)
-
-
-def draw_era():
-    if ratings_history is None or ratings_history.empty:
-        show_fig(era_fw, go.Figure())
-        return
-    ymin, ymax = sorted([era_year_min.value, era_year_max.value])
-    fig = era_heatmap_chart(ratings_history, all_bouts, top_n=g_top_n.value,
-                            divisions=list(era_divisions.value or []), year_min=ymin, year_max=ymax)
-    fig.update_layout(title=f"Top-end division strength index (top {g_top_n.value})",
-                      coloraxis_colorbar=dict(title=dict(text="Strength index", font=dict(color="#cbd5e1")),
-                                              tickfont=dict(color="#cbd5e1")))
-    for tr in fig.data:
-        if hasattr(tr, "colorbar"):
-            tr.colorbar = dict(title=dict(text="Strength index", font=dict(color="#cbd5e1")),
-                               tickfont=dict(color="#cbd5e1"))
-    show_fig(era_fw, fig)
-
-
-display(widgets.HBox([era_divisions, widgets.VBox([era_year_min, era_year_max])]))
-display(era_fw)
-display(html_box(note("Read each column (a year): 100 = the deepest weight class that year, lower = how far a "
-                     "division trailed the era's best. Shows which division ruled the sport, year by year. "
-                     "'Show top' (Control Room) sets how many fighters define each division's top tier.")))
-draw_era()
-for _w in (era_divisions, era_year_min, era_year_max):
-    _observe(_w, lambda *_: draw_era())
-subscribe("era", draw_era, {"top_n"})
-"""
+# Era heat map was a standalone section; its chart now lives inside
+# DIVISIONS_SECTION above (one cohesive Weight Classes block).
 
 
 MODEL_TUNING = r'''
@@ -1562,12 +1629,21 @@ re-runs and every table and chart below updates to the tuned model.
 ## The Rankings
 
 The pound-for-pound board for whatever you've set up top. **Rating** is the lens
-you picked in **Rank by**; **vs Wins** shows how much the context layers
-(Clean/Strength) moved a fighter off the raw win count — positive means context
+you picked in **Rank by**; **vs Wins** shows how much the **Complete**
+context layer moved a fighter off the raw win count — positive means context
 helped their case. Reshape it with **Roster**, **Weight class**, **Show top**,
 and **Min UFC bouts**.
 """),
     code(LEADERBOARD),
+    md("""
+## Résumé vs Rating
+
+Who's the real deal vs the hot start. Each fighter plotted by résumé depth (UFC
+bouts rated) against rating, colored by their career division. Top-right is the
+holy grail — an elite rating built over a long, proven résumé. Driven by **Rank
+by**, **Form**, **Show top**, and **Min UFC bouts**.
+"""),
+    code(PLACEMENT),
     md("""
 ## Career Arcs
 
@@ -1588,24 +1664,17 @@ selected. Needs a comparable prior snapshot for the same view.
 
 The longest unbeaten runs in the books, filtered by **Weight class** / **Roster**
 and ranked by your **Sort** (length, toughness of the schedule, or title wins).
-Pick a run — or type any fighter — to see their rating climb through it, with the
-streak window shaded gold.
+Pick a run for the timeline — and *type any fighter* to overlay that fighter's
+own streak on top, so you can compare two runs head to head on the same axes.
 """),
     code(STREAKS),
     md("""
-## Résumé vs Rating
-
-Who's the real deal vs the hot start. Each fighter plotted by résumé depth (UFC
-bouts rated) against rating, plus how the current top 100 is spread across the
-weight classes. Driven by **Rank by**, **Form**, **Show top**, and **Min UFC bouts**.
-"""),
-    code(PLACEMENT),
-    md("""
 ## Weight Classes
 
-Stack the divisions side by side: pick the weight classes and a year, toggle
-absolute **Score** vs shape-only **Index**, and the strength-over-time chart, the
-single-year pecking order, and the current contenders table all update together.
+All the division views in one place. Pick the weight classes and a year range
+to drive the strength-over-time chart, the single-year ranking, the era heat
+map, the top-100 share, and a single-division leaderboard (pick a class, see
+its top 15 right now).
 """),
     code(DIVISIONS_SECTION),
     md("""
@@ -1621,7 +1690,7 @@ fighter's rating profile and how the betting market saw them.
 
 Pick a fighter and see which fights helped or hurt them. Bars to the right are
 gains, to the left are hits — split into the **Clean** (tainted-win) and
-**Strength** (quality-of-opposition) layers.
+**Strength** (quality-of-opposition) layers that combine into the **Complete** lens.
 """),
     code(RATING_STORY),
     md("""
@@ -1632,13 +1701,6 @@ how hard — with the biggest single-fight swings called out. This is the audit
 trail behind the Model Tuning knobs.
 """),
     code(ADJUSTMENTS),
-    md("""
-## Era Check
-
-A weight-class × year heat map of top-tier strength, scored within each year so
-you can read which division ruled the sport season by season.
-"""),
-    code(ERA),
 ]
 
 

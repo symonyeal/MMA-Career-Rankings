@@ -185,14 +185,20 @@ PERIOD_TITLE_EFFECTIVE_DEFENSE_CREDIT: float = 0.75
 
 
 # ---------------------------------------------------------------------------
-# Division home-class identification and cross-division carry-over.
+# Division identification (career + current) and cross-division carry-over.
 #
-# A fighter's "home" division is where the bulk of their career happened, but a
-# permanent move overrides that. The permanence signal is the belt: winning a
-# UFC title in a new division (which requires vacating/relinquishing the old
-# one) makes the move permanent regardless of how many fights remain on the old
-# record. Losing a title challenge up or down a class does NOT relocate a
-# fighter. See ratings/division_resume.py:primary_division_rows.
+# Two divisional labels per fighter, answering different questions:
+#   * career_division — where the bulk of the UFC career happened (simple
+#     majority of effective fights, recency as tiebreak). Drives single-
+#     division leaderboards: when a user filters by Lightweight, a long-tenured
+#     LW who just won the WW belt still shows up there. GSP is a career WW
+#     despite a one-fight MW cameo; Makhachev is a career LW despite his recent
+#     move up; Pereira is a career LHW once UFC fights outnumber MW ones.
+#   * current_division — where the fighter competes now. Anchored by the most
+#     recent UFC title-fight WIN (winning a belt is the permanent-move signal);
+#     otherwise the division of their most recent UFC bout. Losing a title shot
+#     up or down a class never relocates a fighter on either label.
+# See ratings/division_resume.py:primary_division_rows.
 #
 # For the divisional resume score, a proven champion who moves up should not
 # arrive at the bottom of the new division's pool: their first fight gets a

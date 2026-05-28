@@ -239,30 +239,40 @@ def division_resume_rows(
 
 
 def primary_division_rows(division_resume: pd.DataFrame) -> pd.DataFrame:
-    """Pick each fighter's home division.
+    """Pick each fighter's career *and* current division.
 
-    The home division is where the bulk of the career happened, but a permanent
-    move overrides that. The permanence signal is the belt:
+    Two divisional concepts, not one — they answer different questions and the
+    same fighter often belongs to two different classes by them:
 
-    * If the fighter ever *won* a UFC title, home is the division of their most
-      recent title-fight win. Winning a belt requires vacating the old one, so
-      the move is permanent regardless of how many fights remain on the old
-      record (Topuria FW->LW, McGregor FW->LW, Makhachev LW->WW). Losing a title
-      challenge up or down a class is not a win and does not relocate a fighter
-      (Volkanovski's lightweight title losses keep him at featherweight).
-    * Otherwise — no belt was ever won — home is simply the majority of the
-      career: the division with the most effective fights. A move without a belt
-      is not permanent, so a couple of bouts up or down a class never displace a
-      long-established class. Recency only breaks ties.
+    * ``career_division`` — where the bulk of the UFC career happened. The
+      simple majority of effective fights (with recency as a tiebreak). A
+      proven WW with one MW cameo is a WW (GSP); a long-tenured LW with one
+      WW title win is still a career LW (Makhachev). This is the bucket that
+      drives single-division leaderboards: when a user filters by Lightweight,
+      Makhachev shows up there, not under his current Welterweight belt.
+    * ``current_division`` — where the fighter competes now. The most recent
+      UFC title-fight *win* anchors this (winning a belt is the permanent
+      move signal); otherwise the most recent fight's division. So Makhachev
+      is currently WW (just won the belt), Topuria is currently LW (won the
+      LW belt), McGregor is currently LW (his last title-win division).
+      Losing a title shot up or down a class never relocates a fighter
+      (Volkanovski's LW title losses keep him FW on both labels).
 
-    Catch Weight / Open Weight / unparsed labels are never a home division.
+    Catch Weight / Open Weight / unparsed labels are never eligible for
+    either label.
 
-    ``primary_division_reliability`` is the home division's resume reliability
-    (``n_eff / (n_eff + K)`` in [0, 1]) — how *earned* the home label is. An
-    established champion sits near 1.0; a fighter who has just moved up and won a
-    belt sits low, honestly flagging that the home division is freshly acquired.
+    ``career_division_reliability`` / ``current_division_reliability`` are the
+    picked division's resume reliability in [0, 1] — how *earned* the label is.
+    A long-tenured champion sits near 1.0 on both; a fresh title mover sits
+    high on career and low on current.
     """
-    columns = ["fighter", "primary_division", "primary_division_reliability"]
+    columns = [
+        "fighter",
+        "career_division",
+        "career_division_reliability",
+        "current_division",
+        "current_division_reliability",
+    ]
     if division_resume is None or division_resume.empty:
         return pd.DataFrame(columns=columns)
     d = division_resume.copy()
@@ -289,20 +299,32 @@ def primary_division_rows(division_resume: pd.DataFrame) -> pd.DataFrame:
         candidates = group[group["division"].isin(REAL_DIVISIONS)]
         if candidates.empty:
             candidates = group  # catchweight-only resume: fall back to all rows
+
+        # Career: simple majority of effective fights, recency as tiebreak. One
+        # cameo up or down a class never displaces a long-tenured division.
+        career_pick = candidates.sort_values(
+            ["division_effective_fights", "division_recency_weight", "division_score_whr"],
+            ascending=[False, False, False],
+        ).iloc[0]
+
+        # Current: most recent UFC title-fight win (the permanent-move signal).
+        # If the fighter never won a UFC title, there is no permanent move and
+        # current collapses to career — the user's principle is that a couple of
+        # bouts up or down a class never relocates a non-champion.
         champion = candidates[candidates["division_title_wins"] > 0]
         if not champion.empty:
-            pick = champion.sort_values(
+            current_pick = champion.sort_values(
                 ["_last_title_win", "division_effective_fights", "division_score_whr"],
                 ascending=[False, False, False],
             ).iloc[0]
         else:
-            pick = candidates.sort_values(
-                ["division_effective_fights", "division_recency_weight", "division_score_whr"],
-                ascending=[False, False, False],
-            ).iloc[0]
+            current_pick = career_pick
+
         rows.append({
             "fighter": fighter,
-            "primary_division": pick["division"],
-            "primary_division_reliability": float(pick["division_score_reliability"]),
+            "career_division": career_pick["division"],
+            "career_division_reliability": float(career_pick["division_score_reliability"]),
+            "current_division": current_pick["division"],
+            "current_division_reliability": float(current_pick["division_score_reliability"]),
         })
     return pd.DataFrame(rows, columns=columns)

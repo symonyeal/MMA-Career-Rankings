@@ -62,12 +62,14 @@ def _n_traces(fw):
 
 
 def test_all_cells_execute_and_render(nb_ns):
-    # Every section produced something on first draw.
+    # Every section produced something on first draw. The era heat map used to
+    # live in its own cell (``era_fw``) but now folds into the Weight Classes
+    # section as ``divx_era``, so the chart asserted-on moved with it.
     assert nb_ns["lb_html"].value, "leaderboard empty"
     assert _n_traces(nb_ns["traj_fw"]) > 0
     assert _n_traces(nb_ns["plc_scatter"]) > 0
     assert _n_traces(nb_ns["divx_timeline"]) > 0
-    assert _n_traces(nb_ns["era_fw"]) > 0
+    assert _n_traces(nb_ns["divx_era"]) > 0
     assert nb_ns["streak_html"].value
 
 

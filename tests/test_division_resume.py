@@ -67,16 +67,19 @@ def _bout(
     return hist, app
 
 
-def _home(bouts: list[tuple[dict, dict]], fighter: str) -> str:
+def _labels(bouts: list[tuple[dict, dict]], fighter: str) -> tuple[str, str]:
+    """Return (career_division, current_division) for ``fighter``."""
     hist = pd.DataFrame([h for h, _ in bouts])
     apps = pd.DataFrame([a for _, a in bouts])
     resume = division_resume_rows(hist, apps)
     primary = primary_division_rows(resume)
-    return primary[primary["fighter"].eq(fighter)].iloc[0]["primary_division"]
+    row = primary[primary["fighter"].eq(fighter)].iloc[0]
+    return row["career_division"], row["current_division"]
 
 
-def test_title_win_in_new_division_is_a_permanent_move():
+def test_title_win_in_new_division_moves_current_but_not_career():
     # Topuria-like: long featherweight reign, then vacates and wins lightweight.
+    # Career stays FW (5 FW vs 1 LW); current jumps to LW on the title win.
     bouts = [
         _bout("Mover", "2021-01-01", "Featherweight"),
         _bout("Mover", "2021-07-01", "Featherweight"),
@@ -85,11 +88,14 @@ def test_title_win_in_new_division_is_a_permanent_move():
         _bout("Mover", "2024-02-01", "Featherweight", title=True, entered_champ=True),
         _bout("Mover", "2025-06-01", "Lightweight", title=True),
     ]
-    assert _home(bouts, "Mover") == "Lightweight"
+    career, current = _labels(bouts, "Mover")
+    assert career == "Featherweight"
+    assert current == "Lightweight"
 
 
-def test_title_loss_up_a_class_does_not_relocate():
+def test_title_loss_up_a_class_relocates_neither_label():
     # Volkanovski-like: featherweight champion who lost two lightweight title shots.
+    # Both career and current stay FW — losing a belt fight is not a permanent move.
     fw_dates = ["2018-01-01", "2018-07-01", "2019-01-01", "2019-07-01",
                 "2020-01-01", "2021-01-01", "2022-01-01", "2023-07-01"]
     bouts = [
@@ -100,39 +106,69 @@ def test_title_loss_up_a_class_does_not_relocate():
         _bout("Champ", "2023-02-11", "Lightweight", score=0.0, title=True),
         _bout("Champ", "2023-10-21", "Lightweight", score=0.0, title=True),
     ]
-    assert _home(bouts, "Champ") == "Featherweight"
+    career, current = _labels(bouts, "Champ")
+    assert career == "Featherweight"
+    assert current == "Featherweight"
 
 
-def test_most_recent_title_win_wins_for_dual_division_champ():
-    # McGregor-like: featherweight title, then lightweight title, then welterweight
-    # non-title excursions that must not become home.
+def test_dual_division_champ_current_is_most_recent_belt():
+    # McGregor-like: 7 featherweight (2 title wins), 4 lightweight (1 title
+    # win), 3 welterweight non-title cameos. Career is FW (majority); current
+    # is LW (most recent belt won). Welterweight cameos never become a label.
     bouts = [
+        _bout("Dual", "2013-04-06", "Featherweight"),
+        _bout("Dual", "2013-08-17", "Featherweight"),
+        _bout("Dual", "2014-07-19", "Featherweight"),
+        _bout("Dual", "2014-09-27", "Featherweight"),
+        _bout("Dual", "2015-01-18", "Featherweight"),
+        _bout("Dual", "2015-07-11", "Featherweight", title=True),
         _bout("Dual", "2015-12-12", "Featherweight", title=True),
         _bout("Dual", "2016-03-05", "Welterweight", score=0.0),
         _bout("Dual", "2016-08-20", "Welterweight"),
         _bout("Dual", "2016-11-12", "Lightweight", title=True),
+        _bout("Dual", "2018-10-06", "Lightweight", score=0.0, title=True),
         _bout("Dual", "2020-01-18", "Welterweight"),
+        _bout("Dual", "2021-01-23", "Lightweight", score=0.0),
+        _bout("Dual", "2021-07-10", "Lightweight", score=0.0),
     ]
-    assert _home(bouts, "Dual") == "Lightweight"
+    career, current = _labels(bouts, "Dual")
+    assert career == "Featherweight"
+    assert current == "Lightweight"
 
 
-def test_catch_weight_is_never_a_home_division():
+def test_one_fight_in_other_division_does_not_move_career():
+    # GSP-like: long welterweight career, single middleweight title win cameo.
+    # Career stays WW; current jumps to MW on that title win.
+    bouts = [_bout("GSP", f"201{i}-01-01", "Welterweight", title=(i >= 6))
+             for i in range(0, 7)]
+    bouts += [_bout("GSP", "2017-11-04", "Middleweight", title=True)]
+    career, current = _labels(bouts, "GSP")
+    assert career == "Welterweight"
+    assert current == "Middleweight"
+
+
+def test_catch_weight_is_never_a_label():
     bouts = [
         _bout("Catcher", "2021-01-01", "Catch Weight", score=1.0),
         _bout("Catcher", "2021-07-01", "Lightweight"),
         _bout("Catcher", "2022-01-01", "Lightweight"),
     ]
-    assert _home(bouts, "Catcher") == "Lightweight"
+    career, current = _labels(bouts, "Catcher")
+    assert career == "Lightweight"
+    assert current == "Lightweight"
 
 
-def test_non_champion_two_recent_bouts_up_a_class_do_not_flip_home():
+def test_non_champion_no_belt_no_relocation():
     # Long lightweight tenure, then two recent welterweight bouts, no titles.
+    # No belt change so neither label moves.
     bouts = [_bout("Journeyman", f"2018-0{1 + i}-01", "Lightweight", score=1.0) for i in range(6)]
     bouts += [
         _bout("Journeyman", "2024-06-01", "Welterweight"),
         _bout("Journeyman", "2025-01-01", "Welterweight"),
     ]
-    assert _home(bouts, "Journeyman") == "Lightweight"
+    career, current = _labels(bouts, "Journeyman")
+    assert career == "Lightweight"
+    assert current == "Lightweight"
 
 
 def test_division_resume_does_not_loan_legacy_across_weight_classes():
@@ -154,4 +190,5 @@ def test_division_resume_does_not_loan_legacy_across_weight_classes():
 
     primary = primary_division_rows(resume)
     star = primary[primary["fighter"].eq("Two Division Star")].iloc[0]
-    assert star["primary_division"] == "Light Heavyweight"
+    # Career is the long LHW tenure (no legacy loan to the HW cameo).
+    assert star["career_division"] == "Light Heavyweight"

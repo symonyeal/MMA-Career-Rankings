@@ -510,7 +510,11 @@ def run(
     division_resume = division_resume_rows(whr_history, peak_quality)
     division_resume.to_parquet(snapshot_dir / "division_resume.parquet", index=False)
     current = current.drop(
-        columns=["primary_division", "primary_division_share", "primary_division_reliability"],
+        columns=[
+            "primary_division", "primary_division_share", "primary_division_reliability",
+            "career_division", "career_division_reliability",
+            "current_division", "current_division_reliability",
+        ],
         errors="ignore",
     )
     current = current.merge(primary_division_rows(division_resume), on="fighter", how="left")
@@ -609,7 +613,7 @@ def run(
     _print_top(
         current,
         rating_col="sustained_peak_headline_mu_whr",
-        extra_cols=["five_year_peak_headline_mu_whr", "primary_division", "sustained_peak_mu_whr", "rating_periods"],
+        extra_cols=["five_year_peak_headline_mu_whr", "career_division", "current_division", "sustained_peak_mu_whr", "rating_periods"],
         title=f"HEADLINE — Top 25 by whr_rating ({SUSTAINED_PEAK_WINDOW_LABEL}, min {SUSTAINED_PEAK_MIN_FIGHTS})",
         n=25, min_fights=0,
     )

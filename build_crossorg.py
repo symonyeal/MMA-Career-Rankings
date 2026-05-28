@@ -50,14 +50,14 @@ _CLONE_FILES = (
 
 def _name_maps(ratings_current: pd.DataFrame) -> tuple[dict[str, str], dict[str, str]]:
     db_name_map, division_map = {}, {}
-    div_col = "recent_division" if "recent_division" in ratings_current.columns else "primary_division"
+    div_col = "recent_division" if "recent_division" in ratings_current.columns else "career_division"
     for _, row in ratings_current.iterrows():
         name = row["fighter"]
         if not isinstance(name, str):
             continue
         key = normalize_name_key(name, compact=True)
         db_name_map[key] = name
-        div = row.get(div_col) or row.get("primary_division")
+        div = row.get(div_col) or row.get("career_division")
         if isinstance(div, str) and div:
             division_map[key] = div
     return db_name_map, division_map

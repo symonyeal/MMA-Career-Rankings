@@ -1,5 +1,61 @@
 # Snapshot Changelog
 
+## 2026-05-28 - Dual division concept + lens consolidation + Weight Classes section
+
+Follow-up to the same-day title-anchor change. Walking through real careers
+(GSP one MW cameo, Makhachev never lost LW before moving to WW, Topuria one
+LW belt over a long FW career, Pereira majority LHW) showed one label is not
+enough: divisional rankings should bucket by where the *career* happened, but
+"where this fighter competes now" is its own useful answer.
+
+- **Two divisional labels per fighter.** `ratings/division_resume.py`
+  `primary_division_rows` now returns `career_division` (simple majority of
+  effective fights, recency as tiebreak) **and** `current_division` (most
+  recent UFC title-fight win, or the same as career when no belt was ever
+  won). Old `primary_division` / `primary_division_reliability` columns are
+  retired. Result: GSP is a career WW (one MW cameo doesn't relocate);
+  Makhachev is a career LW (currently WW); Topuria is a career FW (currently
+  LW); Pereira is now career LHW (more UFC fights than at MW).
+- **Divisional bucketing uses career.** Every single-division view —
+  leaderboard filter, `top_fighter_placement_scatter`,
+  `top100_division_density_chart`, `division_strength_comparison_chart`,
+  `sleeve_ranking_table` — now buckets by `career_division`, so a fighter
+  surfaces under the class they made their name in regardless of a recent
+  cameo. `current_division` is shown as a "Now competes" column where it
+  differs.
+- **Lens dropdown reduced to {Wins, Complete, Legacy}.** Finishes / Clean /
+  Strength were thinly-different leaderboards: Complete already combines
+  finish-quality + integrity + opponent-strength, and the PED list at the
+  bottom of the notebook surfaces the integrity layer directly. Internal
+  Clean/Strength labels stay in the audit ("What Moved a Fighter's Rating")
+  cell because they describe the layers behind Complete.
+- **Weight Classes section is one cohesive block.** Strength-over-time,
+  single-year ranking, era heat map, top-100 share, and a division-leaders
+  table all live in one cell with shared year-range and division controls.
+  The old standalone "Era Check" section is gone — the heat map moved here.
+- **Year range slider replaces single-year controls** on the strength
+  timeline + era heat map; a separate snapshot-year slider drives the single-
+  year ranking. Subsection of years is now a first-class control.
+- **Single-year division ranking redesigned.** Replaces the aggregate
+  one-bar-per-division chart with a per-class mini-leaderboard: top 5 actual
+  fighter names in each selected weight class for the snapshot year. New
+  helper: `analysis/viz.py:division_year_top_fighters_chart`.
+- **Current-leaders table is per-division.** The old multi-division "current
+  leaders" table is replaced with a single-division Dropdown → top 15 of
+  that class (the user's "select a class, see the top 15"). The table also
+  flags movers via a "Now competes" column.
+- **Résumé vs Rating moved up + polished.** It now sits right after the
+  Rankings (it's the natural sanity-check for them). Scatter labels the top
+  six by name, ranks 1-10 keep their numbered chip, the long tail is a
+  uniform small dot — no more "every dot fights for space" cluster. Top-100
+  share moved into the Weight Classes block.
+- **Win-streak overlay.** The streak section's fighter search now *overlays*
+  the searched fighter's timeline on top of the picked-streak fighter rather
+  than replacing it, so two runs can be compared head to head on the same
+  axes. Primary line stays sky / secondary line goes violet.
+- 155 passing (one new dual-division test for the GSP case; the
+  notebook-dashboard test was updated for the moved era widget).
+
 ## 2026-05-28 - Title-anchored home division + cross-division pedigree carry-over
 
 Acts on the observation that a fighter's home weight class was identified by
