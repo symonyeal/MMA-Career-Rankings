@@ -114,7 +114,7 @@ def test_streak_selector_options_stay_in_sync(nb_ns):
 
 
 def test_tuning_widgets_present(nb_ns):
-    assert len(nb_ns["TUNE_WIDGETS"]) == 12
+    assert len(nb_ns["TUNE_WIDGETS"]) == 9
     assert "_recompute" in nb_ns and "_reset" in nb_ns
 
 
@@ -123,14 +123,11 @@ def test_tuning_constant_propagation(nb_ns):
     # otherwise a tuned knob silently has no effect on a recompute.
     import ratings.opponent_quality as oq
     import ratings.peaks as pk
-    import ratings.performance_adjustment as pa
     try:
         nb_ns["_set_const"]("PERIOD_LOSS_PENALTY", 77.0)
         assert pk.PERIOD_LOSS_PENALTY == 77.0
         nb_ns["_set_const"]("SUSTAINED_PEAK_OPP_MAX_WEIGHT", 1.7)
         assert oq.SUSTAINED_PEAK_OPP_MAX_WEIGHT == 1.7
-        nb_ns["_set_const"]("INTEGRITY_PED_WIN_SCORE", 0.42)
-        assert pa.INTEGRITY_PED_WIN_SCORE == 0.42
     finally:
         nb_ns["_reset"]()  # restore defaults (cheap; no recompute)
 

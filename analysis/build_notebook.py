@@ -85,7 +85,6 @@ from analysis.viz import (
     fighter_detail,
     fighter_search,
     h2h_prediction,
-    integrity_factor_audit_table,
     load_project_data,
     modular_rating_context,
     prime_window_column_names,
@@ -135,26 +134,20 @@ calibration_residuals = SNAP.get("calibration_residuals", pd.DataFrame())
 sleeve_attribution = SNAP.get("sleeve_attribution", pd.DataFrame())
 division_resume = SNAP.get("division_resume", pd.DataFrame())
 performance_appearances = SNAP.get("performance_appearances", pd.DataFrame())
-integrity_appearances = SNAP.get("integrity_appearances", pd.DataFrame())
 fightmatrix_rankings = SNAP.get("fightmatrix_rankings", pd.DataFrame())
 odds_lines = SNAP.get("odds_lines", pd.DataFrame())
 ratings_history = SNAP.get("ratings_history", pd.DataFrame())
 ratings_histories = {
     "ratings_history": ratings_history,
-    "ratings_history_method_integrity": SNAP.get("ratings_history_method_integrity", pd.DataFrame()),
     "ratings_history_method_performance": SNAP.get("ratings_history_method_performance", pd.DataFrame()),
-    "ratings_history_method_integrity_performance": SNAP.get("ratings_history_method_integrity_performance", pd.DataFrame()),
 }
 previous_fights = PREV.get("fights", pd.DataFrame())
 previous_ratings_history = PREV.get("ratings_history", pd.DataFrame())
 previous_ratings_histories = {
     "ratings_history": previous_ratings_history,
-    "ratings_history_method_integrity": PREV.get("ratings_history_method_integrity", pd.DataFrame()),
     "ratings_history_method_performance": PREV.get("ratings_history_method_performance", pd.DataFrame()),
-    "ratings_history_method_integrity_performance": PREV.get("ratings_history_method_integrity_performance", pd.DataFrame()),
 }
 fighter_dominance = SNAP.get("fighter_dominance", pd.DataFrame())
-ped_confirmed_bouts = SNAP.get("ped_confirmed_bouts", pd.DataFrame())
 crossorg_fights = SNAP.get("crossorg_fights", pd.DataFrame())
 previous_crossorg_fights = PREV.get("crossorg_fights", pd.DataFrame())
 
@@ -582,8 +575,7 @@ display(Markdown(
     f"font-size:0.82em;line-height:1.6;margin-top:8px'>"
     f"<b style='color:{THEME['text_2']}'>Rank by</b> picks how a win is scored — "
     f"<b>Wins</b> (just the W, no method or context), "
-    f"<b>Complete</b> (the full picture: finish quality + integrity discounts for "
-    f"PED/DQ/missed-weight + opponent strength), "
+    f"<b>Complete</b> (the full picture: finish quality + opponent strength), "
     f"<b>Legacy</b> (Complete plus a whole-career résumé bonus, era-comparable). "
     f"<b style='color:{THEME['text_2']}'>Form</b>: <b>Now</b> = where they sit today, "
     f"<b>Peak</b> = their best 5-year run, <b>Prime</b> = a sustained run you size with "
@@ -1249,9 +1241,9 @@ def _style_attribution_rows(df):
     if df.empty:
         return None
     rename = {"event_date": "Date", "opponent": "Opponent",
-              "integrity_delta": "Clean", "performance_delta": "Strength", "combined_delta": "Net"}
+              "performance_delta": "Strength", "combined_delta": "Net"}
     out = df.rename(columns=rename)
-    show = [c for c in ["Date", "Opponent", "Clean", "Strength", "Net"] if c in out.columns]
+    show = [c for c in ["Date", "Opponent", "Strength", "Net"] if c in out.columns]
     out = out[show].copy()
     if "Date" in out.columns:
         out["Date"] = pd.to_datetime(out["Date"], errors="coerce").dt.date
@@ -1261,11 +1253,11 @@ def _style_attribution_rows(df):
         return f"color:{THEME['positive']};font-weight:600" if v > 0 else f"color:{THEME['negative']};font-weight:600"
     sty = (
         out.style.hide(axis="index")
-        .format({"Clean": "{:+.2f}", "Strength": "{:+.2f}", "Net": "{:+.2f}"}, na_rep="—")
+        .format({"Strength": "{:+.2f}", "Net": "{:+.2f}"}, na_rep="—")
         .set_properties(subset=["Opponent"], **{"font-weight": "600", "color": THEME["text"]})
         .set_table_styles(_BASE_TABLE_STYLES)
     )
-    for c in ("Clean", "Strength", "Net"):
+    for c in ("Strength", "Net"):
         if c in out.columns:
             sty = sty.map(sign_color, subset=[c])
     return sty
@@ -1277,22 +1269,21 @@ def draw_attribution():
     if rows is None or rows.empty:
         attr_html.value = msg("no attribution rows for this fighter")
         return
-    clean = pd.to_numeric(rows.get("integrity_delta"), errors="coerce").sum()
     strength = pd.to_numeric(rows.get("performance_delta"), errors="coerce").sum()
     net = pd.to_numeric(rows.get("combined_delta"), errors="coerce").sum()
     summary = (f"<div style='font-family:{THEME['font']};margin:2px 0 10px'>"
                f"<span style='color:{THEME['text_2']};font-size:0.82em;text-transform:uppercase;"
                f"letter-spacing:0.06em;margin-right:14px'>Across shown fights</span>"
-               f"{_signed_chip('Clean', clean)}{_signed_chip('Strength', strength)}{_signed_chip('Net', net)}</div>")
+               f"{_signed_chip('Strength', strength)}{_signed_chip('Net', net)}</div>")
     styled = _style_attribution_rows(rows)
     attr_html.value = summary + (table_html(styled) if styled is not None else "")
 
 
 display(widgets.HBox([attr_fighter, attr_rows]))
 display(attr_fw)
-display(html_box(note("Bars to the right helped the rating, to the left hurt it. <b>Clean</b> is the integrity "
-                     "layer (tainted-win discounts), <b>Strength</b> is the opponent-quality layer, and "
-                     "<b>Net</b> is their combined effect on each fight.")))
+display(html_box(note("Bars to the right helped the rating, to the left hurt it. "
+                     "<b>Strength</b> is the opponent-quality and finish-quality layer; "
+                     "<b>Net</b> is the total effect on each fight.")))
 display(attr_html)
 draw_attribution()
 _observe(attr_fighter, lambda *_: draw_attribution())
@@ -1302,8 +1293,6 @@ register_section("rating_story", draw_attribution)
 
 
 ADJUSTMENTS = r"""
-audit_sleeve = widgets.Dropdown(options=[("All", "all"), ("Clean", "integrity"), ("Strength", "performance")],
-                                value="all", description="Layer:", style={"description_width": "60px"})
 audit_effect = widgets.Dropdown(options=[("Boost + penalty", "all"), ("Boost only", "boost"), ("Penalty only", "penalty")],
                                 value="all", description="Effect:", style={"description_width": "60px"})
 audit_fighter = widgets.Dropdown(options=[("(all fighters)", "")] + [(n, n) for n in _fighter_names], value="",
@@ -1365,9 +1354,7 @@ def _style_audit_detail(df):
 
 def draw_audit():
     parts = []
-    summary = sleeve_factor_summary_table(integrity_appearances, performance_appearances)
-    if audit_sleeve.value != "all":
-        summary = summary[summary["sleeve"].eq(audit_sleeve.value)]
+    summary = sleeve_factor_summary_table(performance_appearances)
     styled = _style_audit_summary(summary)
     if styled is None:
         parts.append(msg("no sleeve activity in this snapshot"))
@@ -1375,8 +1362,7 @@ def draw_audit():
         parts.append(heading("Factors") + table_html(styled))
     fighter_filter = (audit_fighter.value or "").strip() or None
     detail = sleeve_effects_by_fight_table(
-        integrity_appearances if audit_sleeve.value in ("all", "integrity") else pd.DataFrame(),
-        performance_appearances if audit_sleeve.value in ("all", "performance") else pd.DataFrame(),
+        performance_appearances,
         n=audit_n.value, fighter=fighter_filter, effect=audit_effect.value)
     styled_d = _style_audit_detail(detail)
     if styled_d is None:
@@ -1386,10 +1372,10 @@ def draw_audit():
     audit_html.value = "".join(parts)
 
 
-display(widgets.VBox([widgets.HBox([audit_sleeve, audit_effect]), widgets.HBox([audit_fighter, audit_n])]))
+display(widgets.VBox([widgets.HBox([audit_effect]), widgets.HBox([audit_fighter, audit_n])]))
 display(audit_html)
 draw_audit()
-for _w in (audit_sleeve, audit_effect, audit_fighter, audit_n):
+for _w in (audit_effect, audit_fighter, audit_n):
     _observe(_w, lambda *_: draw_audit())
 register_section("adjustments", draw_audit)
 """
@@ -1414,7 +1400,7 @@ import ratings.constants as _C
 from ratings.glicko2_engine import DEFAULT_TAU as _TAU_DEFAULT
 
 _ENGINE_MODULES = [
-    "ratings.constants", "ratings.opponent_quality", "ratings.integrity_adjustment",
+    "ratings.constants", "ratings.opponent_quality",
     "ratings.performance_adjustment", "ratings.division_resume", "ratings.whr",
     "ratings.peaks", "ratings.rate_snapshot",
 ]
@@ -1455,9 +1441,6 @@ _KNOBS = [
     ("tau", "How fast ratings swing", 0.2, 1.2, 0.05, "Finish vs decision · volatility"),
     ("METHOD_SCORE_UNANIMOUS", "Credit for a unanimous-decision win", 0.80, 1.00, 0.01, "Finish vs decision · volatility"),
     ("METHOD_SCORE_NON_UNANIMOUS_DECISION", "Credit for a split/majority win", 0.70, 1.00, 0.01, "Finish vs decision · volatility"),
-    ("INTEGRITY_PED_WIN_SCORE", "Credit for a PED-tainted win", 0.30, 1.00, 0.05, "Integrity (tainted wins)"),
-    ("INTEGRITY_DQ_WIN_SCORE", "Credit for a win by DQ", 0.30, 1.00, 0.05, "Integrity (tainted wins)"),
-    ("INTEGRITY_MISSED_WEIGHT_WIN_SCORE", "Credit for a win after missing weight", 0.30, 1.00, 0.05, "Integrity (tainted wins)"),
     ("PERF_OPPONENT_QUALITY_AMPLITUDE", "Reward for beating elite competition", 0.00, 0.20, 0.01, "Opposition & upsets"),
     ("PERF_UPSET_AMPLITUDE", "Reward for pulling an upset", 0.00, 0.10, 0.005, "Opposition & upsets"),
     ("SUSTAINED_PEAK_OPP_MAX_WEIGHT", "Reward for a title-level schedule", 1.0, 4.0, 0.1, "Prime / résumé weighting"),
@@ -1469,7 +1452,7 @@ _TUNE_DEFAULTS = {k: (float(_TAU_DEFAULT) if k == "tau" else float(getattr(_C, k
 
 # Snapshot the baseline frames once so Reset is instant (no recompute).
 _FRAME_KEYS = ["rc", "ratings_history", "ratings_histories", "sleeve_attribution",
-               "integrity_appearances", "performance_appearances", "fighter_dominance"]
+               "performance_appearances", "fighter_dominance"]
 if "_BASELINE_FRAMES" not in globals():
     _BASELINE_FRAMES = {k: globals().get(k) for k in _FRAME_KEYS}
 
@@ -1508,13 +1491,10 @@ def _rebind_frames(snap_dir):
         "ratings_history": rh,
         "ratings_histories": {
             "ratings_history": rh,
-            "ratings_history_method_integrity": snap.get("ratings_history_method_integrity", pd.DataFrame()),
             "ratings_history_method_performance": snap.get("ratings_history_method_performance", pd.DataFrame()),
-            "ratings_history_method_integrity_performance": snap.get("ratings_history_method_integrity_performance", pd.DataFrame()),
             "ratings_history_whr": pd.read_parquet(whr_path) if whr_path.exists() else pd.DataFrame(),
         },
         "sleeve_attribution": snap.get("sleeve_attribution", pd.DataFrame()),
-        "integrity_appearances": snap.get("integrity_appearances", pd.DataFrame()),
         "performance_appearances": snap.get("performance_appearances", pd.DataFrame()),
         "fighter_dominance": snap.get("fighter_dominance", pd.DataFrame()),
     })
@@ -1537,7 +1517,7 @@ def _set_status(html, color=None):
 
 
 def _top5(rc_frame, label):
-    col = ("mu_method_integrity_performance" if "mu_method_integrity_performance" in rc_frame.columns
+    col = ("mu_method_performance" if "mu_method_performance" in rc_frame.columns
            else "mu_canonical")
     men = rc_frame[rc_frame["gender"].eq("M")] if "gender" in rc_frame.columns else rc_frame
     top = men.dropna(subset=[col]).sort_values(col, ascending=False).head(5)
@@ -1618,8 +1598,8 @@ _group_boxes = [
 display(Markdown(
     f"<div style='font-family:{THEME['font']};color:{THEME['text_caption']};font-size:0.82em;"
     f"line-height:1.6;margin-bottom:8px'>These change the <b>model</b>, not just the view. "
-    f"Decision/integrity scores are on a 0-1 win scale (1 = a clean, decisive win); lower integrity "
-    f"scores discount tainted wins. Adjust, then <b>Apply &amp; recompute</b> - the full engine reruns "
+    f"Decision scores are on a 0-1 win scale (1 = a decisive finish). "
+    f"Adjust, then <b>Apply &amp; recompute</b> - the full engine reruns "
     f"(a few minutes) and every section updates. <b>Reset</b> restores defaults instantly.</div>"))
 display(widgets.Box(_group_boxes, layout=widgets.Layout(display="flex", flex_flow="row wrap")))
 display(widgets.HBox([_apply_btn, _reset_btn]))
@@ -1636,7 +1616,7 @@ CELLS = [
 Two control layers sit at the top. The **Control Room** changes the *view* — how
 wins are scored, current form vs prime, weight class, how many fighters — and
 re-ranks every section instantly. **Model Tuning** changes the *model itself* —
-how much a finish, a tainted win, a title fight or beating elite competition is
+how much a finish, a title fight, or beating elite competition is
 worth; hit **Apply & recompute** and the whole rating engine re-runs so every
 board and chart reflects your version of the model. Each section also keeps a few
 local controls (streak sort, the two fighters to compare).
@@ -1652,7 +1632,7 @@ local controls (streak sort, the two fighters to compare).
 ## 🛠️ Model Tuning
 
 The Control Room changes what you **look at**. This panel changes the **model
-itself** — how wins, finishes, opponents, integrity and prime windows are
+itself** — how wins, finishes, opponents, and prime windows are
 scored. Adjust the knobs and hit **Apply & recompute**: the full rating engine
 re-runs and every table and chart below updates to the tuned model.
 """),
@@ -1661,7 +1641,7 @@ re-runs and every table and chart below updates to the tuned model.
 ## The Rankings
 
 The pound-for-pound board for whatever you've set up top. **Rating** is the lens
-you picked in **Rank by**; **vs Wins** shows how much the **Complete**
+you picked in **Rank by**; **vs Wins** shows how much the **Strength**
 context layer moved a fighter off the raw win count — positive means context
 helped their case. Reshape it with **Roster**, **Weight class**, **Show top**,
 and **Min UFC bouts**.
@@ -1727,16 +1707,16 @@ fighter's rating profile and how the betting market saw them.
 ## What Moved a Fighter's Rating
 
 Pick a fighter and see which fights helped or hurt them. Bars to the right are
-gains, to the left are hits — split into the **Clean** (tainted-win) and
-**Strength** (quality-of-opposition) layers that combine into the **Complete** lens.
+gains, to the left are hits — showing the **Strength** (quality-of-opposition)
+layer and its total effect on each fight.
 """),
     code(RATING_STORY),
     md("""
 ## Under the Hood
 
-Where the **Clean** and **Strength** adjustments actually fire, how often, and
-how hard — with the biggest single-fight swings called out. This is the audit
-trail behind the Model Tuning knobs.
+Where the **Strength** adjustments actually fire, how often, and how hard —
+with the biggest single-fight swings called out. This is the audit trail
+behind the Model Tuning knobs.
 """),
     code(ADJUSTMENTS),
 ]

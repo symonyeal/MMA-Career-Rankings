@@ -164,12 +164,6 @@ PERFORMANCE_FACTOR_LABELS = {
     "perf_factor_activity_loss": "Post-layoff loss",
 }
 
-INTEGRITY_FACTOR_LABELS = {
-    "integrity_factor_ped": "PED-confirmed win",
-    "integrity_factor_dq": "DQ win",
-    "integrity_factor_missed_weight": "Missed-weight win",
-}
-
 
 def _empty_figure(message: str, *, title: str | None = None, height: int = 360) -> go.Figure:
     """Return a consistent empty-state chart instead of a blank figure."""
@@ -195,9 +189,7 @@ def _metric_label(column: str) -> str:
         "mu_canonical": "Wins rating",
         "phi_canonical": "Rating uncertainty",
         "mu_method": "Finishes rating",
-        "mu_method_integrity": "Clean rating",
         "mu_method_performance": "Strength rating",
-        "mu_method_integrity_performance": "Complete rating",
         "mu_whr": "Legacy rating",
     }
     return labels.get(column, rating_label(column).replace("_", " "))
@@ -241,11 +233,8 @@ TABLE_KEY_MAP = [
     ("canonical_fighters", "fighters"),
     ("canonical_events", "events"),
     ("ratings_history", "ratings_history"),
-    ("ratings_history_method_integrity", "ratings_history_method_integrity"),
     ("ratings_history_method_performance", "ratings_history_method_performance"),
-    ("ratings_history_method_integrity_performance", "ratings_history_method_integrity_performance"),
     ("ratings_current", "ratings_current"),
-    ("integrity_appearances", "integrity_appearances"),
     ("performance_appearances", "performance_appearances"),
     ("fight_dominance", "fight_dominance"),
     ("fighter_dominance", "fighter_dominance"),
@@ -263,7 +252,6 @@ TABLE_KEY_MAP = [
 
 CSV_KEY_MAP = [
     ("_excluded_bouts", "excluded_bouts"),
-    ("ped_confirmed_bouts", "ped_confirmed_bouts"),
     ("missed_weight_bouts", "missed_weight_bouts"),
 ]
 
@@ -315,7 +303,7 @@ def load_database(db_path: Path | str) -> dict[str, pd.DataFrame]:
         for table_name, key in TABLE_KEY_MAP:
             if table_name in existing:
                 out[key] = pd.read_sql_query(f'SELECT * FROM "{table_name}"', con)
-        for table_name in METADATA_TABLES + ["excluded_bouts", "ped_confirmed_bouts", "missed_weight_bouts"]:
+        for table_name in METADATA_TABLES + ["excluded_bouts", "missed_weight_bouts"]:
             if table_name in existing:
                 out[table_name] = pd.read_sql_query(f'SELECT * FROM "{table_name}"', con)
     return out
@@ -531,9 +519,7 @@ def top_n_table(
         "sustained_peak_headline_mu_whr", "five_year_peak_headline_mu_whr", "mu_whr",
         "sustained_peak_mu_canonical", "five_year_peak_mu_canonical",
         "sustained_peak_mu_method", "five_year_peak_mu_method",
-        "sustained_peak_mu_method_integrity_performance",
-        "five_year_peak_mu_method_integrity_performance",
-        "mu_method_integrity", "delta_mu_method_integrity",
+        "sustained_peak_mu_method_performance", "five_year_peak_mu_method_performance",
         "mu_method_performance", "delta_mu_method_performance",
     ]:
         if col in df.columns:
@@ -544,11 +530,9 @@ def top_n_table(
         "rank", "fighter", "mu_canonical", "phi_canonical",
         "gender", "career_division", "current_division", "recent_division",
         "sustained_peak_headline_mu_whr", "five_year_peak_headline_mu_whr",
-        "sustained_peak_mu_method_integrity_performance",
-        "five_year_peak_mu_method_integrity_performance",
+        "sustained_peak_mu_method_performance", "five_year_peak_mu_method_performance",
         "sustained_peak_mu_canonical", "five_year_peak_mu_canonical",
-        "rank_method_integrity", "mu_method_integrity", "delta_mu_method_integrity",
-        "ped_confirmed_fights", "dq_wins", "missed_weight_wins",
+        "mu_method_performance", "delta_mu_method_performance",
         "mu_method", "rating_periods", "last_event_date",
         "height_inches", "weight_lb", "reach_inches", "stance",
     ]
@@ -599,17 +583,12 @@ def fighter_detail(
             "mu_method":                   round(float(row["mu_method"]), 1),
             "sustained_peak_mu_method":    _opt_round(row.get("sustained_peak_mu_method")),
             "five_year_peak_mu_method":    _opt_round(row.get("five_year_peak_mu_method")),
-            "mu_method_integrity":         _opt_round(row.get("mu_method_integrity")),
             "mu_method_performance":       _opt_round(row.get("mu_method_performance")),
-            "mu_method_integrity_performance": _opt_round(row.get("mu_method_integrity_performance")),
-            "sustained_peak_mu_method_integrity_performance": _opt_round(row.get("sustained_peak_mu_method_integrity_performance")),
-            "five_year_peak_mu_method_integrity_performance": _opt_round(row.get("five_year_peak_mu_method_integrity_performance")),
+            "sustained_peak_mu_method_performance": _opt_round(row.get("sustained_peak_mu_method_performance")),
+            "five_year_peak_mu_method_performance": _opt_round(row.get("five_year_peak_mu_method_performance")),
             "mu_whr":                      _opt_round(row.get("mu_whr")),
             "whr_rating":                  _opt_round(row.get("sustained_peak_headline_mu_whr")),
             "whr_rating_5yr":              _opt_round(row.get("five_year_peak_headline_mu_whr")),
-            "ped_confirmed_fights":        int(row.get("ped_confirmed_fights", 0) or 0),
-            "dq_wins":                     int(row.get("dq_wins", 0) or 0),
-            "missed_weight_wins":          int(row.get("missed_weight_wins", 0) or 0),
             "rating_periods":              int(row["rating_periods"]),
             "last_event_date":             row.get("last_event_date"),
         }
@@ -1461,26 +1440,21 @@ def rank_delta_table(
     min_fights: int = 3,
     limit: int = 50,
 ) -> pd.DataFrame:
-    """Compare canonical Glicko rank, method-integrity rank, and FightMatrix rank."""
+    """Compare canonical Glicko rank against FightMatrix rank."""
     rc = _current_rank_frame(ratings_current, min_fights=min_fights)
     fm = fightmatrix_best_rankings(fightmatrix_rankings)
     df = rc.merge(fm, on="_name_key", how="left", suffixes=("", "_fm"))
-    df["rank_method_integrity"] = pd.to_numeric(df.get("rank_method_integrity"), errors="coerce")
-    df["integrity_rank_delta"] = df["rank_method_integrity"] - df["glicko_rank"].astype(float)
     df["glicko_vs_fm_rank_delta"] = df["glicko_rank"].astype(float) - df["fightmatrix_rank"]
-    df["abs_compare_delta"] = df[["integrity_rank_delta", "glicko_vs_fm_rank_delta"]].abs().max(axis=1)
+    df["abs_compare_delta"] = df["glicko_vs_fm_rank_delta"].abs()
     df = df.sort_values(["abs_compare_delta", "mu_canonical"], ascending=[False, False]).head(limit)
     cols = [
-        "fighter", "glicko_rank", "mu_canonical", "rank_method_integrity",
-        "delta_mu_method_integrity", "ped_confirmed_fights", "dq_wins",
-        "missed_weight_wins", "fightmatrix_rank",
-        "fightmatrix_points", "fightmatrix_division", "glicko_vs_fm_rank_delta",
-        "integrity_rank_delta",
+        "fighter", "glicko_rank", "mu_canonical",
+        "fightmatrix_rank", "fightmatrix_points", "fightmatrix_division",
+        "glicko_vs_fm_rank_delta",
     ]
     cols = [c for c in cols if c in df.columns]
     out = df[cols].copy()
-    for col in ["mu_canonical", "delta_mu_method_integrity", "fightmatrix_points",
-                "glicko_vs_fm_rank_delta", "integrity_rank_delta"]:
+    for col in ["mu_canonical", "fightmatrix_points", "glicko_vs_fm_rank_delta"]:
         if col in out.columns:
             out[col] = pd.to_numeric(out[col], errors="coerce").round(1)
     return out.reset_index(drop=True)
@@ -1573,48 +1547,6 @@ def external_source_coverage_dashboard(data: dict[str, pd.DataFrame]) -> go.Figu
     return fig
 
 
-def ped_impact_chart(ratings_current: pd.DataFrame, n: int = 15) -> go.Figure:
-    """Top movers under the method-integrity sleeve vs the plain method baseline."""
-    df = ratings_current.copy()
-    if "delta_mu_method_integrity" not in df.columns:
-        return _empty_figure("method-integrity columns not present", title="Integrity sleeve impact")
-    df["delta_mu_method_integrity"] = pd.to_numeric(df["delta_mu_method_integrity"], errors="coerce")
-    df = df.dropna(subset=["delta_mu_method_integrity"])
-    df = df[df["delta_mu_method_integrity"].abs() > 0.01]
-    if df.empty:
-        return _empty_figure("no integrity-sleeve rating movement", title="Integrity sleeve impact")
-    movers = pd.concat([
-        df.sort_values("delta_mu_method_integrity", ascending=True).head(n),
-        df.sort_values("delta_mu_method_integrity", ascending=False).head(n),
-    ]).drop_duplicates("fighter")
-    movers = movers.sort_values("delta_mu_method_integrity")
-    colors = np.where(movers["delta_mu_method_integrity"] >= 0, SIGN_COLORS["positive"], SIGN_COLORS["negative"])
-    fig = go.Figure(go.Bar(
-        x=movers["delta_mu_method_integrity"],
-        y=movers["fighter"],
-        orientation="h",
-        marker_color=colors,
-        customdata=np.stack([
-            movers.get("mu_method", pd.Series(index=movers.index)).round(1).astype("string"),
-            movers.get("mu_method_integrity", pd.Series(index=movers.index)).round(1).astype("string"),
-            movers.get("ped_confirmed_fights", pd.Series(index=movers.index)).astype("string"),
-        ], axis=-1),
-        hovertemplate=(
-            "<b>%{y}</b><br>"
-            "delta=%{x:.1f}<br>"
-            "method=%{customdata[0]}<br>"
-            "method+integrity=%{customdata[1]}<br>"
-            "confirmed PED fights=%{customdata[2]}<extra></extra>"
-        ),
-    ))
-    _apply_chart_layout(fig, height=max(480, 24 * len(movers)))
-    fig.update_layout(
-        title="Largest integrity-sleeve rating impacts",
-        xaxis_title="Rating movement vs method baseline",
-        yaxis_title="Fighter",
-    )
-    return fig
-
 
 def sustained_peak_leaderboard_chart(
     ratings_current: pd.DataFrame,
@@ -1631,8 +1563,8 @@ def sustained_peak_leaderboard_chart(
             col
             for col in (
                 "sustained_peak_headline_mu_whr",
-                "sustained_peak_mu_method_integrity_performance",
-                "five_year_peak_mu_method_integrity_performance",
+                "sustained_peak_mu_method_performance",
+                "five_year_peak_mu_method_performance",
                 "five_year_peak_mu_canonical",
             )
             if col in df.columns
@@ -1648,7 +1580,7 @@ def sustained_peak_leaderboard_chart(
             col
             for col in (
                 "five_year_peak_headline_mu_whr",
-                "five_year_peak_mu_method_integrity_performance",
+                "five_year_peak_mu_method_performance",
                 "five_year_peak_mu_canonical",
             )
             if col in df.columns
@@ -1659,7 +1591,7 @@ def sustained_peak_leaderboard_chart(
         x=df[peak_col],
         y=df["fighter"],
         orientation="h",
-        marker_color=STREAM_PALETTE["method"] if "method_integrity_performance" in peak_col else STREAM_PALETTE["canonical"],
+        marker_color=STREAM_PALETTE["method"] if "method_performance" in peak_col else STREAM_PALETTE["canonical"],
         customdata=np.stack([
             df[five_col].round(1).astype("string"),
             df["rating_periods"].astype("Int64").astype("string"),
@@ -1739,7 +1671,7 @@ def division_strength_comparison_chart(
             y=merged["mean_fm_points"],
             name=f"FightMatrix top-{top_n} mean points",
             mode="lines+markers",
-            line=dict(color=STREAM_PALETTE["ped_adjusted"], width=3),
+            line=dict(color=STREAM_PALETTE["quality_adjusted"], width=3),
         ),
         secondary_y=True,
     )
@@ -2264,20 +2196,15 @@ def datalab_scorecard_insight_chart(scorecards: pd.DataFrame) -> go.Figure:
 # ---------------------------------------------------------------------------
 # Rating-stream sleeve composer (notebook UX)
 #
-# The 2026-05-13 consolidation collapsed the sleeve catalogue to two:
-#   * integrity sleeve  -- PED + DQ + missed-weight (damps tainted results)
-#   * performance sleeve -- quality of win + signed market line + rank,
-#     championship, and P4P context (rewards impressive results vs expectation)
-#
+# The performance sleeve rewards quality of win + signed market line + rank,
+# championship, and P4P context (impressive results vs expectation).
 # Sleeves only apply to the method stream. Canonical is always pristine.
 # Peak views resolve only against the two base streams (canonical / method).
 
 RATING_STREAMS: tuple[tuple[str, str], ...] = (
     ("Wins", "canonical"),
     ("Finishes", "method"),
-    ("Clean", "method_integrity"),
     ("Strength", "method_performance"),
-    ("Complete", "method_integrity_performance"),
 )
 
 PEAK_VIEWS: tuple[tuple[str, str], ...] = (
@@ -2304,26 +2231,20 @@ PUBLIC_TIME_VIEWS: tuple[tuple[str, str], ...] = (
 )
 
 # Public lens -> internal stream:
-#   * Wins (canonical Glicko-2) — just the W; no method, no integrity, no
-#     opponent-quality sleeve.
-#   * Complete (method + integrity + performance) — the full-context view:
-#     finish quality, PED/DQ/missed-weight discounting, and opponent-strength
-#     all baked in.
+#   * Wins (canonical Glicko-2) — just the W; no method, no opponent-quality.
+#   * Complete (method + performance) — the full-context view: finish quality
+#     and opponent-strength bonuses baked in.
 #   * Legacy (whole-history WHR smoother) — everything Complete carries plus
 #     whole-career résumé bonuses; era-comparable.
-# Finishes / Clean / Strength used to be exposed separately, but Complete
-# already combines those signals and the PED list at the bottom of the
-# notebook surfaces the integrity layer directly — exposing them as their own
-# top-level lenses just multiplied near-identical leaderboards.
 _PUBLIC_LENS_STREAM = {
     "wins": "canonical",
-    "complete": "method_integrity_performance",
+    "complete": "method_performance",
     "legacy": "whr",
 }
 
 _PUBLIC_LENS_HISTORY_KEY = {
     "wins": "ratings_history",
-    "complete": "ratings_history_method_integrity_performance",
+    "complete": "ratings_history_method_performance",
     "legacy": "ratings_history_whr",
 }
 
@@ -2429,25 +2350,18 @@ def n_year_prime_scores(
 def compose_rating_stream(
     scoring_method: str,
     *,
-    use_integrity: bool = False,
     use_performance: bool = False,
 ) -> str:
-    """Compose scoring-method + sleeve toggles into a ``ratings_current`` suffix.
-
-    Sleeves can only be turned on when ``scoring_method == "method"``; using
-    them with canonical raises ``ValueError`` so the UI can lock that.
-    """
+    """Compose scoring-method + sleeve toggle into a ``ratings_current`` suffix."""
     if scoring_method not in {"canonical", "method"}:
         raise ValueError(f"unknown scoring method: {scoring_method!r}")
-    if scoring_method == "canonical" and (use_integrity or use_performance):
+    if scoring_method == "canonical" and use_performance:
         raise ValueError(
             "sleeves only apply to the method stream; canonical is always pristine"
         )
     if scoring_method == "canonical":
         return "canonical"
     parts = ["method"]
-    if use_integrity:
-        parts.append("integrity")
     if use_performance:
         parts.append("performance")
     return "_".join(parts)
@@ -2456,33 +2370,18 @@ def compose_rating_stream(
 def modular_rating_context(
     scoring_method: str,
     *,
-    use_integrity: bool = False,
     use_performance: bool = False,
 ) -> dict[str, str]:
     """Human-readable labels + comparison baseline for a modular selection."""
-    stream = compose_rating_stream(
-        scoring_method,
-        use_integrity=use_integrity,
-        use_performance=use_performance,
-    )
+    stream = compose_rating_stream(scoring_method, use_performance=use_performance)
     if scoring_method == "canonical":
         scoring_label = "Wins"
         baseline_col, baseline_label = "mu_canonical", "Wins"
     else:
         scoring_label = "Finishes"
         baseline_col, baseline_label = "mu_method", "Finishes"
-    sleeves = []
-    if use_integrity:
-        sleeves.append("Clean")
-    if use_performance:
-        sleeves.append("Strength")
-    sleeve_label = " + ".join(sleeves) if sleeves else "No context"
-    if use_integrity and use_performance:
-        display_label = "Complete"
-    elif use_integrity or use_performance:
-        display_label = sleeve_label
-    else:
-        display_label = scoring_label
+    sleeve_label = "Strength" if use_performance else "No context"
+    display_label = "Complete" if use_performance else scoring_label
     return {
         "stream": stream,
         "label": display_label,
@@ -2538,16 +2437,11 @@ def select_modular_rating_column(
     ratings_current: pd.DataFrame,
     scoring_method: str,
     *,
-    use_integrity: bool = False,
     use_performance: bool = False,
     peak: str = "current",
 ) -> str | None:
     """Column lookup for the modular scoring-method x sleeve composer."""
-    stream = compose_rating_stream(
-        scoring_method,
-        use_integrity=use_integrity,
-        use_performance=use_performance,
-    )
+    stream = compose_rating_stream(scoring_method, use_performance=use_performance)
     return select_rating_column(ratings_current, stream, peak)
 
 
@@ -3041,77 +2935,7 @@ def performance_factor_audit_table(
     return audit[[c for c in out_cols if c in audit.columns]].reset_index(drop=True)
 
 
-def integrity_factor_audit_table(
-    integrity_appearances: pd.DataFrame,
-    performance_appearances: pd.DataFrame | None = None,
-    *,
-    n: int = 100,
-    fighter: str | None = None,
-    factor: str | None = None,
-    effect: str = "all",
-    include_neutral: bool = False,
-) -> pd.DataFrame:
-    """Explode integrity sleeve dampers into one readable row per penalty."""
-    out_cols = [
-        "event_date", "event_name", "fighter", "opponent", "outcome",
-        "sleeve", "factor", "factor_col", "effect", "multiplier",
-        "integrity_weight",
-    ]
-    if integrity_appearances is None or integrity_appearances.empty:
-        return pd.DataFrame(columns=out_cols)
-
-    df = integrity_appearances.copy()
-    if performance_appearances is not None and not performance_appearances.empty:
-        enrich_cols = [
-            "fight_url", "fighter", "event_date", "event_name", "opponent",
-            "is_winner", "is_draw",
-        ]
-        enrich = performance_appearances[[c for c in enrich_cols if c in performance_appearances.columns]].copy()
-        df = df.merge(enrich, on=["fight_url", "fighter"], how="left")
-    df = _filter_fighter(df, fighter)
-    df["outcome"] = _appearance_outcome(df)
-
-    factor_cols = [c for c in INTEGRITY_FACTOR_LABELS if c in df.columns]
-    if factor:
-        factor_key = normalize_name_key(factor, compact=True)
-        factor_cols = [
-            c for c in factor_cols
-            if factor_key in normalize_name_key(c, compact=True)
-            or factor_key in normalize_name_key(INTEGRITY_FACTOR_LABELS[c], compact=True)
-        ]
-    if not factor_cols:
-        return pd.DataFrame(columns=out_cols)
-
-    base_cols = ["event_date", "event_name", "fighter", "opponent", "outcome", "integrity_weight"]
-    rows = []
-    for col in factor_cols:
-        sub = df[[c for c in base_cols if c in df.columns]].copy()
-        sub["sleeve"] = "integrity"
-        sub["factor_col"] = col
-        sub["factor"] = INTEGRITY_FACTOR_LABELS[col]
-        sub["multiplier"] = pd.to_numeric(df[col], errors="coerce").fillna(1.0)
-        sub["effect"] = np.where(sub["multiplier"].lt(1.0), "penalty", "neutral")
-        rows.append(sub)
-
-    audit = pd.concat(rows, ignore_index=True, sort=False) if rows else pd.DataFrame(columns=out_cols)
-    if not include_neutral:
-        audit = audit[audit["effect"] != "neutral"]
-    if effect != "all":
-        audit = audit[audit["effect"] == effect]
-    if audit.empty:
-        return pd.DataFrame(columns=out_cols)
-    audit["event_date"] = pd.to_datetime(audit.get("event_date"), errors="coerce").dt.date
-    audit["_abs_delta"] = (pd.to_numeric(audit["multiplier"], errors="coerce") - 1.0).abs()
-    audit = audit.sort_values(["_abs_delta", "event_date"], ascending=[False, False]).head(n)
-    audit = audit.drop(columns=["_abs_delta"], errors="ignore")
-    for col in ["multiplier", "integrity_weight"]:
-        if col in audit.columns:
-            audit[col] = pd.to_numeric(audit[col], errors="coerce").round(3)
-    return audit[[c for c in out_cols if c in audit.columns]].reset_index(drop=True)
-
-
 def sleeve_factor_summary_table(
-    integrity_appearances: pd.DataFrame | None = None,
     performance_appearances: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     """Counts and normalized percent ranges for every non-neutral factor."""
@@ -3120,12 +2944,6 @@ def sleeve_factor_summary_table(
         frames.append(performance_factor_audit_table(
             performance_appearances,
             n=len(performance_appearances) * max(1, len(PERFORMANCE_FACTOR_LABELS)),
-        ))
-    if integrity_appearances is not None and not integrity_appearances.empty:
-        frames.append(integrity_factor_audit_table(
-            integrity_appearances,
-            performance_appearances,
-            n=len(integrity_appearances) * max(1, len(INTEGRITY_FACTOR_LABELS)),
         ))
     if not frames:
         return pd.DataFrame(columns=[
@@ -3150,7 +2968,6 @@ def sleeve_factor_summary_table(
     for col in ["min_multiplier", "median_multiplier", "max_multiplier"]:
         grouped[col] = pd.to_numeric(grouped[col], errors="coerce").round(3)
     grouped["group"] = grouped["sleeve"].map({
-        "integrity": "Integrity penalties",
         "performance": "Performance context",
     }).fillna(grouped["sleeve"])
     grouped["direction"] = grouped["effect"].map({
@@ -3171,7 +2988,6 @@ def sleeve_factor_summary_table(
 
 
 def sleeve_effects_by_fight_table(
-    integrity_appearances: pd.DataFrame | None = None,
     performance_appearances: pd.DataFrame | None = None,
     *,
     n: int = 25,
@@ -3184,14 +3000,6 @@ def sleeve_effects_by_fight_table(
         frames.append(performance_factor_audit_table(
             performance_appearances,
             n=len(performance_appearances) * max(1, len(PERFORMANCE_FACTOR_LABELS)),
-            fighter=fighter,
-            effect=effect,
-        ))
-    if integrity_appearances is not None and not integrity_appearances.empty:
-        frames.append(integrity_factor_audit_table(
-            integrity_appearances,
-            performance_appearances,
-            n=len(integrity_appearances) * max(1, len(INTEGRITY_FACTOR_LABELS)),
             fighter=fighter,
             effect=effect,
         ))
@@ -3311,7 +3119,6 @@ def sleeve_attribution_waterfall(
     actual = df["fighter"].iloc[0]
     components = [
         ("Base", "base_method_delta"),
-        ("Clean", "integrity_delta"),
         ("Strength", "performance_delta"),
         ("Overlap", "interaction_delta"),
     ]
@@ -3363,9 +3170,8 @@ def sleeve_attribution_table(
     """Most recent exact per-event sleeve-attribution rows for a fighter."""
     cols = [
         "event_date", "event_name", "opponent", "base_method_delta",
-        "integrity_delta", "performance_delta", "interaction_delta",
-        "combined_delta", "integrity_weight", "performance_weight",
-        "combined_weight",
+        "performance_delta", "interaction_delta",
+        "combined_delta", "performance_weight", "combined_weight",
     ]
     if sleeve_attribution is None or sleeve_attribution.empty or not fighter:
         return pd.DataFrame(columns=cols)
