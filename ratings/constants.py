@@ -185,6 +185,29 @@ PERIOD_TITLE_EFFECTIVE_DEFENSE_CREDIT: float = 0.75
 
 
 # ---------------------------------------------------------------------------
+# Division home-class identification and cross-division carry-over.
+#
+# A fighter's "home" division is where the bulk of their career happened, but a
+# permanent move overrides that. The permanence signal is the belt: winning a
+# UFC title in a new division (which requires vacating/relinquishing the old
+# one) makes the move permanent regardless of how many fights remain on the old
+# record. Losing a title challenge up or down a class does NOT relocate a
+# fighter. See ratings/division_resume.py:primary_division_rows.
+#
+# For the divisional resume score, a proven champion who moves up should not
+# arrive at the bottom of the new division's pool: their first fight gets a
+# small pedigree "bump" carried from their established division, and the score
+# then flattens toward their actual in-division performance as they accumulate
+# fights (the reliability shrinkage already supplies the flattening curve). The
+# carry-over is a bounded fraction of how far the fighter's best-division resume
+# sits above the new division's pool mean, so it is a bump — never a full
+# legacy loan across weight classes.
+DIVISION_CARRYOVER_FRAC: float = 0.30        # share of cross-division pedigree used as prior
+DIVISION_CARRYOVER_CAP: float = 40.0         # max mu of carry-over bump into a new division
+DIVISION_HOME_RECENCY_HALFLIFE_DAYS: float = 1095.0   # 3-yr half-life for non-champion home pick
+
+
+# ---------------------------------------------------------------------------
 # Integrity penalties (PED, DQ, missed-weight).
 #
 # 2026-05-15: integrity penalties now apply at the SCORE layer (S_j), not just

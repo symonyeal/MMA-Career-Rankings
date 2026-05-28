@@ -509,7 +509,10 @@ def run(
     # shrink short title cameos toward the divisional pool.
     division_resume = division_resume_rows(whr_history, peak_quality)
     division_resume.to_parquet(snapshot_dir / "division_resume.parquet", index=False)
-    current = current.drop(columns=["primary_division", "primary_division_share"], errors="ignore")
+    current = current.drop(
+        columns=["primary_division", "primary_division_share", "primary_division_reliability"],
+        errors="ignore",
+    )
     current = current.merge(primary_division_rows(division_resume), on="fighter", how="left")
 
     # ------------------------------------------------------------------

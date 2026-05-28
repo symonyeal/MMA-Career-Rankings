@@ -1,5 +1,47 @@
 # Snapshot Changelog
 
+## 2026-05-28 - Title-anchored home division + cross-division pedigree carry-over
+
+Acts on the observation that a fighter's home weight class was identified by
+raw plurality of effective fights, which mislabeled Topuria (FW → LW),
+McGregor (FW → LW), and Makhachev (LW → WW) — fighters who *vacated* a belt
+and *won* the next division's title. Cameo fights up or down a class were also
+pulling fighters' divisional placement around.
+
+- **Home division now follows the belt.** `ratings/division_resume.py`
+  `primary_division_rows` picks home as the division of the fighter's most
+  recent UFC title-fight win (a title *loss* up or down a class —
+  e.g. Volkanovski's lightweight title shots — does not relocate).
+  Non-champions stay on the majority-of-career rule, with recency only as a
+  tiebreak. Catch Weight / Open Weight / unparsed labels are no longer eligible
+  as a home class.
+- **Cross-division pedigree carry-over.** Per-division resume scores now shrink
+  toward `pool_mean + bounded pedigree bump` rather than the pool mean alone.
+  The bump is `min(0.30 × (fighter_best_other_division − pool), 40)` — a proven
+  mover starts a little above the pool ("first fight bump") and converges
+  toward their real in-division resume as the reliability shrinkage flattens.
+  The cap keeps it a bump, never a full legacy loan: the no-legacy-loan
+  regression test still passes (a thin two-fight cameo cannot top an
+  established reign — GSP, Usman, Hughes still lead all-time Welterweight even
+  with Makhachev now bucketed there).
+- **`primary_division_share` → `primary_division_reliability`.** The old
+  "share" was a fraction of effective fights and read misleadingly low for
+  fresh title movers. The replacement is the home division's resume reliability
+  in [0, 1] — how earned the home label is. Volkanovski FW ≈ 0.81,
+  Makhachev WW ≈ 0.20.
+- **Single-division views bucket by home.** `analysis/viz.py` divisional
+  sleeve table, top-fighter placement, top-100 density, and division-strength
+  comparison now prefer `primary_division` over `recent_division` (last bout),
+  so a champion who moved up is listed under the division they actually
+  belong to.
+- New constants in `ratings/constants.py`: `DIVISION_CARRYOVER_FRAC`,
+  `DIVISION_CARRYOVER_CAP`, `DIVISION_HOME_RECENCY_HALFLIFE_DAYS`. New
+  `division_resume` columns: `division_last_fight_date`,
+  `division_last_title_win_date`, `division_recency_weight`,
+  `division_carryover_bump`.
+- `pytest` 154 passing (including 5 new home-division scenario tests); snapshot
+  `2026-05-13` + SQLite regenerated.
+
 ## 2026-05-14 - Active project cleanup
 
 - Archived the redundant Greco scraper checkout; its six CSVs matched

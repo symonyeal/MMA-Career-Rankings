@@ -1565,8 +1565,13 @@ def division_strength_comparison_chart(
     min_fights: int = 3,
 ) -> go.Figure:
     rc = _current_rank_frame(ratings_current, min_fights=min_fights)
-    recent_div = recent_division_by_fighter(fights)
-    ufc = rc.merge(recent_div, on="fighter", how="left").dropna(subset=["division"])
+    recent_div = recent_division_by_fighter(fights).rename(columns={"division": "_recent_division"})
+    ufc = rc.merge(recent_div, on="fighter", how="left")
+    # Bucket by home division (permanent-move-aware), falling back to the most
+    # recent division when the home label is missing.
+    home = ufc["primary_division"] if "primary_division" in ufc.columns else pd.Series(pd.NA, index=ufc.index)
+    ufc["division"] = home.fillna(ufc["_recent_division"])
+    ufc = ufc.dropna(subset=["division"])
     ufc_rows = []
     for division, group in ufc.groupby("division"):
         top = group.sort_values("mu_canonical", ascending=False).head(top_n)
@@ -1644,7 +1649,7 @@ def top_fighter_placement_scatter(
     df = df.sort_values(rating_col, ascending=False).head(n).reset_index(drop=True)
     if df.empty:
         return _empty_figure("no fighters match the current filters", title="Top fighter placement")
-    df["division_display"] = df.get("recent_division", df.get("primary_division", "")).fillna("Unknown")
+    df["division_display"] = df.get("primary_division", df.get("recent_division", "")).fillna("Unknown")
     df["rank"] = np.arange(1, len(df) + 1)
     df["rating_display"] = pd.to_numeric(df[rating_col], errors="coerce")
     rating_name = _metric_label(rating_col)
@@ -1714,7 +1719,7 @@ def top100_division_density_chart(
     df = df.dropna(subset=[rating_col]).sort_values(rating_col, ascending=False).head(n)
     if df.empty:
         return _empty_figure("no top-fighter rows available", title="Top-100 division density")
-    df["division"] = df.get("recent_division", df.get("primary_division", "")).fillna("Unknown")
+    df["division"] = df.get("primary_division", df.get("recent_division", "")).fillna("Unknown")
     density = (
         df.groupby("division", as_index=False)
         .agg(fighters=("fighter", "nunique"), avg_score=(rating_col, "mean"))
@@ -2275,9 +2280,23 @@ def sleeve_ranking_table(
     if fights is not None and active_within_days is not None and "last_event_date" in df.columns:
         cutoff = pd.Timestamp(fights["event_date"].max()) - pd.Timedelta(days=active_within_days)
         df = df[pd.to_datetime(df["last_event_date"], errors="coerce") >= cutoff]
-    if fights is not None and division is not None:
-        recent_div = recent_division_by_fighter(fights)
-        df = df.merge(recent_div, on="fighter", how="left")
+    if division is not None:
+        # Bucket by the fighter's home division (the permanent-move-aware
+        # primary_division), so a champion who moved up is listed under the
+        # division they now belong to, not whichever class their last bout
+        # happened to fall in. Fall back to most-recent division only when the
+        # home label is unavailable.
+        if "primary_division" in df.columns:
+            home = df["primary_division"]
+        else:
+            home = pd.Series(pd.NA, index=df.index)
+        if fights is not None:
+            recent_div = recent_division_by_fighter(fights).rename(
+                columns={"division": "_recent_division"}
+            )
+            df = df.merge(recent_div, on="fighter", how="left")
+            home = home.fillna(df["_recent_division"])
+        df["division"] = home
         df = df[df["division"] == division]
     df = df.sort_values(rating_col, ascending=False).head(n).reset_index(drop=True)
     out = pd.DataFrame({
