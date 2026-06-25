@@ -625,8 +625,9 @@ def test_per_fight_signal_drives_symmetric_winner_and_loser_weights():
     )
     alice = out[out["fighter"] == "Alice"].iloc[0]
     bob = out[out["fighter"] == "Bob"].iloc[0]
-    expected_winner = 1.0 + 0.20 * math.tanh(alice["perf_winner_signal_S"] / PERF_TANH_SCALE)
-    expected_loser = 1.0 - 0.20 * math.tanh(alice["perf_winner_signal_S"] / PERF_TANH_SCALE)
+    env_half = (SLEEVE_FACTOR_MAX - SLEEVE_FACTOR_MIN) / 2.0
+    expected_winner = 1.0 + env_half * math.tanh(alice["perf_winner_signal_S"] / PERF_TANH_SCALE)
+    expected_loser = 1.0 - env_half * math.tanh(alice["perf_winner_signal_S"] / PERF_TANH_SCALE)
     assert math.isclose(alice["performance_weight"], expected_winner, abs_tol=1e-9)
     assert math.isclose(bob["performance_weight"], expected_loser, abs_tol=1e-9)
     assert math.isclose(

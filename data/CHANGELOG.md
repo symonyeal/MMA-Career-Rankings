@@ -1,5 +1,103 @@
 # Snapshot Changelog
 
+## 2026-05-28 - Dual division concept + lens consolidation + Weight Classes section
+
+Follow-up to the same-day title-anchor change. Walking through real careers
+(GSP one MW cameo, Makhachev never lost LW before moving to WW, Topuria one
+LW belt over a long FW career, Pereira majority LHW) showed one label is not
+enough: divisional rankings should bucket by where the *career* happened, but
+"where this fighter competes now" is its own useful answer.
+
+- **Two divisional labels per fighter.** `ratings/division_resume.py`
+  `primary_division_rows` now returns `career_division` (simple majority of
+  effective fights, recency as tiebreak) **and** `current_division` (most
+  recent UFC title-fight win, or the same as career when no belt was ever
+  won). Old `primary_division` / `primary_division_reliability` columns are
+  retired. Result: GSP is a career WW (one MW cameo doesn't relocate);
+  Makhachev is a career LW (currently WW); Topuria is a career FW (currently
+  LW); Pereira is now career LHW (more UFC fights than at MW).
+- **Divisional bucketing uses career.** Every single-division view —
+  leaderboard filter, `top_fighter_placement_scatter`,
+  `top100_division_density_chart`, `division_strength_comparison_chart`,
+  `sleeve_ranking_table` — now buckets by `career_division`, so a fighter
+  surfaces under the class they made their name in regardless of a recent
+  cameo. `current_division` is shown as a "Now competes" column where it
+  differs.
+- **Lens dropdown reduced to {Wins, Complete, Legacy}.** Finishes / Clean /
+  Strength were thinly-different leaderboards: Complete already combines
+  finish-quality + integrity + opponent-strength, and the PED list at the
+  bottom of the notebook surfaces the integrity layer directly. Internal
+  Clean/Strength labels stay in the audit ("What Moved a Fighter's Rating")
+  cell because they describe the layers behind Complete.
+- **Weight Classes section is one cohesive block.** Strength-over-time,
+  single-year ranking, era heat map, top-100 share, and a division-leaders
+  table all live in one cell with shared year-range and division controls.
+  The old standalone "Era Check" section is gone — the heat map moved here.
+- **Year range slider replaces single-year controls** on the strength
+  timeline + era heat map; a separate snapshot-year slider drives the single-
+  year ranking. Subsection of years is now a first-class control.
+- **Single-year division ranking redesigned.** Replaces the aggregate
+  one-bar-per-division chart with a per-class mini-leaderboard: top 5 actual
+  fighter names in each selected weight class for the snapshot year. New
+  helper: `analysis/viz.py:division_year_top_fighters_chart`.
+- **Current-leaders table is per-division.** The old multi-division "current
+  leaders" table is replaced with a single-division Dropdown → top 15 of
+  that class (the user's "select a class, see the top 15"). The table also
+  flags movers via a "Now competes" column.
+- **Résumé vs Rating moved up + polished.** It now sits right after the
+  Rankings (it's the natural sanity-check for them). Scatter labels the top
+  six by name, ranks 1-10 keep their numbered chip, the long tail is a
+  uniform small dot — no more "every dot fights for space" cluster. Top-100
+  share moved into the Weight Classes block.
+- **Win-streak overlay.** The streak section's fighter search now *overlays*
+  the searched fighter's timeline on top of the picked-streak fighter rather
+  than replacing it, so two runs can be compared head to head on the same
+  axes. Primary line stays sky / secondary line goes violet.
+- 155 passing (one new dual-division test for the GSP case; the
+  notebook-dashboard test was updated for the moved era widget).
+
+## 2026-05-28 - Title-anchored home division + cross-division pedigree carry-over
+
+Acts on the observation that a fighter's home weight class was identified by
+raw plurality of effective fights, which mislabeled Topuria (FW → LW),
+McGregor (FW → LW), and Makhachev (LW → WW) — fighters who *vacated* a belt
+and *won* the next division's title. Cameo fights up or down a class were also
+pulling fighters' divisional placement around.
+
+- **Home division now follows the belt.** `ratings/division_resume.py`
+  `primary_division_rows` picks home as the division of the fighter's most
+  recent UFC title-fight win (a title *loss* up or down a class —
+  e.g. Volkanovski's lightweight title shots — does not relocate).
+  Non-champions stay on the majority-of-career rule, with recency only as a
+  tiebreak. Catch Weight / Open Weight / unparsed labels are no longer eligible
+  as a home class.
+- **Cross-division pedigree carry-over.** Per-division resume scores now shrink
+  toward `pool_mean + bounded pedigree bump` rather than the pool mean alone.
+  The bump is `min(0.30 × (fighter_best_other_division − pool), 40)` — a proven
+  mover starts a little above the pool ("first fight bump") and converges
+  toward their real in-division resume as the reliability shrinkage flattens.
+  The cap keeps it a bump, never a full legacy loan: the no-legacy-loan
+  regression test still passes (a thin two-fight cameo cannot top an
+  established reign — GSP, Usman, Hughes still lead all-time Welterweight even
+  with Makhachev now bucketed there).
+- **`primary_division_share` → `primary_division_reliability`.** The old
+  "share" was a fraction of effective fights and read misleadingly low for
+  fresh title movers. The replacement is the home division's resume reliability
+  in [0, 1] — how earned the home label is. Volkanovski FW ≈ 0.81,
+  Makhachev WW ≈ 0.20.
+- **Single-division views bucket by home.** `analysis/viz.py` divisional
+  sleeve table, top-fighter placement, top-100 density, and division-strength
+  comparison now prefer `primary_division` over `recent_division` (last bout),
+  so a champion who moved up is listed under the division they actually
+  belong to.
+- New constants in `ratings/constants.py`: `DIVISION_CARRYOVER_FRAC`,
+  `DIVISION_CARRYOVER_CAP`, `DIVISION_HOME_RECENCY_HALFLIFE_DAYS`. New
+  `division_resume` columns: `division_last_fight_date`,
+  `division_last_title_win_date`, `division_recency_weight`,
+  `division_carryover_bump`.
+- `pytest` 154 passing (including 5 new home-division scenario tests); snapshot
+  `2026-05-13` + SQLite regenerated.
+
 ## 2026-05-14 - Active project cleanup
 
 - Archived the redundant Greco scraper checkout; its six CSVs matched
@@ -501,3 +599,40 @@ Backup: pre-consolidation snapshot copied to
 - Movers vs 2026-05-12-pre-consolidation by mu_canonical:
   - Up: Julia Polastri +0.0; Anthony Johnson +0.0; Ian Loveland +0.0; Cristiano Marcello +0.0; Alexandre Dantas +0.0; Jessin Ayari +0.0; Mark Eddiva +0.0; Joe Jordan +0.0; Josh Quinlan +0.0; Reese Andy +0.0
   - Down: Uros Medic -0.0; Ben Saunders -0.0; Ramazan Emeev -0.0; Anthony Rocco Martin -0.0; Kyle Noke -0.0; Erik Silva -0.0; Alessio Sakara -0.0; Felipe Olivieri -0.0; Patrick Cote -0.0; Tim Means -0.0
+
+## 2026-06-23 - Refresh run
+- Canonical snapshot rebuilt from Greco CSVs: events=748, fights=8402, rounds=40124, excluded=343.
+- Ratings and dominance produced: fighters_rated=2524, fighter_event_rows=16804, events_processed=743.
+- Streams: wl (canonical) + method_rating + method_clean + method_perf + method_full + whr_rating + whr_clean + whr_perf + whr_full.
+- Performance sleeve includes quality, market, rank context, championship context, and P4P context.
+- Period metrics: 10-year and 5-year windows, opponent-weighted, result-aware, with all qualifying fights counted.
+- Top 10 by Legacy: Jon Jones 2010.6; Georges St-Pierre 1998.5; Amanda Nunes 1981.4; Anderson Silva 1952.1; Demetrious Johnson 1947.1; Islam Makhachev 1934.6; Valentina Shevchenko 1927.9; Alexander Volkanovski 1925.0; Daniel Cormier 1911.3; Jose Aldo 1909.0
+- Movers vs 2026-05-13 by mu_canonical:
+  - Up: Nicolle Caliari +199.4; Mitch Raposo +172.1; Kai Asakura +145.5; Kevin Borjas +145.3; Ivan Erslan +126.1; Benardo Sopaj +116.4; Tom Nolan +110.1; Gaston Bolanos +103.4; Luis Gurule +101.5; Alice Ardelean +86.6
+  - Down: Andre Lima -202.4; Daniel Barez -143.1; Allan Nascimento -137.1; Tuco Tokkos -133.5; Shauna Bannon -132.9; Jacqueline Cavalcanti -108.8; Malcolm Wellmaker -105.4; Cameron Smotherman -103.2; Michael Aswell Jr. -101.9; Daniel Santos -92.9
+
+## 2026-06-23 - Notebook chart expansion
+
+Implemented all 12 ideas in `analysis/CHART_PLAN.md`. The dashboard grows from
+14 to 23 code cells (22 markdown). New `analysis/viz.py` builders:
+`striking_profile_chart`, `dominance_leaderboard_chart`, `snapshot_movers_chart`,
+`inactivity_table`, `integrity_ledger_table`, `integrity_impact_chart`,
+`legacy_vs_prime_scatter`, `method_mix_timeline_chart`, `title_lineage_chart`.
+
+- New sections: Most Dominant, Legacy vs Prime, Since Last Snapshot, Ring Rust,
+  Title Lineage, Market vs Model, Model vs Consensus (FightMatrix), Model
+  Accuracy (calibration), Integrity Ledger. Weight Classes gained Division
+  parity (entropy) + How fights end (method mix); Tale of the Tape gained the
+  striking fingerprint for each fighter.
+- Wired the previously-unused `calibration_residuals_chart`,
+  `division_entropy_chart`, odds (`favorite_underdog`/`odds_impact`/
+  `odds_adjustment_distribution`), and `glicko_fightmatrix_scatter`/
+  `rank_delta_table` helpers into live sections.
+- `integrity_appearances` added to `viz.TABLE_KEY_MAP` so `load_snapshot`
+  exposes it. New sections subscribe to the Control Room (lens/time/division/
+  top_n/min_fights) so they re-rank with the rest of the dashboard.
+- Fixed `tests/test_viz_smoke.py` (collection-broken since the 2026-05-28
+  stream consolidation): `ped_impact_chart` -> `integrity_impact_chart`, dropped
+  the removed `integrity_factor_audit_table`, and realigned the stream/lens
+  assertions to the 3-stream API. Added `tests/test_chart_additions.py` and
+  new-section assertions to `tests/test_notebook_dashboard.py`. Full suite: 169 pass.

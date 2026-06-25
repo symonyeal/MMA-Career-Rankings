@@ -84,6 +84,32 @@ def _thomas(diag: np.ndarray, off: np.ndarray, rhs: np.ndarray) -> np.ndarray:
     return x
 
 
+def _tridiag_inv_diag(a_diag: np.ndarray, a_off: np.ndarray) -> np.ndarray:
+    """Diagonal of the inverse of an SPD symmetric tridiagonal matrix ``A``.
+
+    ``a_diag`` is the main diagonal (length k); ``a_off`` the off-diagonal
+    (length k-1). Uses Meurant's forward (LU) / backward (UL) pivot recurrences:
+    ``(A^{-1})_{ii} = 1 / (delta_i + lambda_i - a_diag_i)`` where ``delta`` are
+    the forward pivots and ``lambda`` the backward pivots. Stable and O(k); this
+    gives each WHR rating's posterior variance from the per-fighter Hessian.
+    """
+    k = len(a_diag)
+    if k == 0:
+        return np.zeros(0)
+    if k == 1:
+        return 1.0 / a_diag
+    b2 = a_off ** 2
+    delta = np.empty(k)
+    delta[0] = a_diag[0]
+    for i in range(1, k):
+        delta[i] = a_diag[i] - b2[i - 1] / delta[i - 1]
+    lam = np.empty(k)
+    lam[k - 1] = a_diag[k - 1]
+    for i in range(k - 2, -1, -1):
+        lam[i] = a_diag[i] - b2[i] / lam[i + 1]
+    return 1.0 / (delta + lam - a_diag)
+
+
 def _build_appearances(
     fights: pd.DataFrame,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, dict[str, list[int]]]:
@@ -171,6 +197,7 @@ def run_whr(
     iterations: int = WHR_ITERATIONS,
     step_clip: float = WHR_STEP_CLIP,
     out_col: str = "mu_whr",
+    return_variance: bool = False,
 ) -> pd.DataFrame:
     """Run the WHR smoother over a canonical fight table.
 
@@ -187,6 +214,11 @@ def run_whr(
     Returns a per-appearance history frame with columns
     ``fighter``, ``event_date``, ``event_name``, ``out_col`` — the same shape as
     ``ratings_history.parquet`` so it feeds ``ratings.peaks`` unchanged.
+
+    With ``return_variance=True`` an extra ``var_<stream>`` column carries each
+    rating's posterior variance on the natural scale (the diagonal of the inverse
+    per-fighter Hessian). This is WHR's own uncertainty — the analog of Glicko-2's
+    RD — used by the backtest to shrink uncertain predictions toward a coin flip.
     """
     cols = ["fighter", "event_date", "event_name", out_col]
     if fights is None or fights.empty:
@@ -251,12 +283,39 @@ def run_whr(
         ratings -= ratings.mean()
 
     mu_whr = _ELO_ANCHOR + ratings * _ELO_PER_NAT
-    out = pd.DataFrame(
-        {
-            "fighter": app_fighter,
-            "event_date": _EPOCH + pd.to_timedelta(app_day, unit="D"),
-            "event_name": app_event,
-            out_col: mu_whr,
-        }
-    )
+    data = {
+        "fighter": app_fighter,
+        "event_date": _EPOCH + pd.to_timedelta(app_day, unit="D"),
+        "event_name": app_event,
+        out_col: mu_whr,
+    }
+
+    if return_variance:
+        # Posterior variance of each rating on the NATURAL scale: the diagonal of
+        # the inverse per-fighter Hessian (A = -H) evaluated at the converged
+        # ratings. Same A as the Newton step, so this is the curvature the fit
+        # already used. Larger variance = a thin / stale record the prediction
+        # should shrink toward a coin flip.
+        variances = np.zeros(n_app, dtype=float)
+        for nodes in fighter_node_arrays.values():
+            k = len(nodes)
+            if k == 0:
+                continue
+            r = ratings[nodes]
+            opp = ratings[app_opp[nodes]]
+            w = app_weight[nodes]
+            p = 1.0 / (1.0 + np.exp(-(r - opp)))
+            h_diag = w * (-p * (1.0 - p)) - inv_prior
+            if k > 1:
+                gaps = np.maximum(app_day[nodes][1:] - app_day[nodes][:-1], 1.0)
+                inv_v = 1.0 / (w2_per_day * gaps)
+                h_diag[:-1] -= inv_v
+                h_diag[1:] -= inv_v
+                a_off = -inv_v
+            else:
+                a_off = np.zeros(0)
+            variances[nodes] = _tridiag_inv_diag(-h_diag, a_off)
+        data[out_col.replace("mu_", "var_", 1)] = variances
+
+    out = pd.DataFrame(data)
     return out.sort_values(["fighter", "event_date", "event_name"]).reset_index(drop=True)

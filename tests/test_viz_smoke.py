@@ -25,11 +25,10 @@ from analysis.viz import (
     odds_adjustment_distribution_chart,
     odds_coverage_summary,
     odds_impact_chart,
-    ped_impact_chart,
+    integrity_impact_chart,
     rank_delta_table,
     ranking_context_impact_table,
     performance_factor_audit_table,
-    integrity_factor_audit_table,
     sleeve_factor_summary_table,
     sleeve_effects_by_fight_table,
     weight_class_context_impact_table,
@@ -91,7 +90,10 @@ def test_viz_builders_smoke(snapshot):
         calibration_plot(rh, fights),
         glicko_fightmatrix_scatter(rc, snapshot["fightmatrix_rankings"]),
         external_source_coverage_dashboard(snapshot),
-        ped_impact_chart(rc),
+        integrity_impact_chart(
+            snapshot.get("integrity_appearances", pd.DataFrame()),
+            snapshot.get("sleeve_attribution", pd.DataFrame()),
+        ),
         sustained_peak_leaderboard_chart(rc),
         division_strength_comparison_chart(rc, fights, snapshot["fightmatrix_rankings"]),
         datalab_scorecard_insight_chart(snapshot["datalab_scorecards"]),
@@ -235,25 +237,16 @@ def test_normalize_division_preserves_womens_labels():
 def test_rating_streams_and_peak_views_are_aligned():
     stream_keys = [v for _, v in RATING_STREAMS]
     peak_keys = [v for _, v in PEAK_VIEWS]
-    assert set(stream_keys) == {
-        "canonical",
-        "method",
-        "method_integrity",
-        "method_performance",
-        "method_integrity_performance",
-    }
+    # Streams were consolidated (2026-05-28): Wins / Finishes / Strength only.
+    assert set(stream_keys) == {"canonical", "method", "method_performance"}
     assert set(peak_keys) == {"current", "sustained_peak", "five_year_peak"}
 
 
 def test_compose_rating_stream_locks_canonical():
-    """Canonical with any sleeve toggled is rejected."""
+    """Canonical is always pristine; the performance sleeve only applies to method."""
     assert compose_rating_stream("canonical") == "canonical"
     assert compose_rating_stream("method") == "method"
-    assert compose_rating_stream("method", use_integrity=True) == "method_integrity"
     assert compose_rating_stream("method", use_performance=True) == "method_performance"
-    assert compose_rating_stream("method", use_integrity=True, use_performance=True) == "method_integrity_performance"
-    with pytest.raises(ValueError):
-        compose_rating_stream("canonical", use_integrity=True)
     with pytest.raises(ValueError):
         compose_rating_stream("canonical", use_performance=True)
 
@@ -261,8 +254,6 @@ def test_compose_rating_stream_locks_canonical():
 def test_modular_lookup_resolves_to_method_streams(snapshot):
     rc = snapshot["ratings_current"]
     assert select_modular_rating_column(rc, "canonical") == "mu_canonical"
-    if "mu_method_integrity" in rc.columns:
-        assert select_modular_rating_column(rc, "method", use_integrity=True) == "mu_method_integrity"
     if "mu_method_performance" in rc.columns:
         assert select_modular_rating_column(rc, "method", use_performance=True) == "mu_method_performance"
 
@@ -270,10 +261,10 @@ def test_modular_lookup_resolves_to_method_streams(snapshot):
 def test_public_rating_lookup_resolves_casual_views(snapshot):
     rc = snapshot["ratings_current"]
     assert select_public_rating_column(rc, "wins", "current") == "mu_canonical"
-    if "mu_method_integrity_performance" in rc.columns:
-        assert select_public_rating_column(rc, "complete", "current") == "mu_method_integrity_performance"
-    assert public_history_key("complete") == "ratings_history_method_integrity_performance"
-    assert public_rating_stream("complete") == "method_integrity_performance"
+    if "mu_method_performance" in rc.columns:
+        assert select_public_rating_column(rc, "complete", "current") == "mu_method_performance"
+    assert public_history_key("complete") == "ratings_history_method_performance"
+    assert public_rating_stream("complete") == "method_performance"
 
 
 def test_adjustable_prime_window_uses_distinct_columns(snapshot):
@@ -354,17 +345,10 @@ def test_new_market_and_era_charts_smoke(snapshot):
     context = ranking_context_impact_table(snapshot.get("performance_appearances", pd.DataFrame()), n=5)
     weight_context = weight_class_context_impact_table(snapshot.get("performance_appearances", pd.DataFrame()), n=5)
     perf_audit = performance_factor_audit_table(snapshot.get("performance_appearances", pd.DataFrame()), n=10)
-    integrity_audit = integrity_factor_audit_table(
-        snapshot.get("integrity_appearances", pd.DataFrame()),
-        snapshot.get("performance_appearances", pd.DataFrame()),
-        n=10,
-    )
     summary = sleeve_factor_summary_table(
-        snapshot.get("integrity_appearances", pd.DataFrame()),
         snapshot.get("performance_appearances", pd.DataFrame()),
     )
     effects = sleeve_effects_by_fight_table(
-        snapshot.get("integrity_appearances", pd.DataFrame()),
         snapshot.get("performance_appearances", pd.DataFrame()),
         n=5,
     )
@@ -376,43 +360,5 @@ def test_new_market_and_era_charts_smoke(snapshot):
     assert "context_multiplier" in context.columns
     assert "perf_factor_weight_class" in weight_context.columns
     assert {"factor", "effect", "multiplier"}.issubset(perf_audit.columns)
-    assert {"factor", "effect", "multiplier"}.issubset(integrity_audit.columns)
     assert {"sleeve", "factor", "appearances", "median_effect_pct"}.issubset(summary.columns)
     assert {"fighter", "combined_effect_pct", "factors"}.issubset(effects.columns)
-
-
-def test_integrity_audit_effect_filter():
-    integrity = pd.DataFrame(
-        {
-            "fight_url": ["f1", "f2"],
-            "fighter": ["A", "B"],
-            "integrity_factor_ped": [0.8, 1.0],
-            "integrity_weight": [0.8, 1.0],
-        }
-    )
-    appearances = pd.DataFrame(
-        {
-            "fight_url": ["f1", "f2"],
-            "fighter": ["A", "B"],
-            "event_date": ["2024-01-01", "2024-02-01"],
-            "event_name": ["Event 1", "Event 2"],
-            "opponent": ["B", "A"],
-            "is_winner": [True, True],
-            "is_draw": [False, False],
-        }
-    )
-    penalties = integrity_factor_audit_table(
-        integrity,
-        appearances,
-        effect="penalty",
-        include_neutral=True,
-    )
-    boosts = integrity_factor_audit_table(
-        integrity,
-        appearances,
-        effect="boost",
-        include_neutral=True,
-    )
-    assert len(penalties) == 1
-    assert penalties.iloc[0]["fighter"] == "A"
-    assert boosts.empty

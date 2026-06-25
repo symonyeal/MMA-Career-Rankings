@@ -164,12 +164,6 @@ PERFORMANCE_FACTOR_LABELS = {
     "perf_factor_activity_loss": "Post-layoff loss",
 }
 
-INTEGRITY_FACTOR_LABELS = {
-    "integrity_factor_ped": "PED-confirmed win",
-    "integrity_factor_dq": "DQ win",
-    "integrity_factor_missed_weight": "Missed-weight win",
-}
-
 
 def _empty_figure(message: str, *, title: str | None = None, height: int = 360) -> go.Figure:
     """Return a consistent empty-state chart instead of a blank figure."""
@@ -190,7 +184,7 @@ def _empty_figure(message: str, *, title: str | None = None, height: int = 360) 
 
 
 def _metric_label(column: str) -> str:
-    """Human label for rating-like columns used in chart titles and hovers."""
+    """Plain-English label for rating-like columns used in chart titles and hovers."""
     labels = {
         "mu_canonical": "Wins rating",
         "phi_canonical": "Rating uncertainty",
@@ -199,8 +193,16 @@ def _metric_label(column: str) -> str:
         "mu_method_performance": "Strength rating",
         "mu_method_integrity_performance": "Complete rating",
         "mu_whr": "Legacy rating",
+        "mu_whr_integrity": "Legacy clean rating",
+        "mu_whr_performance": "Legacy strength rating",
+        "mu_whr_integrity_performance": "Legacy complete rating",
     }
-    return labels.get(column, rating_label(column).replace("_", " "))
+    if column in labels:
+        return labels[column]
+    mapped = rating_label(column)
+    # rating_label returns a friendly label when known, otherwise the raw column
+    # name; never show a long technical column name to the reader.
+    return "Rating" if mapped == column else mapped
 
 
 def _apply_chart_layout(fig: go.Figure, *, height: int | None = None) -> go.Figure:
@@ -241,12 +243,10 @@ TABLE_KEY_MAP = [
     ("canonical_fighters", "fighters"),
     ("canonical_events", "events"),
     ("ratings_history", "ratings_history"),
-    ("ratings_history_method_integrity", "ratings_history_method_integrity"),
     ("ratings_history_method_performance", "ratings_history_method_performance"),
-    ("ratings_history_method_integrity_performance", "ratings_history_method_integrity_performance"),
     ("ratings_current", "ratings_current"),
-    ("integrity_appearances", "integrity_appearances"),
     ("performance_appearances", "performance_appearances"),
+    ("integrity_appearances", "integrity_appearances"),
     ("fight_dominance", "fight_dominance"),
     ("fighter_dominance", "fighter_dominance"),
     ("calibration_residuals", "calibration_residuals"),
@@ -263,7 +263,6 @@ TABLE_KEY_MAP = [
 
 CSV_KEY_MAP = [
     ("_excluded_bouts", "excluded_bouts"),
-    ("ped_confirmed_bouts", "ped_confirmed_bouts"),
     ("missed_weight_bouts", "missed_weight_bouts"),
 ]
 
@@ -315,7 +314,7 @@ def load_database(db_path: Path | str) -> dict[str, pd.DataFrame]:
         for table_name, key in TABLE_KEY_MAP:
             if table_name in existing:
                 out[key] = pd.read_sql_query(f'SELECT * FROM "{table_name}"', con)
-        for table_name in METADATA_TABLES + ["excluded_bouts", "ped_confirmed_bouts", "missed_weight_bouts"]:
+        for table_name in METADATA_TABLES + ["excluded_bouts", "missed_weight_bouts"]:
             if table_name in existing:
                 out[table_name] = pd.read_sql_query(f'SELECT * FROM "{table_name}"', con)
     return out
@@ -346,6 +345,24 @@ DIVISIONS = [
     "Women's Bantamweight", "Women's Featherweight",
     "Catch Weight", "Open Weight",
 ]
+
+DIV_SHORT: dict[str, str] = {
+    "Strawweight":          "STW",
+    "Flyweight":            "FLY",
+    "Bantamweight":         "BW",
+    "Featherweight":        "FW",
+    "Lightweight":          "LW",
+    "Welterweight":         "WW",
+    "Middleweight":         "MW",
+    "Light Heavyweight":    "LHW",
+    "Heavyweight":          "HW",
+    "Women's Strawweight":  "W.STW",
+    "Women's Flyweight":    "W.FLY",
+    "Women's Bantamweight": "W.BW",
+    "Women's Featherweight":"W.FW",
+    "Catch Weight":         "CW",
+    "Open Weight":          "OW",
+}
 
 FIGHTMATRIX_DIVISION_MAP = {
     "heavyweight": "Heavyweight",
@@ -513,9 +530,7 @@ def top_n_table(
         "sustained_peak_headline_mu_whr", "five_year_peak_headline_mu_whr", "mu_whr",
         "sustained_peak_mu_canonical", "five_year_peak_mu_canonical",
         "sustained_peak_mu_method", "five_year_peak_mu_method",
-        "sustained_peak_mu_method_integrity_performance",
-        "five_year_peak_mu_method_integrity_performance",
-        "mu_method_integrity", "delta_mu_method_integrity",
+        "sustained_peak_mu_method_performance", "five_year_peak_mu_method_performance",
         "mu_method_performance", "delta_mu_method_performance",
     ]:
         if col in df.columns:
@@ -524,13 +539,11 @@ def top_n_table(
 
     display_cols = [
         "rank", "fighter", "mu_canonical", "phi_canonical",
-        "gender", "primary_division", "recent_division",
+        "gender", "career_division", "current_division", "recent_division",
         "sustained_peak_headline_mu_whr", "five_year_peak_headline_mu_whr",
-        "sustained_peak_mu_method_integrity_performance",
-        "five_year_peak_mu_method_integrity_performance",
+        "sustained_peak_mu_method_performance", "five_year_peak_mu_method_performance",
         "sustained_peak_mu_canonical", "five_year_peak_mu_canonical",
-        "rank_method_integrity", "mu_method_integrity", "delta_mu_method_integrity",
-        "ped_confirmed_fights", "dq_wins", "missed_weight_wins",
+        "mu_method_performance", "delta_mu_method_performance",
         "mu_method", "rating_periods", "last_event_date",
         "height_inches", "weight_lb", "reach_inches", "stance",
     ]
@@ -581,17 +594,12 @@ def fighter_detail(
             "mu_method":                   round(float(row["mu_method"]), 1),
             "sustained_peak_mu_method":    _opt_round(row.get("sustained_peak_mu_method")),
             "five_year_peak_mu_method":    _opt_round(row.get("five_year_peak_mu_method")),
-            "mu_method_integrity":         _opt_round(row.get("mu_method_integrity")),
             "mu_method_performance":       _opt_round(row.get("mu_method_performance")),
-            "mu_method_integrity_performance": _opt_round(row.get("mu_method_integrity_performance")),
-            "sustained_peak_mu_method_integrity_performance": _opt_round(row.get("sustained_peak_mu_method_integrity_performance")),
-            "five_year_peak_mu_method_integrity_performance": _opt_round(row.get("five_year_peak_mu_method_integrity_performance")),
+            "sustained_peak_mu_method_performance": _opt_round(row.get("sustained_peak_mu_method_performance")),
+            "five_year_peak_mu_method_performance": _opt_round(row.get("five_year_peak_mu_method_performance")),
             "mu_whr":                      _opt_round(row.get("mu_whr")),
             "whr_rating":                  _opt_round(row.get("sustained_peak_headline_mu_whr")),
             "whr_rating_5yr":              _opt_round(row.get("five_year_peak_headline_mu_whr")),
-            "ped_confirmed_fights":        int(row.get("ped_confirmed_fights", 0) or 0),
-            "dq_wins":                     int(row.get("dq_wins", 0) or 0),
-            "missed_weight_wins":          int(row.get("missed_weight_wins", 0) or 0),
             "rating_periods":              int(row["rating_periods"]),
             "last_event_date":             row.get("last_event_date"),
         }
@@ -868,7 +876,7 @@ def weight_class_strength_chart(
     fig.update_layout(
         title=f"Division strength over time: top-{top_n_per_division} mean rating",
         xaxis_title="Year",
-        yaxis_title="Mean canonical rating",
+        yaxis_title="Average rating",
         hovermode="x unified",
     )
     return fig
@@ -1020,6 +1028,111 @@ def division_strength_timeline_chart(
     return fig
 
 
+def division_year_top_fighters_chart(
+    ratings_history: pd.DataFrame,
+    fights: pd.DataFrame,
+    *,
+    rating_col: str,
+    year: int,
+    divisions: list[str] | None = None,
+    top_n: int = 5,
+) -> go.Figure:
+    """Single-year snapshot showing the actual top-N fighters per division.
+
+    Replaces the old "one bar per division aggregate" view (which the user
+    found unreadable) with a horizontal bar per *fighter*, grouped by division
+    so each weight class reads as its own mini-leaderboard. Top of each block
+    is the year's #1 in that class.
+    """
+    title = f"{year} division ranking — top {top_n} per class"
+    if ratings_history is None or ratings_history.empty or fights is None or fights.empty:
+        return _empty_figure("ratings unavailable", title=title)
+    if rating_col not in ratings_history.columns:
+        return _empty_figure(f"{rating_col!r} not in history", title=title)
+
+    f = add_division_to_fights(fights)
+    f["event_date"] = pd.to_datetime(f["event_date"], errors="coerce")
+    f["year"] = f["event_date"].dt.year
+    a = f[["year", "division", "fighter_a"]].rename(columns={"fighter_a": "fighter"})
+    b = f[["year", "division", "fighter_b"]].rename(columns={"fighter_b": "fighter"})
+    long = pd.concat([a, b], ignore_index=True).dropna(subset=["fighter", "division", "year"])
+    long = long[long["year"].eq(year)]
+    if divisions:
+        long = long[long["division"].isin(divisions)]
+    if long.empty:
+        return _empty_figure(f"no fighters in the selected classes in {year}", title=title)
+
+    rh = ratings_history.copy()
+    rh["event_date"] = pd.to_datetime(rh["event_date"], errors="coerce")
+    rh["year"] = rh["event_date"].dt.year
+    rh[rating_col] = pd.to_numeric(rh[rating_col], errors="coerce")
+    eoy = (
+        rh.dropna(subset=[rating_col, "year"])
+        .sort_values("event_date")
+        .groupby(["fighter", "year"], as_index=False)
+        .last()[["fighter", "year", rating_col]]
+    )
+    merged = long.merge(eoy, on=["fighter", "year"], how="inner").drop_duplicates(
+        subset=["fighter", "year", "division"]
+    )
+    if merged.empty:
+        return _empty_figure(f"no rated fighters in the selected classes in {year}", title=title)
+
+    # Order divisions by their #1 fighter (strongest division on top); within a
+    # division order by rating ascending so the top fighter appears at the top
+    # of its block when the y-axis is reversed.
+    top_per_div = (
+        merged.sort_values(rating_col, ascending=False)
+        .groupby("division", as_index=False)
+        .head(top_n)
+        .copy()
+    )
+    div_order = (
+        top_per_div.groupby("division")[rating_col].max().sort_values(ascending=False).index.tolist()
+    )
+    if divisions:
+        # Honor the caller's order when they pinned a selection (matches the
+        # other division charts).
+        div_order = [d for d in divisions if d in div_order] + [d for d in div_order if d not in divisions]
+
+    fig = go.Figure()
+    rating_name = _metric_label(rating_col)
+    y_labels: list[str] = []
+    for division in div_order:
+        block = top_per_div[top_per_div["division"].eq(division)].sort_values(rating_col, ascending=False)
+        if block.empty:
+            continue
+        div_short = DIV_SHORT.get(division, division)
+        labels = [f"{i+1}. {fighter}  ·  {div_short}" for i, fighter in enumerate(block["fighter"].tolist())]
+        fig.add_trace(go.Bar(
+            x=block[rating_col].astype(float),
+            y=labels,
+            orientation="h",
+            name=div_short,
+            text=[f"{v:.0f}" for v in block[rating_col]],
+            textposition="outside",
+            hovertemplate=(
+                f"<b>%{{y}}</b><br>{rating_name}=%{{x:.1f}}<extra></extra>"
+            ),
+        ))
+        y_labels.extend(labels)
+    # Reverse so the strongest division and #1 within it sit at the top.
+    fig.update_yaxes(categoryorder="array", categoryarray=list(reversed(y_labels)))
+    height = max(380, 34 * len(y_labels) + 80)
+    _apply_chart_layout(fig, height=height)
+    fig.update_layout(
+        title=title,
+        xaxis_title=rating_name,
+        yaxis_title="",
+        barmode="stack",
+        legend=dict(orientation="h", y=-0.18, font=dict(size=11)),
+        margin=dict(l=220, r=80, t=70, b=80),
+        showlegend=True,
+    )
+    fig.update_xaxes(range=[1300, 1700])
+    return fig
+
+
 def division_year_snapshot_chart(
     ratings_history: pd.DataFrame,
     fights: pd.DataFrame,
@@ -1148,10 +1261,10 @@ def striker_grappler_scatter(
             ], axis=-1),
             hovertemplate=(
                 "<b>%{customdata[0]}</b><br>"
-                "canonical rating=%{customdata[1]}<br>"
+                "rating=%{customdata[1]}<br>"
                 "fights=%{customdata[2]}<br>"
-                "SLpM=%{x:.2f}<br>"
-                "TD/15=%{y:.2f}<extra></extra>"
+                "Strikes/min=%{x:.2f}<br>"
+                "Takedowns/15min=%{y:.2f}<extra></extra>"
             ),
         ))
 
@@ -1159,8 +1272,8 @@ def striker_grappler_scatter(
     _apply_chart_layout(fig, height=560)
     fig.update_layout(
         title=f"Striking pace vs wrestling volume{title_suffix}",
-        xaxis_title="Significant strikes landed per minute (SLpM)",
-        yaxis_title="Takedowns per 15 min (TD/15)",
+        xaxis_title="Strikes landed per minute",
+        yaxis_title="Takedowns per 15 minutes",
     )
     return fig
 
@@ -1235,23 +1348,23 @@ def calibration_plot(
     fig.add_trace(go.Scatter(
         x=[0, 1], y=[0, 1],
         mode="lines", line=dict(dash="dash", color="grey"),
-        name="perfect calibration", showlegend=True,
+        name="perfectly accurate", showlegend=True,
     ))
     fig.add_trace(go.Scatter(
         x=grouped["predicted_mid"], y=grouped["empirical"],
         mode="markers+lines",
         marker=dict(size=grouped["n"].clip(lower=8, upper=30), color="#1f77b4"),
-        name="empirical",
-        text=[f"n={int(n)}" for n in grouped["n"]],
-        hovertemplate="predicted=%{x:.2f}<br>actual=%{y:.2f}<br>%{text}<extra></extra>",
+        name="actual results",
+        text=[f"{int(n)} bouts" for n in grouped["n"]],
+        hovertemplate="Model said %{x:.0%}<br>Actually won %{y:.0%}<br>%{text}<extra></extra>",
     ))
     _apply_chart_layout(fig, height=520)
     fig.update_layout(
-        title=f"Prediction calibration: Brier={brier:.4f}, bouts={len(df):,}",
-        xaxis_title="Predicted P(A wins)",
-        yaxis_title="Empirical win rate",
-        xaxis=dict(range=[0, 1]),
-        yaxis=dict(range=[0, 1]),
+        title=f"How accurate are the win predictions? Error score {brier:.3f} (lower is better) · {len(df):,} bouts",
+        xaxis_title="Model's predicted win chance",
+        yaxis_title="How often they actually won",
+        xaxis=dict(range=[0, 1], tickformat=".0%"),
+        yaxis=dict(range=[0, 1], tickformat=".0%"),
     )
     return fig
 
@@ -1307,9 +1420,9 @@ def glicko_fightmatrix_scatter(
             ], axis=-1),
             hovertemplate=(
                 "<b>%{customdata[0]}</b><br>"
-                "Glicko mu=%{x:.1f} (rank %{customdata[1]})<br>"
+                "Our rating=%{x:.1f} (rank %{customdata[1]})<br>"
                 "FightMatrix points=%{y:.0f} (rank %{customdata[2]})<br>"
-                "FM record=%{customdata[3]}<extra></extra>"
+                "FightMatrix record=%{customdata[3]}<extra></extra>"
             ),
         ))
     if not labeled.empty:
@@ -1325,7 +1438,7 @@ def glicko_fightmatrix_scatter(
     _apply_chart_layout(fig, height=560)
     fig.update_layout(
         title="Our current rating vs FightMatrix points",
-        xaxis_title="Canonical UFC rating",
+        xaxis_title="Our UFC rating",
         yaxis_title="FightMatrix points",
         legend=dict(orientation="h", y=-0.25),
     )
@@ -1338,26 +1451,21 @@ def rank_delta_table(
     min_fights: int = 3,
     limit: int = 50,
 ) -> pd.DataFrame:
-    """Compare canonical Glicko rank, method-integrity rank, and FightMatrix rank."""
+    """Compare canonical Glicko rank against FightMatrix rank."""
     rc = _current_rank_frame(ratings_current, min_fights=min_fights)
     fm = fightmatrix_best_rankings(fightmatrix_rankings)
     df = rc.merge(fm, on="_name_key", how="left", suffixes=("", "_fm"))
-    df["rank_method_integrity"] = pd.to_numeric(df.get("rank_method_integrity"), errors="coerce")
-    df["integrity_rank_delta"] = df["rank_method_integrity"] - df["glicko_rank"].astype(float)
     df["glicko_vs_fm_rank_delta"] = df["glicko_rank"].astype(float) - df["fightmatrix_rank"]
-    df["abs_compare_delta"] = df[["integrity_rank_delta", "glicko_vs_fm_rank_delta"]].abs().max(axis=1)
+    df["abs_compare_delta"] = df["glicko_vs_fm_rank_delta"].abs()
     df = df.sort_values(["abs_compare_delta", "mu_canonical"], ascending=[False, False]).head(limit)
     cols = [
-        "fighter", "glicko_rank", "mu_canonical", "rank_method_integrity",
-        "delta_mu_method_integrity", "ped_confirmed_fights", "dq_wins",
-        "missed_weight_wins", "fightmatrix_rank",
-        "fightmatrix_points", "fightmatrix_division", "glicko_vs_fm_rank_delta",
-        "integrity_rank_delta",
+        "fighter", "glicko_rank", "mu_canonical",
+        "fightmatrix_rank", "fightmatrix_points", "fightmatrix_division",
+        "glicko_vs_fm_rank_delta",
     ]
     cols = [c for c in cols if c in df.columns]
     out = df[cols].copy()
-    for col in ["mu_canonical", "delta_mu_method_integrity", "fightmatrix_points",
-                "glicko_vs_fm_rank_delta", "integrity_rank_delta"]:
+    for col in ["mu_canonical", "fightmatrix_points", "glicko_vs_fm_rank_delta"]:
         if col in out.columns:
             out[col] = pd.to_numeric(out[col], errors="coerce").round(1)
     return out.reset_index(drop=True)
@@ -1450,48 +1558,6 @@ def external_source_coverage_dashboard(data: dict[str, pd.DataFrame]) -> go.Figu
     return fig
 
 
-def ped_impact_chart(ratings_current: pd.DataFrame, n: int = 15) -> go.Figure:
-    """Top movers under the method-integrity sleeve vs the plain method baseline."""
-    df = ratings_current.copy()
-    if "delta_mu_method_integrity" not in df.columns:
-        return _empty_figure("method-integrity columns not present", title="Integrity sleeve impact")
-    df["delta_mu_method_integrity"] = pd.to_numeric(df["delta_mu_method_integrity"], errors="coerce")
-    df = df.dropna(subset=["delta_mu_method_integrity"])
-    df = df[df["delta_mu_method_integrity"].abs() > 0.01]
-    if df.empty:
-        return _empty_figure("no integrity-sleeve rating movement", title="Integrity sleeve impact")
-    movers = pd.concat([
-        df.sort_values("delta_mu_method_integrity", ascending=True).head(n),
-        df.sort_values("delta_mu_method_integrity", ascending=False).head(n),
-    ]).drop_duplicates("fighter")
-    movers = movers.sort_values("delta_mu_method_integrity")
-    colors = np.where(movers["delta_mu_method_integrity"] >= 0, SIGN_COLORS["positive"], SIGN_COLORS["negative"])
-    fig = go.Figure(go.Bar(
-        x=movers["delta_mu_method_integrity"],
-        y=movers["fighter"],
-        orientation="h",
-        marker_color=colors,
-        customdata=np.stack([
-            movers.get("mu_method", pd.Series(index=movers.index)).round(1).astype("string"),
-            movers.get("mu_method_integrity", pd.Series(index=movers.index)).round(1).astype("string"),
-            movers.get("ped_confirmed_fights", pd.Series(index=movers.index)).astype("string"),
-        ], axis=-1),
-        hovertemplate=(
-            "<b>%{y}</b><br>"
-            "delta=%{x:.1f}<br>"
-            "method=%{customdata[0]}<br>"
-            "method+integrity=%{customdata[1]}<br>"
-            "confirmed PED fights=%{customdata[2]}<extra></extra>"
-        ),
-    ))
-    _apply_chart_layout(fig, height=max(480, 24 * len(movers)))
-    fig.update_layout(
-        title="Largest integrity-sleeve rating impacts",
-        xaxis_title="Rating movement vs method baseline",
-        yaxis_title="Fighter",
-    )
-    return fig
-
 
 def sustained_peak_leaderboard_chart(
     ratings_current: pd.DataFrame,
@@ -1508,8 +1574,8 @@ def sustained_peak_leaderboard_chart(
             col
             for col in (
                 "sustained_peak_headline_mu_whr",
-                "sustained_peak_mu_method_integrity_performance",
-                "five_year_peak_mu_method_integrity_performance",
+                "sustained_peak_mu_method_performance",
+                "five_year_peak_mu_method_performance",
                 "five_year_peak_mu_canonical",
             )
             if col in df.columns
@@ -1525,7 +1591,7 @@ def sustained_peak_leaderboard_chart(
             col
             for col in (
                 "five_year_peak_headline_mu_whr",
-                "five_year_peak_mu_method_integrity_performance",
+                "five_year_peak_mu_method_performance",
                 "five_year_peak_mu_canonical",
             )
             if col in df.columns
@@ -1536,7 +1602,7 @@ def sustained_peak_leaderboard_chart(
         x=df[peak_col],
         y=df["fighter"],
         orientation="h",
-        marker_color=STREAM_PALETTE["method"] if "method_integrity_performance" in peak_col else STREAM_PALETTE["canonical"],
+        marker_color=STREAM_PALETTE["method"] if "method_performance" in peak_col else STREAM_PALETTE["canonical"],
         customdata=np.stack([
             df[five_col].round(1).astype("string"),
             df["rating_periods"].astype("Int64").astype("string"),
@@ -1545,7 +1611,7 @@ def sustained_peak_leaderboard_chart(
             "<b>%{y}</b><br>"
             f"{SUSTAINED_PEAK_WINDOW_LABEL}=%{{x:.1f}}<br>"
             f"{FIVE_YEAR_PEAK_WINDOW_LABEL}=%{{customdata[0]}}<br>"
-            "rating periods=%{customdata[1]}<extra></extra>"
+            "fights rated=%{customdata[1]}<extra></extra>"
         ),
     ))
     _apply_chart_layout(fig, height=max(520, 24 * len(df)))
@@ -1565,8 +1631,15 @@ def division_strength_comparison_chart(
     min_fights: int = 3,
 ) -> go.Figure:
     rc = _current_rank_frame(ratings_current, min_fights=min_fights)
-    recent_div = recent_division_by_fighter(fights)
-    ufc = rc.merge(recent_div, on="fighter", how="left").dropna(subset=["division"])
+    recent_div = recent_division_by_fighter(fights).rename(columns={"division": "_recent_division"})
+    ufc = rc.merge(recent_div, on="fighter", how="left")
+    # Bucket by career division — where the bulk of the UFC career happened —
+    # so fighters surface under the class they made their name in (Makhachev
+    # under Lightweight, GSP under Welterweight) regardless of a recent
+    # cameo. Fall back to recent division only when career isn't known.
+    home = ufc["career_division"] if "career_division" in ufc.columns else pd.Series(pd.NA, index=ufc.index)
+    ufc["division"] = home.fillna(ufc["_recent_division"])
+    ufc = ufc.dropna(subset=["division"])
     ufc_rows = []
     for division, group in ufc.groupby("division"):
         top = group.sort_values("mu_canonical", ascending=False).head(top_n)
@@ -1609,18 +1682,18 @@ def division_strength_comparison_chart(
             y=merged["mean_fm_points"],
             name=f"FightMatrix top-{top_n} mean points",
             mode="lines+markers",
-            line=dict(color=STREAM_PALETTE["ped_adjusted"], width=3),
+            line=dict(color=STREAM_PALETTE["quality_adjusted"], width=3),
         ),
         secondary_y=True,
     )
     _apply_chart_layout(fig, height=560)
     fig.update_layout(
-        title="Division strength: UFC Glicko and FightMatrix",
+        title="Division strength: our rating vs FightMatrix",
         xaxis_title="Division",
         legend=dict(orientation="h", y=-0.22),
     )
-    fig.update_yaxes(title_text="Mean UFC Glicko mu", secondary_y=False)
-    fig.update_yaxes(title_text="Mean FightMatrix points", secondary_y=True)
+    fig.update_yaxes(title_text="Average UFC rating", secondary_y=False)
+    fig.update_yaxes(title_text="Average FightMatrix points", secondary_y=True)
     return fig
 
 
@@ -1631,7 +1704,13 @@ def top_fighter_placement_scatter(
     n: int = 100,
     min_fights: int = 0,
 ) -> go.Figure:
-    """Top-fighter placement: resume size vs rating, colored by division."""
+    """Top-fighter placement: résumé depth vs rating, colored by career division.
+
+    Top-right is the holy grail — an elite rating built over a long, proven
+    résumé, not a hot 3-fight start. The top six fighters get their names on
+    the chart; ranks #1–#10 get a numbered chip; everyone else is a sized dot
+    you can hover for details.
+    """
     if ratings_current is None or ratings_current.empty:
         return _empty_figure("ratings unavailable", title="Top fighter placement")
     df = ratings_current.copy()
@@ -1644,20 +1723,29 @@ def top_fighter_placement_scatter(
     df = df.sort_values(rating_col, ascending=False).head(n).reset_index(drop=True)
     if df.empty:
         return _empty_figure("no fighters match the current filters", title="Top fighter placement")
-    df["division_display"] = df.get("recent_division", df.get("primary_division", "")).fillna("Unknown")
+    df["division_display"] = df.get("career_division", df.get("recent_division", "")).fillna("Unknown")
     df["rank"] = np.arange(1, len(df) + 1)
     df["rating_display"] = pd.to_numeric(df[rating_col], errors="coerce")
     rating_name = _metric_label(rating_col)
     fig = go.Figure()
-    for division, g in df.groupby("division_display", dropna=False):
+    # Stable color order = stable division legend across redraws. Sort by mean
+    # rating so the strongest division leads the legend.
+    division_order = (
+        df.groupby("division_display")["rating_display"].mean().sort_values(ascending=False).index.tolist()
+    )
+    for division in division_order:
+        g = df[df["division_display"].eq(division)]
         fig.add_trace(go.Scatter(
             x=g["rating_periods"],
             y=g["rating_display"],
             mode="markers",
             name=str(division),
             marker=dict(
-                size=(22 - np.sqrt(g["rank"]).clip(1, 15)).clip(7, 20),
-                opacity=0.76,
+                # Top-10 markers are bigger so they read at a glance; the long
+                # tail is uniformly small to avoid the old "every dot fights for
+                # space" cluster.
+                size=np.where(g["rank"].le(10), 16, 9),
+                opacity=0.82,
                 line=dict(color="white", width=0.8),
             ),
             customdata=np.stack([
@@ -1674,8 +1762,8 @@ def top_fighter_placement_scatter(
                 "last fight=%{customdata[3]}<extra></extra>"
             ),
         ))
-    top_labels = df.head(10)
-    for row in top_labels.itertuples(index=False):
+    # Numbered chips for the top 10.
+    for row in df.head(10).itertuples(index=False):
         is_leader = int(row.rank) == 1
         fig.add_annotation(
             x=row.rating_periods,
@@ -1687,13 +1775,29 @@ def top_fighter_placement_scatter(
             bordercolor=THEME["border_strong"],
             borderpad=2,
         )
+    # Names for the top 6 (anchored to one side so labels don't collide with
+    # each other or with the chip).
+    for i, row in enumerate(df.head(6).itertuples(index=False)):
+        fig.add_annotation(
+            x=row.rating_periods,
+            y=row.rating_display,
+            text=str(row.fighter),
+            showarrow=False,
+            xanchor="left",
+            yanchor="middle",
+            xshift=14,
+            yshift=10 if i % 2 == 0 else -10,
+            font=dict(size=11, color=THEME["text"]),
+        )
     _apply_chart_layout(fig, height=560)
     fig.update_layout(
         title=f"Top {len(df)} placement — {rating_name}",
         xaxis_title="Rated bouts",
         yaxis_title=rating_name,
-        legend=dict(orientation="h", y=-0.24),
+        legend=dict(orientation="h", y=-0.22, font=dict(size=11)),
+        margin=dict(l=80, r=40, t=70, b=110),
     )
+    fig.update_xaxes(rangemode="tozero")
     return fig
 
 
@@ -1714,7 +1818,7 @@ def top100_division_density_chart(
     df = df.dropna(subset=[rating_col]).sort_values(rating_col, ascending=False).head(n)
     if df.empty:
         return _empty_figure("no top-fighter rows available", title="Top-100 division density")
-    df["division"] = df.get("recent_division", df.get("primary_division", "")).fillna("Unknown")
+    df["division"] = df.get("career_division", df.get("recent_division", "")).fillna("Unknown")
     density = (
         df.groupby("division", as_index=False)
         .agg(fighters=("fighter", "nunique"), avg_score=(rating_col, "mean"))
@@ -1827,6 +1931,137 @@ def rank_movement_chart(
         yaxis_title="",
         showlegend=False,
     )
+    return fig
+
+
+def yearly_rating_delta_scatter(
+    ratings_history: pd.DataFrame,
+    fights: pd.DataFrame,
+    *,
+    rating_col: str,
+    year: int,
+    n: int = 12,
+) -> go.Figure:
+    """The biggest rating risers and fallers of a single year.
+
+    A diverging horizontal bar: the ``n`` fighters who gained the most rating
+    that year (green, top) and the ``n`` who lost the most (red, bottom), each
+    labelled by name. Hover lists the individual fights — opponent, result, and
+    per-fight Δ — behind the move. Replaces the old all-fighters dot cloud,
+    which dumped every fighter who competed that year into one unreadable smear.
+    """
+    title = f"{year} — rating moves"
+    if ratings_history is None or ratings_history.empty:
+        return _empty_figure("rating history unavailable", title=title)
+    if rating_col not in ratings_history.columns:
+        return _empty_figure(f"{rating_col!r} not in history", title=title)
+
+    rh = ratings_history.copy()
+    rh["event_date"] = pd.to_datetime(rh["event_date"], errors="coerce")
+    rh["_year"] = rh["event_date"].dt.year
+    rh[rating_col] = pd.to_numeric(rh[rating_col], errors="coerce")
+
+    year_rows = rh[rh["_year"] == year].dropna(subset=[rating_col]).copy()
+    year_rows = year_rows.sort_values(["fighter", "event_date"])
+    if year_rows.empty:
+        return _empty_figure(f"no rating data for {year}", title=title)
+
+    # Last rating each fighter had before the year starts (their baseline)
+    before = (
+        rh[rh["_year"] < year]
+        .dropna(subset=[rating_col])
+        .sort_values("event_date")
+        .groupby("fighter", as_index=False)
+        .last()[["fighter", rating_col]]
+        .rename(columns={rating_col: "_mu_start"})
+    )
+    year_rows = year_rows.merge(before, on="fighter", how="left")
+    # Per-fight previous rating: shift within fighter group, fall back to baseline
+    year_rows["_mu_prev"] = year_rows.groupby("fighter")[rating_col].shift(1)
+    year_rows["_mu_prev"] = year_rows["_mu_prev"].fillna(year_rows["_mu_start"])
+    year_rows = year_rows.dropna(subset=["_mu_prev"])
+    year_rows["_fight_delta"] = year_rows[rating_col] - year_rows["_mu_prev"]
+
+    # Opponent and result from canonical fights
+    if fights is not None and not fights.empty:
+        fdf = fights.copy()
+        fdf["event_date"] = pd.to_datetime(fdf["event_date"], errors="coerce")
+        fdf = fdf[fdf["event_date"].dt.year == year]
+        fa = fdf[["fight_url", "event_date", "fighter_a", "fighter_b", "winner"]].rename(
+            columns={"fighter_a": "fighter", "fighter_b": "opponent"})
+        fb = fdf[["fight_url", "event_date", "fighter_a", "fighter_b", "winner"]].rename(
+            columns={"fighter_b": "fighter", "fighter_a": "opponent"})
+        fl = pd.concat([fa, fb], ignore_index=True)
+        fl["_result"] = np.where(fl["winner"].eq(fl["fighter"]), "W", "L")
+        joined = year_rows.merge(
+            fl[["fighter", "event_date", "opponent", "_result"]],
+            on=["fighter", "event_date"], how="left"
+        )
+    else:
+        joined = year_rows.copy()
+        joined["opponent"] = pd.NA
+        joined["_result"] = pd.NA
+
+    # Aggregate per fighter
+    rows = []
+    for fighter, g in joined.groupby("fighter"):
+        total = float(g["_fight_delta"].sum())
+        lines = []
+        for _, row in g.sort_values("event_date").iterrows():
+            opp = str(row.get("opponent") or "?")
+            res = str(row.get("_result") or "?")
+            d = float(row["_fight_delta"])
+            lines.append(f"vs {opp}  {res}  Δ{d:+.1f}")
+        rows.append({
+            "fighter": fighter,
+            "total_delta": total,
+            "n_fights": len(g),
+            "hover_lines": "<br>".join(lines),
+        })
+
+    df = pd.DataFrame(rows)
+    if df.empty:
+        return _empty_figure(f"no qualified fighters in {year}", title=title)
+    df = df[df["total_delta"].abs() > 0.05]
+    if df.empty:
+        return _empty_figure(f"no measurable rating moves in {year}", title=title)
+
+    # Keep only the biggest movers in each direction so the chart stays legible.
+    risers = df.sort_values("total_delta", ascending=False).head(n)
+    fallers = df.sort_values("total_delta", ascending=True).head(n)
+    keep = pd.concat([risers, fallers]).drop_duplicates("fighter")
+    keep = keep.sort_values("total_delta").reset_index(drop=True)
+    colors = np.where(keep["total_delta"] >= 0, THEME["positive"], THEME["negative"])
+
+    fig = go.Figure(go.Bar(
+        x=keep["total_delta"],
+        y=keep["fighter"],
+        orientation="h",
+        marker_color=colors.tolist(),
+        text=keep["total_delta"].map(lambda v: f"{v:+.0f}"),
+        textposition="outside",
+        cliponaxis=False,
+        customdata=np.column_stack([
+            keep["hover_lines"].values,
+            keep["n_fights"].astype(str).values,
+        ]),
+        hovertemplate=(
+            "<b>%{y}</b> (%{customdata[1]} fights in " + str(year) + ")<br>"
+            "%{customdata[0]}<br>"
+            "<b>Total Δ%{x:+.1f}</b><extra></extra>"
+        ),
+        showlegend=False,
+    ))
+    fig.add_vline(x=0, line_color=THEME["border_strong"], line_width=1.5)
+    _apply_chart_layout(fig, height=max(420, 26 * len(keep)))
+    fig.update_layout(
+        title=f"{year} — biggest rating movers",
+        xaxis_title=f"Δ {_metric_label(rating_col)} over {year}",
+        yaxis_title="",
+        margin=dict(t=64, r=60, b=56, l=180),
+        hovermode="closest",
+    )
+    fig.update_yaxes(automargin=True, tickfont=dict(size=12))
     return fig
 
 
@@ -1973,20 +2208,15 @@ def datalab_scorecard_insight_chart(scorecards: pd.DataFrame) -> go.Figure:
 # ---------------------------------------------------------------------------
 # Rating-stream sleeve composer (notebook UX)
 #
-# The 2026-05-13 consolidation collapsed the sleeve catalogue to two:
-#   * integrity sleeve  -- PED + DQ + missed-weight (damps tainted results)
-#   * performance sleeve -- quality of win + signed market line + rank,
-#     championship, and P4P context (rewards impressive results vs expectation)
-#
+# The performance sleeve rewards quality of win + signed market line + rank,
+# championship, and P4P context (impressive results vs expectation).
 # Sleeves only apply to the method stream. Canonical is always pristine.
 # Peak views resolve only against the two base streams (canonical / method).
 
 RATING_STREAMS: tuple[tuple[str, str], ...] = (
     ("Wins", "canonical"),
     ("Finishes", "method"),
-    ("Clean", "method_integrity"),
     ("Strength", "method_performance"),
-    ("Complete", "method_integrity_performance"),
 )
 
 PEAK_VIEWS: tuple[tuple[str, str], ...] = (
@@ -2002,35 +2232,48 @@ SCORING_METHODS: tuple[tuple[str, str], ...] = (
 
 PUBLIC_RATING_LENSES: tuple[tuple[str, str], ...] = (
     ("Wins", "wins"),
-    ("Finishes", "finishes"),
-    ("Clean", "clean"),
-    ("Strength", "strength"),
     ("Complete", "complete"),
     ("Legacy", "legacy"),
 )
 
+# 2026-06-25: "Now" (current-form) removed. This engine is a retrospective
+# analysis of what has happened, not a current-form or predictive view, so the
+# only time lenses are the two best-run windows.
 PUBLIC_TIME_VIEWS: tuple[tuple[str, str], ...] = (
-    ("Now", "current"),
     ("Peak", "five_year_peak"),
     ("Prime", "sustained_peak"),
 )
 
+# Public lens -> internal stream. NOTE: Complete and Legacy are two DIFFERENT
+# estimators run on the same fight graph, not one-plus-a-bonus.
+#   * Wins (canonical Glicko-2) — sequential filter on binary win/loss; no
+#     method, no opponent-quality.
+#   * Complete (method_performance) — the Glicko-2 filter with a continuous
+#     finish-quality score (S_j in [0.85, 1.00]) and a +/-20% performance sleeve
+#     (opponent quality, upset, streak, weight-class move). Forward-only and
+#     reactive to current form; NOT era-normalized.
+#   * Legacy (whr) — a Whole-History Rating Bayesian *smoother* (Coulom 2008):
+#     it re-estimates every fighter's entire rating curve jointly on a binary
+#     Bradley-Terry likelihood (the base stream is unsleeved), with a Wiener
+#     drift prior. Era-comparable by construction; uses look-ahead, so it is a
+#     retrospective view, not a predictive one.
+#   The sleeved WHR variants (whr_performance, whr_integrity_performance) apply
+#   the SAME sleeve to the WHR likelihood — the "best of both" merge, already on
+#   disk in ratings_current, just not exposed as a public lens here.
 _PUBLIC_LENS_STREAM = {
     "wins": "canonical",
-    "finishes": "method",
-    "clean": "method_integrity",
-    "strength": "method_performance",
-    "complete": "method_integrity_performance",
-    "legacy": "whr",
+    "complete": "method_performance",
+    # 2026-06-25: Legacy now points at the SLEEVED WHR smoother so the era-bridged
+    # all-time view also reflects opponent quality / finish / integrity. The base
+    # unsleeved `whr` ranked binary records, which floated padded undefeated
+    # regional resumes to the top of the all-time list.
+    "legacy": "whr_integrity_performance",
 }
 
 _PUBLIC_LENS_HISTORY_KEY = {
     "wins": "ratings_history",
-    "finishes": "ratings_history",
-    "clean": "ratings_history_method_integrity",
-    "strength": "ratings_history_method_performance",
-    "complete": "ratings_history_method_integrity_performance",
-    "legacy": "ratings_history_whr",
+    "complete": "ratings_history_method_performance",
+    "legacy": "ratings_history_whr_integrity_performance",
 }
 
 
@@ -2061,6 +2304,25 @@ def select_public_rating_column(
 def public_history_key(lens: str) -> str:
     """Return the SNAP key for the time-series table backing a public lens."""
     return _PUBLIC_LENS_HISTORY_KEY.get(lens, "ratings_history")
+
+
+def affine_match_scale(values, target):
+    """Affine-map ``values`` onto the (mean, std) of ``target``.
+
+    A display-only rescale so two rating streams that live on different internal
+    scales (e.g. the WHR smoother ~1600 vs the Glicko filter ~1900) read on one
+    axis. The mapping is monotonic, so within-stream ordering is preserved; only
+    the absolute numbers move. Returns a float Series aligned to ``values``.
+    """
+    v = pd.to_numeric(pd.Series(values).reset_index(drop=True), errors="coerce")
+    t = pd.to_numeric(pd.Series(target), errors="coerce")
+    vm, vs = v.mean(), v.std()
+    tm, ts = t.mean(), t.std()
+    if not np.isfinite(vs) or vs < 1e-9 or not np.isfinite(ts) or not np.isfinite(tm):
+        return v
+    out = (v - vm) / vs * ts + tm
+    out.index = pd.Series(values).index
+    return out
 
 
 def prime_window_min_fights(years: int | float) -> int:
@@ -2135,25 +2397,18 @@ def n_year_prime_scores(
 def compose_rating_stream(
     scoring_method: str,
     *,
-    use_integrity: bool = False,
     use_performance: bool = False,
 ) -> str:
-    """Compose scoring-method + sleeve toggles into a ``ratings_current`` suffix.
-
-    Sleeves can only be turned on when ``scoring_method == "method"``; using
-    them with canonical raises ``ValueError`` so the UI can lock that.
-    """
+    """Compose scoring-method + sleeve toggle into a ``ratings_current`` suffix."""
     if scoring_method not in {"canonical", "method"}:
         raise ValueError(f"unknown scoring method: {scoring_method!r}")
-    if scoring_method == "canonical" and (use_integrity or use_performance):
+    if scoring_method == "canonical" and use_performance:
         raise ValueError(
             "sleeves only apply to the method stream; canonical is always pristine"
         )
     if scoring_method == "canonical":
         return "canonical"
     parts = ["method"]
-    if use_integrity:
-        parts.append("integrity")
     if use_performance:
         parts.append("performance")
     return "_".join(parts)
@@ -2162,33 +2417,18 @@ def compose_rating_stream(
 def modular_rating_context(
     scoring_method: str,
     *,
-    use_integrity: bool = False,
     use_performance: bool = False,
 ) -> dict[str, str]:
     """Human-readable labels + comparison baseline for a modular selection."""
-    stream = compose_rating_stream(
-        scoring_method,
-        use_integrity=use_integrity,
-        use_performance=use_performance,
-    )
+    stream = compose_rating_stream(scoring_method, use_performance=use_performance)
     if scoring_method == "canonical":
         scoring_label = "Wins"
         baseline_col, baseline_label = "mu_canonical", "Wins"
     else:
         scoring_label = "Finishes"
         baseline_col, baseline_label = "mu_method", "Finishes"
-    sleeves = []
-    if use_integrity:
-        sleeves.append("Clean")
-    if use_performance:
-        sleeves.append("Strength")
-    sleeve_label = " + ".join(sleeves) if sleeves else "No context"
-    if use_integrity and use_performance:
-        display_label = "Complete"
-    elif use_integrity or use_performance:
-        display_label = sleeve_label
-    else:
-        display_label = scoring_label
+    sleeve_label = "Strength" if use_performance else "No context"
+    display_label = "Complete" if use_performance else scoring_label
     return {
         "stream": stream,
         "label": display_label,
@@ -2244,16 +2484,11 @@ def select_modular_rating_column(
     ratings_current: pd.DataFrame,
     scoring_method: str,
     *,
-    use_integrity: bool = False,
     use_performance: bool = False,
     peak: str = "current",
 ) -> str | None:
     """Column lookup for the modular scoring-method x sleeve composer."""
-    stream = compose_rating_stream(
-        scoring_method,
-        use_integrity=use_integrity,
-        use_performance=use_performance,
-    )
+    stream = compose_rating_stream(scoring_method, use_performance=use_performance)
     return select_rating_column(ratings_current, stream, peak)
 
 
@@ -2275,9 +2510,23 @@ def sleeve_ranking_table(
     if fights is not None and active_within_days is not None and "last_event_date" in df.columns:
         cutoff = pd.Timestamp(fights["event_date"].max()) - pd.Timedelta(days=active_within_days)
         df = df[pd.to_datetime(df["last_event_date"], errors="coerce") >= cutoff]
-    if fights is not None and division is not None:
-        recent_div = recent_division_by_fighter(fights)
-        df = df.merge(recent_div, on="fighter", how="left")
+    if division is not None:
+        # Bucket by career division: where the bulk of the UFC career happened.
+        # A long-tenured Lightweight who just won the Welterweight belt still
+        # surfaces under Lightweight in the divisional leaderboard, because that
+        # is the class the resume was built in. Fall back to most-recent
+        # division only when career isn't known.
+        if "career_division" in df.columns:
+            home = df["career_division"]
+        else:
+            home = pd.Series(pd.NA, index=df.index)
+        if fights is not None:
+            recent_div = recent_division_by_fighter(fights).rename(
+                columns={"division": "_recent_division"}
+            )
+            df = df.merge(recent_div, on="fighter", how="left")
+            home = home.fillna(df["_recent_division"])
+        df["division"] = home
         df = df[df["division"] == division]
     df = df.sort_values(rating_col, ascending=False).head(n).reset_index(drop=True)
     out = pd.DataFrame({
@@ -2430,12 +2679,13 @@ def odds_adjustment_distribution_chart(distribution: pd.DataFrame | None) -> go.
 
     pos = distribution[distribution["cohort"] == "positive"]["abs_residual"]
     neg = distribution[distribution["cohort"] == "negative"]["abs_residual"]
+    up_label, down_label = "Underdogs beat the line", "Favorites missed the line"
     fig = go.Figure()
     if not pos.empty:
         fig.add_trace(go.Violin(
             x=pos,
-            y=["positive"] * len(pos),
-            name="positive",
+            y=[up_label] * len(pos),
+            name=up_label,
             orientation="h",
             side="positive",
             width=0.9,
@@ -2446,8 +2696,8 @@ def odds_adjustment_distribution_chart(distribution: pd.DataFrame | None) -> go.
     if not neg.empty:
         fig.add_trace(go.Violin(
             x=neg,
-            y=["negative"] * len(neg),
-            name="negative",
+            y=[down_label] * len(neg),
+            name=down_label,
             orientation="h",
             side="positive",
             width=0.9,
@@ -2457,12 +2707,75 @@ def odds_adjustment_distribution_chart(distribution: pd.DataFrame | None) -> go.
         ))
     _apply_chart_layout(fig, height=380)
     fig.update_layout(
-        title="Market residual distribution by sign cohort",
+        title="How far results beat or missed the betting line",
         showlegend=False,
         violingap=0,
     )
-    fig.update_xaxes(title_text="|actual - market_prob|")
-    fig.update_yaxes(title_text="Cohort")
+    fig.update_xaxes(title_text="Gap between the result and the betting line")
+    fig.update_yaxes(title_text="")
+    return fig
+
+
+def fighter_betting_line_chart(
+    performance_appearances: pd.DataFrame | None,
+    fighter: str,
+) -> go.Figure:
+    """One fighter's career of beating or missing the betting line.
+
+    Each bar is a single odds-priced fight: how far the result landed above
+    (green, beat the line as a live underdog / clear winner) or below (red, fell
+    short of what the market expected) the betting line. The dashed line is the
+    fighter's career average — a positive average is a chronic market
+    overachiever, a negative one is a fighter the public consistently overrated.
+    """
+    title = f"{fighter}: results vs the betting line" if fighter else "Results vs the betting line"
+    if performance_appearances is None or performance_appearances.empty or not fighter \
+            or "market_residual" not in performance_appearances.columns:
+        return _empty_figure("market-line data unavailable for this fighter", title=title)
+    df = performance_appearances[performance_appearances["fighter"].eq(fighter)].copy()
+    df["market_residual"] = pd.to_numeric(df["market_residual"], errors="coerce")
+    df = df.dropna(subset=["market_residual"])
+    if df.empty:
+        return _empty_figure(f"no odds-priced fights on record for {fighter}", title=title)
+    df["event_date"] = pd.to_datetime(df.get("event_date"), errors="coerce")
+    df = df.sort_values("event_date").reset_index(drop=True)
+    df["_label"] = df["event_date"].dt.strftime("%b %Y").fillna("")
+    df["_result"] = np.where(df.get("is_winner", False).astype(bool), "W", "L")
+    odds = pd.to_numeric(df.get("market_american_odds"), errors="coerce")
+    df["_odds"] = odds.map(lambda v: f"{int(v):+d}" if pd.notna(v) else "—")
+    colors = np.where(df["market_residual"] >= 0, SIGN_COLORS["positive"], SIGN_COLORS["negative"])
+    avg = float(df["market_residual"].mean())
+
+    fig = go.Figure(go.Bar(
+        x=np.arange(len(df)),
+        y=df["market_residual"],
+        marker_color=colors,
+        customdata=np.stack([
+            df["opponent"].astype("string") if "opponent" in df.columns
+            else pd.Series(["?"] * len(df), index=df.index).astype("string"),
+            df["_result"].astype("string"),
+            df["_odds"].astype("string"),
+            df["_label"].astype("string"),
+        ], axis=-1),
+        hovertemplate=(
+            "<b>%{customdata[3]}</b> &middot; vs %{customdata[0]} (%{customdata[1]})<br>"
+            "market line: %{customdata[2]}<br>"
+            "beat the line by %{y:+.2f}<extra></extra>"
+        ),
+        showlegend=False,
+    ))
+    fig.add_hline(y=0, line_color=THEME["border_strong"], line_width=1.2)
+    fig.add_hline(y=avg, line_color=THEME["accent"], line_width=1.4, line_dash="dash",
+                  annotation_text=f"career avg {avg:+.2f}", annotation_position="top left",
+                  annotation_font_color=THEME["accent"])
+    _apply_chart_layout(fig, height=380)
+    fig.update_layout(
+        title=title,
+        xaxis=dict(tickmode="array", tickvals=list(range(len(df))),
+                   ticktext=df["_label"].tolist(), tickangle=-45, title_text=""),
+        yaxis_title="Beat (＋) or missed (−) the line",
+        hovermode="closest",
+    )
     return fig
 
 
@@ -2492,59 +2805,70 @@ def _fighter_odds_profile(odds_lines: pd.DataFrame | None) -> pd.DataFrame:
 
 
 def odds_impact_chart(
-    ratings_current: pd.DataFrame,
-    odds_lines: pd.DataFrame | None = None,
-    n: int = 15,
+    ratings_current: pd.DataFrame | None = None,
+    performance_appearances: pd.DataFrame | None = None,
+    n: int = 12,
 ) -> go.Figure:
-    """Largest positive/negative ``delta_mu_method_performance`` movers."""
-    if "delta_mu_method_performance" not in ratings_current.columns:
+    """Who the market-value layer credited vs discounted, by net odds effect.
+
+    The engine's odds sleeve nudges each fight's credit by how the result landed
+    against the betting line (``perf_factor_odds``): beat a long line as a live
+    underdog and the win is worth more; win as a heavy favorite and it is worth
+    a touch less. Summing ``perf_factor_odds - 1`` across a fighter's career
+    gives a single "net odds effect" — positive fighters are the ones the market
+    kept underrating, negative fighters are the heavy chalk the market expected
+    to win all along.
+    """
+    title = "Who the market underrated vs overrated"
+    if performance_appearances is None or performance_appearances.empty \
+            or "perf_factor_odds" not in performance_appearances.columns \
+            or "fighter" not in performance_appearances.columns:
         return _empty_figure(
-            "method-performance columns not present in ratings_current",
-            title="Performance sleeve impact",
-        )
-    df = ratings_current.copy()
-    df["delta_mu_method_performance"] = pd.to_numeric(df["delta_mu_method_performance"], errors="coerce")
-    df = df.dropna(subset=["delta_mu_method_performance"])
-    df = df[df["delta_mu_method_performance"].abs() > 0.01]
-    if df.empty:
-        return _empty_figure(
-            "no measurable performance-sleeve rating movement",
-            title="Performance sleeve impact",
-        )
+            "market-odds factors not present in this snapshot", title=title)
+    pa = performance_appearances.copy()
+    pa["perf_factor_odds"] = pd.to_numeric(pa["perf_factor_odds"], errors="coerce")
+    pa = pa.dropna(subset=["perf_factor_odds", "fighter"])
+    pa["_eff"] = pa["perf_factor_odds"] - 1.0
+    pa = pa[pa["_eff"].abs() > 1e-9]
+    if pa.empty:
+        return _empty_figure("no market-odds adjustments fired", title=title)
+    agg = (
+        pa.groupby("fighter")
+        .agg(net=("_eff", "sum"), fights=("_eff", "size"))
+        .reset_index()
+    )
+    agg = agg[agg["net"].abs() > 0.02]
+    if agg.empty:
+        return _empty_figure("no measurable market-odds effect", title=title)
     movers = pd.concat([
-        df.sort_values("delta_mu_method_performance", ascending=True).head(n),
-        df.sort_values("delta_mu_method_performance", ascending=False).head(n),
-    ]).drop_duplicates("fighter")
-    movers = movers.sort_values("delta_mu_method_performance")
-    profile = _fighter_odds_profile(odds_lines)
-    movers = movers.merge(profile, on="fighter", how="left")
-    colors = np.where(movers["delta_mu_method_performance"] >= 0, SIGN_COLORS["positive"], SIGN_COLORS["negative"])
+        agg.sort_values("net", ascending=False).head(n),
+        agg.sort_values("net", ascending=True).head(n),
+    ]).drop_duplicates("fighter").sort_values("net")
+    colors = np.where(movers["net"] >= 0, SIGN_COLORS["positive"], SIGN_COLORS["negative"])
     fig = go.Figure(go.Bar(
-        x=movers["delta_mu_method_performance"],
+        x=movers["net"],
         y=movers["fighter"],
         orientation="h",
         marker_color=colors,
-        customdata=np.stack([
-            movers.get("mu_method", pd.Series(index=movers.index)).round(1).astype("string"),
-            movers.get("mu_method_performance", pd.Series(index=movers.index)).round(1).astype("string"),
-            movers.get("odds_covered_fights", pd.Series(index=movers.index)).fillna(0).astype("Int64").astype("string"),
-            movers.get("median_market_prob", pd.Series(index=movers.index)).round(3).astype("string"),
-        ], axis=-1),
+        text=movers["net"].map(lambda v: f"{v:+.2f}"),
+        textposition="outside",
+        cliponaxis=False,
+        customdata=movers["fights"].astype("Int64").astype("string"),
         hovertemplate=(
             "<b>%{y}</b><br>"
-            "delta=%{x:.1f}<br>"
-            "method=%{customdata[0]}<br>"
-            "method+performance=%{customdata[1]}<br>"
-            "odds-covered fights=%{customdata[2]}<br>"
-            "median market_prob=%{customdata[3]}<extra></extra>"
+            "net market-value effect=%{x:+.2f}<br>"
+            "over %{customdata} odds-priced fights<extra></extra>"
         ),
     ))
-    _apply_chart_layout(fig, height=max(480, 24 * len(movers)))
+    fig.add_vline(x=0, line_color=THEME["border_strong"], line_width=1.5)
+    _apply_chart_layout(fig, height=max(440, 24 * len(movers)))
     fig.update_layout(
-        title="Largest performance-sleeve rating impacts",
-        xaxis_title="Rating movement vs method baseline",
-        yaxis_title="Fighter",
+        title=title,
+        xaxis_title="Net market-value effect  (＋ market underrated · − market overrated)",
+        yaxis_title="",
+        margin=dict(t=64, r=70, b=56, l=180),
     )
+    fig.update_yaxes(automargin=True, tickfont=dict(size=12))
     return fig
 
 
@@ -2733,77 +3057,7 @@ def performance_factor_audit_table(
     return audit[[c for c in out_cols if c in audit.columns]].reset_index(drop=True)
 
 
-def integrity_factor_audit_table(
-    integrity_appearances: pd.DataFrame,
-    performance_appearances: pd.DataFrame | None = None,
-    *,
-    n: int = 100,
-    fighter: str | None = None,
-    factor: str | None = None,
-    effect: str = "all",
-    include_neutral: bool = False,
-) -> pd.DataFrame:
-    """Explode integrity sleeve dampers into one readable row per penalty."""
-    out_cols = [
-        "event_date", "event_name", "fighter", "opponent", "outcome",
-        "sleeve", "factor", "factor_col", "effect", "multiplier",
-        "integrity_weight",
-    ]
-    if integrity_appearances is None or integrity_appearances.empty:
-        return pd.DataFrame(columns=out_cols)
-
-    df = integrity_appearances.copy()
-    if performance_appearances is not None and not performance_appearances.empty:
-        enrich_cols = [
-            "fight_url", "fighter", "event_date", "event_name", "opponent",
-            "is_winner", "is_draw",
-        ]
-        enrich = performance_appearances[[c for c in enrich_cols if c in performance_appearances.columns]].copy()
-        df = df.merge(enrich, on=["fight_url", "fighter"], how="left")
-    df = _filter_fighter(df, fighter)
-    df["outcome"] = _appearance_outcome(df)
-
-    factor_cols = [c for c in INTEGRITY_FACTOR_LABELS if c in df.columns]
-    if factor:
-        factor_key = normalize_name_key(factor, compact=True)
-        factor_cols = [
-            c for c in factor_cols
-            if factor_key in normalize_name_key(c, compact=True)
-            or factor_key in normalize_name_key(INTEGRITY_FACTOR_LABELS[c], compact=True)
-        ]
-    if not factor_cols:
-        return pd.DataFrame(columns=out_cols)
-
-    base_cols = ["event_date", "event_name", "fighter", "opponent", "outcome", "integrity_weight"]
-    rows = []
-    for col in factor_cols:
-        sub = df[[c for c in base_cols if c in df.columns]].copy()
-        sub["sleeve"] = "integrity"
-        sub["factor_col"] = col
-        sub["factor"] = INTEGRITY_FACTOR_LABELS[col]
-        sub["multiplier"] = pd.to_numeric(df[col], errors="coerce").fillna(1.0)
-        sub["effect"] = np.where(sub["multiplier"].lt(1.0), "penalty", "neutral")
-        rows.append(sub)
-
-    audit = pd.concat(rows, ignore_index=True, sort=False) if rows else pd.DataFrame(columns=out_cols)
-    if not include_neutral:
-        audit = audit[audit["effect"] != "neutral"]
-    if effect != "all":
-        audit = audit[audit["effect"] == effect]
-    if audit.empty:
-        return pd.DataFrame(columns=out_cols)
-    audit["event_date"] = pd.to_datetime(audit.get("event_date"), errors="coerce").dt.date
-    audit["_abs_delta"] = (pd.to_numeric(audit["multiplier"], errors="coerce") - 1.0).abs()
-    audit = audit.sort_values(["_abs_delta", "event_date"], ascending=[False, False]).head(n)
-    audit = audit.drop(columns=["_abs_delta"], errors="ignore")
-    for col in ["multiplier", "integrity_weight"]:
-        if col in audit.columns:
-            audit[col] = pd.to_numeric(audit[col], errors="coerce").round(3)
-    return audit[[c for c in out_cols if c in audit.columns]].reset_index(drop=True)
-
-
 def sleeve_factor_summary_table(
-    integrity_appearances: pd.DataFrame | None = None,
     performance_appearances: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     """Counts and normalized percent ranges for every non-neutral factor."""
@@ -2812,12 +3066,6 @@ def sleeve_factor_summary_table(
         frames.append(performance_factor_audit_table(
             performance_appearances,
             n=len(performance_appearances) * max(1, len(PERFORMANCE_FACTOR_LABELS)),
-        ))
-    if integrity_appearances is not None and not integrity_appearances.empty:
-        frames.append(integrity_factor_audit_table(
-            integrity_appearances,
-            performance_appearances,
-            n=len(integrity_appearances) * max(1, len(INTEGRITY_FACTOR_LABELS)),
         ))
     if not frames:
         return pd.DataFrame(columns=[
@@ -2842,7 +3090,6 @@ def sleeve_factor_summary_table(
     for col in ["min_multiplier", "median_multiplier", "max_multiplier"]:
         grouped[col] = pd.to_numeric(grouped[col], errors="coerce").round(3)
     grouped["group"] = grouped["sleeve"].map({
-        "integrity": "Integrity penalties",
         "performance": "Performance context",
     }).fillna(grouped["sleeve"])
     grouped["direction"] = grouped["effect"].map({
@@ -2863,7 +3110,6 @@ def sleeve_factor_summary_table(
 
 
 def sleeve_effects_by_fight_table(
-    integrity_appearances: pd.DataFrame | None = None,
     performance_appearances: pd.DataFrame | None = None,
     *,
     n: int = 25,
@@ -2876,14 +3122,6 @@ def sleeve_effects_by_fight_table(
         frames.append(performance_factor_audit_table(
             performance_appearances,
             n=len(performance_appearances) * max(1, len(PERFORMANCE_FACTOR_LABELS)),
-            fighter=fighter,
-            effect=effect,
-        ))
-    if integrity_appearances is not None and not integrity_appearances.empty:
-        frames.append(integrity_factor_audit_table(
-            integrity_appearances,
-            performance_appearances,
-            n=len(integrity_appearances) * max(1, len(INTEGRITY_FACTOR_LABELS)),
             fighter=fighter,
             effect=effect,
         ))
@@ -2952,7 +3190,7 @@ def calibration_residuals_chart(
         x=[0, 1], y=[0, 1],
         mode="lines",
         line=dict(color="#94a3b8", dash="dash"),
-        name="calibrated",
+        name="perfectly accurate",
     ))
     for segment, g in df.groupby("segment_value", sort=False):
         fig.add_trace(go.Scatter(
@@ -2962,26 +3200,24 @@ def calibration_residuals_chart(
             name=str(segment),
             marker=dict(size=np.sqrt(g["n"]).clip(6, 22)),
             customdata=np.stack([
-                g["residual"].round(3).astype("string"),
+                (g["residual"] * 100).round(1).astype("string"),
                 g["n"].astype(int).astype("string"),
-                g["brier"].round(4).astype("string"),
             ], axis=-1),
             hovertemplate=(
                 "<b>%{fullData.name}</b><br>"
-                "predicted=%{x:.3f}<br>"
-                "empirical=%{y:.3f}<br>"
-                "residual=%{customdata[0]}<br>"
-                "n=%{customdata[1]}<br>"
-                "brier=%{customdata[2]}<extra></extra>"
+                "Model said %{x:.0%}<br>"
+                "Actually won %{y:.0%}<br>"
+                "off by %{customdata[0]} pts<br>"
+                "%{customdata[1]} bouts<extra></extra>"
             ),
         ))
     _apply_chart_layout(fig, height=560)
     fig.update_layout(
-        title=f"Calibration residuals by {segment_type}",
-        xaxis_title="Mean predicted P(win)",
-        yaxis_title="Empirical win rate",
-        xaxis=dict(range=[0, 1]),
-        yaxis=dict(range=[0, 1]),
+        title=f"Prediction accuracy by {segment_type}",
+        xaxis_title="Model's predicted win chance",
+        yaxis_title="How often they actually won",
+        xaxis=dict(range=[0, 1], tickformat=".0%"),
+        yaxis=dict(range=[0, 1], tickformat=".0%"),
         legend=dict(orientation="h", y=1.15, x=0),
     )
     return fig
@@ -3003,7 +3239,6 @@ def sleeve_attribution_waterfall(
     actual = df["fighter"].iloc[0]
     components = [
         ("Base", "base_method_delta"),
-        ("Clean", "integrity_delta"),
         ("Strength", "performance_delta"),
         ("Overlap", "interaction_delta"),
     ]
@@ -3055,9 +3290,8 @@ def sleeve_attribution_table(
     """Most recent exact per-event sleeve-attribution rows for a fighter."""
     cols = [
         "event_date", "event_name", "opponent", "base_method_delta",
-        "integrity_delta", "performance_delta", "interaction_delta",
-        "combined_delta", "integrity_weight", "performance_weight",
-        "combined_weight",
+        "performance_delta", "interaction_delta",
+        "combined_delta", "performance_weight", "combined_weight",
     ]
     if sleeve_attribution is None or sleeve_attribution.empty or not fighter:
         return pd.DataFrame(columns=cols)
@@ -3103,14 +3337,14 @@ def division_entropy_chart(
         rows=2, cols=1,
         shared_xaxes=True,
         vertical_spacing=0.08,
-        subplot_titles=("Top-10 normalized entropy", "Top-10 mean mu"),
+        subplot_titles=("How crowded the top is (0-1)", "Average top-10 rating"),
     )
     for division, g in df.sort_values(["division", "year"]).groupby("division"):
         fig.add_trace(
             go.Scatter(
                 x=g["year"], y=g["entropy_normalized"],
                 mode="lines+markers", name=str(division),
-                hovertemplate="<b>%{fullData.name}</b><br>year=%{x}<br>entropy=%{y:.3f}<extra></extra>",
+                hovertemplate="<b>%{fullData.name}</b><br>year=%{x}<br>crowdedness=%{y:.2f}<extra></extra>",
             ),
             row=1, col=1,
         )
@@ -3118,12 +3352,12 @@ def division_entropy_chart(
             go.Scatter(
                 x=g["year"], y=g["top_mu_mean"],
                 mode="lines", name=str(division), showlegend=False,
-                hovertemplate="<b>%{fullData.name}</b><br>year=%{x}<br>top10 mean=%{y:.1f}<extra></extra>",
+                hovertemplate="<b>%{fullData.name}</b><br>year=%{x}<br>avg top-10 rating=%{y:.1f}<extra></extra>",
             ),
             row=2, col=1,
         )
     _apply_chart_layout(fig, height=720)
-    fig.update_layout(title="Division crowdedness and top-end strength")
+    fig.update_layout(title="How deep each division is, and how strong its top")
     fig.update_yaxes(range=[0, 1.02], row=1, col=1)
     fig.update_yaxes(title_text="Crowdedness (0-1)", row=1, col=1)
     fig.update_yaxes(title_text="Avg top-10 rating", row=2, col=1)
@@ -3136,7 +3370,7 @@ def favorite_underdog_performance_chart(performance: pd.DataFrame) -> go.Figure:
     if performance is None or performance.empty:
         return _empty_figure(
             "favorite/underdog performance unavailable",
-            title="Market calibration by favorite status",
+            title="Do favorites win as often as the odds imply?",
         )
     fig = go.Figure()
     fig.add_trace(go.Bar(
@@ -3157,7 +3391,7 @@ def favorite_underdog_performance_chart(performance: pd.DataFrame) -> go.Figure:
     ))
     _apply_chart_layout(fig, height=380)
     fig.update_layout(
-        title="Market calibration by favorite status",
+        title="Do favorites win as often as the odds imply?",
         yaxis_title="Win rate",
         yaxis_tickformat=".0%",
         yaxis_range=[0, 1],
@@ -3212,59 +3446,113 @@ def fighter_odds_history_chart(
     odds_lines: pd.DataFrame | None,
     fights: pd.DataFrame,
 ) -> go.Figure:
-    """Market-implied win probability over time for one fighter."""
-    if odds_lines is None or odds_lines.empty or fights is None or fights.empty:
-        return _empty_figure("market history unavailable", title=f"{fighter}: market history", height=300)
-    needed = {"fight_url", "fighter_a", "fighter_b", "implied_prob_a_no_vig", "implied_prob_b_no_vig", "odds_data_quality"}
-    if not needed.issubset(odds_lines.columns):
-        return _empty_figure("market probability columns unavailable", title=f"{fighter}: market history", height=300)
-    ok = odds_lines[odds_lines["odds_data_quality"].eq("ok")].copy()
-    a = ok[ok["fighter_a"].eq(fighter)][["fight_url", "implied_prob_a_no_vig"]].rename(
-        columns={"implied_prob_a_no_vig": "market_prob"}
-    )
-    b = ok[ok["fighter_b"].eq(fighter)][["fight_url", "implied_prob_b_no_vig"]].rename(
-        columns={"implied_prob_b_no_vig": "market_prob"}
-    )
-    long = pd.concat([a, b], ignore_index=True).dropna(subset=["market_prob"])
-    if long.empty:
-        return _empty_figure("no odds-covered fights for this fighter", title=f"{fighter}: market history", height=300)
-    cols = ["fight_url", "event_date", "event_name", "winner", "is_draw", "fighter_a", "fighter_b"]
-    joined = long.merge(fights[[c for c in cols if c in fights.columns]], on="fight_url", how="inner")
-    if joined.empty:
-        return _empty_figure("no matching canonical fights", title=f"{fighter}: market history", height=300)
-    joined["event_date"] = pd.to_datetime(joined["event_date"], errors="coerce")
-    joined["opponent"] = np.where(joined.get("fighter_a").eq(fighter), joined.get("fighter_b"), joined.get("fighter_a"))
-    joined["result"] = np.select(
+    """Market-implied win probability over time for one fighter.
+
+    Shows ALL canonical fights for the fighter. Where odds data is available
+    the line plots the market win probability; fights without odds appear as
+    diamond markers near the bottom so the complete fight history is visible
+    even when the odds snapshot hasn't caught up yet.
+    """
+    title = f"{fighter}: market history"
+    if fights is None or fights.empty:
+        return _empty_figure("fight history unavailable", title=title, height=300)
+
+    # All canonical fights for this fighter
+    cols = ["fight_url", "event_date", "event_name", "fighter_a", "fighter_b", "winner", "is_draw"]
+    fa = fights[fights["fighter_a"].eq(fighter)][[c for c in cols if c in fights.columns]].rename(
+        columns={"fighter_b": "opponent"})
+    fb = fights[fights["fighter_b"].eq(fighter)][[c for c in cols if c in fights.columns]].rename(
+        columns={"fighter_a": "opponent"})
+    all_fights = pd.concat([fa, fb], ignore_index=True)
+    if all_fights.empty:
+        return _empty_figure("no fights found", title=title, height=300)
+
+    all_fights["event_date"] = pd.to_datetime(all_fights["event_date"], errors="coerce")
+    result_colors = {"Win": SIGN_COLORS["positive"], "Loss": SIGN_COLORS["negative"], "Draw": THEME["neutral"]}
+    all_fights["result"] = np.select(
         [
-            joined.get("is_draw", pd.Series(False, index=joined.index)).fillna(False).astype(bool),
-            joined["winner"].eq(fighter),
+            all_fights.get("is_draw", pd.Series(False, index=all_fights.index)).fillna(False).astype(bool),
+            all_fights["winner"].eq(fighter),
         ],
         ["Draw", "Win"],
         default="Loss",
     )
-    joined = joined.sort_values("event_date")
-    colors = joined["result"].map({"Win": SIGN_COLORS["positive"], "Loss": SIGN_COLORS["negative"], "Draw": "#64748b"})
-    fig = go.Figure(go.Scatter(
-        x=joined["event_date"],
-        y=joined["market_prob"] * 100,
-        mode="lines+markers",
-        line=dict(color=STREAM_PALETTE["odds_adjusted"], width=2),
-        marker=dict(size=9, color=colors, line=dict(color="white", width=0.8)),
-        customdata=np.stack([
-            joined["opponent"].fillna(""),
-            joined["result"],
-            joined["event_name"].fillna(""),
-        ], axis=-1),
-        hovertemplate=(
-            "<b>%{customdata[2]}</b><br>"
-            "vs %{customdata[0]}: %{customdata[1]}<br>"
-            "market win probability=%{y:.1f}%<extra></extra>"
-        ),
-    ))
+
+    # Merge odds where available
+    all_fights["market_prob"] = np.nan
+    if odds_lines is not None and not odds_lines.empty:
+        needed = {"fight_url", "fighter_a", "fighter_b", "implied_prob_a_no_vig", "implied_prob_b_no_vig", "odds_data_quality"}
+        if needed.issubset(odds_lines.columns):
+            ok = odds_lines[odds_lines["odds_data_quality"].eq("ok")].copy()
+            oa = ok[ok["fighter_a"].eq(fighter)][["fight_url", "implied_prob_a_no_vig"]].rename(
+                columns={"implied_prob_a_no_vig": "market_prob_merge"})
+            ob = ok[ok["fighter_b"].eq(fighter)][["fight_url", "implied_prob_b_no_vig"]].rename(
+                columns={"implied_prob_b_no_vig": "market_prob_merge"})
+            odds_long = pd.concat([oa, ob], ignore_index=True).dropna(subset=["market_prob_merge"])
+            if not odds_long.empty:
+                all_fights = all_fights.merge(odds_long, on="fight_url", how="left")
+                all_fights["market_prob"] = all_fights.get("market_prob_merge", pd.Series(dtype=float))
+                all_fights = all_fights.drop(columns=["market_prob_merge"], errors="ignore")
+
+    all_fights = all_fights.sort_values("event_date")
+    has_odds = all_fights.dropna(subset=["market_prob"])
+    no_odds = all_fights[all_fights["market_prob"].isna()]
+
+    fig = go.Figure()
+
+    # Probability line + markers for fights with odds
+    if not has_odds.empty:
+        colors_odds = has_odds["result"].map(result_colors).fillna(THEME["text_muted"])
+        fig.add_trace(go.Scatter(
+            x=has_odds["event_date"],
+            y=has_odds["market_prob"] * 100,
+            mode="lines+markers",
+            line=dict(color=STREAM_PALETTE["odds_adjusted"], width=2),
+            marker=dict(size=9, color=colors_odds.tolist(), line=dict(color="white", width=0.8)),
+            customdata=np.column_stack([
+                has_odds["opponent"].fillna("").values,
+                has_odds["result"].values,
+                has_odds["event_name"].fillna("").values,
+            ]),
+            hovertemplate=(
+                "<b>%{customdata[2]}</b><br>"
+                "vs %{customdata[0]}: %{customdata[1]}<br>"
+                "market win probability=%{y:.1f}%<extra></extra>"
+            ),
+            showlegend=False,
+            name="odds",
+        ))
+
+    # Diamond markers at y=5 for fights without odds (preserves full history)
+    if not no_odds.empty:
+        colors_no = no_odds["result"].map(result_colors).fillna(THEME["text_muted"])
+        fig.add_trace(go.Scatter(
+            x=no_odds["event_date"],
+            y=[5.0] * len(no_odds),
+            mode="markers",
+            marker=dict(size=10, color=colors_no.tolist(), symbol="diamond",
+                        line=dict(color="white", width=0.8)),
+            customdata=np.column_stack([
+                no_odds["opponent"].fillna("").values,
+                no_odds["result"].values,
+                no_odds["event_name"].fillna("").values,
+            ]),
+            hovertemplate=(
+                "<b>%{customdata[2]}</b><br>"
+                "vs %{customdata[0]}: %{customdata[1]}<br>"
+                "no odds data<extra></extra>"
+            ),
+            showlegend=False,
+            name="no odds",
+        ))
+
+    if not fig.data:
+        return _empty_figure("no fight data available", title=title, height=300)
+
     fig.add_hline(y=50, line_dash="dash", line_color="#94a3b8")
     _apply_chart_layout(fig, height=300)
     fig.update_layout(
-        title=f"{fighter}: market history",
+        title=title,
         xaxis_title="Date",
         yaxis_title="Market win probability",
         showlegend=False,
@@ -3473,6 +3761,60 @@ def win_streaks_table(
     return streaks.head(n).reset_index(drop=True)
 
 
+def _add_streak_traces(
+    fig: go.Figure,
+    fighter: str,
+    history: pd.DataFrame,
+    fights: pd.DataFrame,
+    rating_col: str,
+    *,
+    line_color: str,
+    marker_label_prefix: str = "",
+    outcome_overrides: dict | None = None,
+) -> None:
+    """Add a fighter's rating line + outcome markers to an existing figure."""
+    h = history[history["fighter"].eq(fighter)].copy()
+    if h.empty:
+        return
+    h["event_date"] = pd.to_datetime(h["event_date"], errors="coerce")
+    h = h.sort_values("event_date")
+    results = _fighter_results_long(fights)
+    results = results[results["fighter"].eq(fighter)][["event_date", "opponent", "outcome"]]
+    merged = h.merge(results, on="event_date", how="left")
+
+    fig.add_trace(go.Scatter(
+        x=h["event_date"], y=h[rating_col],
+        mode="lines",
+        line=dict(color=line_color, width=2.5, shape="spline", smoothing=0.4),
+        name=f"{fighter} rating",
+        hoverinfo="skip",
+        showlegend=True,
+    ))
+    outcome_color = outcome_overrides or {
+        "win": THEME["positive"], "loss": THEME["negative"],
+        "draw": THEME["neutral"], "nc": THEME["text_caption"],
+    }
+    for outcome, label in (("win", "Win"), ("loss", "Loss"), ("draw", "Draw"), ("nc", "No contest")):
+        seg = merged[merged["outcome"].eq(outcome)]
+        if seg.empty:
+            continue
+        trace_label = f"{marker_label_prefix}{label}" if marker_label_prefix else label
+        fig.add_trace(go.Scatter(
+            x=seg["event_date"], y=seg[rating_col],
+            mode="markers",
+            name=trace_label,
+            marker=dict(size=10, color=outcome_color[outcome],
+                        line=dict(color=THEME["bg"], width=1.5)),
+            customdata=seg["opponent"].fillna("").to_numpy()[:, None],
+            hovertemplate=(
+                f"<b>{fighter} — {label}</b> vs %{{customdata[0]}}<br>"
+                "%{x|%b %d, %Y}<br>"
+                f"{_metric_label(rating_col)}=%{{y:.1f}}<extra></extra>"
+            ),
+            showlegend=False,
+        ))
+
+
 def streak_timeline_chart(
     fighter: str,
     ratings_history: pd.DataFrame,
@@ -3482,60 +3824,37 @@ def streak_timeline_chart(
     highlight_start=None,
     highlight_end=None,
     streak_len: int | None = None,
+    overlay_fighter: str | None = None,
+    overlay_highlight_start=None,
+    overlay_highlight_end=None,
+    overlay_streak_len: int | None = None,
 ) -> go.Figure:
-    """Single-fighter rating timeline with win/loss/draw markers.
+    """Rating timeline for a fighter, with optional overlay of a second fighter.
 
-    When a streak window is supplied it is shaded so the rating arc over that
-    run is obvious. This is the chart driven by the win-streak selector.
+    The primary fighter's streak window is shaded in the accent color so their
+    rating arc over the run is obvious. When ``overlay_fighter`` is provided
+    (the win-streak section's fighter search), that fighter's full rating
+    timeline is drawn on the same axes in a contrasting color so the two runs
+    can be compared head to head — outcome markers are kept separate per
+    fighter, and a second streak window can be shaded.
     """
     title = f"{fighter}: rating timeline"
+    if overlay_fighter and overlay_fighter != fighter:
+        title = f"{fighter} vs {overlay_fighter}: rating timelines"
     if ratings_history is None or ratings_history.empty or not fighter:
         return _empty_figure("rating history unavailable", title=title, height=420)
     if rating_col not in ratings_history.columns:
         rating_col = "mu_canonical"
-    h = ratings_history[ratings_history["fighter"].eq(fighter)].copy()
-    if h.empty:
+    if ratings_history[ratings_history["fighter"].eq(fighter)].empty:
         return _empty_figure(f"no rating history for {fighter}", title=title, height=420)
-    h["event_date"] = pd.to_datetime(h["event_date"], errors="coerce")
-    h = h.sort_values("event_date")
-
-    results = _fighter_results_long(fights)
-    results = results[results["fighter"].eq(fighter)][["event_date", "opponent", "outcome"]]
-    merged = h.merge(results, on="event_date", how="left")
 
     fig = go.Figure()
-    # rating line
-    fig.add_trace(go.Scatter(
-        x=h["event_date"], y=h[rating_col],
-        mode="lines",
-        line=dict(color=THEME["primary"], width=2.5, shape="spline", smoothing=0.4),
-        name="rating",
-        hoverinfo="skip",
-        showlegend=False,
-    ))
-    # outcome markers
-    outcome_color = {
-        "win": THEME["positive"], "loss": THEME["negative"],
-        "draw": THEME["neutral"], "nc": THEME["text_caption"],
-    }
-    for outcome, label in (("win", "Win"), ("loss", "Loss"), ("draw", "Draw"), ("nc", "No contest")):
-        seg = merged[merged["outcome"].eq(outcome)]
-        if seg.empty:
-            continue
-        fig.add_trace(go.Scatter(
-            x=seg["event_date"], y=seg[rating_col],
-            mode="markers",
-            name=label,
-            marker=dict(size=10, color=outcome_color[outcome],
-                        line=dict(color=THEME["bg"], width=1.5)),
-            customdata=seg["opponent"].fillna("").to_numpy()[:, None],
-            hovertemplate=(
-                f"<b>{label}</b> vs %{{customdata[0]}}<br>"
-                "%{x|%b %d, %Y}<br>"
-                f"{_metric_label(rating_col)}=%{{y:.1f}}<extra></extra>"
-            ),
-        ))
+    _add_streak_traces(
+        fig, fighter, ratings_history, fights, rating_col,
+        line_color=THEME["primary"],
+    )
 
+    # Shade the primary streak window.
     if highlight_start is not None and highlight_end is not None:
         hs = pd.to_datetime(highlight_start)
         he = pd.to_datetime(highlight_end)
@@ -3548,9 +3867,35 @@ def streak_timeline_chart(
         label = "win streak" if streak_len is None else f"{streak_len}-fight win streak"
         fig.add_annotation(
             x=hs + (he - hs) / 2, y=1.0, yref="paper",
-            text=label, showarrow=False, yanchor="bottom",
+            text=f"{fighter}: {label}", showarrow=False, yanchor="bottom",
             font=dict(color=THEME["accent"], size=12),
         )
+
+    # Overlay a second fighter — full timeline so the comparison is honest, not
+    # just the streak window. Marker outcome colors stay the same so wins still
+    # read green / losses red regardless of which fighter the marker belongs to.
+    if overlay_fighter and overlay_fighter != fighter:
+        if not ratings_history[ratings_history["fighter"].eq(overlay_fighter)].empty:
+            _add_streak_traces(
+                fig, overlay_fighter, ratings_history, fights, rating_col,
+                line_color=THEME["secondary"],
+                marker_label_prefix=f"{overlay_fighter} ",
+            )
+            if overlay_highlight_start is not None and overlay_highlight_end is not None:
+                ohs = pd.to_datetime(overlay_highlight_start)
+                ohe = pd.to_datetime(overlay_highlight_end)
+                fig.add_vrect(
+                    x0=ohs, x1=ohe,
+                    fillcolor=_hex_to_rgba(THEME["secondary"], 0.10),
+                    line_width=0, layer="below",
+                )
+                olabel = ("win streak" if overlay_streak_len is None
+                          else f"{overlay_streak_len}-fight win streak")
+                fig.add_annotation(
+                    x=ohs + (ohe - ohs) / 2, y=0.96, yref="paper",
+                    text=f"{overlay_fighter}: {olabel}", showarrow=False, yanchor="bottom",
+                    font=dict(color=THEME["secondary"], size=11),
+                )
 
     _apply_chart_layout(fig, height=460)
     fig.update_layout(
@@ -3558,7 +3903,7 @@ def streak_timeline_chart(
         xaxis_title="Date",
         yaxis_title=_metric_label(rating_col),
         hovermode="closest",
-        legend=dict(orientation="h", y=1.08, x=0, yanchor="bottom"),
+        legend=dict(orientation="h", y=1.10, x=0, yanchor="bottom"),
     )
     return fig
 
@@ -3572,3 +3917,505 @@ def fighter_search(ratings_current: pd.DataFrame, prefix: str, limit: int = 20) 
     mask = ratings_current["fighter"].str.contains(prefix, case=False, na=False)
     matches = ratings_current[mask].sort_values("mu_canonical", ascending=False)
     return matches["fighter"].head(limit).tolist()
+
+
+# ===========================================================================
+# Notebook chart additions (2026-06-23) — see analysis/CHART_PLAN.md.
+# Each is a pure builder returning a go.Figure (or DataFrame for tables) and
+# degrades to a consistent empty-state instead of raising.
+# ===========================================================================
+
+# Shared, on-brand component palettes for the striking + method-mix charts.
+STRIKE_TARGET_COLORS = {"Head": THEME["primary"], "Body": THEME["accent"], "Leg": THEME["positive"]}
+STRIKE_POSITION_COLORS = {"Distance": THEME["secondary"], "Clinch": "#f97316", "Ground": "#22d3ee"}
+METHOD_MIX_COLORS = {"KO/TKO": THEME["negative"], "Submission": THEME["secondary"], "Decision": THEME["primary"]}
+
+
+def striking_profile_chart(
+    rounds: pd.DataFrame,
+    fighter: str,
+    *,
+    height: int = 300,
+) -> go.Figure:
+    """Career significant-strike fingerprint for one fighter.
+
+    Two 100%-stacked horizontal bars from `canonical_rounds`: where the
+    fighter's significant strikes land (head / body / leg) and from what
+    position (distance / clinch / ground). Turns the raw round tables into a
+    single readable style signature for the Tale of the Tape cards.
+    """
+    title = f"{fighter}: striking fingerprint"
+    if rounds is None or rounds.empty or not fighter:
+        return _empty_figure("striking data unavailable", title=title, height=height)
+    df = rounds[rounds["fighter"].eq(fighter)]
+    if df.empty:
+        return _empty_figure(f"no round data for {fighter}", title=title, height=height)
+
+    def _sum(col):
+        return float(pd.to_numeric(df.get(col), errors="coerce").fillna(0).sum())
+
+    target = {"Head": _sum("head_landed"), "Body": _sum("body_landed"), "Leg": _sum("leg_landed")}
+    position = {"Distance": _sum("distance_landed"), "Clinch": _sum("clinch_landed"), "Ground": _sum("ground_landed")}
+    t_total, p_total = sum(target.values()), sum(position.values())
+    if t_total <= 0 and p_total <= 0:
+        return _empty_figure(f"no significant strikes for {fighter}", title=title, height=height)
+
+    fig = go.Figure()
+    for group, parts, total, colors in (
+        ("Position", position, p_total, STRIKE_POSITION_COLORS),
+        ("Target", target, t_total, STRIKE_TARGET_COLORS),
+    ):
+        for name, value in parts.items():
+            pct = (value / total) if total else 0.0
+            fig.add_trace(go.Bar(
+                x=[pct], y=[group], orientation="h", name=name,
+                marker_color=colors[name], legendgroup=group, showlegend=True,
+                text=[f"{name} {pct:.0%}" if pct >= 0.08 else ""],
+                textposition="inside", insidetextanchor="middle",
+                textfont=dict(color="#0b1220", size=11),
+                hovertemplate=f"<b>{name}</b><br>{group}: %{{x:.1%}}<br>{int(value)} landed<extra></extra>",
+            ))
+    _apply_chart_layout(fig, height=height)
+    fig.update_layout(
+        title=title, barmode="stack", bargap=0.35,
+        showlegend=False,
+        xaxis=dict(range=[0, 1], tickformat=".0%", title_text="Share of significant strikes landed"),
+        yaxis=dict(title_text=""),
+        margin=dict(t=50, r=24, b=44, l=78),
+    )
+    return fig
+
+
+def dominance_leaderboard_chart(
+    fighter_dominance: pd.DataFrame,
+    ratings_current: pd.DataFrame | None = None,
+    *,
+    n: int = 20,
+    min_wins: int = 5,
+) -> go.Figure:
+    """Most dominant fighters by mean per-fight dominance (not just rating).
+
+    `fighter_dominance.mean_dominance` blends strike differential, control time,
+    and submission attempts (z-scored). The #1 gets the amber accent.
+    """
+    title = "Most dominant fighters"
+    if fighter_dominance is None or fighter_dominance.empty:
+        return _empty_figure("dominance data unavailable", title=title)
+    df = fighter_dominance.copy()
+    df["wins"] = pd.to_numeric(df.get("wins"), errors="coerce").fillna(0)
+    df["mean_dominance"] = pd.to_numeric(df.get("mean_dominance"), errors="coerce")
+    df = df[df["wins"] >= min_wins].dropna(subset=["mean_dominance"])
+    if df.empty:
+        return _empty_figure(f"no fighters with at least {min_wins} wins", title=title)
+    if ratings_current is not None and "fighter" in ratings_current.columns:
+        df = df.merge(ratings_current[["fighter", "mu_canonical"]], on="fighter", how="left")
+    df = df.sort_values("mean_dominance", ascending=False).head(n).iloc[::-1]
+    colors = [THEME["accent"] if i == len(df) - 1 else THEME["primary"] for i in range(len(df))]
+    mu = pd.to_numeric(df.get("mu_canonical", pd.Series(index=df.index)), errors="coerce")
+    fig = go.Figure(go.Bar(
+        x=df["mean_dominance"], y=df["fighter"], orientation="h",
+        marker_color=colors,
+        text=df["mean_dominance"].round(2), textposition="outside",
+        customdata=np.stack([
+            df["wins"].astype(int).astype("string"),
+            mu.round(0).astype("string"),
+        ], axis=-1),
+        hovertemplate=("<b>%{y}</b><br>dominance score=%{x:.2f}<br>"
+                       "wins=%{customdata[0]}<br>rating=%{customdata[1]}<extra></extra>"),
+    ))
+    _apply_chart_layout(fig, height=max(420, 26 * len(df)))
+    fig.update_layout(
+        title=title, xaxis_title="Dominance score (higher = more one-sided wins)", yaxis_title="",
+        showlegend=False,
+        # Reserve room on the left and let the axis grow to fit the longest
+        # fighter name so labels are never clipped.
+        margin=dict(t=64, r=48, b=56, l=180),
+    )
+    fig.update_yaxes(automargin=True, tickfont=dict(size=12))
+    fig.update_xaxes(rangemode="tozero")
+    return fig
+
+
+def snapshot_movers_chart(
+    ratings_current: pd.DataFrame,
+    previous_ratings_current: pd.DataFrame | None,
+    *,
+    rating_col: str = "mu_canonical",
+    n: int = 12,
+) -> go.Figure:
+    """Biggest rating risers/fallers since the previous snapshot.
+
+    Diverging horizontal bars on the rating column the Control Room selects;
+    the natural landing chart after a data refresh.
+    """
+    title = "Movers since last snapshot"
+    if (previous_ratings_current is None or previous_ratings_current.empty
+            or ratings_current is None or ratings_current.empty):
+        return _empty_figure("no previous snapshot to compare", title=title)
+    col = rating_col if rating_col in ratings_current.columns else "mu_canonical"
+    if col not in previous_ratings_current.columns:
+        return _empty_figure("rating column missing in previous snapshot", title=title)
+    cur = ratings_current[["fighter", col]].rename(columns={col: "now"})
+    prev = previous_ratings_current[["fighter", col]].rename(columns={col: "before"})
+    m = cur.merge(prev, on="fighter", how="inner").dropna(subset=["now", "before"])
+    m["delta"] = pd.to_numeric(m["now"], errors="coerce") - pd.to_numeric(m["before"], errors="coerce")
+    m = m[m["delta"].abs() > 0.05]
+    if m.empty:
+        return _empty_figure("no fighters moved since the last snapshot", title=title)
+    movers = pd.concat([
+        m.sort_values("delta", ascending=False).head(n),
+        m.sort_values("delta", ascending=True).head(n),
+    ]).drop_duplicates("fighter").sort_values("delta")
+    colors = np.where(movers["delta"] >= 0, SIGN_COLORS["positive"], SIGN_COLORS["negative"])
+    fig = go.Figure(go.Bar(
+        x=movers["delta"], y=movers["fighter"], orientation="h",
+        marker_color=colors,
+        text=movers["delta"].round(1).map(lambda v: f"{v:+.1f}"), textposition="outside",
+        customdata=np.stack([
+            pd.to_numeric(movers["before"], errors="coerce").round(1).astype("string"),
+            pd.to_numeric(movers["now"], errors="coerce").round(1).astype("string"),
+        ], axis=-1),
+        hovertemplate="<b>%{y}</b><br>%{customdata[0]} → %{customdata[1]} (%{x:+.1f})<extra></extra>",
+    ))
+    fig.add_vline(x=0, line_color=THEME["border_strong"], line_width=1)
+    _apply_chart_layout(fig, height=max(440, 24 * len(movers)))
+    fig.update_layout(title=title, xaxis_title="Rating change vs previous snapshot", yaxis_title="",
+                      showlegend=False)
+    return fig
+
+
+def inactivity_table(ratings_current: pd.DataFrame, *, n: int = 20, min_rating: float = 1650.0,
+                     min_months: float = 12.0, max_months: float = 96.0) -> pd.DataFrame:
+    """Highly-rated fighters fading on the clock — the ring-rust ledger.
+
+    Bounded to a recent window (`max_months`, default 8 years) so it surfaces
+    meaningful recent layoffs rather than fighters who retired decades ago.
+    """
+    cols = ["fighter", "months_inactive", "mu_canonical", "activity_mu_penalty",
+            "mu_canonical_activity_adjusted", "last_event_date"]
+    if ratings_current is None or ratings_current.empty:
+        return pd.DataFrame(columns=cols)
+    if "months_inactive" not in ratings_current.columns:
+        return pd.DataFrame(columns=cols)
+    df = ratings_current.copy()
+    df["months_inactive"] = pd.to_numeric(df["months_inactive"], errors="coerce")
+    df["mu_canonical"] = pd.to_numeric(df["mu_canonical"], errors="coerce")
+    df = df[(df["months_inactive"] >= min_months) & (df["months_inactive"] <= max_months)
+            & (df["mu_canonical"] >= min_rating)]
+    if df.empty:
+        return pd.DataFrame(columns=cols)
+    df = df.sort_values("months_inactive", ascending=False).head(n)
+    out = df[[c for c in cols if c in df.columns]].copy()
+    if "last_event_date" in out.columns:
+        out["last_event_date"] = pd.to_datetime(out["last_event_date"], errors="coerce").dt.date
+    for c in ("months_inactive", "mu_canonical", "activity_mu_penalty", "mu_canonical_activity_adjusted"):
+        if c in out.columns:
+            out[c] = pd.to_numeric(out[c], errors="coerce").round(1)
+    return out.reset_index(drop=True)
+
+
+def _integrity_long(integrity_appearances: pd.DataFrame) -> pd.DataFrame:
+    """Rows where the integrity sleeve fired, tagged with a human reason."""
+    cols = ["fight_url", "fighter", "reason", "integrity_factor", "integrity_weight"]
+    if integrity_appearances is None or integrity_appearances.empty:
+        return pd.DataFrame(columns=cols)
+    df = integrity_appearances.copy()
+    factor_map = {
+        "integrity_factor_ped": "PED",
+        "integrity_factor_dq": "DQ",
+        "integrity_factor_missed_weight": "Missed weight",
+    }
+    rows = []
+    for col, reason in factor_map.items():
+        if col not in df.columns:
+            continue
+        fired = df[pd.to_numeric(df[col], errors="coerce").fillna(1.0) < 1.0]
+        for _, r in fired.iterrows():
+            rows.append({
+                "fight_url": r.get("fight_url"), "fighter": r.get("fighter"),
+                "reason": reason, "integrity_factor": float(r[col]),
+                "integrity_weight": float(pd.to_numeric(r.get("integrity_weight"), errors="coerce")),
+            })
+    return pd.DataFrame(rows, columns=cols)
+
+
+def integrity_ledger_table(
+    integrity_appearances: pd.DataFrame,
+    sleeve_attribution: pd.DataFrame | None = None,
+    *,
+    n: int = 25,
+) -> pd.DataFrame:
+    """Per-fight integrity hits (PED / DQ / missed weight) and the rating cost."""
+    cols = ["event_date", "fighter", "opponent", "reason", "integrity_weight", "integrity_delta"]
+    fired = _integrity_long(integrity_appearances)
+    if fired.empty:
+        return pd.DataFrame(columns=cols)
+    if sleeve_attribution is not None and not sleeve_attribution.empty:
+        attr = sleeve_attribution[["fight_url", "fighter", "event_date", "opponent", "integrity_delta"]].copy()
+        fired = fired.merge(attr, on=["fight_url", "fighter"], how="left")
+    else:
+        fired["event_date"] = pd.NaT
+        fired["opponent"] = pd.NA
+        fired["integrity_delta"] = pd.NA
+    fired["integrity_delta"] = pd.to_numeric(fired["integrity_delta"], errors="coerce")
+    fired["_abs"] = fired["integrity_delta"].abs().fillna(1 - fired["integrity_weight"])
+    fired = fired.sort_values("_abs", ascending=False).head(n)
+    out = fired[[c for c in cols if c in fired.columns]].copy()
+    if "event_date" in out.columns:
+        out["event_date"] = pd.to_datetime(out["event_date"], errors="coerce").dt.date
+    for c in ("integrity_weight", "integrity_delta"):
+        if c in out.columns:
+            out[c] = pd.to_numeric(out[c], errors="coerce").round(2)
+    return out.reset_index(drop=True)
+
+
+def integrity_impact_chart(
+    integrity_appearances: pd.DataFrame,
+    sleeve_attribution: pd.DataFrame | None = None,
+    *,
+    n: int = 15,
+) -> go.Figure:
+    """Fighters who lost the most rating to the integrity (clean-record) sleeve."""
+    title = "Integrity sleeve — biggest rating costs"
+    fired = _integrity_long(integrity_appearances)
+    if fired.empty:
+        return _empty_figure("no integrity adjustments in this snapshot", title=title)
+    if sleeve_attribution is not None and not sleeve_attribution.empty:
+        attr = sleeve_attribution[["fight_url", "fighter", "integrity_delta"]].copy()
+        fired = fired.merge(attr, on=["fight_url", "fighter"], how="left")
+        fired["integrity_delta"] = pd.to_numeric(fired["integrity_delta"], errors="coerce").fillna(0.0)
+        agg = fired.groupby("fighter", as_index=False)["integrity_delta"].sum()
+        agg = agg[agg["integrity_delta"] < 0].sort_values("integrity_delta").head(n).iloc[::-1]
+        xcol, xtitle, fmt = "integrity_delta", "Rating points lost", "{:.1f}"
+    else:
+        fired["loss"] = 1.0 - fired["integrity_weight"]
+        agg = fired.groupby("fighter", as_index=False)["loss"].sum()
+        agg = agg.sort_values("loss", ascending=False).head(n).iloc[::-1]
+        agg["integrity_delta"] = -agg["loss"]
+        xcol, xtitle, fmt = "integrity_delta", "Integrity weight lost (sum)", "{:.2f}"
+    if agg.empty:
+        return _empty_figure("no measurable integrity rating cost", title=title)
+    fig = go.Figure(go.Bar(
+        x=agg[xcol], y=agg["fighter"], orientation="h",
+        marker_color=SIGN_COLORS["negative"],
+        text=agg[xcol].map(lambda v: fmt.format(v)), textposition="outside",
+        hovertemplate="<b>%{y}</b><br>%{x:.2f}<extra></extra>",
+    ))
+    _apply_chart_layout(fig, height=max(380, 28 * len(agg)))
+    fig.update_layout(title=title, xaxis_title=xtitle, yaxis_title="", showlegend=False)
+    return fig
+
+
+def legacy_vs_prime_scatter(
+    ratings_current: pd.DataFrame,
+    *,
+    n: int = 60,
+    min_fights: int = 13,
+    label_outliers: int = 10,
+) -> go.Figure:
+    """Era-comparable Legacy (WHR smoother) vs windowed Prime — where they disagree."""
+    title = "Legacy vs Prime — where the two methods disagree"
+    x_col = "sustained_peak_headline_mu_method_integrity_performance"
+    y_col = "sustained_peak_headline_mu_whr"
+    if ratings_current is None or ratings_current.empty:
+        return _empty_figure("ratings unavailable", title=title)
+    if x_col not in ratings_current.columns or y_col not in ratings_current.columns:
+        return _empty_figure("peak columns not present in this snapshot", title=title)
+    df = ratings_current.copy()
+    df["rating_periods"] = pd.to_numeric(df.get("rating_periods"), errors="coerce").fillna(0)
+    df = df[df["rating_periods"] >= min_fights]
+    df["x"] = pd.to_numeric(df[x_col], errors="coerce")
+    df["y"] = pd.to_numeric(df[y_col], errors="coerce")
+    df = df.dropna(subset=["x", "y"])
+    if df.empty:
+        return _empty_figure("no eligible fighters", title=title)
+    df = df.sort_values("y", ascending=False).head(n)
+    if len(df) >= 3 and df["x"].nunique() > 1:
+        slope, intercept = np.polyfit(df["x"], df["y"], 1)
+        df["resid"] = df["y"] - (slope * df["x"] + intercept)
+    else:
+        slope = intercept = None
+        df["resid"] = 0.0
+    # Off-trend direction tells the story without a name label: above the line a
+    # fighter's all-time résumé outshines their single best window (a longevity
+    # story); below it one dominant peak outruns the career body of work.
+    df["_leans"] = np.where(
+        df["resid"] >= 0, "Legacy &gt; Prime (longevity)", "Prime &gt; Legacy (peak)")
+    df["_bouts"] = pd.to_numeric(df.get("rating_periods"), errors="coerce").fillna(0).astype(int)
+    div = df.get("career_division", pd.Series("", index=df.index)).fillna("")
+    fig = go.Figure()
+    if slope is not None:
+        xs = np.array([df["x"].min(), df["x"].max()])
+        fig.add_trace(go.Scatter(
+            x=xs, y=slope * xs + intercept, mode="lines",
+            line=dict(color=THEME["text_muted"], dash="dash"), name="typical balance",
+            hoverinfo="skip", showlegend=False,
+        ))
+    for division, g in df.groupby(div, sort=False):
+        div_label = DIV_SHORT.get(str(division), str(division) or "—")
+        fig.add_trace(go.Scatter(
+            x=g["x"], y=g["y"], mode="markers",
+            name=div_label,
+            marker=dict(size=11, opacity=0.8, line=dict(color=THEME["bg"], width=0.6)),
+            customdata=np.stack([
+                g["fighter"].astype("string"),
+                pd.Series([div_label] * len(g), index=g.index).astype("string"),
+                g["_bouts"].astype("string"),
+                g["_leans"].astype("string"),
+            ], axis=-1),
+            hovertemplate=(
+                "<b>%{customdata[0]}</b><br>"
+                "Prime (best run)=%{x:.0f}<br>"
+                "Legacy (all-time)=%{y:.0f}<br>"
+                "Division=%{customdata[1]} &middot; %{customdata[2]} UFC bouts<br>"
+                "<b>%{customdata[3]}</b><extra></extra>"
+            ),
+        ))
+    _apply_chart_layout(fig, height=560)
+    fig.update_layout(
+        title=title, xaxis_title="Prime rating (best sustained run)",
+        yaxis_title="Legacy rating (all-time, era-adjusted)",
+        legend=dict(orientation="h", y=-0.22),
+        hovermode="closest",
+    )
+    return fig
+
+
+def method_mix_timeline_chart(
+    fights: pd.DataFrame,
+    *,
+    divisions: list[str] | None = None,
+    year_min: int | None = None,
+    year_max: int | None = None,
+) -> go.Figure:
+    """Share of fights ending by KO/TKO, Submission, or Decision over time."""
+    title = "How fights end over time"
+    if fights is None or fights.empty:
+        return _empty_figure("fight data unavailable", title=title)
+    f = add_division_to_fights(fights)
+    if "is_excluded" in f.columns:
+        f = f[~f["is_excluded"].fillna(False).astype(bool)]
+    if divisions:
+        f = f[f["division"].isin(divisions)]
+    f = f.copy()
+    f["year"] = pd.to_datetime(f["event_date"], errors="coerce").dt.year
+    f = f.dropna(subset=["year", "method_class"])
+    if year_min is not None:
+        f = f[f["year"] >= year_min]
+    if year_max is not None:
+        f = f[f["year"] <= year_max]
+    if f.empty:
+        return _empty_figure("no fights match the current filters", title=title)
+
+    def _bucket(m):
+        if m in ("KO/TKO", "Submission"):
+            return m
+        if isinstance(m, str) and m.startswith("Decision"):
+            return "Decision"
+        return None
+
+    f["bucket"] = f["method_class"].map(_bucket)
+    f = f.dropna(subset=["bucket"])
+    counts = f.groupby(["year", "bucket"]).size().rename("n").reset_index()
+    totals = counts.groupby("year")["n"].transform("sum")
+    counts["share"] = counts["n"] / totals
+    pivot = counts.pivot(index="year", columns="bucket", values="share").fillna(0.0).sort_index()
+    n_per_year = f.groupby("year").size()
+
+    fig = go.Figure()
+    for bucket in ("KO/TKO", "Submission", "Decision"):
+        if bucket not in pivot.columns:
+            continue
+        fig.add_trace(go.Scatter(
+            x=pivot.index.astype(int), y=pivot[bucket],
+            mode="lines", name=bucket, stackgroup="one",
+            line=dict(width=0.5, color=METHOD_MIX_COLORS[bucket]),
+            fillcolor=_hex_to_rgba(METHOD_MIX_COLORS[bucket], 0.55),
+            customdata=n_per_year.reindex(pivot.index).fillna(0).astype(int),
+            hovertemplate=f"<b>{bucket}</b><br>%{{x}}: %{{y:.0%}} (of %{{customdata}} bouts)<extra></extra>",
+        ))
+    _apply_chart_layout(fig, height=440)
+    fig.update_layout(
+        title=title, xaxis_title="Year", yaxis_title="Share of fights",
+        yaxis=dict(range=[0, 1], tickformat=".0%"),
+        legend=dict(orientation="h", y=1.12, x=0),
+    )
+    return fig
+
+
+def title_lineage_chart(
+    performance_appearances: pd.DataFrame,
+    *,
+    division: str,
+    include_interim: bool = False,
+) -> go.Figure:
+    """Timeline of title-fight wins (belt changes) in a division."""
+    title = f"Title lineage — {division}"
+    if performance_appearances is None or performance_appearances.empty or not division:
+        return _empty_figure("title data unavailable", title=title)
+    df = performance_appearances.copy()
+    if "is_championship_bout" not in df.columns:
+        return _empty_figure("championship flags not present", title=title)
+    df = df[df["is_championship_bout"].fillna(False).astype(bool)]
+    if not include_interim and "is_interim_title_bout" in df.columns:
+        df = df[~df["is_interim_title_bout"].fillna(False).astype(bool)]
+    if "division" in df.columns:
+        df = df[df["division"].apply(lambda v: normalize_division(v) == division if isinstance(v, str) else False)]
+    df = df[df["is_winner"].fillna(False).astype(bool)].copy()
+    df["event_date"] = pd.to_datetime(df["event_date"], errors="coerce")
+    df = df.dropna(subset=["event_date"]).sort_values("event_date").reset_index(drop=True)
+    if df.empty:
+        return _empty_figure(f"no title wins found for {division}", title=title)
+
+    # Collapse consecutive title wins by the same fighter into one reign so the
+    # belt reads as a lineage (champion -> champion), and successful defenses
+    # become a count rather than a fistful of separate bars.
+    reigns = []
+    for _, r in df.iterrows():
+        if reigns and reigns[-1]["fighter"] == r["fighter"]:
+            reigns[-1]["defenses"] += 1
+            reigns[-1]["last_win"] = r["event_date"]
+            reigns[-1]["last_opp"] = r.get("opponent")
+        else:
+            reigns.append({
+                "fighter": r["fighter"], "start": r["event_date"],
+                "defenses": 0, "last_win": r["event_date"],
+                "won_against": r.get("opponent"), "last_opp": r.get("opponent"),
+            })
+    rg = pd.DataFrame(reigns)
+    rg["reign_end"] = rg["start"].shift(-1)
+    last_end = df["event_date"].max() + pd.Timedelta(days=150)
+    rg["reign_end"] = rg["reign_end"].fillna(last_end)
+    rg["days"] = (rg["reign_end"] - rg["start"]).dt.days.clip(lower=30)
+    rg["years"] = (rg["days"] / 365.25).round(1)
+
+    champions = list(dict.fromkeys(rg["fighter"].tolist()))
+    color_for = {c: CHART_COLORWAY[i % len(CHART_COLORWAY)] for i, c in enumerate(champions)}
+
+    # A single horizontal "belt" track: each reign is one segment laid along the
+    # timeline, labelled with the champion and their defense count.
+    fig = go.Figure()
+    for _, r in rg.iterrows():
+        last = str(r["fighter"]).split()[-1]
+        tag = f"{last} ({r['defenses']}D)" if r["defenses"] else last
+        fig.add_trace(go.Bar(
+            x=[r["days"]], y=["belt"], base=[r["start"]],
+            orientation="h", marker_color=color_for[r["fighter"]],
+            marker_line=dict(color=THEME["bg"], width=1.5),
+            opacity=0.92, showlegend=False,
+            text=[tag], textposition="inside", insidetextanchor="middle",
+            textfont=dict(color="white", size=11),
+            customdata=[[r["fighter"], r["won_against"], r["start"].date(),
+                         int(r["defenses"]), r["years"]]],
+            hovertemplate=("<b>%{customdata[0]}</b><br>"
+                           "won the belt %{customdata[2]} (def. %{customdata[1]})<br>"
+                           "%{customdata[3]} title defense(s) &middot; ~%{customdata[4]} yr reign<extra></extra>"),
+        ))
+    _apply_chart_layout(fig, height=300)
+    fig.update_layout(
+        title=title, barmode="stack", bargap=0.45,
+        xaxis=dict(type="date", title_text=""),
+        yaxis=dict(title_text="", showticklabels=False, showgrid=False),
+        showlegend=False,
+    )
+    return fig

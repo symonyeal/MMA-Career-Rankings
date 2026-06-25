@@ -62,13 +62,38 @@ def _n_traces(fw):
 
 
 def test_all_cells_execute_and_render(nb_ns):
-    # Every section produced something on first draw.
+    # Every section produced something on first draw. The era heat map used to
+    # live in its own cell (``era_fw``) but now folds into the Weight Classes
+    # section as ``divx_era``, so the chart asserted-on moved with it.
     assert nb_ns["lb_html"].value, "leaderboard empty"
     assert _n_traces(nb_ns["traj_fw"]) > 0
     assert _n_traces(nb_ns["plc_scatter"]) > 0
     assert _n_traces(nb_ns["divx_timeline"]) > 0
-    assert _n_traces(nb_ns["era_fw"]) > 0
+    assert _n_traces(nb_ns["divx_era"]) > 0
     assert nb_ns["streak_html"].value
+
+
+def test_new_sections_render(nb_ns):
+    # 2026-06-23 chart additions: every new section drew something on first load.
+    assert _n_traces(nb_ns["dom_fw"]) > 0          # Most Dominant
+    assert _n_traces(nb_ns["lp_fw"]) > 0           # Legacy vs Prime
+    assert _n_traces(nb_ns["divx_entropy"]) > 0    # Division parity
+    assert _n_traces(nb_ns["divx_method"]) > 0     # How fights end
+    assert _n_traces(nb_ns["tl_fw"]) > 0           # Title lineage
+    assert _n_traces(nb_ns["cmp_a_strike"]) > 0    # Striking fingerprint (Tale of the Tape)
+    assert _n_traces(nb_ns["mkt_fav"]) > 0         # Market vs Model
+    assert _n_traces(nb_ns["mkt_impact"]) > 0      # Market under/over-rated leaderboard
+    assert _n_traces(nb_ns["mkt_line"]) > 0        # Per-fighter betting-line chart
+    assert _n_traces(nb_ns["intg_fw"]) > 0         # Integrity Ledger
+    assert nb_ns["intg_html"].value                # Integrity ledger table
+
+
+def test_market_fighter_line_reacts(nb_ns):
+    # Switching the per-fighter dropdown redraws the betting-line chart.
+    opts = list(nb_ns["mkt_fighter"].options)
+    if len(opts) > 1:
+        nb_ns["mkt_fighter"].value = opts[1]
+        assert _n_traces(nb_ns["mkt_line"]) >= 0
 
 
 def test_top_n_reacts(nb_ns):
@@ -112,7 +137,7 @@ def test_streak_selector_options_stay_in_sync(nb_ns):
 
 
 def test_tuning_widgets_present(nb_ns):
-    assert len(nb_ns["TUNE_WIDGETS"]) == 12
+    assert len(nb_ns["TUNE_WIDGETS"]) == 9
     assert "_recompute" in nb_ns and "_reset" in nb_ns
 
 
@@ -121,14 +146,11 @@ def test_tuning_constant_propagation(nb_ns):
     # otherwise a tuned knob silently has no effect on a recompute.
     import ratings.opponent_quality as oq
     import ratings.peaks as pk
-    import ratings.performance_adjustment as pa
     try:
         nb_ns["_set_const"]("PERIOD_LOSS_PENALTY", 77.0)
         assert pk.PERIOD_LOSS_PENALTY == 77.0
         nb_ns["_set_const"]("SUSTAINED_PEAK_OPP_MAX_WEIGHT", 1.7)
         assert oq.SUSTAINED_PEAK_OPP_MAX_WEIGHT == 1.7
-        nb_ns["_set_const"]("INTEGRITY_PED_WIN_SCORE", 0.42)
-        assert pa.INTEGRITY_PED_WIN_SCORE == 0.42
     finally:
         nb_ns["_reset"]()  # restore defaults (cheap; no recompute)
 

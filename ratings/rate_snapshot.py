@@ -42,6 +42,10 @@ from ratings.constants import (
     SUSTAINED_PEAK_MIN_FIGHTS,
     SUSTAINED_PEAK_WINDOW_LABEL,
     FIVE_YEAR_PEAK_WINDOW_LABEL,
+    WHR_DOMINANCE_SCORE_SCALE,
+    WHR_DOMINANCE_WEIGHT_AMPLITUDE,
+    WHR_ERA_PREMIUM_REFERENCE_YEAR,
+    WHR_ERA_PREMIUM_STRENGTH,
     WHR_STREAM,
     WHR_SLEEVE_STREAMS,
     rating_label,
@@ -117,6 +121,108 @@ def _attach_appearance_weights(
         ow = pd.to_numeric(out["org_weight"], errors="coerce").fillna(1.0)
         out["weight_a"] = out["weight_a"] * ow
         out["weight_b"] = out["weight_b"] * ow
+    return out
+
+
+def _winner_dominance_level(perf_app: pd.DataFrame) -> dict:
+    """Map fight_url -> winner dominance level in [0, 1].
+
+    Uses ``dominance_score_winner`` (signed so the winner is positive) through
+    the same sigmoid the Glicko score bonus uses, then folds to a positive-only
+    [0, 1] level. Non-dominant or unknown fights map to 0.
+    """
+    if perf_app is None or perf_app.empty or "dominance_score_winner" not in perf_app.columns:
+        return {}
+    dom = perf_app[["fight_url", "dominance_score_winner"]].drop_duplicates("fight_url")
+    d = pd.to_numeric(dom["dominance_score_winner"], errors="coerce").fillna(0.0)
+    level = (2.0 / (1.0 + np.exp(-d / max(WHR_DOMINANCE_SCORE_SCALE, 1e-9))) - 1.0).clip(lower=0.0, upper=1.0)
+    return dict(zip(dom["fight_url"], level))
+
+
+def _amplify_dominance_weight(
+    weighted: pd.DataFrame, dom_level_by_fight: dict, amplitude: float,
+) -> pd.DataFrame:
+    """Scale BOTH fighters' WHR likelihood weight by how dominant the bout was.
+
+    A dominant bout is stronger evidence in both directions: each side's weight
+    is multiplied by ``1 + amplitude * dom_level`` (``dom_level`` is the winner's
+    dominance level in [0, 1], so it is symmetric across the bout). The winner is
+    pushed up AND the blown-out loser pushed down harder, spreading dominant
+    fighters from the field rather than only floating the winner. Ceiling-free
+    (unlike the [0, 1] score), so it rewards dominant finishes too. A close bout
+    (``dom_level`` 0) is unchanged.
+    """
+    if amplitude <= 0 or not dom_level_by_fight:
+        return weighted
+    out = weighted.copy()
+    lvl = out["fight_url"].map(dom_level_by_fight).fillna(0.0)
+    factor = 1.0 + amplitude * lvl
+    out["weight_a"] = pd.to_numeric(out["weight_a"], errors="coerce") * factor
+    out["weight_b"] = pd.to_numeric(out["weight_b"], errors="coerce") * factor
+    return out
+
+
+def _build_era_premium_by_year(history: pd.DataFrame) -> dict:
+    """Data-driven modern-era premium curve for the Legacy (WHR) board.
+
+    The Glicko canonical filter's per-fight mean ``mu_canonical`` BY YEAR is the
+    engine's own empirical measurement of how the pool's strength has risen over
+    time. We use that measured curve — lightly smoothed and monotonized so era
+    difficulty never regresses — as the SHAPE of the WHR era premium, scaled by
+    ``WHR_ERA_PREMIUM_STRENGTH`` and centered on ``WHR_ERA_PREMIUM_REFERENCE_YEAR``.
+
+    So Legacy inherits the Complete lens's *measured* era shape (concave: fast
+    professionalization early, plateau recently) rather than a hand-set linear
+    slope. Returns ``{year: premium_mu}``; empty if disabled or no data.
+    """
+    if (
+        history is None
+        or history.empty
+        or "mu_canonical" not in history.columns
+        or not WHR_ERA_PREMIUM_STRENGTH
+    ):
+        return {}
+    h = history[["event_date", "mu_canonical"]].copy()
+    h["year"] = pd.to_datetime(h["event_date"], errors="coerce").dt.year
+    stats = h.dropna(subset=["year"]).groupby("year")["mu_canonical"].agg(["mean", "count"])
+    if stats.empty:
+        return {}
+    # Drop init-transient early years (a year with too few rated fight-rows sits
+    # near the 1500 seed and would anchor a spurious deep early-era penalty).
+    reliable = stats.loc[stats["count"] >= 40, "mean"].sort_index()
+    if reliable.empty:
+        reliable = stats["mean"].sort_index()
+    # Light 3-year smoothing to denoise, then a running max so the era ladder is
+    # monotone non-decreasing (difficulty does not regress).
+    ladder = reliable.rolling(3, center=True, min_periods=1).mean().cummax()
+    ref = WHR_ERA_PREMIUM_REFERENCE_YEAR
+    at_or_before_ref = ladder.loc[ladder.index <= ref]
+    ref_level = float(at_or_before_ref.iloc[-1]) if not at_or_before_ref.empty else float(ladder.iloc[0])
+    premium = (ladder - ref_level) * float(WHR_ERA_PREMIUM_STRENGTH)
+    # Extend to the full observed year span so dropped thin years still map (the
+    # earliest reliable era level back-fills the pre-history seed years).
+    full_years = range(int(stats.index.min()), int(stats.index.max()) + 1)
+    premium = premium.reindex(full_years).ffill().bfill()
+    return {int(y): float(v) for y, v in premium.items()}
+
+
+def _apply_whr_era_premium(history: pd.DataFrame, mu_col: str, premium_by_year: dict) -> pd.DataFrame:
+    """Add the data-driven modern-era premium to a WHR history's mu, by event year.
+
+    WHR re-anchors its global mean to 0 every coordinate-ascent pass
+    (ratings/whr.py), so it is era-FLAT by construction. ``premium_by_year`` (from
+    ``_build_era_premium_by_year``) is added per appearance BEFORE peak windowing
+    so a later-era prime window can outrank an equally dominant pioneer's window.
+    whr_* streams are exempt from the peaks.py era-de-trend, so this lands at full
+    nominal magnitude. The reference year only sets the zero point (a constant
+    offset cancels out of within-snapshot ranks and the affine rescale).
+    """
+    if history is None or history.empty or mu_col not in history.columns or not premium_by_year:
+        return history
+    out = history.copy()
+    year = pd.to_datetime(out["event_date"], errors="coerce").dt.year
+    add = year.map(premium_by_year).fillna(0.0)
+    out[mu_col] = pd.to_numeric(out[mu_col], errors="coerce") + add
     return out
 
 
@@ -338,7 +444,10 @@ def run(
     integrity_app = build_integrity_appearances(rated_fights)
 
     odds_lines = load_odds_lines(snapshot_dir) if has_odds_artifact(snapshot_dir) else pd.DataFrame()
-    fight_dom = per_fight_dominance(rounds, rated_fights)
+    # Judge scorecards feed the decision "round win gap" dominance component.
+    scorecards_path = snapshot_dir / "datalab_scorecards.parquet"
+    scorecards = pd.read_parquet(scorecards_path) if scorecards_path.exists() else None
+    fight_dom = per_fight_dominance(rounds, rated_fights, scorecards=scorecards)
     fighter_dom = per_fighter_dominance(fight_dom, rated_fights)
 
     perf_app = build_performance_appearances(
@@ -419,7 +528,12 @@ def run(
     # stream's quality_score_winner damp.
     # Base (sleeve-free) WHR is the headline ranking — down-weight cross-org
     # bouts here too via org-only weights (UFC stays 1.0).
+    # Data-driven modern-era premium curve (from the Glicko year-mean), applied
+    # to every WHR stream. Built once; whr_* streams are era-de-trend-exempt in
+    # peaks so this lands at full nominal magnitude.
+    era_premium_by_year = _build_era_premium_by_year(history)
     whr_history = run_whr(_attach_org_only_weights(rated_with_qs))
+    whr_history = _apply_whr_era_premium(whr_history, "mu_whr", era_premium_by_year)
     whr_history.to_parquet(snapshot_dir / "ratings_history_whr.parquet", index=False)
     whr_current = (
         whr_history.sort_values(["fighter", "event_date"])
@@ -439,14 +553,20 @@ def run(
         ("whr_performance", perf_app, "performance_weight"),
         ("whr_integrity_performance", combined_app, "combined_weight"),
     ]
+    # Dominance reward for Legacy: a dominant win is stronger evidence, so the
+    # winner's WHR likelihood weight is scaled up by how lopsided the win was.
+    dom_level_by_fight = _winner_dominance_level(perf_app)
     whr_sleeve_histories: dict[str, tuple[pd.DataFrame, str]] = {}
     for whr_suffix, weight_source, weight_col in _whr_sleeve_specs:
         # Use rated_with_qs so the WHR sleeve sees the integrity score damp at
         # the score layer as well as the sleeve update-weight at the
         # likelihood layer.
         weighted_fights = _attach_appearance_weights(rated_with_qs, weight_source, weight_col)
+        weighted_fights = _amplify_dominance_weight(
+            weighted_fights, dom_level_by_fight, WHR_DOMINANCE_WEIGHT_AMPLITUDE)
         mu_col_name = f"mu_{whr_suffix}"
         slv_hist = run_whr(weighted_fights, out_col=mu_col_name)
+        slv_hist = _apply_whr_era_premium(slv_hist, mu_col_name, era_premium_by_year)
         slv_hist.to_parquet(snapshot_dir / f"ratings_history_{whr_suffix}.parquet", index=False)
         whr_sleeve_histories[whr_suffix] = (slv_hist, mu_col_name)
         slv_current = (
@@ -487,6 +607,8 @@ def run(
                     mu_col=mu_col, out_col=f"{prefix}_mu_{base}",
                     headline_col=f"{prefix}_headline_mu_{base}",
                     appearance_quality=peak_quality,
+                    # WHR/Legacy streams keep their intentional era premium.
+                    era_detrend=not base.startswith("whr"),
                 ),
                 on="fighter", how="left",
             )
@@ -509,7 +631,14 @@ def run(
     # shrink short title cameos toward the divisional pool.
     division_resume = division_resume_rows(whr_history, peak_quality)
     division_resume.to_parquet(snapshot_dir / "division_resume.parquet", index=False)
-    current = current.drop(columns=["primary_division", "primary_division_share"], errors="ignore")
+    current = current.drop(
+        columns=[
+            "primary_division", "primary_division_share", "primary_division_reliability",
+            "career_division", "career_division_reliability",
+            "current_division", "current_division_reliability",
+        ],
+        errors="ignore",
+    )
     current = current.merge(primary_division_rows(division_resume), on="fighter", how="left")
 
     # ------------------------------------------------------------------
@@ -606,7 +735,7 @@ def run(
     _print_top(
         current,
         rating_col="sustained_peak_headline_mu_whr",
-        extra_cols=["five_year_peak_headline_mu_whr", "primary_division", "sustained_peak_mu_whr", "rating_periods"],
+        extra_cols=["five_year_peak_headline_mu_whr", "career_division", "current_division", "sustained_peak_mu_whr", "rating_periods"],
         title=f"HEADLINE — Top 25 by whr_rating ({SUSTAINED_PEAK_WINDOW_LABEL}, min {SUSTAINED_PEAK_MIN_FIGHTS})",
         n=25, min_fights=0,
     )
