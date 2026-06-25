@@ -133,61 +133,90 @@ smoother and era-comparable.
 > or the notebook's *Apply & recompute*). The committed snapshots were built with
 > the older ±20% sleeve until re-run.
 
-## All-Time Top 30 — Prime · Legacy (men's pound-for-pound)
+## All-Time Top 30 — Complete vs Legacy × Prime vs Peak (men's P4P)
 
-The headline board: the **Legacy** lens (era-bridged WHR smoother, sleeved) over the
-**Prime** 10-year window, men's P4P, snapshot `2026-06-23`. Ratings are affine-mapped
-onto the Complete scale for one axis. The **Complete #** column is each fighter's rank
-under the **Complete** lens (Glicko-2 filter) — the two estimators answer different
-questions, so they disagree *by design*.
+Men's pound-for-pound, snapshot `2026-06-23`, all four views side by side. **Prime** is
+the best 10-year window, **Peak** the best 5-year window; **Complete** is the Glicko-2
+filter, **Legacy** the era-bridged WHR smoother. Two knobs change across this table —
+read *across a row* and you change the **engine**, read *Prime→Peak* and you change the
+**time window** — so the four columns disagree by design.
 
-| # | Fighter | Legacy | Complete # | | # | Fighter | Legacy | Complete # |
-|--:|---|--:|--:|:-:|--:|---|--:|--:|
-| 1 | Jon Jones | 2703 | 2 | | 16 | Merab Dvalishvili | 2366 | 49 |
-| 2 | Georges St-Pierre | 2627 | 4 | | 17 | Dricus Du Plessis | 2357 | 21 |
-| 3 | Islam Makhachev | 2609 | 10 | | 18 | TJ Dillashaw | 2356 | 37 |
-| 4 | Alexander Volkanovski | 2574 | 5 | | 19 | Aljamain Sterling | 2353 | 24 |
-| 5 | Demetrious Johnson | 2548 | 23 | | 20 | Henry Cejudo | 2339 | 27 |
-| 6 | Alex Pereira | 2548 | 7 | | 21 | Alexandre Pantoja | 2339 | 59 |
-| 7 | Daniel Cormier | 2525 | 3 | | 22 | BJ Penn | 2309 | 33 |
-| 8 | Anderson Silva | 2515 | 1 | | 23 | Francis Ngannou | 2306 | 30 |
-| 9 | Kamaru Usman | 2489 | 9 | | 24 | Randy Couture | 2289 | 45 |
-| 10 | Israel Adesanya | 2476 | 6 | | 25 | Ciryl Gane | 2287 | 25 |
-| 11 | Max Holloway | 2464 | 11 | | 26 | Frankie Edgar | 2282 | 16 |
-| 12 | Jose Aldo | 2460 | 8 | | 27 | Petr Yan | 2280 | 35 |
-| 13 | Stipe Miocic | 2445 | 12 | | 28 | Charles Oliveira | 2278 | 42 |
-| 14 | Ilia Topuria | 2437 | 13 | | 29 | Cain Velasquez | 2275 | 19 |
-| 15 | Khabib Nurmagomedov | 2415 | 20 | | 30 | Matt Hughes | 2274 | 55 |
+| # | Complete · Prime | Legacy · Prime | Complete · Peak | Legacy · Peak |
+|--:|---|---|---|---|
+| 1 | Anderson Silva | Jon Jones | Anderson Silva | Islam Makhachev |
+| 2 | Jon Jones | Georges St-Pierre | Alexander Volkanovski | Jon Jones |
+| 3 | Daniel Cormier | Islam Makhachev | Israel Adesanya | Alex Pereira |
+| 4 | Georges St-Pierre | Alexander Volkanovski | Daniel Cormier | Demetrious Johnson |
+| 5 | Alexander Volkanovski | Demetrious Johnson | Kamaru Usman | Georges St-Pierre |
+| 6 | Israel Adesanya | Alex Pereira | Islam Makhachev | Anderson Silva |
+| 7 | Alex Pereira | Daniel Cormier | Jon Jones | Alexander Volkanovski |
+| 8 | Jose Aldo | Anderson Silva | Jose Aldo | Daniel Cormier |
+| 9 | Kamaru Usman | Kamaru Usman | Alex Pereira | Israel Adesanya |
+| 10 | Islam Makhachev | Israel Adesanya | Georges St-Pierre | Kamaru Usman |
+| 11 | Max Holloway | Max Holloway | Chris Weidman | Khabib Nurmagomedov |
+| 12 | Stipe Miocic | Jose Aldo | Stipe Miocic | Ilia Topuria |
+| 13 | Ilia Topuria | Stipe Miocic | Ilia Topuria | Jose Aldo |
+| 14 | Chris Weidman | Ilia Topuria | Conor McGregor | Merab Dvalishvili |
+| 15 | Benson Henderson | Khabib Nurmagomedov | Khabib Nurmagomedov | Stipe Miocic |
+| 16 | Frankie Edgar | Merab Dvalishvili | Demetrious Johnson | Max Holloway |
+| 17 | Conor McGregor | Dricus Du Plessis | Benson Henderson | Alexandre Pantoja |
+| 18 | Junior Dos Santos | TJ Dillashaw | Max Holloway | Dricus Du Plessis |
+| 19 | Cain Velasquez | Aljamain Sterling | Leon Edwards | Aljamain Sterling |
+| 20 | Khabib Nurmagomedov | Henry Cejudo | Tyron Woodley | Henry Cejudo |
+| 21 | Dricus Du Plessis | Alexandre Pantoja | Merab Dvalishvili | TJ Dillashaw |
+| 22 | Justin Gaethje | BJ Penn | Cain Velasquez | Francis Ngannou |
+| 23 | Demetrious Johnson | Francis Ngannou | Junior Dos Santos | Matt Hughes |
+| 24 | Aljamain Sterling | Randy Couture | Aljamain Sterling | Ciryl Gane |
+| 25 | Ciryl Gane | Ciryl Gane | Ciryl Gane | Benson Henderson |
+| 26 | Tyron Woodley | Frankie Edgar | Jiri Prochazka | Conor McGregor |
+| 27 | Henry Cejudo | Petr Yan | Justin Gaethje | Cain Velasquez |
+| 28 | Robert Whittaker | Charles Oliveira | Yoel Romero | Tom Aspinall |
+| 29 | Yoel Romero | Cain Velasquez | Dricus Du Plessis | Khamzat Chimaev |
+| 30 | Francis Ngannou | Matt Hughes | Rich Franklin | Charles Oliveira |
 
-### Why the two boards differ
+*(Legacy columns are affine-mapped onto the matching Complete scale, so ranks are
+directly comparable; the mapping is monotonic, so ordering is unchanged.)*
 
-Disagreements come from two independent sources, which can stack or cancel:
+### Axis 1 — Complete vs Legacy (the *engine*)
 
-1. **Filter vs smoother (information flow).** Complete is a forward-only Glicko-2
-   *filter*: it never revisits a rating, so early-career noise persists and a single
-   late-career slip or a still-climbing rating sticks. Legacy is a WHR *smoother* that
-   re-rates every career jointly. So the smoother **lifts fighters the filter buried**
-   — Demetrious Johnson (Legacy #5 vs Complete #23), Khabib (#15 vs #20), Randy Couture
-   (#24 vs #45), Matt Hughes (#30 vs #55): long, coherent careers the one-pass filter
-   under-credits.
-2. **Era premium + dominance (Legacy-only).** The data-driven modern-era premium and
-   the two-sided, finish-aware dominance reward apply only to Legacy:
-   - **Reigning, dominant, recent champions rise** above their filter rank because the
-     era premium credits the modern field and the per-minute / scorecard-margin
-     dominance rewards how decisively they win: **Merab Dvalishvili #16 (Complete #49)**,
-     **Alexandre Pantoja #21 (#59)**, Dricus Du Plessis #17 (#21).
-   - **The finish floor unlocks pure finishers.** **Francis Ngannou #23 sits above his
-     Complete #30**: his quick KOs scored ~0 under the old accumulated-stats index and
-     now floor as dominant.
-   - **Earlier-era greats sit a touch lower in Legacy than in Complete**, where the
-     reactive filter rewards their sharp finish-heavy peak immediately while the era
-     premium discounts the older portion of their prime: **Anderson Silva (Complete #1,
-     Legacy #8)**, Frankie Edgar (#16 / #26), Cain Velasquez (#19 / #29). They remain
-     elite — they are simply measured against a harder modern field on the Legacy board.
+Complete is a forward-only **filter** (reactive, never revised, no era adjustment);
+Legacy is a whole-career **smoother** carrying the modern-era premium and the two-sided,
+finish-aware dominance reward. That pulls fighters in opposite directions by career shape:
 
-Era-spanning greats sit at the top of **both** boards because longevity satisfies the
-10-year Prime window *and* their later fights bank the modern-era premium: **Jon Jones
-#1** and **Georges St-Pierre #2** are unmoved by either change.
+- **The smoother + era premium lift modern, sustained, dominant careers the filter
+  under-credits.** The clearest case is **Demetrious Johnson: Complete #23 → Legacy #5**
+  on Prime (#16 → #4 on Peak) — the largest elite gap on the board. Same story:
+  **Makhachev #10 → #3**, **Merab Dvalishvili #49 → #16**, **Alexandre Pantoja #59 → #21**.
+- **The era premium discounts earlier-era peaks the filter ranks #1.** **Anderson Silva
+  is Complete #1 on *both* windows but Legacy #8 / #6** — the reactive filter loves his
+  2006–2012 finish reel; the premium measures it against a harder modern field.
+- **The smoother punishes a great peak followed by a bad decline — which the filter
+  ignores.** **Chris Weidman: Complete #14 / #11 → Legacy #36 / #35** (the Silva-beating
+  title peak the filter banks, the brutal late losses the smoother folds back in).
+  **Conor McGregor (#17 / #14 → #31 / #26)** is the milder version.
+
+### Axis 2 — Prime vs Peak (the *window*)
+
+**Prime** (best 10-year window, ≥13 fights) rewards **longevity**; **Peak** (best 5-year
+window, ≥8 fights) rewards the single best **burst**.
+
+> Mental model: **Peak = "how high you climbed," Prime = "how long you stayed there."**
+
+- **Short or still-young careers jump on Peak.** **Khamzat Chimaev and Tom Aspinall do
+  not rank on Prime at all** (too few fights to fill a 10-year window) yet land
+  **Legacy·Peak #29 and #28** on elite 5-year bursts. **Khabib** rises **Prime #15 →
+  Peak #11**. The eligible field is itself larger on Peak (616 men) than Prime (350),
+  because the 5-yr / 8-fight bar admits more careers.
+- **Decade-long greats own Prime.** **Jon Jones is Legacy·Prime #1 but Complete·Peak #7**
+  — his edge is sustained excellence across a decade, not the single most explosive 5-year
+  reel (where finish-machines Silva / Volkanovski / Adesanya top *Complete·Peak*). GSP is
+  the same (Prime #2, Complete·Peak #10).
+
+**Both axes at once — Demetrious Johnson.** Complete·Prime #23, Complete·Peak #16
+(window: his best 5-yr run beats his 10-yr average on the filter), Legacy·Prime #5,
+Legacy·Peak #4 (engine: the smoother + era + dominance see a sustained, dominant, modern
+title reign the filter structurally under-rates). The ~18-spot Complete↔Legacy gap is the
+biggest among elites — exactly what the Legacy lens was built to surface.
 
 ### How the engine changes shifted the board (validation)
 
