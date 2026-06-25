@@ -389,8 +389,18 @@ def _empirical_bayes_factor(
     return max(0.0, tau2), 0.0
 
 
-def _era_division_normalized_mu(merged: pd.DataFrame, mu_col: str) -> pd.Series:
+def _era_division_normalized_mu(
+    merged: pd.DataFrame, mu_col: str, *, detrend_era: bool = True
+) -> pd.Series:
     """Reliability-weighted era-de-trend + division-depth rescale of ``mu_col``.
+
+    ``detrend_era=False`` skips the calendar-year de-trend (step 1) and keeps
+    only the division-depth rescale (step 2). This is used for the WHR (Legacy)
+    streams: era-normalization exists to patch the Glicko *filter* artifact, but
+    WHR is a smoother with no such artifact AND now carries an intentional,
+    data-driven modern-era premium — de-trending it would re-flatten exactly the
+    signal the premium injects. Division-depth comparability is still wanted, so
+    that half is retained.
 
     Raw Glicko mu drifts upward over calendar time (the rated pool inflates)
     and spreads differently by division depth. This returns a Series (aligned
@@ -440,28 +450,32 @@ def _era_division_normalized_mu(merged: pd.DataFrame, mu_col: str) -> pd.Series:
     )
 
     # --- 1. Era de-trend: empirical-Bayes shrunk, bridge-gated year shifts ---
-    yr = work.groupby("year")["mu"]
-    yr_n = yr.transform("count").clip(lower=1.0)
-    yr_mean = yr.transform("mean")
-    yr_var = yr.transform("var").fillna(global_var)
-    raw_shift = yr_mean - global_mean
-    se2_year = yr_var / yr_n                       # sampling variance of the year mean
-    per_year = (
-        work.assign(shift=raw_shift, se2=se2_year)
-        .groupby("year")[["shift", "se2"]]
-        .first()
-    )
-    tau2_year, _ = _empirical_bayes_factor(per_year["shift"], per_year["se2"])
-    eb_year = (
-        tau2_year / (tau2_year + se2_year)
-        if tau2_year > 0.0
-        else pd.Series(0.0, index=work.index)
-    )
-    # Bridge fraction: share of the year's fighters who also fought another year.
-    fighter_years = work.groupby("fighter")["year"].transform("nunique")
-    is_bridge = (fighter_years > 1).astype(float)
-    bridge_frac = work.assign(_b=is_bridge).groupby("year")["_b"].transform("mean")
-    work["mu_detr"] = work["mu"] - raw_shift * eb_year * bridge_frac
+    if detrend_era:
+        yr = work.groupby("year")["mu"]
+        yr_n = yr.transform("count").clip(lower=1.0)
+        yr_mean = yr.transform("mean")
+        yr_var = yr.transform("var").fillna(global_var)
+        raw_shift = yr_mean - global_mean
+        se2_year = yr_var / yr_n                       # sampling variance of the year mean
+        per_year = (
+            work.assign(shift=raw_shift, se2=se2_year)
+            .groupby("year")[["shift", "se2"]]
+            .first()
+        )
+        tau2_year, _ = _empirical_bayes_factor(per_year["shift"], per_year["se2"])
+        eb_year = (
+            tau2_year / (tau2_year + se2_year)
+            if tau2_year > 0.0
+            else pd.Series(0.0, index=work.index)
+        )
+        # Bridge fraction: share of the year's fighters who also fought another year.
+        fighter_years = work.groupby("fighter")["year"].transform("nunique")
+        is_bridge = (fighter_years > 1).astype(float)
+        bridge_frac = work.assign(_b=is_bridge).groupby("year")["_b"].transform("mean")
+        work["mu_detr"] = work["mu"] - raw_shift * eb_year * bridge_frac
+    else:
+        # WHR/Legacy: keep the intentional modern-era premium intact.
+        work["mu_detr"] = work["mu"]
 
     # --- 2. Division-depth rescale: empirical-Bayes shrunk ---
     dv = work.groupby("division")["mu_detr"]
@@ -652,6 +666,7 @@ def rolling_peak(
     title_effective_min_raw_fights: int,
     appearance_quality: pd.DataFrame | None = None,
     headline_col: str | None = None,
+    era_detrend: bool = True,
 ) -> pd.DataFrame:
     """Opponent-quality rolling period score for ``mu_col``.
 
@@ -707,8 +722,11 @@ def rolling_peak(
     merged["actual_score"] = pd.to_numeric(merged["actual_score"], errors="coerce").fillna(0.0)
 
     # Era-de-trend + division-depth rescale before scoring, so windows are
-    # comparable across eras and divisions.
-    merged["mu_period_normalized"] = _era_division_normalized_mu(merged, mu_col)
+    # comparable across eras and divisions. WHR/Legacy streams pass
+    # ``era_detrend=False`` to keep their intentional modern-era premium.
+    merged["mu_period_normalized"] = _era_division_normalized_mu(
+        merged, mu_col, detrend_era=era_detrend
+    )
 
     rows = []
     for fighter, group in merged.groupby("fighter", sort=False):
@@ -762,6 +780,7 @@ def five_year_peak(
     out_col: str,
     appearance_quality: pd.DataFrame | None = None,
     headline_col: str | None = None,
+    era_detrend: bool = True,
 ) -> pd.DataFrame:
     """Best 5-year opponent-quality rolling peak (min 7 UFC fights)."""
     return rolling_peak(
@@ -775,6 +794,7 @@ def five_year_peak(
         title_effective_min_raw_fights=FIVE_YEAR_PEAK_TITLE_EFFECTIVE_MIN_RAW_FIGHTS,
         appearance_quality=appearance_quality,
         headline_col=headline_col,
+        era_detrend=era_detrend,
     )
 
 
@@ -787,6 +807,7 @@ def sustained_peak(
     out_col: str,
     appearance_quality: pd.DataFrame | None = None,
     headline_col: str | None = None,
+    era_detrend: bool = True,
 ) -> pd.DataFrame:
     """Best 10-year opponent-quality rolling peak (min 10 UFC fights)."""
     return rolling_peak(
@@ -800,4 +821,5 @@ def sustained_peak(
         title_effective_min_raw_fights=SUSTAINED_PEAK_TITLE_EFFECTIVE_MIN_RAW_FIGHTS,
         appearance_quality=appearance_quality,
         headline_col=headline_col,
+        era_detrend=era_detrend,
     )

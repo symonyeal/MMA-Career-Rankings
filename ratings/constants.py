@@ -2,12 +2,15 @@
 
 Convention after the 2026-05-13 consolidation:
 
-* All per-result multiplicative factors fall inside a symmetric [-20%, +20%]
+* All per-result multiplicative factors fall inside a symmetric [-10%, +10%]
   envelope; ``SLEEVE_FACTOR_MIN`` and ``SLEEVE_FACTOR_MAX`` are the canonical
-  floor / roof. Every sleeve sub-factor amplitude is ``<= 0.20`` so it cannot
+  floor / roof. Every sleeve sub-factor amplitude is ``<= 0.10`` so it cannot
   by itself exceed the envelope, and the final per-fight sleeve weight is
   clamped back to ``[SLEEVE_FACTOR_MIN, SLEEVE_FACTOR_MAX]`` after the
-  factors are combined.
+  factors are combined. (2026-06-25: envelope tightened from +/-20% to +/-10%;
+  every sub-factor amplitude and ``PERF_TANH_SCALE`` were halved with it, so the
+  relative weighting and the Strickland/Serra anchors are unchanged — only the
+  absolute sleeve magnitude is compressed.)
 * Canonical rating is never sleeved. Sleeves only attach to the method
   stream. Streams that exist in ``ratings_current.parquet``:
   ``canonical``, ``method``, ``method_integrity``, ``method_performance``,
@@ -30,8 +33,8 @@ from __future__ import annotations
 # ---------------------------------------------------------------------------
 # Symmetric sleeve envelope.
 
-SLEEVE_FACTOR_MIN: float = 0.80   # -20% floor — worst integrity penalty hits this.
-SLEEVE_FACTOR_MAX: float = 1.20   # +20% roof — best performance bonus hits this.
+SLEEVE_FACTOR_MIN: float = 0.90   # -10% floor — worst integrity penalty hits this.
+SLEEVE_FACTOR_MAX: float = 1.10   # +10% roof — best performance bonus hits this.
 
 
 # ---------------------------------------------------------------------------
@@ -104,11 +107,19 @@ def rename_rating_columns(df):
 #
 # Net effect: the realized per-cell normalization strength is
 # ``ERA_NORM_MAX_STRENGTH * eb_factor * bridge_factor`` with both factors in
-# [0, 1] — strictly milder than the old flat 0.5, and mildest exactly where
-# the data is thin or unbridged. Normalization is a no-op below
-# ERA_NORM_MIN_POPULATION (keeps small synthetic fixtures on the raw scale).
+# [0, 1], and mildest exactly where the data is thin or unbridged. Normalization
+# is a no-op below ERA_NORM_MIN_POPULATION (keeps small synthetic fixtures on the
+# raw scale).
+#
+# 2026-06-25: cap lowered 0.50 -> 0.20. The raw Glicko scale trends UP over time
+# (per-fight mean mu ~1581 in 2002 -> ~1715 in 2025) because the modern field is
+# deeper and more skilled — a real era-difficulty premium, not just scale drift.
+# The old 0.50 cap erased half of it, dragging modern fighters down and lifting
+# one-era pioneers toward parity. At 0.20 we keep ~80% of that premium (so modern
+# stays harder, automatically and asymmetrically), and lean on the 10-year Prime
+# WINDOW — not era-equalization — to reward greatness sustained across eras.
 ERA_NORM_MIN_POPULATION: int = 200
-ERA_NORM_MAX_STRENGTH: float = 0.50      # cap on realized normalization; EB+bridges scale within it
+ERA_NORM_MAX_STRENGTH: float = 0.20      # cap on realized normalization; EB+bridges scale within it
 ERA_NORM_STD_FLOOR_FRAC: float = 0.5     # effective division std >= frac * global std
 
 # Peak opponent-quality weight — opponent quality is the single most important
@@ -235,9 +246,9 @@ INTEGRITY_MISSED_WEIGHT_WIN_SCORE: float = 0.70   # missed weight, won — harsh
 # anymore). Kept so historical comparisons against earlier snapshots still
 # parse the same parquet columns. The PED/MW values now match the score-side
 # penalties so the audit weight column tells the same directional story.
-INTEGRITY_PED_FACTOR: float = SLEEVE_FACTOR_MIN          # -20%, most severe
-INTEGRITY_DQ_WIN_FACTOR: float = 0.92                    # -8%
-INTEGRITY_MISSED_WEIGHT_WIN_FACTOR: float = 0.88         # -12%
+INTEGRITY_PED_FACTOR: float = SLEEVE_FACTOR_MIN          # -10%, most severe
+INTEGRITY_DQ_WIN_FACTOR: float = 0.96                    # -4%
+INTEGRITY_MISSED_WEIGHT_WIN_FACTOR: float = 0.94         # -6%
 
 
 # ---------------------------------------------------------------------------
@@ -256,22 +267,24 @@ INTEGRITY_MISSED_WEIGHT_WIN_FACTOR: float = 0.88         # -12%
 #    (champion = rank 0; unranked = rank PERF_UPSET_RANK_UNRANKED_VALUE).
 #    A #3 vs #4 matchup does not trigger an upset; an unranked fighter beating
 #    the champion does.
-# 4. The final weight is a tanh-smoothed mapping into the symmetric envelope:
-#       performance_weight_winner = 1 + 0.20 * tanh(S / PERF_TANH_SCALE)
-#       performance_weight_loser  = 1 - 0.20 * tanh(S / PERF_TANH_SCALE)
+# 4. The final weight is a tanh-smoothed mapping into the symmetric envelope
+#    (the half-amplitude is derived from the SLEEVE bounds, now 0.10):
+#       performance_weight_winner = 1 + 0.10 * tanh(S / PERF_TANH_SCALE)
+#       performance_weight_loser  = 1 - 0.10 * tanh(S / PERF_TANH_SCALE)
 #    Both extremes are now soft saturations, not hard clamps. The same
 #    per-fight ``S`` therefore amplifies the winner's gain and damps the
 #    loser's hit symmetrically — the "Strickland-Adesanya" anchor produces
-#    ~1.20 on Strickland's side and ~0.80 on Adesanya's side.
+#    ~1.10 on Strickland's side and ~0.90 on Adesanya's side.
 #
-# Anchor calibration (data-confirmed on the 2026-05-13 snapshot):
-#   * Strickland def. Adesanya (UFC 293) — Strickland weight ≈ 1.19 (roof);
-#     Adesanya weight ≈ 0.81.
-#   * Matt Serra def. GSP (UFC 69) — Serra weight ≈ 1.19; GSP weight ≈ 0.81
+# Anchor calibration (relative shape preserved after the 2026-06-25 halving;
+# magnitudes are half of the old +/-20% snapshot values):
+#   * Strickland def. Adesanya (UFC 293) — Strickland weight ≈ 1.097 (roof);
+#     Adesanya weight ≈ 0.903.
+#   * Matt Serra def. GSP (UFC 69) — Serra weight ≈ 1.097; GSP weight ≈ 0.903
 #     (floor).
 # Very few other fights reach either extreme by design.
 
-PERF_DECISIVENESS_AMPLITUDE: float = 0.03
+PERF_DECISIVENESS_AMPLITUDE: float = 0.015
 
 # Method-of-victory tiers used by both METHOD_SCORES (loader) and
 # decision_quality_score (performance_adjustment). 2026-05-15 widening:
@@ -302,19 +315,51 @@ INTERIM_CHAMPIONSHIP_DEFENSE_SCORE_FLOOR: float = 0.985
 DOMINANCE_SCORE_AMPLITUDE: float = 0.010
 DOMINANCE_SCORE_SCALE: float = 2.0
 
+# Finish floor for the dominance index (ratings/dominance.py). A KO/TKO or
+# Submission win IS a dominant result regardless of accumulated stats, so the
+# winner-perspective dominance is floored at this value — in z-sum units, the
+# scale of ``dominance_a = z_sig_str + z_sub_att + z_ctrl``. At
+# ``WHR_DOMINANCE_SCORE_SCALE = 1.25`` a floor of 2.75 maps to a Legacy
+# ``dom_level`` ~0.8. A long one-sided beat-down that also finishes keeps its
+# higher raw value (``max(raw, floor)``); a flash KO with few landed strikes is
+# lifted to the floor instead of scoring ~0 as it did under the old
+# accumulated-totals index. 0 disables the floor.
+DOMINANCE_FINISH_FLOOR_Z: float = 2.75
+
+# WHR (Legacy) dominance reward — applied as a LIKELIHOOD WEIGHT, not a score.
+# The score channel is capped (decisions clip to [0.975, 1.0], finishes are
+# already 1.0), so it has no room to reward how lopsided a win was. WHR instead
+# treats a dominant bout as stronger evidence in BOTH directions: each fighter's
+# per-fight likelihood weight is multiplied by
+# ``1 + WHR_DOMINANCE_WEIGHT_AMPLITUDE * dom_level`` (``dom_level`` in [0, 1]).
+# The winner is pushed UP and the blown-out loser pushed DOWN harder, so dominant
+# fighters separate from the field instead of the winner merely floating up.
+# Ceiling-free (unlike the [0, 1] score), so it rewards dominant FINISHES too — a
+# fighter who keeps steam-rolling people climbs the era-comparable Legacy board
+# faster even with some losses on the record. 0 disables it.
+#
+# 2026-06-25 (two-sided rework): loser weight is now amplified too; amplitude
+# 0.20 -> 0.30; and the dom_level sigmoid was given its own scale
+# WHR_DOMINANCE_SCORE_SCALE, decoupled from the Glicko method-stream score scale
+# DOMINANCE_SCORE_SCALE so widening Legacy dominance does not perturb Complete.
+# Under the old shared scale 2.0, mean dom_level was ~0.27 and only ~21% of wins
+# cleared level 0.5; a lower scale makes more clear wins register as dominant.
+WHR_DOMINANCE_WEIGHT_AMPLITUDE: float = 0.30
+WHR_DOMINANCE_SCORE_SCALE: float = 1.25
+
 # Opponent-quality (deduplicated via max). Single amplitude across the four
 # overlapping signals: opponent mu, division-rank context, championship
 # context, P4P context. Each individual ``perf_factor_*`` column still
 # captures what that one signal would say, but only the strongest contributes
 # to the per-fight signal ``S``.
-PERF_OPPONENT_QUALITY_AMPLITUDE: float = 0.16
+PERF_OPPONENT_QUALITY_AMPLITUDE: float = 0.08
 PERF_OPPONENT_QUALITY_MU_SCALE: float = 900.0
-PERF_OPPONENT_STREAK_AMPLITUDE: float = 0.05
+PERF_OPPONENT_STREAK_AMPLITUDE: float = 0.025
 
 # Rank-gated upset (new). The same column also covers a market-odds gate so
 # the engine still reads moneyline information when ranking data is sparse,
 # but the rank gate is the primary trigger.
-PERF_UPSET_AMPLITUDE: float = 0.03
+PERF_UPSET_AMPLITUDE: float = 0.015
 PERF_UPSET_RANK_GAP_THRESHOLD: int = 6
 PERF_UPSET_RANK_GAP_SCALE: float = 10.0
 PERF_UPSET_RANK_UNRANKED_VALUE: int = 16
@@ -325,10 +370,12 @@ PERF_UPSET_RANK_INTERIM_VALUE: int = 1
 PERF_UPSET_ODDS_PLUS_MONEY_FLOOR: float = 250.0  # +250 minimum to count
 PERF_UPSET_ODDS_PLUS_MONEY_FULL: float = 700.0   # +700 anchors full upset
 
-# Tanh saturation scale. log_S ~= 0.40 maps to weight ~= 1.193; log_S ~= 0.60
-# maps to weight ~= 1.199. So only the truly extreme confluences (huge upset,
-# dominant finish over the champion, etc.) approach the envelope.
-PERF_TANH_SCALE: float = 0.20
+# Tanh saturation scale, halved with the envelope (2026-06-25) so the saturation
+# shape vs the (now halved) signal S is identical to the old +/-20% system.
+# log_S ~= 0.20 maps to weight ~= 1.096; log_S ~= 0.30 maps to weight ~= 1.099.
+# So only the truly extreme confluences (huge upset, dominant finish over the
+# champion, etc.) approach the +/-10% envelope.
+PERF_TANH_SCALE: float = 0.10
 
 # Legacy/audit-only contextual amplitudes — retained for backward-compatible
 # per-factor columns in ``performance_appearances.parquet``. They do NOT
@@ -337,24 +384,24 @@ PERF_TANH_SCALE: float = 0.20
 RANK_CONTEXT_TOP_N: int = 15
 P4P_CONTEXT_TOP_N: int = 15
 RANK_CONTEXT_ACTIVE_DAYS: int = 1095  # rankings ignore fighters inactive 3+ years
-PERF_RANK_CONTEXT_AMPLITUDE: float = 0.16
-PERF_CHAMPIONSHIP_AMPLITUDE: float = 0.16
-PERF_P4P_AMPLITUDE: float = 0.14
-PERF_WEIGHT_CLASS_UP_WIN_AMPLITUDE: float = 0.05
-PERF_WEIGHT_CLASS_DOWN_LOSS_AMPLITUDE: float = 0.05
+PERF_RANK_CONTEXT_AMPLITUDE: float = 0.08
+PERF_CHAMPIONSHIP_AMPLITUDE: float = 0.08
+PERF_P4P_AMPLITUDE: float = 0.07
+PERF_WEIGHT_CLASS_UP_WIN_AMPLITUDE: float = 0.025
+PERF_WEIGHT_CLASS_DOWN_LOSS_AMPLITUDE: float = 0.025
 # Loss while moving up a weight class is damped — the fighter is fighting
 # above their natural division so the loss should detract less from the
 # main-division resume than a same-class loss would. The damp is applied
 # as a winner-loss-side multiplier in [SLEEVE_FACTOR_MIN, 1.0].
-PERF_WEIGHT_CLASS_UP_LOSS_DAMP: float = 0.10
-PERF_ODDS_POSITIVE_AMPLITUDE: float = 0.15   # audit-only column
-PERF_ODDS_NEGATIVE_AMPLITUDE: float = 0.10   # audit-only column
+PERF_WEIGHT_CLASS_UP_LOSS_DAMP: float = 0.05
+PERF_ODDS_POSITIVE_AMPLITUDE: float = 0.075  # audit-only column
+PERF_ODDS_NEGATIVE_AMPLITUDE: float = 0.05   # audit-only column
 
 # Activity-aware loss penalty. Debuts are neutral. Once a fighter has a prior
 # UFC appearance, a long gap before a loss increases the losing update.
 ACTIVITY_GAP_NORMAL: int = 270
 ACTIVITY_GAP_FULL_PENALTY: int = 730
-ACTIVITY_LOSS_AMPLITUDE: float = 0.12
+ACTIVITY_LOSS_AMPLITUDE: float = 0.06
 
 # Current-ranking inactivity penalty. This is a post-rating current-view
 # column, not a mutation of the historical Glicko state. It exists for active
@@ -405,6 +452,34 @@ WHR_W2_PER_DAY: float = 0.0004
 WHR_PRIOR_VAR: float = 4.0
 WHR_ITERATIONS: int = 50
 WHR_STEP_CLIP: float = 1.5
+
+# Modern-era premium for the Legacy (WHR) board.
+#
+# WHR re-anchors its global mean to 0 on every coordinate-ascent pass
+# (ratings/whr.py), so it is era-FLAT by construction: a Bayesian smoother
+# cannot, on its own, encode "the modern field is deeper/harder." Without help an
+# era-bridged Legacy board lets one-era pioneers sit beside multi-era greats.
+#
+# We add the belief explicitly, but DATA-DRIVEN rather than as a hand-set slope.
+# The Glicko canonical filter's per-fight mean mu BY YEAR is the engine's own
+# empirical measurement of how the pool's strength has risen over time
+# (~+130 mu, 2002->2025, concave: fast professionalization early, plateau
+# recently). ``rate_snapshot._build_era_premium_by_year`` takes that measured
+# curve, monotonizes it (era difficulty does not regress), scales it by
+# WHR_ERA_PREMIUM_STRENGTH, and centers it on WHR_ERA_PREMIUM_REFERENCE_YEAR;
+# the result is added per-appearance to every WHR mu (base + sleeved) BEFORE peak
+# windowing. So Legacy inherits the Complete lens's *measured* era shape instead
+# of a linear guess — the newest years stop being over-rewarded and spanning
+# eras beats simply being newest.
+#
+# WHR_ERA_PREMIUM_STRENGTH is the single magnitude knob: 1.0 = reproduce the
+# measured Glicko era inflation exactly on the WHR scale; lower it if prior-era
+# greats should sit higher. The reference year is COSMETIC (a constant offset
+# cancels out of within-snapshot ranks and of the affine rescale onto Complete).
+# whr_* streams are exempt from the peaks.py era-de-trend (see ERA_NORM note), so
+# the realized premium equals the nominal curve. 0 disables the premium.
+WHR_ERA_PREMIUM_STRENGTH: float = 1.0
+WHR_ERA_PREMIUM_REFERENCE_YEAR: int = 2010
 
 
 # ---------------------------------------------------------------------------

@@ -16,13 +16,15 @@ Issue 8 for the saturation diagnosis that motivated this):
   ``PERF_UPSET_RANK_GAP_THRESHOLD`` rank slots below the opponent (champion
   counts as rank 0, unranked as rank 16). A #3-vs-#4 fight is not an upset;
   an unranked challenger beating the champion is.
-* The combination step is a **tanh saturation** rather than a hard clamp.
-  ``performance_weight_winner = 1 + 0.20·tanh(S/PERF_TANH_SCALE)`` and
-  ``performance_weight_loser  = 1 - 0.20·tanh(S/PERF_TANH_SCALE)``. The same
+* The combination step is a **tanh saturation** rather than a hard clamp. The
+  half-amplitude is ``_ENVELOPE_HALF = (SLEEVE_FACTOR_MAX-SLEEVE_FACTOR_MIN)/2``
+  (0.10 since the 2026-06-25 +/-10% tightening):
+  ``performance_weight_winner = 1 + 0.10·tanh(S/PERF_TANH_SCALE)`` and
+  ``performance_weight_loser  = 1 - 0.10·tanh(S/PERF_TANH_SCALE)``. The same
   per-fight ``S`` therefore amplifies the winner's gain and damps the
   loser's hit symmetrically — when Strickland upset Adesanya (UFC 293) his
-  weight lands near 1.19 and Adesanya's near 0.81. When Matt Serra TKO'd
-  GSP (UFC 69) Serra lands near 1.19 and GSP near 0.81.
+  weight lands near 1.097 and Adesanya's near 0.903. When Matt Serra TKO'd
+  GSP (UFC 69) Serra lands near 1.097 and GSP near 0.903.
 
 Audit columns:
 

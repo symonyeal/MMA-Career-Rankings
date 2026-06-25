@@ -74,7 +74,6 @@ from analysis.viz import (
     PUBLIC_RATING_LENSES,
     PUBLIC_TIME_VIEWS,
     SCORING_METHODS,
-    calibration_residuals_chart,
     division_strength_timeline_chart,
     division_year_snapshot_chart,
     division_year_top_fighters_chart,
@@ -84,7 +83,6 @@ from analysis.viz import (
     fighter_profile_chart,
     fighter_detail,
     fighter_search,
-    h2h_prediction,
     load_project_data,
     modular_rating_context,
     prime_window_column_names,
@@ -93,6 +91,7 @@ from analysis.viz import (
     public_history_key,
     public_rating_label,
     public_rating_stream,
+    affine_match_scale,
     rank_movement_chart,
     recent_division_by_fighter,
     select_modular_rating_column,
@@ -109,6 +108,19 @@ from analysis.viz import (
     win_streaks,
     win_streaks_table,
     yearly_rating_delta_scatter,
+    # --- 2026-06-23 chart additions (see analysis/CHART_PLAN.md) ---
+    division_entropy_chart,
+    odds_coverage_summary,
+    odds_impact_chart,
+    fighter_betting_line_chart,
+    favorite_underdog_performance_chart,
+    striking_profile_chart,
+    dominance_leaderboard_chart,
+    integrity_ledger_table,
+    integrity_impact_chart,
+    legacy_vs_prime_scatter,
+    method_mix_timeline_chart,
+    title_lineage_chart,
 )
 
 SNAPSHOT_BASE = PROJECT_ROOT / "data" / "snapshots"
@@ -134,7 +146,9 @@ calibration_residuals = SNAP.get("calibration_residuals", pd.DataFrame())
 sleeve_attribution = SNAP.get("sleeve_attribution", pd.DataFrame())
 division_resume = SNAP.get("division_resume", pd.DataFrame())
 performance_appearances = SNAP.get("performance_appearances", pd.DataFrame())
-fightmatrix_rankings = SNAP.get("fightmatrix_rankings", pd.DataFrame())
+integrity_appearances = SNAP.get("integrity_appearances", pd.DataFrame())
+rounds = SNAP.get("rounds", pd.DataFrame())
+division_entropy = SNAP.get("division_entropy", pd.DataFrame())
 odds_lines = SNAP.get("odds_lines", pd.DataFrame())
 ratings_history = SNAP.get("ratings_history", pd.DataFrame())
 ratings_histories = {
@@ -151,9 +165,14 @@ fighter_dominance = SNAP.get("fighter_dominance", pd.DataFrame())
 crossorg_fights = SNAP.get("crossorg_fights", pd.DataFrame())
 previous_crossorg_fights = PREV.get("crossorg_fights", pd.DataFrame())
 
+# Legacy lens now reads the SLEEVED WHR smoother (whr_integrity_performance);
+# the base whr history is still loaded for any direct comparisons.
 _whr_path = SNAPSHOT_DIR / "ratings_history_whr.parquet"
 ratings_history_whr = pd.read_parquet(_whr_path) if _whr_path.exists() else pd.DataFrame()
 ratings_histories["ratings_history_whr"] = ratings_history_whr
+_whrip_path = SNAPSHOT_DIR / "ratings_history_whr_integrity_performance.parquet"
+ratings_history_whr_integrity_performance = pd.read_parquet(_whrip_path) if _whrip_path.exists() else pd.DataFrame()
+ratings_histories["ratings_history_whr_integrity_performance"] = ratings_history_whr_integrity_performance
 all_bouts = pd.concat([fights, crossorg_fights], ignore_index=True, sort=False) if not crossorg_fights.empty else fights
 previous_all_bouts = (
     pd.concat([previous_fights, previous_crossorg_fights], ignore_index=True, sort=False)
@@ -168,6 +187,43 @@ previous_ratings_history_whr = (
     else pd.DataFrame()
 )
 previous_ratings_histories["ratings_history_whr"] = previous_ratings_history_whr
+_prev_whrip_path = PREVIOUS_SNAPSHOT_DIR / "ratings_history_whr_integrity_performance.parquet" if PREVIOUS_SNAPSHOT_DIR else None
+previous_ratings_histories["ratings_history_whr_integrity_performance"] = (
+    pd.read_parquet(_prev_whrip_path)
+    if _prev_whrip_path is not None and _prev_whrip_path.exists()
+    else pd.DataFrame()
+)
+
+# --- Display-scale unification (Legacy/WHR -> Complete scale) ---------------
+# The WHR smoother lives on a compressed internal scale (~1600) vs the Glicko
+# filter (~1900). Affine-map the Legacy display columns onto the matching
+# Complete column so switching the Rank-by lens doesn't jump the axis. The
+# mapping is monotonic (ordering preserved); raw parquet is untouched. The base
+# mu uses one fitted (a, b) applied to BOTH the current frame and the per-fight
+# history so Career Arcs end near the leaderboard value.
+def _affine_params(src, tgt):
+    s = pd.to_numeric(src, errors="coerce"); t = pd.to_numeric(tgt, errors="coerce")
+    ss, ts = s.std(), t.std()
+    if not (ss == ss) or ss < 1e-9 or not (ts == ts):
+        return 1.0, 0.0
+    a = float(ts / ss)
+    return a, float(t.mean() - a * s.mean())
+
+if "mu_whr_integrity_performance" in rc.columns and "mu_method_performance" in rc.columns:
+    _wa, _wb = _affine_params(rc["mu_whr_integrity_performance"], rc["mu_method_performance"])
+    rc["mu_whr_integrity_performance"] = pd.to_numeric(rc["mu_whr_integrity_performance"], errors="coerce") * _wa + _wb
+    _hk = "ratings_history_whr_integrity_performance"
+    _h = ratings_histories.get(_hk)
+    if _h is not None and not _h.empty and "mu_whr_integrity_performance" in _h.columns:
+        _h = _h.copy()
+        _h["mu_whr_integrity_performance"] = pd.to_numeric(_h["mu_whr_integrity_performance"], errors="coerce") * _wa + _wb
+        ratings_histories[_hk] = _h
+for _src, _tgt in [
+    ("sustained_peak_headline_mu_whr_integrity_performance", "sustained_peak_headline_mu_method_performance"),
+    ("five_year_peak_headline_mu_whr_integrity_performance", "five_year_peak_headline_mu_method_performance"),
+]:
+    if _src in rc.columns and _tgt in rc.columns:
+        rc[_src] = affine_match_scale(rc[_src], rc[_tgt])
 
 display(Markdown(
     f"<div style='color:#cbd5e1;font-size:0.95em;"
@@ -429,7 +485,7 @@ g_lens = widgets.Dropdown(
     description="Rank by:", style={"description_width": "70px"},
     layout=widgets.Layout(width="230px"))
 g_time = widgets.Dropdown(
-    options=list(PUBLIC_TIME_VIEWS), value="current",
+    options=list(PUBLIC_TIME_VIEWS), value="sustained_peak",
     description="Form:", style={"description_width": "70px"},
     layout=widgets.Layout(width="200px"))
 g_division = widgets.Dropdown(
@@ -573,13 +629,17 @@ display(widgets.VBox([
 display(Markdown(
     f"<div style='font-family:{THEME['font']};color:{THEME['text_caption']};"
     f"font-size:0.82em;line-height:1.6;margin-top:8px'>"
-    f"<b style='color:{THEME['text_2']}'>Rank by</b> picks how a win is scored — "
-    f"<b>Wins</b> (just the W, no method or context), "
-    f"<b>Complete</b> (the full picture: finish quality + opponent strength), "
-    f"<b>Legacy</b> (Complete plus a whole-career résumé bonus, era-comparable). "
-    f"<b style='color:{THEME['text_2']}'>Form</b>: <b>Now</b> = where they sit today, "
-    f"<b>Peak</b> = their best 5-year run, <b>Prime</b> = a sustained run you size with "
-    f"the <b>Prime</b> sliders. <b style='color:{THEME['text_2']}'>Show top</b>, "
+    f"<b style='color:{THEME['text_2']}'>Rank by</b> picks the rating engine — "
+    f"<b>Wins</b> (raw Glicko-2, just the W — no method or context), "
+    f"<b>Complete</b> (Glicko-2 that also scores <i>how</i> you won and <i>who</i> you beat — "
+    f"finish quality + opponent strength; reactive to current form), "
+    f"<b>Legacy</b> (a different engine — a whole-history smoother that re-rates every "
+    f"career jointly and is calibrated to compare fairly across eras). "
+    f"Complete and Legacy are two estimators, not one plus a bonus. "
+    f"<b style='color:{THEME['text_2']}'>Form</b>: <b>Peak</b> = their best 5-year run, "
+    f"<b>Prime</b> = a sustained run you size with the <b>Prime</b> sliders. This board is a "
+    f"retrospective read of what happened — there is no current-form or predictive view. "
+    f"<b style='color:{THEME['text_2']}'>Show top</b>, "
     f"<b>Min UFC bouts</b>, <b>Weight class</b>, and <b>Roster</b> filter the rankings. "
     f"Change anything and every section re-ranks instantly.</div>"
 ))
@@ -746,34 +806,36 @@ movers_fw = chart_widget(height=460)
 
 
 def draw_movers():
-    try:
-        col = selected_rating_col()
-    except ValueError as exc:
-        show_fig(movers_fw, go.Figure())
-        return
-    if not col:
-        show_fig(movers_fw, go.Figure())
-        return
     hist = selected_history()
-    if hist is None or hist.empty or col not in hist.columns:
+    if hist is None or hist.empty:
+        show_fig(movers_fw, go.Figure())
+        return
+    # Year-over-year moves are a per-fight story, so use the lens's per-fight
+    # rating stream (which lives in the history frame) — not the current-form
+    # column, which can be a peak/prime label that never appears in history and
+    # would silently blank the chart under any Form other than "Now".
+    stream_col = selected_stream_col()
+    col = stream_col if (stream_col and stream_col in hist.columns) else "mu_canonical"
+    if col not in hist.columns:
         show_fig(movers_fw, go.Figure())
         return
     fig = yearly_rating_delta_scatter(
-        hist, all_bouts, rating_col=col, year=int(movers_year.value))
+        hist, all_bouts, rating_col=col, year=int(movers_year.value),
+        n=max(8, g_top_n.value // 2))
     show_fig(movers_fw, fig)
 
 
 display(movers_year)
 display(movers_fw)
 display(html_box(note(
-    "Each dot is a fighter. y = total rating change for the selected year "
-    "(positive = rose, negative = fell). Sorted left→right: biggest fallers "
-    "on the left, biggest risers on the right. Hover for individual fights "
-    "with opponent, result, and per-fight delta."
+    "The biggest rating movers of the selected year: green bars rose, red fell, "
+    "ranked by how much. Driven by <b>Show top</b> (how many of each). Hover any "
+    "bar for the individual fights — opponent, result, and per-fight change — "
+    "behind the move."
 )))
 draw_movers()
 _observe(movers_year, lambda *_: draw_movers())
-subscribe("movers", draw_movers, {"lens", "time", "prime_years", "prime_min"})
+subscribe("movers", draw_movers, {"lens", "time", "prime_years", "prime_min", "top_n"})
 """
 
 
@@ -969,6 +1031,8 @@ divx_timeline = chart_widget(height=540)
 divx_snapshot = chart_widget(height=560)
 divx_era = chart_widget(height=520)
 divx_density = chart_widget(height=380)
+divx_entropy = chart_widget(height=620)
+divx_method = chart_widget(height=440)
 
 
 def _divx_stream_col():
@@ -1025,6 +1089,17 @@ def draw_divx():
     fig_den = top100_division_density_chart(rc, rating_col=col, n=100)
     show_fig(divx_density, fig_den)
 
+    # ---- Division parity / crowdedness (entropy) --------------------------
+    de = division_entropy.copy()
+    if not de.empty and "year" in de.columns:
+        de = de[(pd.to_numeric(de["year"], errors="coerce") >= ymin)
+                & (pd.to_numeric(de["year"], errors="coerce") <= ymax)]
+    show_fig(divx_entropy, division_entropy_chart(de, divisions=selected or list(DIVISIONS)))
+
+    # ---- How fights end over time -----------------------------------------
+    show_fig(divx_method, method_mix_timeline_chart(
+        all_bouts, divisions=selected or None, year_min=ymin, year_max=ymax))
+
 
 # ---- Layout ----------------------------------------------------------------
 display(html_box(heading("Strength over time")))
@@ -1046,6 +1121,17 @@ display(html_box(heading("Top 100 by career division")))
 display(divx_density)
 display(html_box(note("How the current top 100 splits across weight classes (career division — where the "
                      "fighter built their résumé).")))
+
+display(html_box(heading("Division parity")))
+display(divx_entropy)
+display(html_box(note("Crowdedness (top panel) = how bunched the elite of each class is: high means a deep, "
+                     "competitive field; low means one fighter towers over a thin division. Bottom panel is "
+                     "the class's top-10 average rating. Shares the weight-class and year-range pickers.")))
+
+display(html_box(heading("How fights end")))
+display(divx_method)
+display(html_box(note("Share of bouts ending by KO/TKO, submission, or decision across the selected years and "
+                     "weight classes — are fights finishing more or going to the cards?")))
 
 draw_divx()
 for _w in (divx, divx_year_range, divx_index, divx_year_snapshot):
@@ -1133,6 +1219,8 @@ cmp_a_profile = chart_widget(height=300)
 cmp_b_profile = chart_widget(height=300)
 cmp_a_odds = chart_widget(height=300)
 cmp_b_odds = chart_widget(height=300)
+cmp_a_strike = chart_widget(height=300)
+cmp_b_strike = chart_widget(height=300)
 _FONT = '-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif'
 
 
@@ -1174,42 +1262,30 @@ def draw_compare():
     a, b = (cmp_a.value or "").strip(), (cmp_b.value or "").strip()
     if not a or not b or a == b:
         cmp_html.value = msg("pick two different fighters")
-        for fw in (cmp_a_profile, cmp_b_profile, cmp_a_odds, cmp_b_odds):
+        for fw in (cmp_a_profile, cmp_b_profile, cmp_a_odds, cmp_b_odds, cmp_a_strike, cmp_b_strike):
             show_fig(fw, go.Figure())
         return
-    pred = h2h_prediction(a, b, rc)
-    if pred.get("error"):
-        cmp_html.value = msg(pred["error"])
-        return
-    pa = pred["p_a_wins"] * 100
-    pb = pred["p_b_wins"] * 100
-    qual = pred["matchup_quality_0_to_1"]
-    prob_bar = (
-        f"<div style='margin:8px 0 14px;font-family:{_FONT}'>"
-        f"<div style='display:flex;font-size:0.95em;color:#cbd5e1;margin-bottom:4px'>"
-        f"<div style='flex:1'><b style='color:#38bdf8'>{a}</b> &mdash; {pa:.1f}%</div>"
-        f"<div style='text-align:right'>{pb:.1f}% &mdash; <b style='color:#a78bfa'>{b}</b></div></div>"
-        f"<div style='height:22px;border-radius:11px;overflow:hidden;background:#1e293b;display:flex;border:1px solid #334155'>"
-        f"<div style='width:{pa:.1f}%;background:#38bdf8'></div>"
-        f"<div style='width:{pb:.1f}%;background:#a78bfa'></div></div>"
-        f"<div style='color:#94a3b8;font-size:0.88em;margin-top:6px'>"
-        f"Closeness: <b style='color:#f1f5f9'>{qual:.2f}</b> "
-        f"<span style='color:#64748b'>(1 = coin-flip, 0 = lopsided)</span></div></div>"
-    )
+    # Retrospective only — no head-to-head win probability (that would be a
+    # prediction of what might happen). This is a side-by-side of two careers.
     cards = (
         f"<div style='display:grid;grid-template-columns:1fr 1fr;gap:14px'>"
         f"<div>{_resume_block(a)}</div><div>{_resume_block(b)}</div></div>"
     )
-    cmp_html.value = prob_bar + cards
+    cmp_html.value = cards
     show_fig(cmp_a_profile, fighter_profile_chart(a, rc))
     show_fig(cmp_b_profile, fighter_profile_chart(b, rc))
     show_fig(cmp_a_odds, fighter_odds_history_chart(a, odds_lines, fights))
     show_fig(cmp_b_odds, fighter_odds_history_chart(b, odds_lines, fights))
+    show_fig(cmp_a_strike, striking_profile_chart(rounds, a))
+    show_fig(cmp_b_strike, striking_profile_chart(rounds, b))
 
 
 display(widgets.HBox([cmp_a, cmp_b]))
 display(cmp_html)
 display(widgets.HBox([cmp_a_profile, cmp_b_profile]))
+display(widgets.HBox([cmp_a_strike, cmp_b_strike]))
+display(html_box(note("Striking fingerprint: where each fighter's significant strikes land (head/body/leg) and "
+                     "from what position (distance/clinch/ground), across their whole career.")))
 display(widgets.HBox([cmp_a_odds, cmp_b_odds]))
 draw_compare()
 _observe(cmp_a, lambda *_: draw_compare())
@@ -1357,7 +1433,7 @@ def draw_audit():
     summary = sleeve_factor_summary_table(performance_appearances)
     styled = _style_audit_summary(summary)
     if styled is None:
-        parts.append(msg("no sleeve activity in this snapshot"))
+        parts.append(msg("no rating adjustments in this snapshot"))
     else:
         parts.append(heading("Factors") + table_html(styled))
     fighter_filter = (audit_fighter.value or "").strip() or None
@@ -1533,7 +1609,7 @@ def _recompute(_btn=None):
         return
     before = _top5(rc, "Top 5 men before:")
     _apply_btn.disabled = _reset_btn.disabled = True
-    _set_status("Recomputing the full model (5 rating streams + WHR + peaks). "
+    _set_status("Recomputing the full model (all rating views, the Legacy smoother, and prime windows). "
                 "This takes a few minutes; every section refreshes when it finishes.", THEME["accent"])
     try:
         for name, *_rest in _KNOBS:
@@ -1609,6 +1685,177 @@ _set_status("Model is at defaults. Adjust a knob and Apply to recompute.", THEME
 '''
 
 
+DOMINANCE = r"""
+dom_fw = chart_widget(height=560)
+
+
+def draw_dominance():
+    show_fig(dom_fw, dominance_leaderboard_chart(
+        fighter_dominance, rc, n=g_top_n.value, min_wins=max(3, g_min_fights.value)))
+
+
+display(dom_fw)
+display(html_box(note("Ranked by a dominance score — how lopsided their wins are (strike gap, control time, and "
+                     "submission attempts, combined). Amber marks the most dominant. <b>Min UFC bouts</b> sets "
+                     "the minimum wins.")))
+draw_dominance()
+subscribe("dominance", draw_dominance, {"top_n", "min_fights"})
+"""
+
+
+LEGACY_PRIME = r"""
+lp_fw = chart_widget(height=600)
+
+
+def draw_legacy_prime():
+    show_fig(lp_fw, legacy_vs_prime_scatter(
+        rc, n=max(20, g_top_n.value * 2), min_fights=max(8, g_min_fights.value)))
+
+
+display(lp_fw)
+display(html_box(note("Each dot is a fighter — across = <b>Prime</b> (their best sustained run), up = <b>Legacy</b> "
+                     "(all-time, era-adjusted). The dashed line is the typical balance between the two. Dots "
+                     "<b>above</b> the line are longevity stories (the résumé outshines any single window); dots "
+                     "<b>below</b> are flash peaks (one dominant run bigger than the career body of work). "
+                     "Hover or click any dot for the fighter, division, bouts, and which way they lean.")))
+draw_legacy_prime()
+subscribe("legacy_prime", draw_legacy_prime, {"top_n", "min_fights"})
+"""
+
+
+TITLE_LINEAGE = r"""
+tl_pick = widgets.Dropdown(
+    options=[(DIV_SHORT.get(d, d), d) for d in DIVISIONS],
+    value=("Lightweight" if "Lightweight" in DIVISIONS else (list(DIVISIONS)[0] if DIVISIONS else "Lightweight")),
+    description="Division:", layout=widgets.Layout(width="220px"), style={"description_width": "75px"})
+tl_interim = widgets.Checkbox(value=False, description="Include interim", indent=False)
+tl_fw = chart_widget(height=460)
+
+
+def draw_title_lineage():
+    show_fig(tl_fw, title_lineage_chart(
+        performance_appearances, division=tl_pick.value, include_interim=tl_interim.value))
+
+
+display(widgets.HBox([tl_pick, tl_interim]))
+display(tl_fw)
+display(html_box(note("The belt itself, over time — one continuous track where each colored segment is a champion's "
+                     "reign, from winning the title to losing it. The label shows the champion and their title "
+                     "defenses (e.g. <b>3D</b>); hover for dates, who they beat, and reign length.")))
+draw_title_lineage()
+for _w in (tl_pick, tl_interim):
+    _observe(_w, lambda *_: draw_title_lineage())
+register_section("title_lineage", draw_title_lineage)
+"""
+
+
+MARKET = r"""
+mkt_banner = html_box()
+mkt_fav = chart_widget(height=400)
+mkt_impact = chart_widget(height=560)
+mkt_line = chart_widget(height=380)
+
+# Fighters who actually have odds-priced fights, for the per-fighter line chart.
+_mkt_resid = performance_appearances if performance_appearances is not None else pd.DataFrame()
+if not _mkt_resid.empty and "market_residual" in _mkt_resid.columns:
+    _mkt_priced = _mkt_resid.dropna(subset=["market_residual"])
+    _mkt_counts = _mkt_priced.groupby("fighter").size().sort_values(ascending=False)
+    _mkt_names = _mkt_counts[_mkt_counts >= 3].index.tolist()
+else:
+    _mkt_names = []
+_mkt_default = next((n for n in ["Conor McGregor", "Max Holloway", "Dustin Poirier"] if n in _mkt_names),
+                    (_mkt_names[0] if _mkt_names else None))
+mkt_fighter = widgets.Dropdown(
+    options=_mkt_names or ["(no odds-priced fighters)"],
+    value=_mkt_default if _mkt_default else (_mkt_names[0] if _mkt_names else "(no odds-priced fighters)"),
+    description="Fighter:", layout=widgets.Layout(width="320px"), style={"description_width": "60px"})
+
+
+def draw_market():
+    summary = odds_coverage_summary(rc, odds_lines, fights)
+    if not summary.get("available"):
+        mkt_banner.value = msg(summary.get("message", "No odds data in this snapshot."))
+    else:
+        mkt_banner.value = (
+            f"<div style='font-family:{THEME['font']};color:{THEME['text_2']};font-size:0.95em;margin-bottom:6px'>"
+            f"<b style='color:{THEME['text']}'>{summary['odds_covered_fights']:,}</b> of "
+            f"{summary['total_fights']:,} bouts carry usable market odds "
+            f"(<b style='color:{THEME['text']}'>{summary['odds_coverage_rate']:.0%}</b> coverage).</div>")
+    show_fig(mkt_fav, favorite_underdog_performance_chart(
+        favorite_underdog_performance_table(odds_lines, fights)))
+    show_fig(mkt_impact, odds_impact_chart(rc, performance_appearances, n=12))
+    draw_market_line()
+
+
+def draw_market_line():
+    show_fig(mkt_line, fighter_betting_line_chart(performance_appearances, mkt_fighter.value))
+
+
+display(mkt_banner)
+display(mkt_fav)
+display(html_box(note("Do market favorites win as often as the line implies? Realized win rate vs the market's "
+                     "expected win rate, by favorite/underdog bucket.")))
+display(mkt_impact)
+display(html_box(note("Career net of the engine's market-value layer. Fighters at the top kept winning as live "
+                     "underdogs (the market underrated them); fighters at the bottom were heavy favorites the "
+                     "market expected to win all along.")))
+display(mkt_fighter)
+display(mkt_line)
+display(html_box(note("One fighter's whole record against the betting line: each bar is a fight, green = beat the "
+                     "line, red = fell short, with their career average dashed in amber. Pick any fighter above.")))
+draw_market()
+_observe(mkt_fighter, lambda *_: draw_market_line())
+register_section("market", draw_market)
+"""
+
+
+INTEGRITY_LEDGER = r"""
+intg_fw = chart_widget(height=440)
+intg_html = html_box()
+
+
+def _style_integrity(df):
+    if df is None or df.empty:
+        return None
+    view = df.rename(columns={
+        "event_date": "Date", "fighter": "Fighter", "opponent": "Opponent",
+        "reason": "Reason", "integrity_weight": "Weight", "integrity_delta": "Rating cost"})
+    show = [c for c in ["Date", "Fighter", "Opponent", "Reason", "Weight", "Rating cost"] if c in view.columns]
+    return (
+        view[show].style.hide(axis="index")
+        .format({"Weight": "{:.2f}", "Rating cost": "{:+.1f}"}, na_rep="—")
+        .set_properties(subset=["Fighter"], **{"font-weight": "600", "color": THEME["text"]})
+        .set_properties(subset=["Reason"], **{"color": THEME["accent"]})
+        .set_properties(subset=["Rating cost"], **{"color": THEME["negative"]})
+        .set_table_styles(_BASE_TABLE_STYLES)
+    )
+
+
+def _intg_count(col):
+    return int(pd.to_numeric(rc.get(col), errors="coerce").fillna(0).sum()) if col in rc.columns else 0
+
+
+def draw_integrity():
+    strip = (f"<div style='font-family:{THEME['font']};color:{THEME['text_2']};font-size:0.9em;margin-bottom:6px'>"
+             f"Integrity flags in this snapshot — "
+             f"<b style='color:{THEME['accent']}'>{_intg_count('ped_confirmed_fights')}</b> PED-confirmed wins, "
+             f"<b style='color:{THEME['accent']}'>{_intg_count('dq_wins')}</b> DQ wins, "
+             f"<b style='color:{THEME['accent']}'>{_intg_count('missed_weight_wins')}</b> missed-weight wins.</div>")
+    show_fig(intg_fw, integrity_impact_chart(integrity_appearances, sleeve_attribution, n=12))
+    styled = _style_integrity(integrity_ledger_table(integrity_appearances, sleeve_attribution, n=g_top_n.value))
+    intg_html.value = strip + ((heading("Per-fight integrity hits") + table_html(styled))
+                               if styled is not None else msg("no integrity adjustments fired in this snapshot"))
+
+
+display(intg_fw)
+display(intg_html)
+display(html_box(note("The clean-record layer in action: PED-confirmed, DQ, and missed-weight wins take a rating "
+                     "haircut. The chart sums each fighter's total cost; the table lists the biggest single-fight hits.")))
+draw_integrity()
+subscribe("integrity_ledger", draw_integrity, {"top_n"})
+"""
+
+
 CELLS = [
     md("""
 # Symon UFC Rank Engine — Interactive Dashboard
@@ -1657,6 +1904,22 @@ by**, **Form**, **Show top**, and **Min UFC bouts**.
 """),
     code(PLACEMENT),
     md("""
+## Most Dominant
+
+Highest-rated isn't always most dominant. This ranks fighters by how thoroughly
+they win — strike differential, control time, and submission attempts blended
+into one per-fight dominance score. Driven by **Show top** and **Min UFC bouts**.
+"""),
+    code(DOMINANCE),
+    md("""
+## Legacy vs Prime
+
+Two ways to crown the greats: a short dominant **Prime** window vs the
+era-comparable **Legacy** smoother. Fighters far off the trend line are where the
+two methods disagree — longevity stories vs flash-in-the-pan peaks.
+"""),
+    code(LEGACY_PRIME),
+    md("""
 ## Career Arcs
 
 Overlay any set of fighters and watch their ratings rise and fall fight by fight
@@ -1696,11 +1959,20 @@ current weight class differs from their career home — title movers.
 """),
     code(DIVISION_LEADERS),
     md("""
+## Title Lineage
+
+Pick a division to trace its belt through time. The belt runs left to right as a
+single track, each segment a champion's reign — so you can see the title pass
+from hand to hand, who ruled longest, and how many times they defended it.
+Toggle interim titles on or off.
+"""),
+    code(TITLE_LINEAGE),
+    md("""
 ## Tale of the Tape
 
-Pick two fighters for a head-to-head: the model's win probability, **closeness**
-(1 = a coin-flip, 0 = a blowout on paper), side-by-side résumés, and each
-fighter's rating profile and how the betting market saw them.
+Pick two fighters for a side-by-side of their careers: résumés, rating profiles,
+striking fingerprints, and how the betting market saw each of them over time.
+This compares what each fighter *did* — it does not predict a hypothetical bout.
 """),
     code(COMPARE),
     md("""
@@ -1719,6 +1991,22 @@ with the biggest single-fight swings called out. This is the audit trail
 behind the Model Tuning knobs.
 """),
     code(ADJUSTMENTS),
+    md("""
+## Integrity Ledger
+
+The clean-record layer in the open: PED-confirmed, DQ, and missed-weight wins
+take a rating haircut. The chart sums each fighter's total cost; the table calls
+out the biggest single-fight hits.
+"""),
+    code(INTEGRITY_LEDGER),
+    md("""
+## Market vs Model
+
+How the engine sees the betting market. Coverage, whether favorites win as often
+as the line implies, who the market most under- and over-rated, and — for any
+fighter you pick — their whole record of beating or missing the betting line.
+"""),
+    code(MARKET),
 ]
 
 

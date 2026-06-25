@@ -599,3 +599,40 @@ Backup: pre-consolidation snapshot copied to
 - Movers vs 2026-05-12-pre-consolidation by mu_canonical:
   - Up: Julia Polastri +0.0; Anthony Johnson +0.0; Ian Loveland +0.0; Cristiano Marcello +0.0; Alexandre Dantas +0.0; Jessin Ayari +0.0; Mark Eddiva +0.0; Joe Jordan +0.0; Josh Quinlan +0.0; Reese Andy +0.0
   - Down: Uros Medic -0.0; Ben Saunders -0.0; Ramazan Emeev -0.0; Anthony Rocco Martin -0.0; Kyle Noke -0.0; Erik Silva -0.0; Alessio Sakara -0.0; Felipe Olivieri -0.0; Patrick Cote -0.0; Tim Means -0.0
+
+## 2026-06-23 - Refresh run
+- Canonical snapshot rebuilt from Greco CSVs: events=748, fights=8402, rounds=40124, excluded=343.
+- Ratings and dominance produced: fighters_rated=2524, fighter_event_rows=16804, events_processed=743.
+- Streams: wl (canonical) + method_rating + method_clean + method_perf + method_full + whr_rating + whr_clean + whr_perf + whr_full.
+- Performance sleeve includes quality, market, rank context, championship context, and P4P context.
+- Period metrics: 10-year and 5-year windows, opponent-weighted, result-aware, with all qualifying fights counted.
+- Top 10 by Legacy: Jon Jones 2010.6; Georges St-Pierre 1998.5; Amanda Nunes 1981.4; Anderson Silva 1952.1; Demetrious Johnson 1947.1; Islam Makhachev 1934.6; Valentina Shevchenko 1927.9; Alexander Volkanovski 1925.0; Daniel Cormier 1911.3; Jose Aldo 1909.0
+- Movers vs 2026-05-13 by mu_canonical:
+  - Up: Nicolle Caliari +199.4; Mitch Raposo +172.1; Kai Asakura +145.5; Kevin Borjas +145.3; Ivan Erslan +126.1; Benardo Sopaj +116.4; Tom Nolan +110.1; Gaston Bolanos +103.4; Luis Gurule +101.5; Alice Ardelean +86.6
+  - Down: Andre Lima -202.4; Daniel Barez -143.1; Allan Nascimento -137.1; Tuco Tokkos -133.5; Shauna Bannon -132.9; Jacqueline Cavalcanti -108.8; Malcolm Wellmaker -105.4; Cameron Smotherman -103.2; Michael Aswell Jr. -101.9; Daniel Santos -92.9
+
+## 2026-06-23 - Notebook chart expansion
+
+Implemented all 12 ideas in `analysis/CHART_PLAN.md`. The dashboard grows from
+14 to 23 code cells (22 markdown). New `analysis/viz.py` builders:
+`striking_profile_chart`, `dominance_leaderboard_chart`, `snapshot_movers_chart`,
+`inactivity_table`, `integrity_ledger_table`, `integrity_impact_chart`,
+`legacy_vs_prime_scatter`, `method_mix_timeline_chart`, `title_lineage_chart`.
+
+- New sections: Most Dominant, Legacy vs Prime, Since Last Snapshot, Ring Rust,
+  Title Lineage, Market vs Model, Model vs Consensus (FightMatrix), Model
+  Accuracy (calibration), Integrity Ledger. Weight Classes gained Division
+  parity (entropy) + How fights end (method mix); Tale of the Tape gained the
+  striking fingerprint for each fighter.
+- Wired the previously-unused `calibration_residuals_chart`,
+  `division_entropy_chart`, odds (`favorite_underdog`/`odds_impact`/
+  `odds_adjustment_distribution`), and `glicko_fightmatrix_scatter`/
+  `rank_delta_table` helpers into live sections.
+- `integrity_appearances` added to `viz.TABLE_KEY_MAP` so `load_snapshot`
+  exposes it. New sections subscribe to the Control Room (lens/time/division/
+  top_n/min_fights) so they re-rank with the rest of the dashboard.
+- Fixed `tests/test_viz_smoke.py` (collection-broken since the 2026-05-28
+  stream consolidation): `ped_impact_chart` -> `integrity_impact_chart`, dropped
+  the removed `integrity_factor_audit_table`, and realigned the stream/lens
+  assertions to the 3-stream API. Added `tests/test_chart_additions.py` and
+  new-section assertions to `tests/test_notebook_dashboard.py`. Full suite: 169 pass.

@@ -33,11 +33,13 @@ The notebook is **generated** from `analysis/build_notebook.py`. Never hand-edit
   the notebook is otherwise read-only over them.
 
 ### Rating vocabulary (drives most views)
-- **Rank by** (lens): `Wins` → `Finishes` → `Clean` → `Strength` → `Complete` → `Legacy`.
-  Internally these map to rating streams `canonical / method / method_integrity /
-  method_performance / method_integrity_performance / whr`.
-- **Form** (window): `Now` (current μ), `Peak` (best 5-yr run), `Prime` (sustained
-  N-yr run sized by the Prime sliders).
+- **Rank by** (lens): the notebook exposes `Wins` / `Complete` / `Legacy`, mapping
+  to rating streams `canonical / method_performance / whr_integrity_performance`
+  (Legacy is the sleeved WHR smoother as of 2026-06-25). The fuller internal
+  taxonomy (`method`, `method_integrity`, `whr`, …) still exists on disk.
+- **Form** (window): `Peak` (best 5-yr run) or `Prime` (sustained N-yr run sized
+  by the Prime sliders). `Now`/current-μ was removed — this is a retrospective
+  engine, not a current-form or predictive view.
 - Column resolution lives in `selected_rating_col()` / `select_public_rating_column()`.
 
 ---
