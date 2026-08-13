@@ -37,6 +37,12 @@ DIVISION_URLS = {
     "womens-strawweight": "/mma-ranks/womens-strawweight/",
 }
 
+ALL_TIME_URLS = {
+    "all-time-absolute": "/all-time-mma-rankings/all-time-absolute/",
+}
+
+PAGE_URLS = {**DIVISION_URLS, **ALL_TIME_URLS}
+
 
 def _cache_path(cache_dir: Path, division: str) -> Path:
     safe = re.sub(r"[^a-z0-9_-]+", "_", division.lower())
@@ -49,10 +55,10 @@ def fetch_division_html(division: str, cache_dir: Path, refresh: bool = False, s
     if path.exists() and not refresh:
         return path.read_text(encoding="utf-8")
 
-    if division not in DIVISION_URLS:
-        raise KeyError(f"unknown FightMatrix division: {division}")
+    if division not in PAGE_URLS:
+        raise KeyError(f"unknown FightMatrix page: {division}")
 
-    url = urljoin(BASE_URL, DIVISION_URLS[division])
+    url = urljoin(BASE_URL, PAGE_URLS[division])
     response = requests.get(url, headers={"User-Agent": USER_AGENT}, timeout=30)
     response.raise_for_status()
     path.write_text(response.text, encoding="utf-8")
@@ -143,11 +149,25 @@ def build_snapshot(
 
     rankings = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
     rankings.to_parquet(snapshot_dir / "fightmatrix_rankings.parquet", index=False)
+
+    all_time_frames = []
+    all_time_fetched = []
+    for page in ALL_TIME_URLS:
+        html = fetch_division_html(page, cache_dir=cache_dir, refresh=refresh, sleep_seconds=sleep_seconds)
+        parsed = parse_rankings_html(html, page)
+        all_time_frames.append(parsed)
+        all_time_fetched.append({"page": page, "rows": int(len(parsed)), "cache": str(_cache_path(cache_dir, page))})
+    all_time = pd.concat(all_time_frames, ignore_index=True) if all_time_frames else pd.DataFrame()
+    all_time.to_parquet(snapshot_dir / "fightmatrix_all_time.parquet", index=False)
+
     summary = {
         "source": BASE_URL,
         "rows": int(len(rankings)),
         "divisions": fetched,
+        "all_time_rows": int(len(all_time)),
+        "all_time_pages": all_time_fetched,
         "output": str((snapshot_dir / "fightmatrix_rankings.parquet").relative_to(PROJECT_ROOT)),
+        "all_time_output": str((snapshot_dir / "fightmatrix_all_time.parquet").relative_to(PROJECT_ROOT)),
     }
     (snapshot_dir / "fightmatrix_summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
     return summary
@@ -170,6 +190,7 @@ def main() -> None:
         sleep_seconds=args.sleep_seconds,
     )
     print(f"[fightmatrix] rows={summary['rows']:,} output={summary['output']}")
+    print(f"[fightmatrix] all-time rows={summary['all_time_rows']:,} output={summary['all_time_output']}")
     for div in summary["divisions"]:
         print(f"[fightmatrix] {div['division']}: rows={div['rows']}")
 

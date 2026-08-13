@@ -473,12 +473,16 @@ WHR_STEP_CLIP: float = 1.5
 # eras beats simply being newest.
 #
 # WHR_ERA_PREMIUM_STRENGTH is the single magnitude knob: 1.0 = reproduce the
-# measured Glicko era inflation exactly on the WHR scale; lower it if prior-era
-# greats should sit higher. The reference year is COSMETIC (a constant offset
+# measured Glicko era inflation exactly on the WHR scale. The 2026-08-13
+# sensitivity audit found that full transfer overstates recency: strength 1.0
+# had 0.60 Spearman agreement with the independent FightMatrix all-time top 35,
+# versus 0.74 at 0.25. Retain one quarter of the measured shape so modern depth
+# still counts without letting it dominate the career evidence. The reference
+# year is COSMETIC (a constant offset
 # cancels out of within-snapshot ranks and of the affine rescale onto Complete).
 # whr_* streams are exempt from the peaks.py era-de-trend (see ERA_NORM note), so
 # the realized premium equals the nominal curve. 0 disables the premium.
-WHR_ERA_PREMIUM_STRENGTH: float = 1.0
+WHR_ERA_PREMIUM_STRENGTH: float = 0.25
 WHR_ERA_PREMIUM_REFERENCE_YEAR: int = 2010
 
 

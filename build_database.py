@@ -104,6 +104,7 @@ TABLE_SPECS = [
     TableSpec("datalab_fighter_details", "datalab_fighter_details.parquet", "UFC-DataLab", "external", required=False),
     TableSpec("datalab_scorecards", "datalab_scorecards.parquet", "UFC-DataLab", "external", required=False),
     TableSpec("fightmatrix_rankings", "fightmatrix_rankings.parquet", "FightMatrix", "external", required=False),
+    TableSpec("fightmatrix_all_time", "fightmatrix_all_time.parquet", "FightMatrix", "external", required=False),
     TableSpec(
         "odds_lines",
         "odds_lines.parquet",
@@ -163,6 +164,7 @@ COMPOSITE_INDEXES = {
     "datalab_fighter_details": [("fighter_name",)],
     "datalab_scorecards": [("event_date",), ("red_fighter_name", "blue_fighter_name")],
     "fightmatrix_rankings": [("division", "rank"), ("fighter",)],
+    "fightmatrix_all_time": [("rank",), ("fighter",)],
     "odds_lines": [
         ("fight_url",),
         ("event_date", "event_name"),
@@ -469,6 +471,7 @@ def build_database(
             "ratings_current": table_count("ratings_current"),
             "datalab_bouts_all": table_count("datalab_bouts_all"),
             "fightmatrix_rankings": table_count("fightmatrix_rankings"),
+            "fightmatrix_all_time": table_count("fightmatrix_all_time"),
             "sqlite_table_count": sqlite_table_count,
             "sqlite_index_count": sqlite_index_count,
         }

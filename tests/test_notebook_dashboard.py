@@ -86,6 +86,18 @@ def test_new_sections_render(nb_ns):
     assert _n_traces(nb_ns["mkt_line"]) > 0        # Per-fighter betting-line chart
     assert _n_traces(nb_ns["intg_fw"]) > 0         # Integrity Ledger
     assert nb_ns["intg_html"].value                # Integrity ledger table
+    if not nb_ns["fightmatrix_all_time"].empty:
+        assert _n_traces(nb_ns["benchmark_fw"]) > 0   # external all-time sanity check
+    else:
+        assert nb_ns["benchmark_fw"].layout.annotations
+    assert nb_ns["benchmark_html"].value
+
+
+def test_all_time_default_is_explicit(nb_ns):
+    assert nb_ns["g_lens"].value == "legacy"
+    assert nb_ns["g_time"].value == "sustained_peak"
+    assert nb_ns["g_top_n"].value == 30
+    assert nb_ns["g_gender"].value == "M"
 
 
 def test_market_fighter_line_reacts(nb_ns):

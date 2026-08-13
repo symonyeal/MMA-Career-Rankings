@@ -258,6 +258,7 @@ TABLE_KEY_MAP = [
     ("datalab_fighter_details", "datalab_fighter_details"),
     ("datalab_scorecards", "datalab_scorecards"),
     ("fightmatrix_rankings", "fightmatrix_rankings"),
+    ("fightmatrix_all_time", "fightmatrix_all_time"),
     ("odds_lines", "odds_lines"),
 ]
 
@@ -661,6 +662,18 @@ def trajectory_chart(
         h["event_date"] = pd.to_datetime(h["event_date"], errors="coerce")
         h = h.sort_values("event_date")
         color = palette[i % len(palette)]
+
+        # Glicko history persists this audit count; compact WHR histories do
+        # not. Derive it from canonical appearances so the public All-time
+        # trajectory has the same stable hover contract.
+        if "opponents_this_event" not in h.columns:
+            fighter_appearances = appearances[appearances["fighter"] == fighter]
+            counts = (
+                fighter_appearances.groupby(["event_date", "fighter"])
+                .size().rename("opponents_this_event").reset_index()
+            )
+            h = h.merge(counts, on=["event_date", "fighter"], how="left")
+            h["opponents_this_event"] = h["opponents_this_event"].fillna(0)
 
         # phi band (1σ): mu ± phi
         if show_phi_band and phi_col in h.columns:
@@ -1471,6 +1484,109 @@ def rank_delta_table(
     return out.reset_index(drop=True)
 
 
+def all_time_benchmark_table(
+    ratings_current: pd.DataFrame,
+    fightmatrix_all_time: pd.DataFrame,
+    rating_col: str,
+    *,
+    min_fights: int = 3,
+    limit: int = 30,
+) -> pd.DataFrame:
+    """Compare a men's model board with FightMatrix's all-time absolute list.
+
+    The reference includes whole MMA careers while the canonical engine is UFC
+    only, so this is a diagnostic rather than training data. A positive gap
+    means the model ranks the fighter lower than FightMatrix does.
+    """
+    columns = ["fighter", "model_rank", "reference_rank", "rank_gap", "model_rating", "reference_points"]
+    if (
+        ratings_current is None or ratings_current.empty
+        or fightmatrix_all_time is None or fightmatrix_all_time.empty
+        or rating_col not in ratings_current.columns
+    ):
+        return pd.DataFrame(columns=columns)
+
+    rc = ratings_current.copy()
+    rc["rating_periods"] = pd.to_numeric(rc.get("rating_periods"), errors="coerce").fillna(0)
+    rc = rc[rc["rating_periods"].ge(min_fights)]
+    if "gender" in rc.columns:
+        rc = rc[rc["gender"].eq("M")]
+    rc["model_rating"] = pd.to_numeric(rc[rating_col], errors="coerce")
+    rc = rc.dropna(subset=["fighter", "model_rating"]).sort_values("model_rating", ascending=False)
+    rc["model_rank"] = np.arange(1, len(rc) + 1)
+    rc["_name_key"] = rc["fighter"].apply(_name_key)
+
+    fm = fightmatrix_all_time.copy()
+    fm["_name_key"] = fm["fighter"].apply(_name_key)
+    fm["reference_rank"] = pd.to_numeric(fm["rank"], errors="coerce")
+    fm["reference_points"] = pd.to_numeric(fm["points"], errors="coerce")
+    fm = fm.dropna(subset=["_name_key", "reference_rank"]).sort_values("reference_rank")
+    fm = fm.drop_duplicates("_name_key")
+
+    out = rc.merge(
+        fm[["_name_key", "reference_rank", "reference_points"]],
+        on="_name_key", how="left",
+    ).head(limit)
+    out["rank_gap"] = out["model_rank"] - out["reference_rank"]
+    return out[columns].reset_index(drop=True)
+
+
+def all_time_benchmark_chart(
+    ratings_current: pd.DataFrame,
+    fightmatrix_all_time: pd.DataFrame,
+    rating_col: str,
+    *,
+    min_fights: int = 3,
+    limit: int = 30,
+) -> go.Figure:
+    """Dumbbell chart exposing model/reference disagreement in the model top N."""
+    df = all_time_benchmark_table(
+        ratings_current, fightmatrix_all_time, rating_col,
+        min_fights=min_fights, limit=limit,
+    ).dropna(subset=["reference_rank"])
+    if df.empty:
+        return _empty_figure(
+            "all-time reference data unavailable",
+            title="Sanity check vs FightMatrix all-time",
+            height=520,
+        )
+
+    df = df.sort_values("model_rank", ascending=False)
+    line_x = []
+    line_y = []
+    for row in df.itertuples():
+        line_x.extend([row.model_rank, row.reference_rank, None])
+        line_y.extend([row.fighter, row.fighter, None])
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=line_x, y=line_y, mode="lines", showlegend=False,
+        line=dict(color=THEME["border_strong"], width=2), hoverinfo="skip",
+    ))
+    fig.add_trace(go.Scatter(
+        x=df["model_rank"], y=df["fighter"], mode="markers", name="Rank Engine",
+        marker=dict(color=THEME["primary"], size=10),
+        customdata=np.stack([df["model_rating"].round(1), df["rank_gap"]], axis=-1),
+        hovertemplate=("<b>%{y}</b><br>Engine rank %{x:.0f}<br>Rating %{customdata[0]:.1f}"
+                       "<br>Gap vs reference %{customdata[1]:+.0f}<extra></extra>"),
+    ))
+    fig.add_trace(go.Scatter(
+        x=df["reference_rank"], y=df["fighter"], mode="markers", name="FightMatrix all-time",
+        marker=dict(color=THEME["accent"], size=10, symbol="diamond"),
+        customdata=df["reference_points"],
+        hovertemplate=("<b>%{y}</b><br>FightMatrix rank %{x:.0f}"
+                       "<br>Points %{customdata:,.0f}<extra></extra>"),
+    ))
+    _apply_chart_layout(fig, height=max(520, 22 * len(df) + 170))
+    fig.update_layout(
+        title="Where the all-time board disagrees with an external reference",
+        xaxis_title="Rank (1 is best)", yaxis_title="",
+        legend=dict(orientation="h", y=1.06, x=0),
+    )
+    fig.update_xaxes(autorange="reversed", dtick=5)
+    return fig
+
+
 def source_coverage_summary(data: dict[str, pd.DataFrame]) -> pd.DataFrame:
     """Summarize source row counts, columns, date ranges, and fighter coverage."""
     table_labels = [
@@ -1484,6 +1600,7 @@ def source_coverage_summary(data: dict[str, pd.DataFrame]) -> pd.DataFrame:
         ("datalab_fighter_details", "DataLab fighter details"),
         ("datalab_scorecards", "DataLab scorecards"),
         ("fightmatrix_rankings", "FightMatrix rankings"),
+        ("fightmatrix_all_time", "FightMatrix all-time absolute"),
     ]
     rows = []
     for key, label in table_labels:
@@ -2232,8 +2349,8 @@ SCORING_METHODS: tuple[tuple[str, str], ...] = (
 
 PUBLIC_RATING_LENSES: tuple[tuple[str, str], ...] = (
     ("Wins", "wins"),
-    ("Complete", "complete"),
-    ("Legacy", "legacy"),
+    ("Skill peak", "complete"),
+    ("All-time", "legacy"),
 )
 
 # 2026-06-25: "Now" (current-form) removed. This engine is a retrospective
@@ -2244,25 +2361,23 @@ PUBLIC_TIME_VIEWS: tuple[tuple[str, str], ...] = (
     ("Prime", "sustained_peak"),
 )
 
-# Public lens -> internal stream. NOTE: Complete and Legacy are two DIFFERENT
+# Public lens -> internal stream. Skill peak and All-time are two DIFFERENT
 # estimators run on the same fight graph, not one-plus-a-bonus.
 #   * Wins (canonical Glicko-2) — sequential filter on binary win/loss; no
 #     method, no opponent-quality.
-#   * Complete (method_performance) — the Glicko-2 filter with a continuous
-#     finish-quality score (S_j in [0.85, 1.00]) and a +/-20% performance sleeve
-#     (opponent quality, upset, streak, weight-class move). Forward-only and
-#     reactive to current form; NOT era-normalized.
-#   * Legacy (whr) — a Whole-History Rating Bayesian *smoother* (Coulom 2008):
+#   * Skill peak (method_integrity_performance) — the Glicko-2 filter with a
+#     continuous finish-quality score, the +/-10% context sleeve, and integrity
+#     adjustments. Forward-only; best-window output is retrospective.
+#   * All-time (whr_integrity_performance) — a Whole-History Rating Bayesian
+#     *smoother* (Coulom 2008):
 #     it re-estimates every fighter's entire rating curve jointly on a binary
 #     Bradley-Terry likelihood (the base stream is unsleeved), with a Wiener
-#     drift prior. Era-comparable by construction; uses look-ahead, so it is a
+#     drift prior plus an explicit bounded era premium; uses look-ahead, so it is a
 #     retrospective view, not a predictive one.
-#   The sleeved WHR variants (whr_performance, whr_integrity_performance) apply
-#   the SAME sleeve to the WHR likelihood — the "best of both" merge, already on
-#   disk in ratings_current, just not exposed as a public lens here.
+#   Both public contextual views use the integrity + performance streams.
 _PUBLIC_LENS_STREAM = {
     "wins": "canonical",
-    "complete": "method_performance",
+    "complete": "method_integrity_performance",
     # 2026-06-25: Legacy now points at the SLEEVED WHR smoother so the era-bridged
     # all-time view also reflects opponent quality / finish / integrity. The base
     # unsleeved `whr` ranked binary records, which floated padded undefeated
@@ -2272,14 +2387,14 @@ _PUBLIC_LENS_STREAM = {
 
 _PUBLIC_LENS_HISTORY_KEY = {
     "wins": "ratings_history",
-    "complete": "ratings_history_method_performance",
+    "complete": "ratings_history_method_integrity_performance",
     "legacy": "ratings_history_whr_integrity_performance",
 }
 
 
 def public_rating_label(lens: str, time_view: str) -> str:
-    lens_label = dict(PUBLIC_RATING_LENSES).get(lens, lens)
-    time_label = dict(PUBLIC_TIME_VIEWS).get(time_view, time_view)
+    lens_label = dict((value, label) for label, value in PUBLIC_RATING_LENSES).get(lens, lens)
+    time_label = dict((value, label) for label, value in PUBLIC_TIME_VIEWS).get(time_view, time_view)
     return f"{time_label} {lens_label}"
 
 
@@ -4213,10 +4328,10 @@ def legacy_vs_prime_scatter(
     min_fights: int = 13,
     label_outliers: int = 10,
 ) -> go.Figure:
-    """Era-comparable Legacy (WHR smoother) vs windowed Prime — where they disagree."""
-    title = "Legacy vs Prime — where the two methods disagree"
+    """All-time WHR smoother vs forward-filter skill peak — where they disagree."""
+    title = "All-time vs Skill peak — where the two methods disagree"
     x_col = "sustained_peak_headline_mu_method_integrity_performance"
-    y_col = "sustained_peak_headline_mu_whr"
+    y_col = "sustained_peak_headline_mu_whr_integrity_performance"
     if ratings_current is None or ratings_current.empty:
         return _empty_figure("ratings unavailable", title=title)
     if x_col not in ratings_current.columns or y_col not in ratings_current.columns:
@@ -4240,7 +4355,7 @@ def legacy_vs_prime_scatter(
     # fighter's all-time résumé outshines their single best window (a longevity
     # story); below it one dominant peak outruns the career body of work.
     df["_leans"] = np.where(
-        df["resid"] >= 0, "Legacy &gt; Prime (longevity)", "Prime &gt; Legacy (peak)")
+        df["resid"] >= 0, "All-time &gt; Skill peak (longevity)", "Skill peak &gt; All-time (peak)")
     df["_bouts"] = pd.to_numeric(df.get("rating_periods"), errors="coerce").fillna(0).astype(int)
     div = df.get("career_division", pd.Series("", index=df.index)).fillna("")
     fig = go.Figure()
@@ -4265,16 +4380,16 @@ def legacy_vs_prime_scatter(
             ], axis=-1),
             hovertemplate=(
                 "<b>%{customdata[0]}</b><br>"
-                "Prime (best run)=%{x:.0f}<br>"
-                "Legacy (all-time)=%{y:.0f}<br>"
+                "Skill peak=%{x:.0f}<br>"
+                "All-time=%{y:.0f}<br>"
                 "Division=%{customdata[1]} &middot; %{customdata[2]} UFC bouts<br>"
                 "<b>%{customdata[3]}</b><extra></extra>"
             ),
         ))
     _apply_chart_layout(fig, height=560)
     fig.update_layout(
-        title=title, xaxis_title="Prime rating (best sustained run)",
-        yaxis_title="Legacy rating (all-time, era-adjusted)",
+        title=title, xaxis_title="Skill-peak rating (forward filter)",
+        yaxis_title="All-time rating (whole-history smoother)",
         legend=dict(orientation="h", y=-0.22),
         hovermode="closest",
     )

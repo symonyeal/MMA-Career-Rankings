@@ -636,3 +636,31 @@ Implemented all 12 ideas in `analysis/CHART_PLAN.md`. The dashboard grows from
   the removed `integrity_factor_audit_table`, and realigned the stream/lens
   assertions to the 3-stream API. Added `tests/test_chart_additions.py` and
   new-section assertions to `tests/test_notebook_dashboard.py`. Full suite: 169 pass.
+
+## 2026-08-13 - Refresh run
+- Canonical snapshot rebuilt from Greco CSVs: events=754, fights=8479, rounds=40440, excluded=343.
+- Ratings and dominance produced: fighters_rated=2554, fighter_event_rows=16958, events_processed=749.
+- Streams: wl (canonical) + method_rating + method_clean + method_perf + method_full + whr_rating + whr_clean + whr_perf + whr_full.
+- Performance sleeve includes quality, market, rank context, championship context, and P4P context.
+- Period metrics: 10-year and 5-year windows, opponent-weighted, result-aware, with all qualifying fights counted.
+- Top 10 by Legacy: Jon Jones 2027.1; Amanda Nunes 2002.9; Georges St-Pierre 1987.3; Islam Makhachev 1972.7; Alexander Volkanovski 1960.9; Valentina Shevchenko 1958.2; Demetrious Johnson 1950.3; Alex Pereira 1942.5; Daniel Cormier 1929.4; Anderson Silva 1926.8
+- Movers vs 2026-06-23 by mu_canonical:
+  - Up: Jean-Paul Lebosnoyani +176.3; Matheus Camilo +174.0; Tofiq Musayev +154.7; Felipe Franco +146.4; Diyar Nurgozhay +142.7; Ryan Gandra +140.9; Yadier del Valle +139.3; Axel Sola +135.4; Rizvan Kuniev +133.2; Tommy McMillen +131.1
+  - Down: Javier Reyes -169.2; Seokhyeon Ko -145.5; Mark Vologdin -129.9; Tyrell Fortune -128.3; Bruno Lopes -119.6; Alberto Montes -119.2; Saygid Izagakhmaev -111.8; Louie Sutherland -101.4; Kai Kamaka III -100.8; Alvin Hines -95.5
+
+## 2026-08-13 - Strategic ranking and notebook overhaul
+
+- Public notebook default changed from the forward-filter board to men's
+  **All-time + Prime**, top 30. Public labels are now Wins / Skill peak /
+  All-time; Skill peak correctly uses the integrity+performance stream.
+- Added the current FightMatrix all-time absolute table as a diagnostic
+  artifact and a reactive dumbbell sanity-check chart. It is not rating input.
+- Era-premium ablation over strengths 0/0.25/0.5/0.75/1.0 found Spearman
+  agreement 0.73/0.74/0.74/0.72/0.60 against matched FightMatrix all-time
+  ranks. `WHR_ERA_PREMIUM_STRENGTH` changed from 1.0 to 0.25.
+- New All-time Prime men's top 10: Jon Jones; Georges St-Pierre; Islam
+  Makhachev; Anderson Silva; Demetrious Johnson; Alexander Volkanovski;
+  Daniel Cormier; Alex Pereira; Jose Aldo; Kamaru Usman.
+- Removed the scale-invalid `vs Wins` leaderboard delta, moved model tuning
+  below the audit trail, and made its scratch snapshot project-local under
+  ignored `data/model_tuning/`.

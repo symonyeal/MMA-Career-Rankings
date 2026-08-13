@@ -113,10 +113,12 @@ caches HTML under `data/external/sherdog/`, parses non-UFC histories, and
 merges that file into all rating streams when present.
 
 Current FightMatrix staging: `loaders/fightmatrix_loader.py` fetches public
-FightMatrix ranking pages, caches the HTML under `data/external/fightmatrix/`,
-and writes `fightmatrix_rankings.parquet` with division, rank, fighter, age,
-record, points, profile URL, last-fight text, and next-fight text. Per-bout
-pre-UFC history is still the next merge step.
+FightMatrix ranking pages plus its all-time absolute table, caches the HTML
+under `data/external/fightmatrix/`, and writes `fightmatrix_rankings.parquet`
+and `fightmatrix_all_time.parquet` with division/page, rank, fighter, age,
+record, points, and profile URL. The all-time table is a notebook sanity check,
+not training data: it covers whole MMA careers while the standard engine
+snapshot is UFC-only. Per-bout pre-UFC history is still the next merge step.
 
 ## 7. Local SQLite database
 
@@ -135,7 +137,7 @@ not a separate source of truth. Tables include:
 - Audit tables: `excluded_bouts`, `ped_confirmed_bouts`, `missed_weight_bouts`.
 - External staged tables: `datalab_bouts_all`,
   `datalab_merged_stats_scorecards`, `datalab_fighter_details`,
-  `datalab_scorecards`, `fightmatrix_rankings`.
+  `datalab_scorecards`, `fightmatrix_rankings`, `fightmatrix_all_time`.
 - Metadata tables: `source_manifest`, `snapshot_manifest`,
   `table_row_counts`, `source_gaps`.
 

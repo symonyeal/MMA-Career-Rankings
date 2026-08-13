@@ -37,3 +37,24 @@ def test_fightmatrix_rankings_parser_extracts_profile_links():
     assert df.loc[0, "age"] == 29
     assert df.loc[0, "profile_url"].endswith("/fighter-profile/Ilia%20Topuria/149195/")
 
+
+def test_fightmatrix_all_time_parser_uses_same_stable_schema():
+    html = """
+    <table class="tblRank">
+      <tr><th>Rank</th><th>Fighter</th><th>Record</th><th>Points</th></tr>
+      <tr>
+        <td>1</td>
+        <td><a href="/fighter-profile/Georges%20St.%20Pierre/3500/">Georges St. Pierre</a></td>
+        <td>26-2-0</td>
+        <td>38570</td>
+      </tr>
+    </table>
+    """
+
+    df = parse_rankings_html(html, "all-time-absolute")
+
+    assert df.loc[0, "division"] == "all-time-absolute"
+    assert df.loc[0, "fighter"] == "Georges St. Pierre"
+    assert df.loc[0, "rank"] == 1
+    assert df.loc[0, "points"] == 38570
+

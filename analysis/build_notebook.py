@@ -68,6 +68,8 @@ PROJECT_ROOT = find_project_root(Path.cwd())
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from analysis.viz import (
+    all_time_benchmark_chart,
+    all_time_benchmark_table,
     DIV_SHORT,
     DIVISIONS,
     PEAK_VIEWS,
@@ -150,16 +152,19 @@ integrity_appearances = SNAP.get("integrity_appearances", pd.DataFrame())
 rounds = SNAP.get("rounds", pd.DataFrame())
 division_entropy = SNAP.get("division_entropy", pd.DataFrame())
 odds_lines = SNAP.get("odds_lines", pd.DataFrame())
+fightmatrix_all_time = SNAP.get("fightmatrix_all_time", pd.DataFrame())
 ratings_history = SNAP.get("ratings_history", pd.DataFrame())
 ratings_histories = {
     "ratings_history": ratings_history,
     "ratings_history_method_performance": SNAP.get("ratings_history_method_performance", pd.DataFrame()),
+    "ratings_history_method_integrity_performance": SNAP.get("ratings_history_method_integrity_performance", pd.DataFrame()),
 }
 previous_fights = PREV.get("fights", pd.DataFrame())
 previous_ratings_history = PREV.get("ratings_history", pd.DataFrame())
 previous_ratings_histories = {
     "ratings_history": previous_ratings_history,
     "ratings_history_method_performance": PREV.get("ratings_history_method_performance", pd.DataFrame()),
+    "ratings_history_method_integrity_performance": PREV.get("ratings_history_method_integrity_performance", pd.DataFrame()),
 }
 fighter_dominance = SNAP.get("fighter_dominance", pd.DataFrame())
 crossorg_fights = SNAP.get("crossorg_fights", pd.DataFrame())
@@ -209,8 +214,8 @@ def _affine_params(src, tgt):
     a = float(ts / ss)
     return a, float(t.mean() - a * s.mean())
 
-if "mu_whr_integrity_performance" in rc.columns and "mu_method_performance" in rc.columns:
-    _wa, _wb = _affine_params(rc["mu_whr_integrity_performance"], rc["mu_method_performance"])
+if "mu_whr_integrity_performance" in rc.columns and "mu_method_integrity_performance" in rc.columns:
+    _wa, _wb = _affine_params(rc["mu_whr_integrity_performance"], rc["mu_method_integrity_performance"])
     rc["mu_whr_integrity_performance"] = pd.to_numeric(rc["mu_whr_integrity_performance"], errors="coerce") * _wa + _wb
     _hk = "ratings_history_whr_integrity_performance"
     _h = ratings_histories.get(_hk)
@@ -219,8 +224,8 @@ if "mu_whr_integrity_performance" in rc.columns and "mu_method_performance" in r
         _h["mu_whr_integrity_performance"] = pd.to_numeric(_h["mu_whr_integrity_performance"], errors="coerce") * _wa + _wb
         ratings_histories[_hk] = _h
 for _src, _tgt in [
-    ("sustained_peak_headline_mu_whr_integrity_performance", "sustained_peak_headline_mu_method_performance"),
-    ("five_year_peak_headline_mu_whr_integrity_performance", "five_year_peak_headline_mu_method_performance"),
+    ("sustained_peak_headline_mu_whr_integrity_performance", "sustained_peak_headline_mu_method_integrity_performance"),
+    ("five_year_peak_headline_mu_whr_integrity_performance", "five_year_peak_headline_mu_method_integrity_performance"),
 ]:
     if _src in rc.columns and _tgt in rc.columns:
         rc[_src] = affine_match_scale(rc[_src], rc[_tgt])
@@ -481,7 +486,7 @@ display(Markdown(_THEME_CSS))
 CONTROL_ROOM = r"""
 # ---- Global controls -------------------------------------------------------
 g_lens = widgets.Dropdown(
-    options=list(PUBLIC_RATING_LENSES), value="complete",
+    options=list(PUBLIC_RATING_LENSES), value="legacy",
     description="Rank by:", style={"description_width": "70px"},
     layout=widgets.Layout(width="230px"))
 g_time = widgets.Dropdown(
@@ -494,10 +499,10 @@ g_division = widgets.Dropdown(
     description="Weight class:", style={"description_width": "90px"},
     layout=widgets.Layout(width="240px"))
 g_gender = widgets.ToggleButtons(
-    options=[("Both", "both"), ("Men", "M"), ("Women", "F")], value="both",
+    options=[("Both", "both"), ("Men", "M"), ("Women", "F")], value="M",
     description="Roster:", style={"description_width": "70px"})
 g_top_n = widgets.IntSlider(
-    value=25, min=5, max=100, step=5, description="Show top:",
+    value=30, min=5, max=100, step=5, description="Show top:",
     continuous_update=False, style={"description_width": "80px"},
     layout=widgets.Layout(width="330px"))
 g_min_fights = widgets.IntSlider(
@@ -527,7 +532,7 @@ def _prime_mu_col(stream):
 
 
 def rating_label():
-    lens_label = dict(PUBLIC_RATING_LENSES).get(g_lens.value, g_lens.value)
+    lens_label = dict((value, label) for label, value in PUBLIC_RATING_LENSES).get(g_lens.value, g_lens.value)
     if g_time.value == "sustained_peak":
         return f"{int(g_prime_years.value)}-Yr Prime {lens_label}"
     if g_time.value == "five_year_peak":
@@ -631,11 +636,11 @@ display(Markdown(
     f"font-size:0.82em;line-height:1.6;margin-top:8px'>"
     f"<b style='color:{THEME['text_2']}'>Rank by</b> picks the rating engine — "
     f"<b>Wins</b> (raw Glicko-2, just the W — no method or context), "
-    f"<b>Complete</b> (Glicko-2 that also scores <i>how</i> you won and <i>who</i> you beat — "
-    f"finish quality + opponent strength; reactive to current form), "
-    f"<b>Legacy</b> (a different engine — a whole-history smoother that re-rates every "
-    f"career jointly and is calibrated to compare fairly across eras). "
-    f"Complete and Legacy are two estimators, not one plus a bonus. "
+    f"<b>Skill peak</b> (a forward-only Glicko-2 view that scores <i>how</i> you won and "
+    f"<i>who</i> you beat), "
+    f"<b>All-time</b> (a different engine — a whole-history smoother that re-rates every "
+    f"career jointly and is the recommended all-time/greatness view). "
+    f"Skill peak and All-time are two estimators, not one plus a bonus. "
     f"<b style='color:{THEME['text_2']}'>Form</b>: <b>Peak</b> = their best 5-year run, "
     f"<b>Prime</b> = a sustained run you size with the <b>Prime</b> sliders. This board is a "
     f"retrospective read of what happened — there is no current-form or predictive view. "
@@ -673,12 +678,10 @@ def _build_top_view(df_subset, rating_col, n, min_fights_val, division_val):
     if df.empty:
         return df
     rating_vals = pd.to_numeric(df[rating_col], errors="coerce")
-    baseline_vals = pd.to_numeric(df.get("mu_canonical"), errors="coerce")
     return pd.DataFrame({
         "#": [_rank_chip(i) for i in range(1, len(df) + 1)],
         "Fighter": df["fighter"],
         "Rating": rating_vals.round(1),
-        "vs Wins": (rating_vals - baseline_vals).round(1),
         "Div": (
             (df["career_division"] if "career_division" in df.columns else pd.Series(pd.NA, index=df.index))
             .fillna(df["recent_division"] if "recent_division" in df.columns else pd.Series("", index=df.index))
@@ -693,19 +696,10 @@ def _style_top(lean):
     if lean.empty:
         return None
     rmin, rmax = lean["Rating"].min(), lean["Rating"].max()
-    def delta_color(v):
-        if pd.isna(v):
-            return ""
-        if v > 0:
-            return f"color: {THEME['positive']}; font-weight: 600"
-        if v < 0:
-            return f"color: {THEME['negative']}; font-weight: 600"
-        return f"color: {THEME['text_muted']}"
     return (
         lean.style.hide(axis="index")
         .bar(subset=["Rating"], color="rgba(56,189,248,0.28)", vmin=rmin, vmax=rmax)
-        .map(delta_color, subset=["vs Wins"])
-        .format({"Rating": "{:.1f}", "vs Wins": "{:+.1f}"})
+        .format({"Rating": "{:.1f}"})
         .format(lambda s: s, subset=["#"], escape=None)
         .format(lambda s: s, subset=["Fighter"], escape=None)
         .set_properties(subset=["Fighter"], **{"font-weight": "600", "color": THEME["text"]})
@@ -751,6 +745,48 @@ display(lb_html)
 draw_leaderboard()
 subscribe("leaderboard", draw_leaderboard,
           {"lens", "time", "prime_years", "prime_min", "gender", "division", "top_n", "min_fights"})
+"""
+
+
+BENCHMARK = r"""
+benchmark_fw = chart_widget(height=720)
+benchmark_html = html_box()
+
+
+def draw_benchmark():
+    col = selected_rating_col()
+    n = max(15, int(g_top_n.value))
+    if col is None or col not in rc.columns:
+        show_fig(benchmark_fw, go.Figure())
+        benchmark_html.value = msg("No matching rating column in this snapshot.")
+        return
+    fig = all_time_benchmark_chart(
+        rc, fightmatrix_all_time, col,
+        min_fights=int(g_min_fights.value), limit=n,
+    )
+    fig.update_layout(title=f"{rating_label()} vs FightMatrix all-time · engine top {n}")
+    show_fig(benchmark_fw, fig)
+    audit = all_time_benchmark_table(
+        rc, fightmatrix_all_time, col,
+        min_fights=int(g_min_fights.value), limit=n,
+    )
+    matched = int(audit["reference_rank"].notna().sum()) if not audit.empty else 0
+    benchmark_html.value = (
+        f"<div style='font-family:{THEME['font']};color:{THEME['text_2']};font-size:0.88em;"
+        f"line-height:1.55;padding:10px 12px;border-left:3px solid {THEME['accent']};"
+        f"background:{THEME['surface']}'>"
+        f"Matched <b style='color:{THEME['text']}'>{matched} of {len(audit)}</b> engine leaders. "
+        f"This is a <b>sanity check, not a target</b>: FightMatrix includes full MMA careers; "
+        f"the standard Rank Engine snapshot is UFC-only, so WEC/PRIDE/Strikeforce careers can "
+        f"legitimately create large gaps.</div>"
+    )
+
+
+display(benchmark_html)
+display(benchmark_fw)
+draw_benchmark()
+subscribe("all_time_benchmark", draw_benchmark,
+          {"lens", "time", "prime_years", "prime_min", "top_n", "min_fights"})
 """
 
 
@@ -1465,11 +1501,10 @@ MODEL_TUNING = r'''
 # ---- Model Tuning ----------------------------------------------------------
 # Unlike the Control Room (which only changes the VIEW), these knobs change the
 # MODEL. Applying them re-runs the full rating engine, so it takes a few
-# minutes. The recompute writes into a throwaway local-temp snapshot, so the
-# on-disk baseline is never modified; Reset restores the default model instantly.
+# minutes. The recompute writes into a project-local ignored workspace, so the
+# baseline snapshot is never modified and the result survives notebook restarts.
 import importlib
 import shutil
-import tempfile
 import time as _time
 
 import ratings.constants as _C
@@ -1552,7 +1587,7 @@ def _ensure_scratch():
     global _SCRATCH
     sc = globals().get("_SCRATCH")
     if sc is None or not Path(sc).exists():
-        sc = Path(tempfile.mkdtemp(prefix="ufc_tune_"))
+        sc = PROJECT_ROOT / "data" / "model_tuning" / SNAPSHOT_DIR.name
         shutil.copytree(SNAPSHOT_DIR, sc, dirs_exist_ok=True)
         _SCRATCH = sc
     return Path(sc)
@@ -1562,13 +1597,16 @@ def _rebind_frames(snap_dir):
     snap = load_project_data(snap_dir, DATABASE_PATH, prefer_database=False)
     rh = snap.get("ratings_history", pd.DataFrame())
     whr_path = Path(snap_dir) / "ratings_history_whr.parquet"
+    whrip_path = Path(snap_dir) / "ratings_history_whr_integrity_performance.parquet"
     globals().update({
         "rc": snap["ratings_current"],
         "ratings_history": rh,
         "ratings_histories": {
             "ratings_history": rh,
             "ratings_history_method_performance": snap.get("ratings_history_method_performance", pd.DataFrame()),
+            "ratings_history_method_integrity_performance": snap.get("ratings_history_method_integrity_performance", pd.DataFrame()),
             "ratings_history_whr": pd.read_parquet(whr_path) if whr_path.exists() else pd.DataFrame(),
+            "ratings_history_whr_integrity_performance": pd.read_parquet(whrip_path) if whrip_path.exists() else pd.DataFrame(),
         },
         "sleeve_attribution": snap.get("sleeve_attribution", pd.DataFrame()),
         "performance_appearances": snap.get("performance_appearances", pd.DataFrame()),
@@ -1593,7 +1631,8 @@ def _set_status(html, color=None):
 
 
 def _top5(rc_frame, label):
-    col = ("mu_method_performance" if "mu_method_performance" in rc_frame.columns
+    col = ("sustained_peak_headline_mu_whr_integrity_performance"
+           if "sustained_peak_headline_mu_whr_integrity_performance" in rc_frame.columns
            else "mu_canonical")
     men = rc_frame[rc_frame["gender"].eq("M")] if "gender" in rc_frame.columns else rc_frame
     top = men.dropna(subset=[col]).sort_values(col, ascending=False).head(5)
@@ -1609,7 +1648,7 @@ def _recompute(_btn=None):
         return
     before = _top5(rc, "Top 5 men before:")
     _apply_btn.disabled = _reset_btn.disabled = True
-    _set_status("Recomputing the full model (all rating views, the Legacy smoother, and prime windows). "
+    _set_status("Recomputing the full model (all rating views, the All-time smoother, and prime windows). "
                 "This takes a few minutes; every section refreshes when it finishes.", THEME["accent"])
     try:
         for name, *_rest in _KNOBS:
@@ -1713,7 +1752,7 @@ def draw_legacy_prime():
 
 
 display(lp_fw)
-display(html_box(note("Each dot is a fighter — across = <b>Prime</b> (their best sustained run), up = <b>Legacy</b> "
+display(html_box(note("Each dot is a fighter — across = <b>Skill peak</b> (their best sustained run), up = <b>All-time</b> "
                      "(all-time, era-adjusted). The dashed line is the typical balance between the two. Dots "
                      "<b>above</b> the line are longevity stories (the résumé outshines any single window); dots "
                      "<b>below</b> are flash peaks (one dominant run bigger than the career body of work). "
@@ -1860,13 +1899,11 @@ CELLS = [
     md("""
 # Symon UFC Rank Engine — Interactive Dashboard
 
-Two control layers sit at the top. The **Control Room** changes the *view* — how
-wins are scored, current form vs prime, weight class, how many fighters — and
-re-ranks every section instantly. **Model Tuning** changes the *model itself* —
-how much a finish, a title fight, or beating elite competition is
-worth; hit **Apply & recompute** and the whole rating engine re-runs so every
-board and chart reflects your version of the model. Each section also keeps a few
-local controls (streak sort, the two fighters to compare).
+The **Control Room** changes the view — scoring lens, Prime vs Peak, weight
+class, and board depth — and re-ranks every section instantly. The opening
+board defaults to **All-time + Prime**, the engine's greatness view. An
+external-reference chart immediately below it makes unusual placements visible
+instead of hiding disagreement behind one authoritative-looking number.
 
 > Run the cells top to bottom once, then drive everything from the top. View
 > toggles update instantly; a model recompute takes a few minutes.
@@ -1876,24 +1913,23 @@ local controls (streak sort, the two fighters to compare).
     md("## 🎛️ Control Room"),
     code(CONTROL_ROOM),
     md("""
-## 🛠️ Model Tuning
-
-The Control Room changes what you **look at**. This panel changes the **model
-itself** — how wins, finishes, opponents, and prime windows are
-scored. Adjust the knobs and hit **Apply & recompute**: the full rating engine
-re-runs and every table and chart below updates to the tuned model.
-"""),
-    code(MODEL_TUNING),
-    md("""
 ## The Rankings
 
 The pound-for-pound board for whatever you've set up top. **Rating** is the lens
-you picked in **Rank by**; **vs Wins** shows how much the **Strength**
-context layer moved a fighter off the raw win count — positive means context
-helped their case. Reshape it with **Roster**, **Weight class**, **Show top**,
-and **Min UFC bouts**.
+you picked in **Rank by**. **All-time + Prime** is the recommended greatness
+default; **Skill peak + Peak** is a diagnostic, not a GOAT list. Division, last
+fight, and rated-bout count stay visible so short or stale résumés stand out.
 """),
     code(LEADERBOARD),
+    md("""
+## Ranking Sanity Check
+
+The first diagnostic for an anomalous top 30: compare the selected engine board
+with FightMatrix's all-time absolute ranking. Long connectors expose the names
+worth investigating. This does not force agreement; it shows exactly where the
+model, source scope, or ranking definition differs.
+"""),
+    code(BENCHMARK),
     md("""
 ## Résumé vs Rating
 
@@ -1912,10 +1948,10 @@ into one per-fight dominance score. Driven by **Show top** and **Min UFC bouts**
 """),
     code(DOMINANCE),
     md("""
-## Legacy vs Prime
+## All-time vs Skill peak
 
-Two ways to crown the greats: a short dominant **Prime** window vs the
-era-comparable **Legacy** smoother. Fighters far off the trend line are where the
+Two ways to crown the greats: a forward-filter **Skill peak** vs the
+whole-career **All-time** smoother. Fighters far off the trend line are where the
 two methods disagree — longevity stories vs flash-in-the-pan peaks.
 """),
     code(LEGACY_PRIME),
@@ -1991,6 +2027,14 @@ with the biggest single-fight swings called out. This is the audit trail
 behind the Model Tuning knobs.
 """),
     code(ADJUSTMENTS),
+    md("""
+## 🛠️ Model Tuning
+
+Change the model only after reviewing its audit trail above. These controls
+alter how finishes, opponents, and prime windows are scored; **Apply &
+recompute** re-runs the engine and refreshes every board.
+"""),
+    code(MODEL_TUNING),
     md("""
 ## Integrity Ledger
 

@@ -28,8 +28,13 @@ from ratings.rate_snapshot import run as run_ratings  # noqa: E402
 from analysis.build_notebook import build as build_notebook  # noqa: E402
 
 
-DEFAULT_MDABBERT_CSV = (
-    PROJECT_ROOT.parent / "archive" / "ufc-master.csv"
+_MDABBERT_CANDIDATES = (
+    PROJECT_ROOT.parent / "archive" / "ufc-master.csv",
+    PROJECT_ROOT.parent.parent / "archive" / "ufc-master.csv",
+)
+DEFAULT_MDABBERT_CSV = next(
+    (path for path in _MDABBERT_CANDIDATES if path.exists()),
+    _MDABBERT_CANDIDATES[0],
 )
 
 
@@ -106,6 +111,7 @@ def append_changelog(project_root: Path, snapshot_date: str, counts: dict[str, i
         (
             col
             for col in (
+                "sustained_peak_headline_mu_whr_integrity_performance",
                 "sustained_peak_headline_mu_whr",
                 "sustained_peak_headline_mu_method_integrity_performance",
                 "sustained_peak_mu_method_integrity_performance",
@@ -118,7 +124,11 @@ def append_changelog(project_root: Path, snapshot_date: str, counts: dict[str, i
     top = eligible.sort_values(headline_col, ascending=False).head(10)
     top_line = "; ".join(f"{row.fighter} {getattr(row, headline_col):.1f}" for row in top.itertuples(index=False))
     from ratings.constants import rating_label
-    headline_label = rating_label(headline_col)
+    headline_label = (
+        "All-time Prime"
+        if headline_col == "sustained_peak_headline_mu_whr_integrity_performance"
+        else rating_label(headline_col)
+    )
 
     lines = [
         "",

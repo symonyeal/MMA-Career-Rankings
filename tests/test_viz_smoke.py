@@ -37,6 +37,7 @@ from analysis.viz import (
     prime_window_column_names,
     prime_window_min_fights,
     public_history_key,
+    public_rating_label,
     public_rating_stream,
     select_modular_rating_column,
     select_public_rating_column,
@@ -254,7 +255,7 @@ def test_compose_rating_stream_locks_canonical():
 def test_modular_lookup_resolves_to_method_streams(snapshot):
     rc = snapshot["ratings_current"]
     assert select_modular_rating_column(rc, "canonical") == "mu_canonical"
-    if "mu_method_performance" in rc.columns:
+    if "mu_method_integrity_performance" in rc.columns:
         assert select_modular_rating_column(rc, "method", use_performance=True) == "mu_method_performance"
 
 
@@ -262,9 +263,10 @@ def test_public_rating_lookup_resolves_casual_views(snapshot):
     rc = snapshot["ratings_current"]
     assert select_public_rating_column(rc, "wins", "current") == "mu_canonical"
     if "mu_method_performance" in rc.columns:
-        assert select_public_rating_column(rc, "complete", "current") == "mu_method_performance"
-    assert public_history_key("complete") == "ratings_history_method_performance"
-    assert public_rating_stream("complete") == "method_performance"
+        assert select_public_rating_column(rc, "complete", "current") == "mu_method_integrity_performance"
+    assert public_history_key("complete") == "ratings_history_method_integrity_performance"
+    assert public_rating_stream("complete") == "method_integrity_performance"
+    assert public_rating_label("legacy", "sustained_peak") == "Prime All-time"
 
 
 def test_adjustable_prime_window_uses_distinct_columns(snapshot):

@@ -9,6 +9,8 @@ import pandas as pd
 import pytest
 
 from analysis.viz import (
+    all_time_benchmark_chart,
+    all_time_benchmark_table,
     dominance_leaderboard_chart,
     inactivity_table,
     integrity_impact_chart,
@@ -110,6 +112,26 @@ def test_integrity_ledger_and_impact():
     assert ledger.iloc[0]["fighter"] == "A"        # biggest hit first
     fig = integrity_impact_chart(integ, attr)
     assert len(fig.data) == 1
+
+
+def test_all_time_benchmark_exposes_rank_gap_and_normalizes_names():
+    rc = pd.DataFrame({
+        "fighter": ["Jon Jones", "Georges St-Pierre", "Alex Pereira"],
+        "gender": ["M", "M", "M"],
+        "rating_periods": [20, 20, 10],
+        "score": [2000.0, 1900.0, 1800.0],
+    })
+    fm = pd.DataFrame({
+        "fighter": ["Georges St. Pierre", "Jon Jones", "Alex Pereira"],
+        "rank": [1, 2, 22],
+        "points": [38570, 36859, 10342],
+    })
+
+    out = all_time_benchmark_table(rc, fm, "score", limit=3)
+
+    assert out.loc[out["fighter"].eq("Georges St-Pierre"), "reference_rank"].iloc[0] == 1
+    assert out.loc[out["fighter"].eq("Alex Pereira"), "rank_gap"].iloc[0] == -19
+    assert len(all_time_benchmark_chart(rc, fm, "score", limit=3).data) == 3
 
 
 # --- snapshot smoke test ---------------------------------------------------

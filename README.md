@@ -12,13 +12,13 @@ audience-friendly labels.
 Run the interactive notebook:
 
 ```bash
-.venv/bin/jupyter lab analysis/notebook.ipynb
+jupyter lab analysis/notebook.ipynb
 ```
 
 Or rebuild it after code changes:
 
 ```bash
-.venv/bin/python analysis/build_notebook.py
+python analysis/build_notebook.py
 ```
 
 The notebook auto-loads the newest snapshot under `data/snapshots/`.
@@ -37,8 +37,8 @@ therefore the two best-run windows only:
 | Finishes | Result plus method | Rewards how the fight ended. |
 | Clean | Integrity checked | Adjusts PED, DQ, and missed-weight wins. |
 | Strength | Context checked | Adds opponent, odds, rank, title, and weight-class context. |
-| Complete | Best default | Clean + Strength together, on the **Glicko-2 filter** (forward-pass estimator). |
-| Legacy | Broad all-time | A **different engine** — a Whole-History Rating (WHR) Bayesian smoother that re-rates every career jointly and is calibrated across eras. |
+| Skill peak | Best-window skill | Clean + Strength on the **Glicko-2 filter** (forward-pass estimator). |
+| All-time | Recommended greatness view | A Whole-History Rating (WHR) smoother that re-rates every career jointly and carries an explicit era adjustment. |
 
 > **Complete and Legacy are two estimators, not one plus a bonus.** Complete is
 > the Glicko-2 *filter* with finish-quality scoring and a ±10% performance/integrity
@@ -46,12 +46,12 @@ therefore the two best-run windows only:
 > sleeve** (`whr_integrity_performance`) so the era-bridged all-time view also
 > reflects opponent quality — see *Unifying the two engines* below.
 
-Recommended audience defaults:
+Recommended views:
 
-- **Prime + Complete** for all-time debate; adjust **Prime yr** and
+- **Prime + All-time** for all-time debate; adjust **Prime yr** and
   **Prime min** when you want a stricter or looser sustained-run definition.
-- **Peak + Complete** for short-run dominance.
-- **Prime + Legacy** when comparing old eras to modern eras.
+- **Peak + Skill peak** for short-run dominance.
+- **Wins** as the untouched binary-result baseline.
 
 ## Unifying the two engines (Complete vs Legacy)
 
@@ -73,7 +73,7 @@ their strengths are complementary rather than competing:
 >    cannot, on its own, encode "the modern field is harder." The Glicko filter's
 >    per-year mean rating is the engine's own measurement of how the field has
 >    strengthened (~+130 mu, 2002→2025, concave: fast early, plateauing recently);
->    that monotonized curve, scaled by `WHR_ERA_PREMIUM_STRENGTH`, is added to every
+>    that monotonized curve, scaled to **25%** by `WHR_ERA_PREMIUM_STRENGTH`, is added to every
 >    WHR appearance before the Prime/Peak windows. WHR streams are **exempted from
 >    the windowing era-de-trend** so the premium is not re-flattened. Net: later-era
 >    primes outrank equally-dominant one-era pioneers, while the 10-yr Prime window
@@ -130,8 +130,63 @@ smoother and era-comparable.
 
 > Note: the ±10% sleeve change (and any future engine-constant change) only takes
 > effect after a ratings **recompute** (`python -m ratings.rate_snapshot <snapshot>`
-> or the notebook's *Apply & recompute*). The committed snapshots were built with
-> the older ±20% sleeve until re-run.
+> or the notebook's *Apply & recompute*). The `2026-08-13` snapshot was fully
+> recomputed with the current constants.
+
+## Recommended All-Time Top 30 (men's P4P)
+
+Snapshot `2026-08-13`. The public default is now **All-time + Prime**: the
+sleeved Whole-History Rating smoother over each fighter's best sustained
+10-year run. **Skill peak + Peak** remains available as a diagnostic, but is no
+longer presented as the default GOAT list.
+
+| # | Fighter | FightMatrix all-time | Gap |
+|--:|---|--:|--:|
+| 1 | Jon Jones | 2 | -1 |
+| 2 | Georges St-Pierre | 1 | +1 |
+| 3 | Islam Makhachev | 9 | -6 |
+| 4 | Anderson Silva | 6 | -2 |
+| 5 | Demetrious Johnson | 10 | -5 |
+| 6 | Alexander Volkanovski | 5 | +1 |
+| 7 | Daniel Cormier | 14 | -7 |
+| 8 | Alex Pereira | 22 | -14 |
+| 9 | Jose Aldo | 3 | +6 |
+| 10 | Kamaru Usman | 12 | -2 |
+| 11 | Israel Adesanya | 15 | -4 |
+| 12 | Max Holloway | 8 | +4 |
+| 13 | Stipe Miocic | 17 | -4 |
+| 14 | Ilia Topuria | — | — |
+| 15 | Khabib Nurmagomedov | 13 | +2 |
+| 16 | Randy Couture | 21 | -5 |
+| 17 | BJ Penn | 11 | +6 |
+| 18 | Matt Hughes | 7 | +11 |
+| 19 | TJ Dillashaw | — | — |
+| 20 | Dricus Du Plessis | — | — |
+| 21 | Merab Dvalishvili | — | — |
+| 22 | Aljamain Sterling | — | — |
+| 23 | Henry Cejudo | — | — |
+| 24 | Alexandre Pantoja | — | — |
+| 25 | Cain Velasquez | 35 | -10 |
+| 26 | Frankie Edgar | 20 | +6 |
+| 27 | Francis Ngannou | — | — |
+| 28 | Benson Henderson | — | — |
+| 29 | Conor McGregor | — | — |
+| 30 | Ciryl Gane | — | — |
+
+The gap is `engine rank - FightMatrix rank`; negative means the engine is more
+favorable. The comparison is a sanity check, not a training target.
+[FightMatrix](https://www.fightmatrix.com/all-time-mma-rankings/all-time-absolute/)
+uses whole MMA careers, while the standard Rank Engine snapshot is UFC-only.
+That source-scope difference explains part of Aldo, Penn, Hughes, and other
+pre-/cross-organization gaps. Pereira at #8 remains a genuine model tension:
+the title-effective eligibility rule, modern-era premium, and dominance reward
+value his short, title-dense UFC run much more than the external career ranking.
+
+The notebook now puts this comparison directly below the leaderboard so large
+disagreements are visible on every lens instead of buried in methodology text.
+
+<details>
+<summary>Historical four-board analysis from the 2026-06-23 snapshot</summary>
 
 ## All-Time Top 30 — Complete vs Legacy × Prime vs Peak (men's P4P)
 
@@ -232,12 +287,14 @@ Tracked cohorts, Legacy rank before → after the era-premium + dominance work:
 All knobs are tunable for further iteration: `WHR_ERA_PREMIUM_STRENGTH` (era magnitude),
 `DOMINANCE_FINISH_FLOOR_Z` (finish dominance), and the `WHR_DOMINANCE_*` amplitudes.
 
+</details>
+
 ## Notebook Views
 
 The notebook is built to work like a dashboard:
 
 - Select **Peak** or **Prime** (the retrospective best-run windows).
-- Select **Wins**, **Finishes**, **Clean**, **Strength**, or **Complete**.
+- Select **Wins**, **Skill peak**, or **All-time**.
 - Adjust **Prime yr** and **Prime min** to define the Prime window.
 - Filter leaderboards by division.
 - Compare rank movement before and after cross-organization enrichment.
@@ -247,35 +304,34 @@ The notebook is built to work like a dashboard:
 
 The dashboard also includes (see `analysis/CHART_PLAN.md`):
 
-- **Most Dominant** and **Legacy vs Prime** boards alongside the rankings.
-- **Since Last Snapshot** movers and a **Ring Rust** inactivity ledger.
+- A **Ranking Sanity Check** against the current FightMatrix all-time table.
+- **Most Dominant** and **All-time vs Prime** boards alongside the rankings.
 - **Division parity** (crowdedness) and **How fights end** in the Weight Classes block.
 - **Title Lineage** reigns per division.
 - **Striking fingerprint** (strike target/position mix) in the Tale of the Tape.
-- **Market vs Model**, **Model Accuracy** (calibration), and an **Integrity
-  Ledger** for the PED/DQ/missed-weight layer.
+- **Market vs Model** and an **Integrity Ledger** for the PED/DQ/missed-weight layer.
 
 Charts follow a consulting-style presentation pattern: clear title, short
 labels, focused color, direct takeaway, and minimal chart noise.
 
 ## Current Snapshot
 
-Production snapshot: `data/snapshots/2026-06-23` (UFCStats data current through
-the June 20, 2026 card, Kape vs. Horiguchi).
+Production snapshot: `data/snapshots/2026-08-13` (UFCStats data current through
+UFC Fight Night: Gamrot vs. Salkilld).
 
 Included in the latest run:
 
-- 748 UFC events (743 with ratable bouts).
-- 8,402 rated UFC fights.
-- 2,524 rated fighters.
-- 6,567 fights with market odds (mdabbert) for the performance sleeve.
-- UFC-DataLab and FightMatrix comparison artifacts staged in the snapshot.
-- Local SQLite export at `data/ufc_rank_engine.sqlite` (31 tables, 120 indexes).
+- 754 UFC events (749 with ratable bouts).
+- 8,479 rated UFC fights.
+- 2,554 rated fighters.
+- 6,562 fights with usable market odds (mdabbert) for the performance sleeve.
+- UFC-DataLab, current FightMatrix, and FightMatrix all-time artifacts staged.
+- Local SQLite export at `data/ufc_rank_engine.sqlite` (32 tables, 123 indexes).
 
-The five events added since the prior `2026-05-13` snapshot were scraped
-directly from UFCStats (Allen vs. Costa, Song vs. Figueiredo, Muhammad vs.
-Bonfim, UFC Freedom 250, Kape vs. Horiguchi) and appended to the Greco CSV
-inputs in `data/raw/2026-06-23/`.
+The six events added since `2026-06-23` were scraped directly from UFCStats:
+Fiziev vs. Torres, UFC 329, Du Plessis vs. Usman, Ankalaev vs. Guskov, Medic
+vs. Rodriguez, and Gamrot vs. Salkilld. They added 77 rated bouts and 20
+fighters to `data/raw/2026-08-13/`.
 
 Cross-organization enrichment (PRIDE/Strikeforce/WEC from Sherdog, via
 `build_crossorg.py`) is an optional layer on top of this canonical snapshot and
@@ -285,39 +341,47 @@ is not part of the standard `refresh.py` run.
 
 Use these from the project root.
 
+Extend the last raw bundle with newly completed UFCStats events:
+
+```bash
+python -m loaders.ufcstats_scrape \
+  --old-raw "data/raw/2026-06-23" \
+  --out-raw "data/raw/2026-08-13"
+```
+
 Refresh end to end with the latest UFCStats data (rebuilds the canonical
 snapshot, ratings, changelog, and notebook). Point `--greco-dir` at a directory
 holding the six current Greco CSVs:
 
 ```bash
-python refresh.py --snapshot-date 2026-06-23 \
-  --greco-dir "data/raw/2026-06-23" \
+python refresh.py --snapshot-date 2026-08-13 \
+  --greco-dir "data/raw/2026-08-13" \
   --include-external --include-odds \
-  --mdabbert-csv "../archive/ufc-master.csv"
+  --mdabbert-csv "../../archive/ufc-master.csv"
 ```
 
 Build the optional cross-org snapshot:
 
 ```bash
-.venv/bin/python build_crossorg.py --base "data/snapshots/2026-06-23" --out "data/snapshots/2026-06-23-crossorg"
+python build_crossorg.py --base "data/snapshots/2026-08-13" --out "data/snapshots/2026-08-13-crossorg"
 ```
 
 Run the ratings:
 
 ```bash
-.venv/bin/python -m ratings.rate_snapshot --snapshot-dir "data/snapshots/2026-06-23"
+python -m ratings.rate_snapshot --snapshot-dir "data/snapshots/2026-08-13"
 ```
 
 Build SQLite:
 
 ```bash
-.venv/bin/python build_database.py --snapshot-dir "data/snapshots/2026-06-23"
+python build_database.py --snapshot-dir "data/snapshots/2026-08-13"
 ```
 
 Run tests:
 
 ```bash
-.venv/bin/python -m pytest -q
+python -m pytest -q
 ```
 
 ## Project Layout
