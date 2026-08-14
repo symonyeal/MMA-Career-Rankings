@@ -103,9 +103,8 @@ def _cached_get(url: str, cache_path: Path, session, *, delay: float = POLITE_DE
 def org_from_event(event_name: str | None) -> str | None:
     if not isinstance(event_name, str):
         return None
-    low = event_name.lower()
     for pattern, label in _ORG_PATTERNS:
-        if re.search(pattern, low):
+        if re.search(pattern, event_name, flags=re.IGNORECASE):
             return label
     return None
 
@@ -391,7 +390,7 @@ def to_canonical_fights(
             "time_format": None, "referee": None, "details_text": None,
             "ped_confirmed": False, "ped_flagged_fighter": None,
             "ped_confirmation_source": None, "ped_confirmation_detail": None,
-            "org": r.org, "source": "sherdog",
+            "org": r.org, "source": getattr(r, "source", "sherdog"),
         }
     out = pd.DataFrame(list(seen.values()), columns=cols)
     # Drop the unified-rules-era cutoff to match the UFC exclusion rule and

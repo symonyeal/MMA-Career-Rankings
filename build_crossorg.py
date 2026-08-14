@@ -41,6 +41,8 @@ _CLONE_FILES = (
     "canonical_fighters.schema.json", "canonical_events.schema.json",
     "_excluded_bouts.csv", "odds_lines.parquet",
     "fightmatrix_rankings.parquet", "fightmatrix_all_time.parquet", "fightmatrix_summary.json",
+    "fightmatrix_profiles.parquet", "fightmatrix_bouts.parquet",
+    "fightmatrix_crossorg_fights.parquet", "fightmatrix_profiles_summary.json",
     "datalab_bouts_all.parquet", "datalab_merged_stats_scorecards.parquet",
     "datalab_fighter_details.parquet", "datalab_scorecards.parquet",
     "datalab_summary.json",

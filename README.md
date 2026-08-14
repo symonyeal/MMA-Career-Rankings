@@ -185,6 +185,21 @@ value his short, title-dense UFC run much more than the external career ranking.
 The notebook now puts this comparison directly below the leaderboard so large
 disagreements are visible on every lens instead of buried in methodology text.
 
+### Public FightMatrix career-data scope
+
+The project can now cache the public profiles linked by FightMatrix's current
+division and all-time ranking tables. The bounded 2026-08-14 local copy has
+302 profiles and 6,644 deduplicated professional bouts; 4,023 post-cutoff
+non-UFC bouts remain after UFC/date/pair deduplication. It is intentionally not
+a recursive copy of FightMatrix's proprietary database.
+
+The raw profiles and bouts are queryable in the standard SQLite database. A
+separate `2026-08-13-fightmatrix-public` snapshot and
+`ufc_rank_engine_fightmatrix_public.sqlite` preserve the experimental rating
+run. It is not the default board: the ranked-cohort sampling frame and missing
+historical title metadata push some non-UFC careers down despite adding their
+results. `fightmatrix_scope_comparison` records that effect explicitly.
+
 <details>
 <summary>Historical four-board analysis from the 2026-06-23 snapshot</summary>
 
@@ -326,7 +341,8 @@ Included in the latest run:
 - 2,554 rated fighters.
 - 6,562 fights with usable market odds (mdabbert) for the performance sleeve.
 - UFC-DataLab, current FightMatrix, and FightMatrix all-time artifacts staged.
-- Local SQLite export at `data/ufc_rank_engine.sqlite` (32 tables, 123 indexes).
+- Local SQLite export at `data/ufc_rank_engine.sqlite` (36 tables, 147 indexes),
+  including public FightMatrix profile, bout and scope-comparison tables.
 
 The six events added since `2026-06-23` were scraped directly from UFCStats:
 Fiziev vs. Torres, UFC 329, Du Plessis vs. Usman, Ankalaev vs. Guskov, Medic
@@ -360,6 +376,25 @@ python refresh.py --snapshot-date 2026-08-13 \
   --mdabbert-csv "../../archive/ufc-master.csv"
 ```
 
+Cache and stage the bounded public FightMatrix profile cohort after the ranking
+artifacts exist. Cached pages are reused by default:
+
+```bash
+python build_fightmatrix_public.py \
+  --snapshot-dir "data/snapshots/2026-08-13"
+```
+
+On a managed network that replaces TLS certificates, add `--insecure`
+explicitly. The flag is never enabled by default.
+
+To make a new refresh use those cross-organization results in the rating run:
+
+```bash
+python refresh.py --snapshot-date 2026-08-14 \
+  --greco-dir "data/raw/2026-08-13" \
+  --include-external --include-odds --include-fightmatrix-profiles
+```
+
 Build the optional cross-org snapshot:
 
 ```bash
@@ -389,6 +424,8 @@ python -m pytest -q
 ```text
 analysis/              Notebook builder and Plotly charts
 build_crossorg.py      Sherdog PRIDE/Strikeforce/WEC enrichment builder
+build_fightmatrix_public.py  Bounded public profile/history cache and staging
+build_source_scope_comparison.py  UFC-only versus public-cohort comparison
 build_database.py      SQLite export builder
 data/SOURCE_MATRIX.md  Source and field audit
 docs/archive/          Older audits, logs, and reports

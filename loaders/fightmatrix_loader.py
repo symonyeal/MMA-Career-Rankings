@@ -82,6 +82,11 @@ def parse_rankings_html(html: str, division: str) -> pd.DataFrame:
         return pd.DataFrame(columns=[
             "division", "rank", "fighter", "age", "record", "points", "profile_url",
             "last_fight_text", "next_fight_text",
+            "nationality_code", "association", "pro_debut_date",
+            "last_three_years_record", "big_league_record",
+            "last_quality_performance_date", "quality_performance_pct",
+            "opponent_540_metric", "win_finish_pct", "combat_age",
+            "last_five_results",
         ])
 
     rows = []
@@ -103,6 +108,22 @@ def parse_rankings_html(html: str, division: str) -> pd.DataFrame:
         fighter, age = _parse_name_age(fighter_text)
         profile_url = urljoin(BASE_URL, link.get("href")) if link else None
         full_text = tr.get_text(" ", strip=True)
+        flag = tr.select_one('img[src*="/images/flag/"]')
+        flag_match = re.search(r"/flag/([A-Za-z]+)\.png", flag.get("src", "")) if flag else None
+
+        tooltip_values: list[str] = []
+        last_five_results: list[str] = []
+        mouseover = tr.get("onmouseover", "")
+        tooltip = re.search(
+            r"LoadCustomDataWithRecs\(\s*'stat'\s*,\s*'(.*?)'\s*,\s*'rec'\s*,\s*'(.*?)'\s*\)",
+            mouseover,
+        )
+        if tooltip:
+            tooltip_values = [value.strip() for value in tooltip.group(1).split("|")]
+            last_five_results = [value for value in tooltip.group(2).split("|") if value]
+
+        def tip(index: int):
+            return tooltip_values[index] if index < len(tooltip_values) and tooltip_values[index] else None
 
         last_fight = None
         next_fight = None
@@ -125,6 +146,17 @@ def parse_rankings_html(html: str, division: str) -> pd.DataFrame:
             "profile_url": profile_url,
             "last_fight_text": last_fight,
             "next_fight_text": next_fight,
+            "nationality_code": flag_match.group(1).upper() if flag_match else None,
+            "association": tip(1),
+            "pro_debut_date": pd.to_datetime(tip(2), errors="coerce"),
+            "last_three_years_record": tip(3),
+            "big_league_record": tip(4),
+            "last_quality_performance_date": pd.to_datetime(tip(5), errors="coerce"),
+            "quality_performance_pct": pd.to_numeric(str(tip(6) or "").rstrip("%"), errors="coerce"),
+            "opponent_540_metric": pd.to_numeric(tip(7), errors="coerce"),
+            "win_finish_pct": pd.to_numeric(str(tip(8) or "").rstrip("%"), errors="coerce"),
+            "combat_age": pd.to_numeric(tip(9), errors="coerce"),
+            "last_five_results": "|".join(last_five_results) if last_five_results else None,
         })
     return pd.DataFrame(rows)
 

@@ -105,6 +105,22 @@ TABLE_SPECS = [
     TableSpec("datalab_scorecards", "datalab_scorecards.parquet", "UFC-DataLab", "external", required=False),
     TableSpec("fightmatrix_rankings", "fightmatrix_rankings.parquet", "FightMatrix", "external", required=False),
     TableSpec("fightmatrix_all_time", "fightmatrix_all_time.parquet", "FightMatrix", "external", required=False),
+    TableSpec("fightmatrix_profiles", "fightmatrix_profiles.parquet", "FightMatrix", "external", required=False),
+    TableSpec("fightmatrix_bouts", "fightmatrix_bouts.parquet", "FightMatrix", "external", required=False),
+    TableSpec(
+        "fightmatrix_crossorg_fights",
+        "fightmatrix_crossorg_fights.parquet",
+        "FightMatrix",
+        "canonical_extension",
+        required=False,
+    ),
+    TableSpec(
+        "fightmatrix_scope_comparison",
+        "fightmatrix_scope_comparison.parquet",
+        "Rating engine",
+        "diagnostic",
+        required=False,
+    ),
     TableSpec(
         "odds_lines",
         "odds_lines.parquet",
@@ -165,6 +181,25 @@ COMPOSITE_INDEXES = {
     "datalab_scorecards": [("event_date",), ("red_fighter_name", "blue_fighter_name")],
     "fightmatrix_rankings": [("division", "rank"), ("fighter",)],
     "fightmatrix_all_time": [("rank",), ("fighter",)],
+    "fightmatrix_profiles": [("profile_id",), ("fighter",), ("pro_debut_date",)],
+    "fightmatrix_bouts": [
+        ("fight_key",),
+        ("event_date", "event_name"),
+        ("fighter", "opponent"),
+        ("org",),
+    ],
+    "fightmatrix_crossorg_fights": [
+        ("event_date", "event_name"),
+        ("fighter_a", "fighter_b"),
+        ("fight_url",),
+        ("org",),
+    ],
+    "fightmatrix_scope_comparison": [
+        ("fighter",),
+        ("ufc_only_rank",),
+        ("fightmatrix_public_rank",),
+        ("fightmatrix_reference_rank",),
+    ],
     "odds_lines": [
         ("fight_url",),
         ("event_date", "event_name"),
@@ -295,18 +330,30 @@ def _source_gaps(missing_optional: list[TableSpec]) -> pd.DataFrame:
             "severity": "info",
             "status": "loaded",
             "notes": (
-                "crossorg_fights.parquet is present; Sherdog-derived non-UFC bouts "
-                "are merged into the rating streams with per-fight caliber weights."
+                "crossorg_fights.parquet is present; non-UFC bouts are merged into "
+                "the rating streams with per-fight caliber weights."
+            ),
+        }
+    if "fightmatrix_bouts" in missing_table_names:
+        fightmatrix_history_row = {
+            "gap_key": "fightmatrix_per_bout_history_not_loaded",
+            "severity": "known_gap",
+            "status": "pending",
+            "notes": "FightMatrix public per-bout profile histories are not staged in this snapshot.",
+        }
+    else:
+        fightmatrix_history_row = {
+            "gap_key": "fightmatrix_ranked_cohort_history_loaded",
+            "severity": "info",
+            "status": "loaded",
+            "notes": (
+                "Public profile histories for the current-ranked and all-time seed cohorts are staged; "
+                "opponent links were not recursively crawled."
             ),
         }
     rows = [
         crossorg_row,
-        {
-            "gap_key": "fightmatrix_per_bout_history_not_loaded",
-            "severity": "known_gap",
-            "status": "pending",
-            "notes": "Current FightMatrix table contains rankings/points only, not per-bout histories.",
-        },
+        fightmatrix_history_row,
         {
             "gap_key": "official_historical_ufc_rankings_not_loaded",
             "severity": "known_gap",

@@ -5,8 +5,8 @@ only populate where the authority is null/absent, and every fallback is
 logged. Loader merge step asserts: for every (fight_url, field) pair, at most
 one source produced a non-null value.
 
-Priority: **Greco** (UFC granular) > **Sherdog** (rated cross-org bouts)
-        > **DataLab** (career / comparison) > **FightMatrix** (rankings / future pre-UFC bouts)
+Priority: **Greco** (UFC granular) > **FightMatrix/Sherdog** (public cross-org results)
+        > **DataLab** (career / comparison) > **FightMatrix-derived metrics** (diagnostic only)
         > **mmadecoded** (tertiary fallback).
 
 ## 1. Event / fight identity
@@ -83,6 +83,9 @@ Priority: **Greco** (UFC granular) > **Sherdog** (rated cross-org bouts)
 | Field                       | Source     | Notes |
 |-----------------------------|------------|-------|
 | crossorg_fights             | Sherdog    | `build_crossorg.py` stages PRIDE/Strikeforce/WEC bouts as canonical-shaped rows. |
+| fightmatrix_profiles        | FightMatrix public profiles | Ranked-cohort biography, debut, career summary, and diagnostic metrics. |
+| fightmatrix_bouts           | FightMatrix public profiles | Deduplicated complete histories for the bounded current-ranked + all-time seed cohort. |
+| fightmatrix_crossorg_fights | FightMatrix public profiles | Post-2000-11-17, non-UFC, UFC-deduplicated canonical rows; public ranks are not model inputs. |
 | method_raw / method_class   | Sherdog    | Parsed from fighter history pages for cross-org bouts. |
 | end_round / end_time_seconds| Sherdog    | Parsed from fighter history pages for cross-org bouts. |
 | is_title_fight              | Sherdog (derived) | Derived from event-title patterns for cross-org bouts. |
@@ -96,29 +99,33 @@ Priority: **Greco** (UFC granular) > **Sherdog** (rated cross-org bouts)
 | organizations               | DataLab    | Pending; DataLab UFC export does not yet provide cross-org organizations. |
 | pre_ufc_record_summary      | DataLab    | Pending derived summary from staged cross-org bouts plus future broader sources. |
 
-## 6. Pre-UFC bouts (per-bout, for Glicko seeding)
+## 6. Public FightMatrix ranked-cohort histories
 
 | Field                | Source                      | Notes |
 |----------------------|-----------------------------|-------|
-| pre_ufc_bout_id (PK) | FightMatrix (HTML scrape)   | Only attempted under free-data; give up + notify if blocked. |
-| pre_ufc_opponent     | FightMatrix                 | |
-| pre_ufc_result       | FightMatrix                 | W/L/D/NC. |
-| pre_ufc_method       | FightMatrix                 | |
-| pre_ufc_date         | FightMatrix                 | |
-| pre_ufc_organization | FightMatrix                 | |
+| fight_key (PK)       | FightMatrix public profile | Event id + normalized participant pair. |
+| opponent / result    | FightMatrix public profile | W/L/D/NC, opponent profile id and URL. |
+| method / round       | FightMatrix public profile | Parsed into the canonical method buckets. |
+| event / date / country | FightMatrix public profile | Event id, URL, name, date and flag code. |
+| opponent pre-fight rank/division | FightMatrix derived | Stored for audit only; never enters rating input. |
+| association / debut / record | FightMatrix public profile | Queryable profile context. |
+| quality %, 540 metric, combat age | FightMatrix derived | Stored for comparison only; never enters rating input. |
 
 Current Sherdog staging: `loaders/sherdog_loader.py` resolves fighter pages,
 caches HTML under `data/external/sherdog/`, parses non-UFC histories, and
 `build_crossorg.py` writes `crossorg_fights.parquet`. `ratings/rate_snapshot.py`
 merges that file into all rating streams when present.
 
-Current FightMatrix staging: `loaders/fightmatrix_loader.py` fetches public
-FightMatrix ranking pages plus its all-time absolute table, caches the HTML
-under `data/external/fightmatrix/`, and writes `fightmatrix_rankings.parquet`
-and `fightmatrix_all_time.parquet` with division/page, rank, fighter, age,
-record, points, and profile URL. The all-time table is a notebook sanity check,
-not training data: it covers whole MMA careers while the standard engine
-snapshot is UFC-only. Per-bout pre-UFC history is still the next merge step.
+`loaders/fightmatrix_loader.py` stages the ranking and all-time tables.
+`loaders/fightmatrix_profiles.py` then follows only the profile links in those
+tables (no recursive opponent crawl), caches the HTML under
+`data/external/fightmatrix/profiles/`, and emits profile, raw-bout, canonical
+cross-org, and provenance-summary artifacts. The 2026-08-14 local run contains
+302 profiles, 6,644 unique public bouts and 4,023 model-ready cross-org bouts.
+FightMatrix ranks, points, quality percentages, 540 metrics and combat age are
+diagnostic only. Only result/method/round/event/date fields enter the optional
+rating input. The standard snapshot remains UFC-only; the explicit
+`2026-08-13-fightmatrix-public` snapshot preserves the bounded-cohort run.
 
 ## 7. Local SQLite database
 
@@ -137,7 +144,9 @@ not a separate source of truth. Tables include:
 - Audit tables: `excluded_bouts`, `ped_confirmed_bouts`, `missed_weight_bouts`.
 - External staged tables: `datalab_bouts_all`,
   `datalab_merged_stats_scorecards`, `datalab_fighter_details`,
-  `datalab_scorecards`, `fightmatrix_rankings`, `fightmatrix_all_time`.
+  `datalab_scorecards`, `fightmatrix_rankings`, `fightmatrix_all_time`,
+  `fightmatrix_profiles`, `fightmatrix_bouts`,
+  `fightmatrix_crossorg_fights`, `fightmatrix_scope_comparison`.
 - Metadata tables: `source_manifest`, `snapshot_manifest`,
   `table_row_counts`, `source_gaps`.
 

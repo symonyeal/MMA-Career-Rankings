@@ -22,6 +22,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from loaders.ufcstats_loader import GRECO_FILES, build_snapshot  # noqa: E402
 from loaders.datalab_loader import DEFAULT_DATALAB_DIR, build_snapshot as build_datalab_snapshot  # noqa: E402
 from loaders.fightmatrix_loader import build_snapshot as build_fightmatrix_snapshot  # noqa: E402
+from loaders.fightmatrix_profiles import build_public_profile_snapshot  # noqa: E402
 from loaders.odds_ingest_mdabbert import run as ingest_mdabbert_odds  # noqa: E402
 from ratings.glicko2_engine import DEFAULT_TAU  # noqa: E402
 from ratings.rate_snapshot import run as run_ratings  # noqa: E402
@@ -165,6 +166,18 @@ def main() -> None:
                         help="Path to mdabbert ufc-master.csv. Used for odds + missed-weight cross-check.")
     parser.add_argument("--refresh-fightmatrix", action="store_true",
                         help="When --include-external is set, re-fetch FightMatrix HTML instead of using cache.")
+    parser.add_argument(
+        "--include-fightmatrix-profiles",
+        action="store_true",
+        help="Stage the bounded public ranked-cohort profile histories and merge their non-UFC bouts.",
+    )
+    parser.add_argument("--fightmatrix-profile-sleep", type=float, default=1.0)
+    parser.add_argument("--fightmatrix-profile-limit", type=int, default=None)
+    parser.add_argument(
+        "--fightmatrix-insecure",
+        action="store_true",
+        help="Disable FightMatrix TLS verification only on a managed interception network.",
+    )
     args = parser.parse_args()
 
     project_root = Path(args.project_root).resolve()
@@ -182,6 +195,9 @@ def main() -> None:
     print(f"[refresh] raw_dir      = {raw_dir}")
     print(f"[refresh] snapshot_dir = {snapshot_dir}")
 
+    if args.include_fightmatrix_profiles and not args.include_external:
+        parser.error("--include-fightmatrix-profiles requires --include-external")
+
     copy_raw_inputs(greco_dir, raw_dir)
     counts, _ = build_snapshot(greco_dir, snapshot_dir)
     if args.include_external:
@@ -194,6 +210,21 @@ def main() -> None:
             cache_dir=project_root / "data" / "external" / "fightmatrix" / "html",
             refresh=args.refresh_fightmatrix,
         )
+        if args.include_fightmatrix_profiles:
+            profile_summary = build_public_profile_snapshot(
+                snapshot_dir,
+                cache_dir=project_root / "data" / "external" / "fightmatrix" / "profiles",
+                refresh=args.refresh_fightmatrix,
+                sleep_seconds=args.fightmatrix_profile_sleep,
+                verify_tls=not args.fightmatrix_insecure,
+                max_profiles=args.fightmatrix_profile_limit,
+            )
+            print(
+                "[refresh] FightMatrix public profiles: "
+                f"profiles={profile_summary['profiles_loaded']:,}, "
+                f"bouts={profile_summary['unique_public_bouts']:,}, "
+                f"rated_crossorg={profile_summary['rated_crossorg_bouts']:,}"
+            )
     mdabbert_csv = Path(args.mdabbert_csv).resolve() if args.mdabbert_csv else None
     if args.include_odds or args.include_external:
         if mdabbert_csv and mdabbert_csv.exists():
