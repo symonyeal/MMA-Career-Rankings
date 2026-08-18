@@ -200,6 +200,14 @@ run. It is not the default board: the ranked-cohort sampling frame and missing
 historical title metadata push some non-UFC careers down despite adding their
 results. `fightmatrix_scope_comparison` records that effect explicitly.
 
+The recursive experiment is a separate, resumable pipeline in
+`build_fightmatrix_expanded.py`. It uses FightMatrix profile IDs as identities,
+persists a breadth-first queue, reconciles reciprocal records, measures graph
+closure, and applies an explicit completeness policy before producing optional
+rating input. It never changes the UFC-only production snapshot. Public rank,
+points, quality percentage, 540 metric, and combat-age fields are blocked from
+the model-input schema by an automated leakage test.
+
 <details>
 <summary>Historical four-board analysis from the 2026-06-23 snapshot</summary>
 
@@ -387,6 +395,76 @@ python build_fightmatrix_public.py \
 On a managed network that replaces TLS certificates, add `--insecure`
 explicitly. The flag is never enabled by default.
 
+Audit and resume the depth-one opponent expansion. The working directory is
+checkpointed and may be rerun with the same command. `--insecure` is an
+explicit managed-network exception and is recorded on every profile provenance
+row; omit it wherever the local trust store validates FightMatrix normally.
+
+```bash
+python build_fightmatrix_expanded.py \
+  --base-snapshot "data/snapshots/2026-08-13" \
+  --output-dir "data/snapshots/2026-08-14-fightmatrix-expanded-v3-working" \
+  --max-depth 1 --max-profiles 5000 --max-new-profiles 5000 \
+  --request-budget 5000 --wall-clock-seconds 10800 \
+  --sleep-seconds 1 --policy reliability
+```
+
+Rerunning that command once the queue is exhausted re-audits from cache and
+issues no requests. Each experimental rating scope is then staged and rated
+from the same audited working directory. A staging target must not already
+exist, so one scope is one immutable directory:
+
+```bash
+# scope 3 - depth-one expanded graph, no completeness control (sensitivity only)
+python build_fightmatrix_expanded.py \
+  --base-snapshot "data/snapshots/2026-08-13" \
+  --output-dir "data/snapshots/2026-08-14-fightmatrix-expanded-v3-working" \
+  --max-depth 1 --max-new-profiles 0 --request-budget 0 --policy raw \
+  --stage-rating-snapshot "data/snapshots/2026-08-14-fightmatrix-depth-one-raw" \
+  --run-ratings
+
+# scope 5 - complete-edge filtered
+python build_fightmatrix_expanded.py \
+  --base-snapshot "data/snapshots/2026-08-13" \
+  --output-dir "data/snapshots/2026-08-14-fightmatrix-expanded-v3-working" \
+  --max-depth 1 --max-new-profiles 0 --request-budget 0 --policy complete_edge \
+  --stage-rating-snapshot "data/snapshots/2026-08-14-fightmatrix-depth-one-complete_edge" \
+  --run-ratings
+
+# scope 6 - reliability weighting, the recommended experimental policy
+python build_fightmatrix_expanded.py \
+  --base-snapshot "data/snapshots/2026-08-13" \
+  --output-dir "data/snapshots/2026-08-14-fightmatrix-expanded-v3-working" \
+  --max-depth 1 --max-new-profiles 0 --request-budget 0 --policy reliability \
+  --stage-rating-snapshot "data/snapshots/2026-08-14-fightmatrix-depth-one-reliability" \
+  --run-ratings
+```
+
+Compare every rated scope against the UFC-only baseline. Cohort size differs by
+scope, so the comparison carries percentile movement and a common-reference-subset
+error next to the raw ranks:
+
+```bash
+python build_fightmatrix_validation.py \
+  --scope "ufc_only=data/snapshots/2026-08-13" \
+  --scope "bounded_302_seed=data/snapshots/2026-08-13-fightmatrix-public" \
+  --scope "depth_one_raw=data/snapshots/2026-08-14-fightmatrix-depth-one-raw" \
+  --scope "depth_one_complete_edge=data/snapshots/2026-08-14-fightmatrix-depth-one-complete_edge" \
+  --scope "depth_one_reliability=data/snapshots/2026-08-14-fightmatrix-depth-one-reliability" \
+  --trace-scope "depth_one_raw=data/snapshots/2026-08-14-fightmatrix-depth-one-raw" \
+  --trace-scope "depth_one_reliability=data/snapshots/2026-08-14-fightmatrix-depth-one-reliability" \
+  --output-dir "data/snapshots/2026-08-14-fightmatrix-validation"
+```
+
+Export an experimental scope to its own SQLite file, leaving the production
+database untouched:
+
+```bash
+python build_database.py \
+  --snapshot-dir "data/snapshots/2026-08-14-fightmatrix-depth-one-reliability" \
+  --db-path "data/ufc_rank_engine_fightmatrix_depth_one.sqlite"
+```
+
 To make a new refresh use those cross-organization results in the rating run:
 
 ```bash
@@ -425,6 +503,8 @@ python -m pytest -q
 analysis/              Notebook builder and Plotly charts
 build_crossorg.py      Sherdog PRIDE/Strikeforce/WEC enrichment builder
 build_fightmatrix_public.py  Bounded public profile/history cache and staging
+build_fightmatrix_expanded.py  Resumable opponent expansion, audit, policy, staging
+build_fightmatrix_validation.py  Multi-scope validation, historical panel, anomaly traces
 build_source_scope_comparison.py  UFC-only versus public-cohort comparison
 build_database.py      SQLite export builder
 data/SOURCE_MATRIX.md  Source and field audit

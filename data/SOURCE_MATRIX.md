@@ -86,6 +86,10 @@ Priority: **Greco** (UFC granular) > **FightMatrix/Sherdog** (public cross-org r
 | fightmatrix_profiles        | FightMatrix public profiles | Ranked-cohort biography, debut, career summary, and diagnostic metrics. |
 | fightmatrix_bouts           | FightMatrix public profiles | Deduplicated complete histories for the bounded current-ranked + all-time seed cohort. |
 | fightmatrix_crossorg_fights | FightMatrix public profiles | Post-2000-11-17, non-UFC, UFC-deduplicated canonical rows; public ranks are not model inputs. |
+| fightmatrix_profile_queue | FightMatrix public profiles | Persistent profile-ID queue with depth, priority, fetch/parse state, retries and stop reason. |
+| fightmatrix_profiles_expanded | FightMatrix public profiles | Recursively fetched public profiles with independent HTTP, parse, record-reconciliation and modeling-completeness state. |
+| fightmatrix_bouts_expanded | FightMatrix public profiles | Per-profile public history rows retained before deterministic reciprocal reconciliation. |
+| fightmatrix_model_eligible_bouts | FightMatrix public profiles | Experimental canonical rows after UFC overlap removal and the declared completeness policy. |
 | method_raw / method_class   | Sherdog    | Parsed from fighter history pages for cross-org bouts. |
 | end_round / end_time_seconds| Sherdog    | Parsed from fighter history pages for cross-org bouts. |
 | is_title_fight              | Sherdog (derived) | Derived from event-title patterns for cross-org bouts. |
@@ -110,6 +114,37 @@ Priority: **Greco** (UFC granular) > **FightMatrix/Sherdog** (public cross-org r
 | opponent pre-fight rank/division | FightMatrix derived | Stored for audit only; never enters rating input. |
 | association / debut / record | FightMatrix public profile | Queryable profile context. |
 | quality %, 540 metric, combat age | FightMatrix derived | Stored for comparison only; never enters rating input. |
+
+### Recursive public-profile boundary
+
+`loaders/fightmatrix_expansion.py` follows only public opponent links carrying a
+stable numeric profile ID. It does not use authenticated endpoints, CIRRS, or a
+proprietary database. The breadth-first queue is bounded by depth, total and
+per-run profile counts, request count, wall clock, minimum priority, earliest
+date, minimum professional record, organization tier, unresolved-profile rate,
+graph closure, and weighted edge support. Cached HTML is always preferred.
+
+The priority score is transparent: `2*log1p(seed referrers) + 2*(opponent beat
+or drew with referrer) + organization tier signal + 1.5*(title bout) + ranked
+opponent signal`. This score orders work; it is not a rating input.
+
+Deduplicating a public bout against the canonical UFC table is a name problem,
+not just a key problem. The overlap test scans a one-day window (public profiles
+date some Asian cards a day later than the UFC source) and treats a name-order
+permutation, a generational suffix, a token subset and a three-character
+first-name prefix as the same fighter. Names that no rule can derive - a ring
+name replacing a family name, a married name, a mononym - live in
+`data/external/fightmatrix/name_aliases.csv`, which records the reason and the
+number of shared event dates behind each pair. That file is project-owned and
+separate from the vendored `data/external/aliases/fighter_aliases.csv`, whose
+upstream attribution must stay intact.
+
+`analysis/fightmatrix_graph.py` blocks FightMatrix rank, points, quality
+percentage, 540 metric, combat age, and pre-fight rank from the model schema.
+The committed organization rule table is time-aware and initially diagnostic;
+it does not add promotion prestige bonuses. Reliability weighting multiplies
+the existing participant-caliber fight weight by the geometric mean of the two
+profile completeness scores. The UFC-only default remains unchanged.
 
 Current Sherdog staging: `loaders/sherdog_loader.py` resolves fighter pages,
 caches HTML under `data/external/sherdog/`, parses non-UFC histories, and

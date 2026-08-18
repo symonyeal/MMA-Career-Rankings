@@ -18,6 +18,7 @@ data/external/sherdog/
 data/external/fightmatrix/profiles/
 data/ufc_rank_engine.sqlite
 data/ufc_rank_engine_fightmatrix_public.sqlite
+data/ufc_rank_engine_fightmatrix_depth_one.sqlite
 
 # Accidental pip install artifacts (e.g. pip install pkg ==version)
 =*

@@ -1,0 +1,20 @@
+rule_id,pattern,canonical_organization,promotion_family,region,active_from,active_to,tier,tier_from,tier_to,match_method,confidence,manual_override,notes
+ufc,^UFC(?:\b|$),UFC,UFC,Global,1993-01-01,,1,,,regex,1.0,true,Ultimate Fighting Championship
+pride,^(?:PRIDE|Pride FC)(?:\b|$),PRIDE,PRIDE,Japan,1997-01-01,2007-10-04,1,,,regex,1.0,true,PRIDE Fighting Championships
+strikeforce,^Strikeforce(?:\b|$),Strikeforce,Strikeforce,United States,2006-03-10,2013-01-12,1,2009-01-01,2013-01-12,regex,1.0,true,Major tier applies to the Showtime era
+wec,^WEC(?:\b|$),WEC,Zuffa,United States,2001-06-30,2010-12-16,1,2006-12-11,2010-12-16,regex,1.0,true,Zuffa-era WEC
+bellator,^(?:Bellator|BFC)(?:\b|$),Bellator,Bellator,Global,2009-04-03,,1,2011-01-01,,regex,0.98,true,Bellator MMA
+pfl,^(?:PFL|Professional Fighters League|WSOF)(?:\b|$),PFL,PFL,Global,2012-11-03,,2,,,regex,0.98,true,Includes predecessor WSOF
+rizin,^RIZIN(?:\b|$),RIZIN,RIZIN,Japan,2015-12-29,,2,,,regex,1.0,true,RIZIN Fighting Federation
+one,^(?:ONE|One FC|ONE Championship)(?:\b|$),ONE,ONE,Asia,2011-09-03,,2,,,regex,0.98,true,ONE Championship
+dream,^DREAM(?:\b|$),DREAM,DREAM,Japan,2008-03-15,2012-12-31,2,,,regex,1.0,true,DREAM
+pancrase,^Pancrase(?:\b|$),Pancrase,Pancrase,Japan,1993-09-21,,2,1993-09-21,2000-12-31,regex,1.0,true,Historical tier is time-aware
+shooto,^(?:Shooto|Vale Tudo Japan)(?:\b|$),Shooto,Shooto,Japan,1985-01-01,,2,1989-01-01,2005-12-31,regex,0.98,true,Shooto family
+rings,^(?:RINGS|Rings)(?:\b|$),Rings,Rings,Japan,1991-05-11,2002-02-15,2,,,regex,1.0,true,Fighting Network RINGS
+affliction,^Affliction(?:\b|$),Affliction,Affliction,United States,2008-07-19,2009-01-24,1,,,regex,1.0,true,Short-lived major heavyweight promotion
+cage_warriors,^(?:Cage Warriors|CWFC)(?:\b|$),Cage Warriors,Cage Warriors,Europe,2002-07-27,,2,,,regex,0.98,true,Major European regional promotion
+ksw,^KSW(?:\b|$),KSW,KSW,Europe,2004-02-27,,2,,,regex,1.0,true,Konfrontacja Sztuk Walki
+aca_acb,^(?:ACA|ACB)(?:\b|$),ACA,ACA,Europe/Asia,2014-03-02,,2,,,regex,1.0,true,Absolute Championship Akhmat and predecessor ACB
+m1,^(?:M-1|M1)(?:\b|$),M-1,M-1,Europe/Asia,1997-11-01,,2,,,regex,0.98,true,M-1 Global and related events
+invicta,^(?:Invicta|Invicta FC)(?:\b|$),Invicta,Invicta,United States,2012-04-28,,2,,,regex,1.0,true,Invicta Fighting Championships
+aca_regional,^(?:RFA|LFA|Titan FC|Legacy FC|CFFC|CES MMA|AFC|BRAVE CF|Road FC|DEEP|Jungle Fight|MFC|Tachi Palace Fights)(?:\b|$),Major Regional,Regional,Regional,1990-01-01,,3,,,regex,0.90,true,Recognized regional feeder promotions
