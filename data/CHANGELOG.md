@@ -1,5 +1,80 @@
 # Snapshot Changelog
 
+## 2026-08-18 - Differentiator audit: prequential harness, 30-64x pipeline, market weighting deleted
+
+Full write-up in `docs/DIFFERENTIATOR_AUDIT_2026-08-18.md`.
+
+**Performance, with bit-identical output.** Row-wise work was hoisted out of the
+per-window and per-event loops it did not belong in; the peak window scan became
+a two-pointer over numpy slices; the O(events x fighters) Python rank sort in
+`prefight_ranking_context` became a numeric lexsort keyed on ids assigned in
+sorted-name order (preserving the `(-mu, name)` tie-break exactly);
+`iterrows`/`to_dict("records")` were replaced with array slicing.
+
+- `rate_snapshot.run()`: UFC-only 878s -> 29.3s, complete-edge 2,925s -> 74.5s,
+  reliability 2,922s -> 74.9s, raw 14,041s -> 636s. All 17 artifacts exact at
+  every scope.
+- `analysis/fightmatrix_graph.reconcile_bouts`: ~720s -> 11.3s on 80,667
+  perspectives, all 80,667 decision rows identical.
+- `tests/test_pipeline_vectorization.py` pins each rewrite against a reference
+  implementation written the slow way, since snapshots are gitignored.
+
+**New: `ratings/prequential.py`** - rolling-origin prequential evaluation.
+One chronological sweep yields every one-step-ahead prediction for the Glicko
+filters (no refit); only WHR, a smoother, refits per fold. Metrics: log-loss,
+Brier, accuracy, AUC, reliability curve, ECE. Segments: division, era,
+finish/decision, favourite/underdog, cross-org, completeness band. Benchmarks:
+no-vig closing odds and p=0.5. Folds cached and resumable. Drivers:
+`build_prequential_evaluation.py`, `build_crossorg_weight_sweep.py`,
+`build_scope_prequential_comparison.py`.
+
+**REMOVED: market-relative performance weighting.** `perf_factor_odds` was never
+a term in the signal that produces `performance_weight`; the only live path was
+a rank-gated odds confirmation firing on 35 of 16,958 appearance rows. Paired
+held-out log-loss effect: −1.4×10⁻⁶ [−3.2×10⁻⁶, +3.4×10⁻⁷], an interval spanning zero. Deleted:
+`_MoneylineAnchors`, `_odds_factor`, `_upset_odds_signal`, `perf_factor_odds`,
+the four `PERF_ODDS_*`/`PERF_UPSET_ODDS_*` constants, `viz.odds_impact_chart`,
+the `mkt_impact` notebook panel (generator and `analysis/notebook.ipynb`), and
+the tests and doc claims for all of it. `odds_lines.parquet` is retained and
+promoted to the scoring benchmark.
+
+Effect on a rebuild: `canonical`/`method`/`whr`/`*_integrity` unchanged;
+`performance_weight` moves on 35 rows (max 0.00765); 29 fighters shift by at
+most 2 places on `rank_method_performance`. **Snapshots need a rebuild.**
+
+**New: `ratings/boards.py`** - the boards that survived. `integrity_ledger()`
+lists every discounted appearance with its reason;
+`integrity_discounted_board()` debits the fighter being discounted and nobody
+else (the `*_integrity` rating streams raised 325 of 401 fighters and lowered
+76, because WHR re-anchors the global mean every pass);
+`completeness_gated_board()` returns "insufficient observed history to rank"
+instead of seating a fighter at the 1500 default. Driver: `build_boards.py`.
+
+**Leaned out.** Two WHR streams and four scripts removed, no board affected:
+
+- `whr_integrity` and `whr_performance` are no longer produced. Each was a full
+  smoother pass plus two period-score passes per rebuild, and **nothing read
+  them** — no board, chart, table or export. The public "All-time" lens uses
+  `whr_integrity_performance`; the headline uses base `whr`. Both stay.
+- The `RANKINGS_SUMMARY.xlsx` pipeline (`build_rankings_sheets.py`,
+  `build_rankings_charts.py`, `build_top20_insights.py`, `fix_xlsx_calcchain.py`)
+  moved to `_archive/20260819-xlsx-reporting-superseded/`. The notebook replaced
+  the workbook; none of the four is imported by any module or test.
+- 607 MB of redundant local data removed — 185 MB of byte-identical staging
+  copies duplicated across the depth-one scopes, and the two experimental
+  SQLite exports. See `data/RECLAIMED_2026-08-19.md`. Production database,
+  snapshots and the crawl cache untouched.
+
+UFC-only rebuild is now 28.3 s (from 878 s), producing 5 Glicko streams and 2
+WHR streams instead of 5 + 4.
+
+**Preserved defect, now pinned by a test.** A drawn title bout vacates the
+modelled championship lineage, because `if not winner` does not catch NaN.
+Five bouts affected (Edgar at UFC 136, Woodley at 209, Figueiredo at 263,
+Grasso at 306, Pulver at 63). Left exactly as-is through the performance work
+and covered by `test_drawn_title_bout_vacates_the_modelled_lineage`; fixing it
+is a separate decision.
+
 ## 2026-05-28 - Dual division concept + lens consolidation + Weight Classes section
 
 Follow-up to the same-day title-anchor change. Walking through real careers

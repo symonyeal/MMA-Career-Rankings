@@ -215,7 +215,6 @@ def test_performance_individual_factors_within_envelope():
         "perf_factor_decisiveness",
         "perf_factor_opponent_strength",
         "perf_factor_opponent_streak",
-        "perf_factor_odds",
         "perf_factor_rank_context",
         "perf_factor_championship",
         "perf_factor_p4p",
@@ -562,8 +561,7 @@ def test_rank_gated_upset_rule_is_generic_not_hardcoded(
     assert gap.iloc[0] == expected_gap
 
     is_winner = pd.Series([True])
-    odds_signal = pd.Series([0.0])
-    factor = _upset_factor(gap, odds_signal, is_winner)
+    factor = _upset_factor(gap, is_winner)
     if should_fire:
         assert factor.iloc[0] > 1.0
     else:

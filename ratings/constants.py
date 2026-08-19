@@ -69,8 +69,6 @@ RATING_COLUMN_LABELS: dict[str, str] = {
     "sustained_peak_headline_mu_method_performance":              "Prime Strength",
     "sustained_peak_headline_mu_method_integrity_performance":    "Prime Complete",
     "sustained_peak_headline_mu_whr":                             "Legacy",
-    "sustained_peak_headline_mu_whr_integrity":                   "Legacy Clean",
-    "sustained_peak_headline_mu_whr_performance":                 "Legacy Strength",
     "sustained_peak_headline_mu_whr_integrity_performance":       "Legacy Complete",
 }
 
@@ -367,8 +365,6 @@ PERF_UPSET_RANK_CHAMPION_VALUE: int = 0
 PERF_UPSET_RANK_INTERIM_VALUE: int = 1
 # Odds-confirmation thresholds — odds only contribute when the rank gate is
 # already open. Largest plus-money winner anchors the upset roof.
-PERF_UPSET_ODDS_PLUS_MONEY_FLOOR: float = 250.0  # +250 minimum to count
-PERF_UPSET_ODDS_PLUS_MONEY_FULL: float = 700.0   # +700 anchors full upset
 
 # Tanh saturation scale, halved with the envelope (2026-06-25) so the saturation
 # shape vs the (now halved) signal S is identical to the old +/-20% system.
@@ -394,8 +390,6 @@ PERF_WEIGHT_CLASS_DOWN_LOSS_AMPLITUDE: float = 0.025
 # main-division resume than a same-class loss would. The damp is applied
 # as a winner-loss-side multiplier in [SLEEVE_FACTOR_MIN, 1.0].
 PERF_WEIGHT_CLASS_UP_LOSS_DAMP: float = 0.05
-PERF_ODDS_POSITIVE_AMPLITUDE: float = 0.075  # audit-only column
-PERF_ODDS_NEGATIVE_AMPLITUDE: float = 0.05   # audit-only column
 
 # Activity-aware loss penalty. Debuts are neutral. Once a fighter has a prior
 # UFC appearance, a long gap before a loss increases the losing update.
@@ -501,11 +495,7 @@ ALL_STREAMS: tuple[str, ...] = (CANONICAL_STREAM, METHOD_STREAM, *METHOD_SLEEVE_
 # with no sleeves. Sleeved variants reweight each fight's Bradley-Terry
 # likelihood contribution by the sleeve factor — priors are unweighted.
 WHR_STREAM: str = "whr"
-WHR_INTEGRITY_STREAM: str = "whr_integrity"
-WHR_PERFORMANCE_STREAM: str = "whr_performance"
 WHR_INTEGRITY_PERFORMANCE_STREAM: str = "whr_integrity_performance"
 WHR_SLEEVE_STREAMS: tuple[str, ...] = (
-    WHR_INTEGRITY_STREAM,
-    WHR_PERFORMANCE_STREAM,
     WHR_INTEGRITY_PERFORMANCE_STREAM,
 )

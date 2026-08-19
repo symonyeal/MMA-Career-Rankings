@@ -213,7 +213,7 @@ The rating engine emits five Glicko-2 streams plus one WHR sidecar stream in
 | `mu_canonical` | none | Strict W/L/D Glicko-2. Never sleeved. |
 | `mu_method` | none | Method-bonus winner score in [0.7, 1.0]. Never sleeved. |
 | `mu_method_integrity` | integrity | Method + PED/DQ/missed-weight damp. |
-| `mu_method_performance` | performance | Method + quality + odds reward. |
+| `mu_method_performance` | performance | Method + opponent-quality/context reward (no odds term). |
 | `mu_method_integrity_performance` | both | Method with both sleeves composed. |
 | `mu_whr` | n/a — sidecar | Whole-History Rating smoother (Coulom 2008); see `ratings/whr.py`. **The default headline ranking** — comparable across eras at the rating layer. |
 
@@ -260,8 +260,13 @@ with a tanh-smoothed additive log-signal `S`:
   `loser = 1 - 0.20*tanh(S/PERF_TANH_SCALE)` — both extremes are soft
   saturations inside `[SLEEVE_FACTOR_MIN, SLEEVE_FACTOR_MAX]`, not hard
   clamps. Losers now carry the symmetric mirror weight (no longer a flat 1.0).
-* Market odds (from `odds_lines.parquet`) only contribute when the rank gate
-  is already open; fights without odds fall back to pure quality.
+* Market odds do **not** contribute to any rating. `perf_factor_odds` and the
+  rank-gated odds confirmation were removed on 2026-08-18: the former was never
+  a term in `S`, and the latter moved `performance_weight` on 35 of 16,958
+  appearance rows for a paired held-out log-loss effect of
+  −1.4×10⁻⁶ [−3.2×10⁻⁶, +3.4×10⁻⁷], an interval spanning zero.
+  `odds_lines.parquet` is retained as the benchmark the engine is scored
+  against in `ratings/prequential.py`.
 
 All sub-factor amplitudes live in `ratings/constants.py`; the per-factor
 `perf_factor_*` columns in `performance_appearances.parquet` are retained for

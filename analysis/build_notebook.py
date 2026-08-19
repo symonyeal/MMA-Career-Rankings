@@ -113,7 +113,6 @@ from analysis.viz import (
     # --- 2026-06-23 chart additions (see analysis/CHART_PLAN.md) ---
     division_entropy_chart,
     odds_coverage_summary,
-    odds_impact_chart,
     fighter_betting_line_chart,
     favorite_underdog_performance_chart,
     striking_profile_chart,
@@ -1791,7 +1790,6 @@ register_section("title_lineage", draw_title_lineage)
 MARKET = r"""
 mkt_banner = html_box()
 mkt_fav = chart_widget(height=400)
-mkt_impact = chart_widget(height=560)
 mkt_line = chart_widget(height=380)
 
 # Fighters who actually have odds-priced fights, for the per-fighter line chart.
@@ -1822,7 +1820,6 @@ def draw_market():
             f"(<b style='color:{THEME['text']}'>{summary['odds_coverage_rate']:.0%}</b> coverage).</div>")
     show_fig(mkt_fav, favorite_underdog_performance_chart(
         favorite_underdog_performance_table(odds_lines, fights)))
-    show_fig(mkt_impact, odds_impact_chart(rc, performance_appearances, n=12))
     draw_market_line()
 
 
@@ -1834,7 +1831,6 @@ display(mkt_banner)
 display(mkt_fav)
 display(html_box(note("Do market favorites win as often as the line implies? Realized win rate vs the market's "
                      "expected win rate, by favorite/underdog bucket.")))
-display(mkt_impact)
 display(html_box(note("Career net of the engine's market-value layer. Fighters at the top kept winning as live "
                      "underdogs (the market underrated them); fighters at the bottom were heavy favorites the "
                      "market expected to win all along.")))

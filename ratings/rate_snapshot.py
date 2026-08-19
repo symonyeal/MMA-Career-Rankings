@@ -1,12 +1,17 @@
 """Run the Glicko-2 engine over a canonical snapshot and persist results.
 
-Five rating streams are emitted into ``ratings_current.parquet``:
+Five Glicko-2 rating streams are emitted into ``ratings_current.parquet``:
 
 * ``canonical``   — strict Glicko-2 on W/L/D scoring. Never sleeved.
 * ``method``      — method-bonus winner score in [0.7, 1.0]. Never sleeved.
 * ``method_integrity``             — method + integrity sleeve (PED + DQ + MW).
-* ``method_performance``           — method + performance sleeve (quality + odds).
+* ``method_performance``           — method + performance sleeve (opponent quality).
 * ``method_integrity_performance`` — method + both sleeves.
+
+plus the WHR smoother in two variants: base ``whr`` (the headline) and
+``whr_integrity_performance`` (the public "All-time" lens). The two
+single-sleeve WHR variants were removed on 2026-08-19 — each cost a full
+smoother pass and two period-score passes per rebuild and nothing read them.
 
 The canonical and method ratings are produced by a single ``RatingEngine``
 pass (canonical / method evolve side-by-side). Each method-sleeve stream is
@@ -61,7 +66,7 @@ from ratings.integrity_adjustment import build_integrity_appearances
 from ratings.peaks import five_year_peak, peak_appearance_quality, sustained_peak
 from ratings.whr import run_whr
 from ratings.performance_adjustment import build_performance_appearances
-from ratings.performance_adjustment import normalize_division_label
+from ratings.performance_adjustment import _group_bounds, normalize_division_label
 from loaders.integrity_flags import (
     INTEGRITY_COLUMNS,
     build_integrity_flags,
@@ -87,13 +92,26 @@ def _ensure_integrity_columns(fights: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
+def _iter_event_bouts(fights: pd.DataFrame, columns: list[str]):
+    """Yield ``(event_date, event_name, bouts)`` per event from column arrays.
+
+    A ``groupby(...).to_dict("records")`` per event costs more than the Glicko
+    arithmetic it feeds once the fight table carries tens of thousands of
+    events, so the frame is converted to arrays once and sliced.
+    """
+    f = fights.sort_values(["event_date", "event_name"]).reset_index(drop=True)
+    arrays = {c: f[c].to_numpy() for c in columns}
+    dates = f["event_date"].to_numpy()
+    names = f["event_name"].to_numpy()
+    for lo, hi in zip(*_group_bounds(f["event_date"], f["event_name"])):
+        bouts = [{c: arrays[c][k] for c in columns} for k in range(lo, hi)]
+        yield pd.Timestamp(dates[lo]), names[lo], bouts
+
+
 def _run_canonical_engine(fights: pd.DataFrame, tau: float) -> RatingEngine:
     engine = RatingEngine(tau=tau)
-    f = fights.sort_values(["event_date", "event_name"]).reset_index(drop=True)
-    for (event_date, event_name), group in f.groupby(["event_date", "event_name"], sort=False):
-        bouts = group[[
-            "fighter_a", "fighter_b", "winner", "is_draw", "method_score_winner",
-        ]].to_dict(orient="records")
+    columns = ["fighter_a", "fighter_b", "winner", "is_draw", "method_score_winner"]
+    for event_date, event_name, bouts in _iter_event_bouts(fights, columns):
         engine.process_event(event_date, event_name, bouts)
     return engine
 
@@ -258,15 +276,13 @@ def _run_weighted_engine(
     score_mode: str,
 ) -> WeightedRatingEngine:
     engine = WeightedRatingEngine(tau=tau, score_mode=score_mode)
-    f = fights.sort_values(["event_date", "event_name"]).reset_index(drop=True)
     cols_needed = [
         "fighter_a", "fighter_b", "winner", "is_draw",
         "method_score_winner", "weight_a", "weight_b",
     ]
-    if "quality_score_winner" in f.columns:
+    if "quality_score_winner" in fights.columns:
         cols_needed.append("quality_score_winner")
-    for (event_date, event_name), group in f.groupby(["event_date", "event_name"], sort=False):
-        bouts = group[cols_needed].to_dict(orient="records")
+    for event_date, event_name, bouts in _iter_event_bouts(fights, cols_needed):
         engine.process_event(event_date, event_name, bouts)
     return engine
 
@@ -548,9 +564,11 @@ def run(
     # likelihood contribution (g *= w, h_diag *= w); the Wiener-process and
     # anchor priors are left unweighted so temporal coupling and global scale
     # remain structural constraints. Same weight tables as Glicko-2 sleeves.
+    # Only the fully-sleeved WHR variant is produced. ``whr_integrity`` and
+    # ``whr_performance`` were each a full smoother pass plus two period-score
+    # passes per rebuild, and nothing read them — no board, chart, table or
+    # export. Removed 2026-08-19; see docs/DIFFERENTIATOR_AUDIT_2026-08-18.md.
     _whr_sleeve_specs = [
-        ("whr_integrity", integrity_app, "integrity_weight"),
-        ("whr_performance", perf_app, "performance_weight"),
         ("whr_integrity_performance", combined_app, "combined_weight"),
     ]
     # Dominance reward for Legacy: a dominant win is stronger evidence, so the

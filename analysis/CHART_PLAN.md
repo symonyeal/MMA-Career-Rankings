@@ -10,8 +10,9 @@
 > **Risers & Fallers** (now a top-N diverging bar, not a 500-dot smear, and it
 > no longer blanks under Peak/Prime form), **Title Lineage** (single belt-baton
 > timeline with real reigns + defense counts), and the **Market vs Model**
-> board (odds-impact chart now reads the real `perf_factor_odds` signal; the
-> beat/missed-the-line chart is now per-fighter via a dropdown).
+> board (the beat/missed-the-line chart is now per-fighter via a dropdown).
+> The odds-impact chart was removed on 2026-08-18: it plotted `perf_factor_odds`,
+> which never fed any rating.
 >
 > **Status: ✅ IMPLEMENTED 2026-06-23.** All 12 ideas below were built and wired
 > into `analysis/notebook.ipynb` (now 23 code + 22 markdown cells). New builders
@@ -84,9 +85,9 @@ unless noted.
   currently only visible per-fighter inside *Tale of the Tape*).
 - **Shows:** two ready helpers —
   `favorite_underdog_performance_chart` (do model-favored fighters actually win?)
-  and `odds_impact_chart` / `odds_adjustment_distribution_chart` (where market
-  odds pushed a rating). Lead banner from `odds_coverage_summary` (6,567 covered
-  fights, ~78% since 2010).
+  and `odds_adjustment_distribution_chart`. Lead banner from
+  `odds_coverage_summary` (6,567 covered fights, ~78% since 2010). Closing odds
+  are the benchmark the model is scored against, not an input to it.
 - **Data:** `odds_lines` (market_favorite/underdog, no-vig probs) +
   `performance_appearances.market_residual`.
 - **Takeaway:** "The model and Vegas agree ~X% of the time; here's where the

@@ -30,7 +30,7 @@ def stage_rating_snapshot(
     rating_outputs = {
         "ratings_current.parquet", "ratings_history.parquet", "ratings_history_whr.parquet",
         "ratings_history_method_integrity.parquet", "ratings_history_method_performance.parquet",
-        "ratings_history_method_integrity_performance.parquet", "ratings_history_whr_integrity.parquet",
+        "ratings_history_method_integrity_performance.parquet",
         "ratings_history_whr_performance.parquet", "ratings_history_whr_integrity_performance.parquet",
         "performance_appearances.parquet", "integrity_appearances.parquet", "sleeve_attribution.parquet",
         "fight_dominance.parquet", "fighter_dominance.parquet", "division_entropy.parquet",

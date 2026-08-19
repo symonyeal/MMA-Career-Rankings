@@ -33,7 +33,6 @@ Audit columns:
   ``perf_factor_championship``, ``perf_factor_p4p``
 * ``perf_factor_opponent_streak``
 * ``perf_factor_weight_class``, ``perf_factor_activity_loss``
-* ``perf_factor_odds`` (now informational; rank gate is the primary upset trigger)
 
 New columns:
 
@@ -70,8 +69,6 @@ from ratings.constants import (
     METHOD_SCORE_NON_UNANIMOUS_DECISION,
     METHOD_SCORE_UNANIMOUS,
     PERF_DECISIVENESS_AMPLITUDE,
-    PERF_ODDS_NEGATIVE_AMPLITUDE,
-    PERF_ODDS_POSITIVE_AMPLITUDE,
     PERF_OPPONENT_QUALITY_AMPLITUDE,
     PERF_OPPONENT_STREAK_AMPLITUDE,
     PERF_CHAMPIONSHIP_AMPLITUDE,
@@ -79,8 +76,6 @@ from ratings.constants import (
     PERF_RANK_CONTEXT_AMPLITUDE,
     PERF_TANH_SCALE,
     PERF_UPSET_AMPLITUDE,
-    PERF_UPSET_ODDS_PLUS_MONEY_FLOOR,
-    PERF_UPSET_ODDS_PLUS_MONEY_FULL,
     PERF_UPSET_RANK_CHAMPION_VALUE,
     PERF_UPSET_RANK_GAP_SCALE,
     PERF_UPSET_RANK_GAP_THRESHOLD,
@@ -133,7 +128,6 @@ PERFORMANCE_APPEARANCE_COLUMNS = (
     "perf_factor_decisiveness",
     "perf_factor_opponent_strength",
     "perf_factor_opponent_streak",
-    "perf_factor_odds",
     "perf_factor_rank_context",
     "perf_factor_championship",
     "perf_factor_p4p",
@@ -451,35 +445,62 @@ def pre_fight_win_streaks(fights: pd.DataFrame) -> pd.DataFrame:
     f = fights[["fight_url", "event_date", "event_name", "fighter_a", "fighter_b", "winner", "is_draw"]].copy()
     f["event_date"] = pd.to_datetime(f["event_date"], errors="coerce")
     f = f.sort_values(["event_date", "event_name"]).reset_index(drop=True)
-    streaks: dict[str, int] = {}
-    rows: list[dict] = []
-    for (_d, _n), group in f.groupby(["event_date", "event_name"], sort=False):
-        for _, row in group.iterrows():
-            rows.append({
-                "fight_url": row["fight_url"],
-                "streak_a": int(streaks.get(row["fighter_a"], 0)),
-                "streak_b": int(streaks.get(row["fighter_b"], 0)),
-            })
-        for _, row in group.iterrows():
-            a, b = row["fighter_a"], row["fighter_b"]
-            if bool(row.get("is_draw", False)):
-                streaks[a] = 0
+
+    names = pd.unique(pd.concat([f["fighter_a"], f["fighter_b"]], ignore_index=True).dropna())
+    fighter_id = {name: i for i, name in enumerate(names)}
+    id_a = f["fighter_a"].map(fighter_id).fillna(-1).to_numpy(dtype=np.int64)
+    id_b = f["fighter_b"].map(fighter_id).fillna(-1).to_numpy(dtype=np.int64)
+    a_won = f["winner"].eq(f["fighter_a"]).to_numpy()
+    b_won = f["winner"].eq(f["fighter_b"]).to_numpy()
+    drawn = f["is_draw"].fillna(False).astype(bool).to_numpy() if "is_draw" in f.columns else np.zeros(len(f), dtype=bool)
+
+    streaks = np.zeros(len(names) + 1, dtype=np.int64)  # index -1 parks unnamed sides
+    streak_a = np.zeros(len(f), dtype=np.int64)
+    streak_b = np.zeros(len(f), dtype=np.int64)
+
+    # Streaks are read for the whole card before any of it is applied, so two
+    # bouts on one event cannot leak into each other.
+    for lo, hi in zip(*_group_bounds(f["event_date"], f["event_name"])):
+        rows = slice(lo, hi)
+        streak_a[rows] = streaks[id_a[rows]]
+        streak_b[rows] = streaks[id_b[rows]]
+        for k in range(lo, hi):
+            a, b = id_a[k], id_b[k]
+            if drawn[k]:
+                streaks[a] = streaks[b] = 0
+            elif a_won[k]:
+                streaks[a] += 1
                 streaks[b] = 0
-            elif row["winner"] == a:
-                streaks[a] = int(streaks.get(a, 0)) + 1
-                streaks[b] = 0
-            elif row["winner"] == b:
-                streaks[b] = int(streaks.get(b, 0)) + 1
+            elif b_won[k]:
+                streaks[b] += 1
                 streaks[a] = 0
             else:
-                streaks[a] = 0
-                streaks[b] = 0
-    return pd.DataFrame(rows)
+                streaks[a] = streaks[b] = 0
+
+    return pd.DataFrame({
+        "fight_url": f["fight_url"].to_numpy(),
+        "streak_a": streak_a,
+        "streak_b": streak_b,
+    })
 
 
-def _rank_map(rows: list[tuple[str, float]]) -> dict[str, int]:
-    ranked = sorted(rows, key=lambda item: (-float(item[1]), item[0]))
-    return {fighter: rank for rank, (fighter, _mu) in enumerate(ranked, start=1)}
+def _group_bounds(*keys: pd.Series) -> tuple[np.ndarray, np.ndarray]:
+    """Half-open row ranges of each run of equal key tuples in an already-sorted frame.
+
+    The equivalent of ``groupby(sort=False)`` over a frame that is already
+    ordered by those keys, without materializing a group object per event.
+    """
+    n = len(keys[0])
+    if n == 0:
+        return np.empty(0, dtype=np.int64), np.empty(0, dtype=np.int64)
+    changed = np.zeros(n - 1, dtype=bool)
+    for key in keys:
+        values = key.to_numpy()
+        changed |= values[1:] != values[:-1]
+    boundary = np.flatnonzero(changed) + 1
+    starts = np.concatenate(([0], boundary))
+    stops = np.concatenate((boundary, [n]))
+    return starts, stops
 
 
 def _empty_prefight_context() -> pd.DataFrame:
@@ -514,8 +535,9 @@ def prefight_ranking_context(canonical_fights: pd.DataFrame, ratings_history: pd
     f = canonical_fights.copy()
     f["event_date"] = pd.to_datetime(f["event_date"], errors="coerce")
     f["division"] = f.get("weight_class", pd.Series(index=f.index)).map(normalize_division_label)
-    f["is_championship_bout"] = f.apply(is_championship_bout, axis=1)
-    f["is_interim_title_bout"] = f.get("weight_class", pd.Series(index=f.index)).map(is_interim_title_bout)
+    weight_class = f.get("weight_class", pd.Series(index=f.index))
+    f["is_championship_bout"] = weight_class.map(is_real_ufc_title_bout)
+    f["is_interim_title_bout"] = weight_class.map(is_interim_title_bout)
     f = f.sort_values(["event_date", "event_name"]).reset_index(drop=True)
 
     if ratings_history is None or ratings_history.empty or "mu_canonical" not in ratings_history.columns:
@@ -536,85 +558,155 @@ def prefight_ranking_context(canonical_fights: pd.DataFrame, ratings_history: pd
             neutral[col] = False
         return neutral
 
+    # Post-event mu per bout side, joined once rather than rebuilt per event.
+    # A fighter twice on one card keeps the later row, matching the dict-build
+    # this replaces.
     h = ratings_history[["fighter", "event_date", "event_name", "mu_canonical"]].copy()
     h["event_date"] = pd.to_datetime(h["event_date"], errors="coerce")
-    history_by_event = {
-        key: group for key, group in h.groupby(["event_date", "event_name"], sort=False)
-    }
+    h["mu_canonical"] = pd.to_numeric(h["mu_canonical"], errors="coerce")
+    h = h.drop_duplicates(["fighter", "event_date", "event_name"], keep="last")
+    for side in ("a", "b"):
+        f = f.merge(
+            h.rename(columns={"fighter": f"fighter_{side}", "mu_canonical": f"_post_mu_{side}"}),
+            on=[f"fighter_{side}", "event_date", "event_name"],
+            how="left",
+        )
 
-    state_mu: dict[str, float] = {}
-    state_division: dict[str, str | None] = {}
-    state_last_date: dict[str, pd.Timestamp] = {}
-    champions: dict[str, str] = {}
-    interim_champions: dict[str, str] = {}
-    rows: list[dict] = []
+    # Fighter ids are assigned in sorted-name order, so the rank tie-break
+    # ``(-mu, name)`` becomes a numeric lexsort on ``(-mu, id)``.
+    names = pd.unique(pd.concat([f["fighter_a"], f["fighter_b"]], ignore_index=True).dropna())
+    order_by_name = sorted(str(n) for n in names)
+    fighter_id = {name: i for i, name in enumerate(order_by_name)}
+    n_fighters = len(order_by_name)
 
-    for (event_date, event_name), group in f.groupby(["event_date", "event_name"], sort=False):
-        event_date = pd.Timestamp(event_date)
-        cutoff = event_date - pd.Timedelta(days=RANK_CONTEXT_ACTIVE_DAYS)
-        active = [
-            (fighter, mu)
-            for fighter, mu in state_mu.items()
-            if state_last_date.get(fighter, pd.Timestamp.min) >= cutoff
-        ]
-        p4p_rank = _rank_map(active)
-        by_division: dict[str, list[tuple[str, float]]] = {}
-        for fighter, mu in active:
-            division = state_division.get(fighter)
-            if division:
-                by_division.setdefault(division, []).append((fighter, mu))
-        division_ranks = {
-            division: _rank_map(values) for division, values in by_division.items()
-        }
+    def _ids(series: pd.Series) -> np.ndarray:
+        return series.map(fighter_id).fillna(-1).to_numpy(dtype=np.int64)
 
-        for _, row in group.iterrows():
-            division = row.get("division")
-            div_map = division_ranks.get(division, {}) if division else {}
-            a = row.get("fighter_a")
-            b = row.get("fighter_b")
-            rows.append({
-                "fight_url": row.get("fight_url"),
-                "division": division,
-                "is_championship_bout": bool(row.get("is_championship_bout", False)),
-                "is_interim_title_bout": bool(row.get("is_interim_title_bout", False)),
-                "fighter_a_prefight_division_rank": div_map.get(a),
-                "fighter_b_prefight_division_rank": div_map.get(b),
-                "fighter_a_prefight_p4p_rank": p4p_rank.get(a),
-                "fighter_b_prefight_p4p_rank": p4p_rank.get(b),
-                "fighter_a_entered_as_champion": bool(division and champions.get(division) == a),
-                "fighter_b_entered_as_champion": bool(division and champions.get(division) == b),
-                "fighter_a_entered_as_interim_champion": bool(division and interim_champions.get(division) == a),
-                "fighter_b_entered_as_interim_champion": bool(division and interim_champions.get(division) == b),
-            })
+    id_a = _ids(f["fighter_a"])
+    id_b = _ids(f["fighter_b"])
+    divisions = f["division"].to_numpy()
+    division_code, division_values = pd.factorize(f["division"], use_na_sentinel=True)
+    is_title = f["is_championship_bout"].fillna(False).astype(bool).to_numpy()
+    is_interim = f["is_interim_title_bout"].fillna(False).astype(bool).to_numpy()
+    winner_id = _ids(f["winner"]) if "winner" in f.columns else np.full(len(f), -1, dtype=np.int64)
+    # The row loop this replaces guarded with ``if not winner``, which skips
+    # None and "" but NOT NaN — so a drawn title bout falls through and writes
+    # a champion nobody matches, vacating the modeled lineage. That is why
+    # Edgar does not enter UFC 136 flagged as champion. Preserved deliberately;
+    # see the 2026-08-18 report for why it is a defect worth deciding on
+    # separately rather than silently fixing inside a performance change.
+    winner_values = (
+        f["winner"].to_numpy() if "winner" in f.columns else np.full(len(f), None, dtype=object)
+    )
+    winner_falsy = np.array(
+        [w is None or (isinstance(w, str) and not w) for w in winner_values], dtype=bool
+    )
+    post_mu_a = pd.to_numeric(f["_post_mu_a"], errors="coerce").to_numpy(dtype=float)
+    post_mu_b = pd.to_numeric(f["_post_mu_b"], errors="coerce").to_numpy(dtype=float)
+    event_days = (f["event_date"] - pd.Timestamp(0)).dt.days.to_numpy(dtype=np.int64)
+
+    state_mu = np.full(n_fighters, np.nan)
+    state_last_day = np.full(n_fighters, np.iinfo(np.int64).min, dtype=np.int64)
+    state_division = np.full(n_fighters, -1, dtype=np.int64)
+    # Champion lineage is per division and only ever touched by title bouts.
+    champions: dict[int, int] = {}
+    interim_champions: dict[int, int] = {}
+
+    n = len(f)
+    div_rank_a = np.full(n, np.nan)
+    div_rank_b = np.full(n, np.nan)
+    p4p_rank_a = np.full(n, np.nan)
+    p4p_rank_b = np.full(n, np.nan)
+    champ_a = np.zeros(n, dtype=bool)
+    champ_b = np.zeros(n, dtype=bool)
+    interim_champ_a = np.zeros(n, dtype=bool)
+    interim_champ_b = np.zeros(n, dtype=bool)
+
+    event_starts, event_stops = _group_bounds(f["event_date"], f["event_name"])
+    for lo, hi in zip(event_starts, event_stops):
+        cutoff_day = event_days[lo] - RANK_CONTEXT_ACTIVE_DAYS
+        active = np.flatnonzero(state_last_day >= cutoff_day)
+        if active.size:
+            # Global P4P order, then division order read off the same sweep.
+            order = active[np.lexsort((active, -state_mu[active]))]
+            p4p = np.full(n_fighters, np.nan)
+            p4p[order] = np.arange(1, order.size + 1, dtype=float)
+
+            div_of_order = state_division[order]
+            by_div = np.argsort(div_of_order, kind="stable")
+            grouped = div_of_order[by_div]
+            starts = np.flatnonzero(np.concatenate(([True], grouped[1:] != grouped[:-1])))
+            sizes = np.diff(np.concatenate((starts, [grouped.size])))
+            within = np.arange(grouped.size) - np.repeat(starts, sizes)
+            div_rank = np.full(n_fighters, np.nan)
+            div_rank[order[by_div]] = within + 1.0
+            # A fighter whose recorded division is unknown is in no division board.
+            div_rank[order[div_of_order < 0]] = np.nan
+        else:
+            p4p = np.full(n_fighters, np.nan)
+            div_rank = np.full(n_fighters, np.nan)
+
+        rows = slice(lo, hi)
+        ra, rb = id_a[rows], id_b[rows]
+        p4p_rank_a[rows] = np.where(ra >= 0, p4p[ra], np.nan)
+        p4p_rank_b[rows] = np.where(rb >= 0, p4p[rb], np.nan)
+        # A bout only carries a divisional rank when the bout's own division
+        # matches the division the fighter is currently ranked in.
+        same_div_a = (ra >= 0) & (state_division[ra] == division_code[rows]) & (division_code[rows] >= 0)
+        same_div_b = (rb >= 0) & (state_division[rb] == division_code[rows]) & (division_code[rows] >= 0)
+        div_rank_a[rows] = np.where(same_div_a, div_rank[ra], np.nan)
+        div_rank_b[rows] = np.where(same_div_b, div_rank[rb], np.nan)
+
+        for k in range(lo, hi):
+            d = division_code[k]
+            if d < 0:
+                continue
+            champ_a[k] = champions.get(d, -1) == id_a[k]
+            champ_b[k] = champions.get(d, -1) == id_b[k]
+            interim_champ_a[k] = interim_champions.get(d, -1) == id_a[k]
+            interim_champ_b[k] = interim_champions.get(d, -1) == id_b[k]
 
         # Advance title lineage after all pre-fight context for the event is
         # captured, so same-card title bouts cannot leak into each other.
-        for _, row in group.iterrows():
-            winner = row.get("winner")
-            division = row.get("division")
-            if not winner or not division or not bool(row.get("is_championship_bout", False)):
+        for k in range(lo, hi):
+            d = division_code[k]
+            if winner_falsy[k] or d < 0 or not is_title[k]:
                 continue
-            if bool(row.get("is_interim_title_bout", False)):
-                interim_champions[division] = winner
+            # A NaN winner lands here as -1, which matches no fighter id — the
+            # vacating behaviour described above.
+            if is_interim[k]:
+                interim_champions[d] = winner_id[k]
             else:
-                champions[division] = winner
-                interim_champions.pop(division, None)
+                champions[d] = winner_id[k]
+                interim_champions.pop(d, None)
 
-        post = history_by_event.get((event_date, event_name))
-        if post is None:
-            continue
-        post_mu = dict(zip(post["fighter"], pd.to_numeric(post["mu_canonical"], errors="coerce")))
-        for _, row in group.iterrows():
-            division = row.get("division")
-            for side in ("fighter_a", "fighter_b"):
-                fighter = row.get(side)
-                if not fighter or fighter not in post_mu or pd.isna(post_mu[fighter]):
-                    continue
-                state_mu[fighter] = float(post_mu[fighter])
-                state_division[fighter] = division
-                state_last_date[fighter] = event_date
+        # State advances in bout order, a then b, so a fighter twice on one
+        # card carries the later bout's division — as the row loop did.
+        seq_ids = np.empty(2 * (hi - lo), dtype=np.int64)
+        seq_ids[0::2], seq_ids[1::2] = ra, rb
+        seq_mu = np.empty(2 * (hi - lo))
+        seq_mu[0::2], seq_mu[1::2] = post_mu_a[rows], post_mu_b[rows]
+        seq_div = np.repeat(division_code[rows], 2)
+        keep = (seq_ids >= 0) & ~np.isnan(seq_mu)
+        if keep.any():
+            state_mu[seq_ids[keep]] = seq_mu[keep]
+            state_division[seq_ids[keep]] = seq_div[keep]
+            state_last_day[seq_ids[keep]] = event_days[lo]
 
-    return pd.DataFrame(rows)
+    return pd.DataFrame({
+        "fight_url": f["fight_url"].to_numpy() if "fight_url" in f.columns else np.full(n, None),
+        "division": divisions,
+        "is_championship_bout": is_title,
+        "is_interim_title_bout": is_interim,
+        "fighter_a_prefight_division_rank": div_rank_a,
+        "fighter_b_prefight_division_rank": div_rank_b,
+        "fighter_a_prefight_p4p_rank": p4p_rank_a,
+        "fighter_b_prefight_p4p_rank": p4p_rank_b,
+        "fighter_a_entered_as_champion": champ_a,
+        "fighter_b_entered_as_champion": champ_b,
+        "fighter_a_entered_as_interim_champion": interim_champ_a,
+        "fighter_b_entered_as_interim_champion": interim_champ_b,
+    })
 
 
 def _division_limit(division: object) -> float | None:
@@ -705,25 +797,6 @@ def prefight_weight_class_context(canonical_fights: pd.DataFrame) -> pd.DataFram
 
 
 # ---------------------------------------------------------------------------
-# Odds moneyline normalization
-
-
-@dataclass
-class _MoneylineAnchors:
-    max_positive: float
-    max_negative_abs: float
-
-    @classmethod
-    def from_odds(cls, odds: pd.Series) -> "_MoneylineAnchors":
-        o = pd.to_numeric(odds, errors="coerce").dropna().to_numpy(dtype=float)
-        pos = o[o > 0]
-        neg = o[o < 0]
-        return cls(
-            max_positive=float(pos.max()) if pos.size else 0.0,
-            max_negative_abs=float(-neg.min()) if neg.size else 0.0,
-        )
-
-
 # ---------------------------------------------------------------------------
 # Sub-factor builders (each maps an underlying signal to a multiplicative factor)
 
@@ -793,21 +866,6 @@ def _american_from_decimal(decimal_odds: object) -> float | None:
     if dec >= 2.0:
         return (dec - 1.0) * 100.0
     return -100.0 / (dec - 1.0)
-
-
-def _odds_factor(market_american_odds: pd.Series, anchors: _MoneylineAnchors) -> pd.Series:
-    """Signed moneyline factor in [0.90, 1.15]."""
-    odds = pd.to_numeric(market_american_odds, errors="coerce")
-    factor = pd.Series(1.0, index=odds.index, dtype="float64")
-    pos_mask = odds > 0
-    neg_mask = odds < 0
-    if anchors.max_positive > 0:
-        norm = (odds.loc[pos_mask] / anchors.max_positive).clip(lower=0.0, upper=1.0)
-        factor.loc[pos_mask] = 1.0 + PERF_ODDS_POSITIVE_AMPLITUDE * norm
-    if anchors.max_negative_abs > 0:
-        norm = ((-odds.loc[neg_mask]) / anchors.max_negative_abs).clip(lower=0.0, upper=1.0)
-        factor.loc[neg_mask] = 1.0 - PERF_ODDS_NEGATIVE_AMPLITUDE * norm
-    return factor
 
 
 def _rank_context_factor(opponent_rank: pd.Series, opponent_champion: pd.Series, opponent_interim: pd.Series) -> pd.Series:
@@ -919,23 +977,8 @@ def _upset_rank_gap(
     return (eff_fighter - eff_opp).astype(float)
 
 
-def _upset_odds_signal(market_american_odds: pd.Series) -> pd.Series:
-    """0..1 confirmation signal for very large plus-money winners."""
-    odds = pd.to_numeric(market_american_odds, errors="coerce")
-    signal = pd.Series(0.0, index=odds.index, dtype="float64")
-    pos = odds > 0
-    if pos.any():
-        scaled = (
-            (odds.loc[pos] - PERF_UPSET_ODDS_PLUS_MONEY_FLOOR)
-            / max(PERF_UPSET_ODDS_PLUS_MONEY_FULL - PERF_UPSET_ODDS_PLUS_MONEY_FLOOR, 1.0)
-        ).clip(lower=0.0, upper=1.0)
-        signal.loc[pos] = scaled
-    return signal
-
-
 def _upset_factor(
     rank_gap: pd.Series,
-    odds_signal: pd.Series,
     is_winner: pd.Series,
 ) -> pd.Series:
     """Rank-gated upset multiplier for winner-side rows.
@@ -944,17 +987,18 @@ def _upset_factor(
     is computed for both winner and loser rows so the column is available for
     audit, but only the winner-side computation feeds ``S``. (Losers receive
     the symmetric tanh damp via ``S`` regardless.)
+
+    The divisional rank gap is the whole gate. A closing-odds confirmation term
+    used to sit alongside it; the 2026-08-18 audit measured it moving
+    ``performance_weight`` on 35 of 16,958 appearance rows by at most 0.0077,
+    for a paired effect on held-out log-loss of -1.4e-06 whose 95% interval
+    spans zero, and it was removed.
     """
     gap = pd.to_numeric(rank_gap, errors="coerce").fillna(0.0)
     gate_open = gap >= PERF_UPSET_RANK_GAP_THRESHOLD
-    rank_level = ((gap - PERF_UPSET_RANK_GAP_THRESHOLD) / PERF_UPSET_RANK_GAP_SCALE).clip(
+    level = ((gap - PERF_UPSET_RANK_GAP_THRESHOLD) / PERF_UPSET_RANK_GAP_SCALE).clip(
         lower=0.0, upper=1.0
     )
-    # Odds confirmation only counts when the rank gate is open.
-    confirmation = pd.to_numeric(odds_signal, errors="coerce").fillna(0.0)
-    confirmation = confirmation.where(gate_open, 0.0)
-    level = np.maximum(rank_level.to_numpy(), confirmation.to_numpy())
-    level = pd.Series(level, index=rank_level.index, dtype="float64")
     level = level.where(gate_open, 0.0)
     # Only winners get the upset bonus surfaced into the per-factor column.
     level = level.where(is_winner.fillna(False).astype(bool), 0.0)
@@ -1116,8 +1160,6 @@ def build_performance_appearances(
     if missing_american.any():
         derived_american = out.loc[missing_american, "market_decimal_odds"].map(_american_from_decimal)
         out.loc[missing_american, "market_american_odds"] = pd.to_numeric(derived_american, errors="coerce")
-    anchors = _MoneylineAnchors.from_odds(out["market_american_odds"])
-
     # Per-factor audit columns. Each ``perf_factor_*`` reflects what that one
     # signal would say on its own; the per-fight combination below
     # deduplicates overlapping opponent-quality signals via ``max``.
@@ -1129,8 +1171,6 @@ def build_performance_appearances(
     out["perf_factor_opponent_streak"] = _opponent_streak_factor(
         out["opponent_streak"], out["opponent_prefight_mu"]
     ).clip(lower=SLEEVE_FACTOR_MIN, upper=SLEEVE_FACTOR_MAX)
-    out["perf_factor_odds"] = _odds_factor(out["market_american_odds"], anchors).clip(
-        lower=SLEEVE_FACTOR_MIN, upper=SLEEVE_FACTOR_MAX)
     out["perf_factor_rank_context"] = _rank_context_factor(
         out["opponent_prefight_division_rank"],
         out["opponent_entered_as_champion"],
@@ -1165,9 +1205,8 @@ def build_performance_appearances(
         out["opponent_entered_as_champion"],
         out["opponent_entered_as_interim_champion"],
     )
-    upset_odds = _upset_odds_signal(out["market_american_odds"])
     out["perf_factor_upset"] = _upset_factor(
-        out["perf_upset_rank_gap"], upset_odds, out["is_winner"]
+        out["perf_upset_rank_gap"], out["is_winner"]
     ).clip(lower=SLEEVE_FACTOR_MIN, upper=SLEEVE_FACTOR_MAX)
 
     # ------------------------------------------------------------------

@@ -155,7 +155,6 @@ PERFORMANCE_FACTOR_LABELS = {
     "perf_factor_decisiveness": "Decisiveness",
     "perf_factor_opponent_strength": "Opponent strength",
     "perf_factor_opponent_streak": "Opponent streak",
-    "perf_factor_odds": "Market odds",
     "perf_factor_rank_context": "Top-15 division context",
     "perf_factor_championship": "Championship context",
     "perf_factor_p4p": "P4P context",
@@ -193,8 +192,6 @@ def _metric_label(column: str) -> str:
         "mu_method_performance": "Strength rating",
         "mu_method_integrity_performance": "Complete rating",
         "mu_whr": "Legacy rating",
-        "mu_whr_integrity": "Legacy clean rating",
-        "mu_whr_performance": "Legacy strength rating",
         "mu_whr_integrity_performance": "Legacy complete rating",
     }
     if column in labels:
@@ -2917,74 +2914,6 @@ def _fighter_odds_profile(odds_lines: pd.DataFrame | None) -> pd.DataFrame:
             median_market_prob=("market_prob", "median"),
         )
     )
-
-
-def odds_impact_chart(
-    ratings_current: pd.DataFrame | None = None,
-    performance_appearances: pd.DataFrame | None = None,
-    n: int = 12,
-) -> go.Figure:
-    """Who the market-value layer credited vs discounted, by net odds effect.
-
-    The engine's odds sleeve nudges each fight's credit by how the result landed
-    against the betting line (``perf_factor_odds``): beat a long line as a live
-    underdog and the win is worth more; win as a heavy favorite and it is worth
-    a touch less. Summing ``perf_factor_odds - 1`` across a fighter's career
-    gives a single "net odds effect" — positive fighters are the ones the market
-    kept underrating, negative fighters are the heavy chalk the market expected
-    to win all along.
-    """
-    title = "Who the market underrated vs overrated"
-    if performance_appearances is None or performance_appearances.empty \
-            or "perf_factor_odds" not in performance_appearances.columns \
-            or "fighter" not in performance_appearances.columns:
-        return _empty_figure(
-            "market-odds factors not present in this snapshot", title=title)
-    pa = performance_appearances.copy()
-    pa["perf_factor_odds"] = pd.to_numeric(pa["perf_factor_odds"], errors="coerce")
-    pa = pa.dropna(subset=["perf_factor_odds", "fighter"])
-    pa["_eff"] = pa["perf_factor_odds"] - 1.0
-    pa = pa[pa["_eff"].abs() > 1e-9]
-    if pa.empty:
-        return _empty_figure("no market-odds adjustments fired", title=title)
-    agg = (
-        pa.groupby("fighter")
-        .agg(net=("_eff", "sum"), fights=("_eff", "size"))
-        .reset_index()
-    )
-    agg = agg[agg["net"].abs() > 0.02]
-    if agg.empty:
-        return _empty_figure("no measurable market-odds effect", title=title)
-    movers = pd.concat([
-        agg.sort_values("net", ascending=False).head(n),
-        agg.sort_values("net", ascending=True).head(n),
-    ]).drop_duplicates("fighter").sort_values("net")
-    colors = np.where(movers["net"] >= 0, SIGN_COLORS["positive"], SIGN_COLORS["negative"])
-    fig = go.Figure(go.Bar(
-        x=movers["net"],
-        y=movers["fighter"],
-        orientation="h",
-        marker_color=colors,
-        text=movers["net"].map(lambda v: f"{v:+.2f}"),
-        textposition="outside",
-        cliponaxis=False,
-        customdata=movers["fights"].astype("Int64").astype("string"),
-        hovertemplate=(
-            "<b>%{y}</b><br>"
-            "net market-value effect=%{x:+.2f}<br>"
-            "over %{customdata} odds-priced fights<extra></extra>"
-        ),
-    ))
-    fig.add_vline(x=0, line_color=THEME["border_strong"], line_width=1.5)
-    _apply_chart_layout(fig, height=max(440, 24 * len(movers)))
-    fig.update_layout(
-        title=title,
-        xaxis_title="Net market-value effect  (＋ market underrated · − market overrated)",
-        yaxis_title="",
-        margin=dict(t=64, r=70, b=56, l=180),
-    )
-    fig.update_yaxes(automargin=True, tickfont=dict(size=12))
-    return fig
 
 
 def ranking_context_impact_table(performance_appearances: pd.DataFrame, n: int = 25) -> pd.DataFrame:

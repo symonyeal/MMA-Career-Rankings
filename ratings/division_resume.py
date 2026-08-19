@@ -26,17 +26,21 @@ from ratings.constants import (
     DIVISION_CARRYOVER_CAP,
     DIVISION_CARRYOVER_FRAC,
     DIVISION_HOME_RECENCY_HALFLIFE_DAYS,
+    HEADLINE_TITLE_APPEARANCE_MASS,
+    HEADLINE_TITLE_DEFENSE_MASS,
+    HEADLINE_TITLE_WIN_MASS,
     PERIOD_DRAW_BASE_WEIGHT,
     PERIOD_LOSS_BASE_WEIGHT,
     PERIOD_LOSS_QUALITY_SCALE,
+    PERIOD_TITLE_EFFECTIVE_APPEARANCE_CREDIT,
+    PERIOD_TITLE_EFFECTIVE_DEFENSE_CREDIT,
+    PERIOD_TITLE_EFFECTIVE_WIN_CREDIT,
     PERIOD_WIN_BASE_WEIGHT,
 )
 from ratings.peaks import (
     _context_adjustment,
     _resume_bonus,
     _result_adjustment,
-    _title_effective_count,
-    _title_ladder_mass,
     _title_ladder_parts,
 )
 from ratings.performance_adjustment import DIVISION_WEIGHT_LIMIT_LB
@@ -163,54 +167,96 @@ def division_resume_rows(
     # outweigh a long-established division.
     as_of = pd.to_datetime(merged["event_date"], errors="coerce").max()
 
-    rows: list[dict] = []
-    for (fighter, division), group in merged.groupby(["fighter", "division"], sort=False):
-        group = group.sort_values(["event_date", "event_name"]).copy()
-        weights = _appearance_weights(group)
-        adjusted_mu = (
-            pd.to_numeric(group[mu_col], errors="coerce")
-            + _result_adjustment(group["actual_score"])
-            + _context_adjustment(group)
+    # Every per-appearance term is a row property, so it is computed once over
+    # the whole frame; the per-(fighter, division) loop is then numpy slice
+    # reductions. Rows are laid out in ``groupby(sort=False)`` order — group
+    # code by first appearance, dated within the group — so the loop sees
+    # exactly the frames the previous per-group implementation built.
+    pair_code = pd.factorize(pd.MultiIndex.from_arrays(
+        [merged["fighter"], merged["division"]]))[0]
+    merged = merged.assign(_pair_code=pair_code).sort_values(
+        ["_pair_code", "event_date", "event_name"], kind="stable"
+    ).reset_index(drop=True)
+
+    weights = _appearance_weights(merged).to_numpy()
+    adjusted_mu = (
+        pd.to_numeric(merged[mu_col], errors="coerce")
+        + _result_adjustment(merged["actual_score"])
+        + _context_adjustment(merged)
+    ).to_numpy(dtype=float)
+    valid_all = (weights > 0.0) & ~np.isnan(adjusted_mu)
+    title_s, title_win_s, title_defense_s = _title_ladder_parts(merged)
+    title_all = title_s.to_numpy()
+    title_win_all = title_win_s.to_numpy()
+    title_defense_all = title_defense_s.to_numpy()
+    opp_w_all = pd.to_numeric(merged["opp_weight"], errors="coerce").fillna(0.0).to_numpy()
+    actual_all = pd.to_numeric(merged["actual_score"], errors="coerce").fillna(0.0).to_numpy()
+    dates_all = pd.to_datetime(merged["event_date"], errors="coerce")
+    if pd.notna(as_of):
+        recency_all = 0.5 ** (
+            (as_of - dates_all).dt.days.clip(lower=0).fillna(0.0).to_numpy()
+            / DIVISION_HOME_RECENCY_HALFLIFE_DAYS
         )
-        valid = weights.gt(0.0) & adjusted_mu.notna()
+    else:
+        recency_all = None
+    dates_np = dates_all.to_numpy()
+    fighters_all = merged["fighter"].to_numpy()
+    divisions_all = merged["division"].to_numpy()
+
+    codes = merged["_pair_code"].to_numpy()
+    boundary = np.flatnonzero(codes[1:] != codes[:-1]) + 1
+    starts = np.concatenate(([0], boundary))
+    stops = np.concatenate((boundary, [len(codes)]))
+
+    rows: list[dict] = []
+    for lo, hi in zip(starts, stops):
+        rng = slice(lo, hi)
+        valid = valid_all[rng]
         if not valid.any():
             continue
-        w_sum = float(weights.loc[valid].sum())
+        w = weights[rng][valid]
+        w_sum = float(w.sum())
         if w_sum <= 0.0:
             continue
-        base = float((weights.loc[valid] * adjusted_mu.loc[valid]).sum() / w_sum)
-        title, title_win, title_defense = _title_ladder_parts(group)
-        opp_sum = float(pd.to_numeric(group["opp_weight"], errors="coerce").fillna(0.0).sum())
-        title_mass = _title_ladder_mass(group)
-        raw_score = base + _resume_bonus(opp_sum, title_mass)
-        actual = pd.to_numeric(group["actual_score"], errors="coerce").fillna(0.0)
-        dates = pd.to_datetime(group["event_date"], errors="coerce")
-        last_fight_date = dates.max()
-        title_win_dates = dates[title_win.to_numpy()]
-        last_title_win_date = title_win_dates.max() if not title_win_dates.empty else pd.NaT
-        if pd.notna(as_of):
-            days_ago = (as_of - dates).dt.days.clip(lower=0).fillna(0.0).to_numpy()
-            recency_weight = float(np.sum(0.5 ** (days_ago / DIVISION_HOME_RECENCY_HALFLIFE_DAYS)))
-        else:
-            recency_weight = float(len(group))
+        base = float((w * adjusted_mu[rng][valid]).sum() / w_sum)
+        title_count = int(title_all[rng].sum())
+        title_win_count = int(title_win_all[rng].sum())
+        defense_count = int(title_defense_all[rng].sum())
+        opp_sum = float(opp_w_all[rng].sum())
+        title_mass = float(
+            HEADLINE_TITLE_APPEARANCE_MASS * title_count
+            + HEADLINE_TITLE_WIN_MASS * title_win_count
+            + HEADLINE_TITLE_DEFENSE_MASS * defense_count
+        )
+        actual = actual_all[rng]
+        title_win_dates = dates_np[rng][title_win_all[rng]]
+        division = divisions_all[lo]
+        n = hi - lo
         rows.append({
-            "fighter": fighter,
+            "fighter": fighters_all[lo],
             "division": division,
             "gender": "F" if str(division).startswith("Women's") else "M",
-            "division_fights": int(len(group)),
-            "division_effective_fights": _title_effective_count(group),
-            "division_wins": int(actual.ge(1.0).sum()),
-            "division_losses": int(actual.eq(0.0).sum()),
+            "division_fights": int(n),
+            "division_effective_fights": float(
+                n
+                + PERIOD_TITLE_EFFECTIVE_APPEARANCE_CREDIT * title_count
+                + PERIOD_TITLE_EFFECTIVE_WIN_CREDIT * title_win_count
+                + PERIOD_TITLE_EFFECTIVE_DEFENSE_CREDIT * defense_count
+            ),
+            "division_wins": int((actual >= 1.0).sum()),
+            "division_losses": int((actual == 0.0).sum()),
             "division_draws": int(((actual > 0.0) & (actual < 1.0)).sum()),
-            "division_title_fights": int(title.sum()),
-            "division_title_wins": int(title_win.sum()),
-            "division_title_defenses": int(title_defense.sum()),
+            "division_title_fights": title_count,
+            "division_title_wins": title_win_count,
+            "division_title_defenses": defense_count,
             "division_opp_weight_sum": opp_sum,
             "division_title_ladder_mass": title_mass,
-            "division_last_fight_date": last_fight_date,
-            "division_last_title_win_date": last_title_win_date,
-            "division_recency_weight": recency_weight,
-            "division_score_raw_whr": raw_score,
+            "division_last_fight_date": dates_np[rng].max(),
+            "division_last_title_win_date": title_win_dates.max() if title_win_dates.size else pd.NaT,
+            "division_recency_weight": (
+                float(recency_all[rng].sum()) if recency_all is not None else float(n)
+            ),
+            "division_score_raw_whr": base + _resume_bonus(opp_sum, title_mass),
         })
 
     out = pd.DataFrame(rows)

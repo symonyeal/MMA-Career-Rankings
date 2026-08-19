@@ -36,7 +36,7 @@ therefore the two best-run windows only:
 | Wins | Simple results | Win, loss, draw only. |
 | Finishes | Result plus method | Rewards how the fight ended. |
 | Clean | Integrity checked | Adjusts PED, DQ, and missed-weight wins. |
-| Strength | Context checked | Adds opponent, odds, rank, title, and weight-class context. |
+| Strength | Context checked | Adds opponent, rank, title, and weight-class context. |
 | Skill peak | Best-window skill | Clean + Strength on the **Glicko-2 filter** (forward-pass estimator). |
 | All-time | Recommended greatness view | A Whole-History Rating (WHR) smoother that re-rates every career jointly and carries an explicit era adjustment. |
 
@@ -332,7 +332,8 @@ The dashboard also includes (see `analysis/CHART_PLAN.md`):
 - **Division parity** (crowdedness) and **How fights end** in the Weight Classes block.
 - **Title Lineage** reigns per division.
 - **Striking fingerprint** (strike target/position mix) in the Tale of the Tape.
-- **Market vs Model** and an **Integrity Ledger** for the PED/DQ/missed-weight layer.
+- **Market vs Model** (the closing line as a scoring benchmark) and an
+  **Integrity Ledger** for the PED/DQ/missed-weight layer.
 
 Charts follow a consulting-style presentation pattern: clear title, short
 labels, focused color, direct takeaway, and minimal chart noise.
@@ -347,7 +348,10 @@ Included in the latest run:
 - 754 UFC events (749 with ratable bouts).
 - 8,479 rated UFC fights.
 - 2,554 rated fighters.
-- 6,562 fights with usable market odds (mdabbert) for the performance sleeve.
+- 6,562 fights with usable market odds (mdabbert). These are the *benchmark* the
+  engine is scored against in `ratings/prequential.py`, not an input to any
+  rating: the odds-to-weight path was removed on 2026-08-18 after measuring a
+  paired effect on held-out log-loss of −1.4×10⁻⁶ [−3.2×10⁻⁶, +3.4×10⁻⁷], an interval spanning zero.
 - UFC-DataLab, current FightMatrix, and FightMatrix all-time artifacts staged.
 - Local SQLite export at `data/ufc_rank_engine.sqlite` (36 tables, 147 indexes),
   including public FightMatrix profile, bout and scope-comparison tables.

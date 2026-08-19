@@ -82,7 +82,6 @@ def test_new_sections_render(nb_ns):
     assert _n_traces(nb_ns["tl_fw"]) > 0           # Title lineage
     assert _n_traces(nb_ns["cmp_a_strike"]) > 0    # Striking fingerprint (Tale of the Tape)
     assert _n_traces(nb_ns["mkt_fav"]) > 0         # Market vs Model
-    assert _n_traces(nb_ns["mkt_impact"]) > 0      # Market under/over-rated leaderboard
     assert _n_traces(nb_ns["mkt_line"]) > 0        # Per-fighter betting-line chart
     assert _n_traces(nb_ns["intg_fw"]) > 0         # Integrity Ledger
     assert nb_ns["intg_html"].value                # Integrity ledger table

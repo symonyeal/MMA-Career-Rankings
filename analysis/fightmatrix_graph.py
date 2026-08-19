@@ -11,6 +11,7 @@ from functools import lru_cache
 from datetime import datetime, timezone
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 from loaders.fightmatrix_identity import build_identity_artifacts
@@ -226,70 +227,142 @@ def reconcile_bouts(
     if bouts is None or bouts.empty:
         return bouts.copy(), pd.DataFrame()
     work = bouts.copy().reset_index(drop=True)
-    work["source_row_number"] = range(len(work))
-    work["_pair_key"] = [_pair_key(row) for row in work.to_dict("records")]
-    work["deduplication_key"] = [f"{_event_key(row)}::{row['_pair_key']}" for row in work.to_dict("records")]
+    n = len(work)
+    work["source_row_number"] = range(n)
+
+    # Key construction is row-wise; building it from column arrays avoids two
+    # full ``to_dict("records")`` materializations of an 80k-row frame.
+    profile_ids = work["fighter_profile_id"].to_numpy()
+    opponent_ids = work["opponent_profile_id"].to_numpy()
+    fighters = work["fighter"].to_numpy()
+    opponents = work["opponent"].to_numpy()
+    event_ids = work["event_id"].to_numpy() if "event_id" in work.columns else np.full(n, None)
+    dates = pd.to_datetime(work["event_date"], errors="coerce")
+    date_np = dates.to_numpy()
+    results = work["result"].astype(str).str.lower().to_numpy()
+
+    name_key_cache: dict = {}
+
+    def _cached_name_key(value) -> str:
+        if value not in name_key_cache:
+            name_key_cache[value] = _name_key(value)
+        return name_key_cache[value]
+
+    pair_keys = []
+    for a, b, fa, fb in zip(profile_ids, opponent_ids, fighters, opponents):
+        ids = [str(a or ""), str(b or "")]
+        if all(v and v != "nan" for v in ids):
+            pair_keys.append("::".join(sorted(ids, key=lambda v: int(v) if v.isdigit() else v)))
+        else:
+            pair_keys.append("::".join(sorted([_cached_name_key(fa), _cached_name_key(fb)])))
+    work["_pair_key"] = pair_keys
+
+    has_event_id = np.array(
+        [pd.notna(e) and str(e).strip() != "" for e in event_ids], dtype=bool
+    )
+    date_keys = dates.dt.strftime("%Y%m%d").fillna("unknown").to_numpy()
+    event_keys = np.where(
+        has_event_id,
+        np.array([f"event:{str(e).strip()}" for e in event_ids], dtype=object),
+        np.array([f"date:{d}" for d in date_keys], dtype=object),
+    )
+    dedup_key = np.array(
+        [f"{e}::{p}" for e, p in zip(event_keys, pair_keys)], dtype=object
+    )
+
     # Some public perspectives differ by one calendar day or event spelling.
     # Same-pair bouts cannot be legitimate rematches within 24 hours, so group
     # those as auditable likely duplicates when neither side has an event ID.
-    for _, pair_group in work.groupby("_pair_key", sort=False):
-        no_id = pair_group[pair_group["event_id"].isna() | pair_group["event_id"].astype(str).str.strip().eq("")].copy()
-        no_id["_date"] = pd.to_datetime(no_id["event_date"], errors="coerce")
-        no_id = no_id.sort_values(["_date", "source_row_number"])
+    no_id_rows = np.flatnonzero(~has_event_id)
+    if no_id_rows.size:
+        order = sorted(
+            no_id_rows,
+            key=lambda i: (pair_keys[i],
+                           pd.Timestamp.max if pd.isna(date_np[i]) else date_np[i],
+                           i),
+        )
         cluster_start = None
         cluster_key = None
-        for index, row in no_id.iterrows():
-            date = row["_date"]
-            if cluster_start is None or pd.isna(date) or abs((date - cluster_start).days) > 1:
+        previous_pair = None
+        for i in order:
+            date = date_np[i]
+            if pair_keys[i] != previous_pair:
+                previous_pair, cluster_start = pair_keys[i], None
+            if (cluster_start is None or pd.isna(date)
+                    or abs((pd.Timestamp(date) - pd.Timestamp(cluster_start)).days) > 1):
                 cluster_start = date
-                date_key = f"{date:%Y%m%d}" if pd.notna(date) else "unknown"
-                cluster_key = f"likely-date:{date_key}::{row['_pair_key']}"
-            work.loc[index, "deduplication_key"] = cluster_key
+                stamp = "unknown" if pd.isna(date) else pd.Timestamp(date).strftime("%Y%m%d")
+                cluster_key = f"likely-date:{stamp}::{pair_keys[i]}"
+            dedup_key[i] = cluster_key
+    work["deduplication_key"] = dedup_key
     work["source_bout_identifier"] = work.get("fight_key", work["deduplication_key"])
+    identifiers = work["source_bout_identifier"].to_numpy()
+
+    winner_ids = np.where(
+        results == "win", np.array([f"id:{v}" for v in profile_ids], dtype=object),
+        np.where(results == "loss", np.array([f"id:{v}" for v in opponent_ids], dtype=object),
+                 results.astype(object)),
+    )
+    decisive = np.isin(results, ("win", "loss")).astype(int)
+    profile_sort = pd.to_numeric(work["fighter_profile_id"], errors="coerce").fillna(10 ** 12).to_numpy()
+    event_name_key = work["event_name"].fillna("").map(_cached_name_key).to_numpy()
+
     overlaps = _ufc_overlap_index(canonical_ufc)
+    # ``groupby(sort=True)`` order, obtained once rather than per group.
+    group_order = np.argsort(dedup_key.astype(str), kind="stable")
+    keys_sorted = dedup_key[group_order]
+    starts = np.flatnonzero(np.concatenate(([True], keys_sorted[1:] != keys_sorted[:-1])))
+    stops = np.concatenate((starts[1:], [n]))
+
     decisions = []
-    selected = []
-    for key, group in work.groupby("deduplication_key", sort=True, dropna=False):
-        winner_ids = {_winner_id(row) for row in group.to_dict("records")}
-        reciprocal = len(group) > 1 and group["fighter_profile_id"].astype(str).nunique() > 1
-        conflict = len(winner_ids) > 1
-        dates = pd.to_datetime(group["event_date"], errors="coerce")
-        overlap = _is_ufc_overlap(
-            overlaps, dates.dropna(), group.iloc[0]["fighter"], group.iloc[0]["opponent"],
+    selected_rows = []
+    selected_classes = []
+    for lo, hi in zip(starts, stops):
+        members = group_order[lo:hi]
+        size = len(members)
+        conflict = len({winner_ids[i] for i in members}) > 1
+        reciprocal = size > 1 and len({str(profile_ids[i]) for i in members}) > 1
+        member_dates = pd.DatetimeIndex(
+            [date_np[i] for i in members if not pd.isna(date_np[i])]
         )
-        ordered = group.assign(
-            _decisive=group["result"].isin(["win", "loss"]).astype(int),
-            _profile=pd.to_numeric(group["fighter_profile_id"], errors="coerce").fillna(10**12),
-        ).sort_values(["_decisive", "_profile", "source_row_number"], ascending=[False, True, True])
-        chosen_index = int(ordered.index[0])
+        overlap = _is_ufc_overlap(
+            overlaps, member_dates, fighters[members[0]], opponents[members[0]],
+        )
+        chosen_index = int(min(
+            members, key=lambda i: (-decisive[i], profile_sort[i], i)
+        ))
         if conflict:
             classification = "conflicting_records"
         elif overlap:
             classification = "ufc_source_overlap"
         elif reciprocal:
             classification = "reciprocal_profile_records"
-        elif len(group) > 1:
-            same_date = pd.to_datetime(group["event_date"], errors="coerce").nunique() <= 1
-            same_event = group["event_name"].fillna("").map(_name_key).nunique() <= 1
+        elif size > 1:
+            same_date = len({d for d in (date_np[i] for i in members) if not pd.isna(d)}) <= 1
+            same_event = len({event_name_key[i] for i in members}) <= 1
             classification = "exact_duplicate" if same_date and same_event else "likely_duplicate"
         else:
             classification = "unique"
-        for index, row in group.iterrows():
-            keep = index == chosen_index and not conflict and not overlap
+        key = keys_sorted[lo]
+        for i in members:
+            keep = i == chosen_index and not conflict and not overlap
             decisions.append({
-                "source_row_number": int(row["source_row_number"]),
-                "source_bout_identifier": row["source_bout_identifier"],
+                "source_row_number": int(i),
+                "source_bout_identifier": identifiers[i],
                 "deduplication_key": key,
                 "deduplication_classification": classification,
                 "deduplication_decision": "selected" if keep else "excluded",
                 "conflict_detail": "inconsistent winner/result perspectives" if conflict else None,
-                "perspective_count": int(len(group)),
+                "perspective_count": int(size),
             })
         if not conflict and not overlap:
-            chosen = work.loc[chosen_index].to_dict()
-            chosen["deduplication_decision"] = classification
-            selected.append(chosen)
-    return pd.DataFrame(selected).drop(columns=["source_row_number", "_pair_key"], errors="ignore"), pd.DataFrame(decisions)
+            selected_rows.append(chosen_index)
+            selected_classes.append(classification)
+
+    resolved = work.iloc[selected_rows].copy()
+    resolved["deduplication_decision"] = selected_classes
+    resolved = resolved.drop(columns=["source_row_number", "_pair_key"], errors="ignore")
+    return resolved.reset_index(drop=True), pd.DataFrame(decisions)
 
 
 def _completeness_score(row) -> float:

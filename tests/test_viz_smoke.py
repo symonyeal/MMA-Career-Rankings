@@ -24,7 +24,6 @@ from analysis.viz import (
     load_snapshot,
     odds_adjustment_distribution_chart,
     odds_coverage_summary,
-    odds_impact_chart,
     integrity_impact_chart,
     rank_delta_table,
     ranking_context_impact_table,
@@ -181,12 +180,6 @@ def test_odds_coverage_summary_no_artifact_branch(snapshot):
 
 def test_odds_adjustment_distribution_chart_returns_figure_when_empty():
     fig = odds_adjustment_distribution_chart(pd.DataFrame())
-    assert hasattr(fig, "layout")
-
-
-def test_odds_impact_chart_returns_figure_without_columns():
-    bare = pd.DataFrame({"fighter": ["A"], "mu_method": [1500.0]})
-    fig = odds_impact_chart(bare)
     assert hasattr(fig, "layout")
 
 

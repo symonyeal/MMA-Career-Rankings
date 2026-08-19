@@ -508,10 +508,85 @@ def _era_division_normalized_mu(
     return blended.where(mu.notna(), mu)
 
 
-def _per_fighter_window_period(
-    group: pd.DataFrame,
+def _appearance_arrays(appearances: pd.DataFrame, mu_col: str) -> dict:
+    """Per-appearance window inputs for the *whole* frame, in one vectorized pass.
+
+    Every term the window score needs is a *row* property — the appearance
+    weight, the result/context-adjusted mu, the title-ladder masks — so none of
+    it belongs inside the per-fighter loop, and none of it belongs inside the
+    per-window loop either. Computing it once over all appearances is what makes
+    the scan cheap: :func:`_best_window_period` is then pure numpy reductions
+    over slices.
+
+    ``appearances`` must already be sorted by ``fighter, event_date,
+    event_name``. Returns column arrays plus ``starts`` / ``stops``, the
+    half-open row range of each fighter.
+    """
+    if appearances.empty:
+        return {"fighters": np.empty(0, dtype=object), "starts": np.empty(0, dtype=np.int64),
+                "stops": np.empty(0, dtype=np.int64)}
+
+    # Information-weighted appearance weights. A win is weighted by opponent
+    # quality (beating elites matters); a draw is a muted win; a loss is
+    # weighted by opponent *weakness* on top of a real floor — losing to a weak
+    # opponent is more damning than losing to a champion. Opponent quality is
+    # the first-priority signal.
+    score_arr = pd.to_numeric(appearances["actual_score"], errors="coerce").fillna(0.0).to_numpy()
+    opp_w = pd.to_numeric(appearances["opp_weight"], errors="coerce").fillna(0.0).to_numpy()
+    level = (
+        pd.to_numeric(appearances["opponent_quality_level"], errors="coerce")
+        .fillna(0.0)
+        .clip(0.0, 1.0)
+        .to_numpy()
+    )
+    is_win = score_arr >= 1.0
+    is_draw = (score_arr > 0.0) & (score_arr < 1.0)
+    weights = np.where(
+        is_win,
+        PERIOD_WIN_BASE_WEIGHT + opp_w,
+        np.where(
+            is_draw,
+            PERIOD_DRAW_BASE_WEIGHT + 0.5 * opp_w,
+            PERIOD_LOSS_BASE_WEIGHT + PERIOD_LOSS_QUALITY_SCALE * (1.0 - level),
+        ),
+    )
+    mu = pd.to_numeric(appearances[mu_col], errors="coerce")
+    adjusted_mu = (
+        mu + _result_adjustment(appearances["actual_score"]) + _context_adjustment(appearances)
+    ).to_numpy(dtype=float)
+
+    title, title_win, defense = _title_ladder_parts(appearances)
+    champ_bout = appearances["is_championship_bout"].fillna(False).astype(bool).to_numpy()
+    # Division identity is only ever consumed as a distinct count within one
+    # window, so integer codes (-1 = missing) reproduce ``nunique()`` on strings.
+    division_code = pd.factorize(appearances["division"], use_na_sentinel=True)[0]
+
+    fighters = appearances["fighter"].to_numpy()
+    boundary = np.flatnonzero(fighters[1:] != fighters[:-1]) + 1
+    starts = np.concatenate(([0], boundary))
+    stops = np.concatenate((boundary, [len(fighters)]))
+
+    return {
+        "fighters": fighters[starts],
+        "starts": starts,
+        "stops": stops,
+        "dates": appearances["event_date"].to_numpy(),
+        "weights": weights,
+        "adjusted_mu": adjusted_mu,
+        "valid": (weights > 0) & ~np.isnan(adjusted_mu),
+        "opp_weight": opp_w,
+        "title": title.to_numpy(),
+        "title_win": title_win.to_numpy(),
+        "defense": defense.to_numpy(),
+        "title_win_division": np.where(champ_bout & (score_arr >= 1.0), division_code, -1),
+    }
+
+
+def _best_window_period(
+    arrays: dict,
+    lo: int,
+    hi: int,
     *,
-    mu_col: str,
     window_days: int,
     min_fights: int,
     title_effective_min_raw_fights: int,
@@ -526,12 +601,25 @@ def _per_fighter_window_period(
     feed the headline proven-resume bonus. ``window_n`` is raw fight count,
     ``effective_n`` is title-effective count, and ``window_var`` is the
     weighted variance of adjusted mu inside it.
+
+    Scans rows ``[lo, hi)`` — one fighter's appearances. The window start index
+    is monotone in the end index (dates are sorted and the window length is
+    fixed), so the scan is two-pointer rather than a backward search per end
+    date.
     """
-    g = group.sort_values(["event_date", "event_name"]).reset_index(drop=True)
-    if g.empty:
+    if hi <= lo:
         return float("nan"), float("nan"), float("nan"), 0, float("nan"), float("nan")
 
-    dates = g["event_date"].to_numpy()
+    dates = arrays["dates"]
+    weights = arrays["weights"]
+    adjusted_mu = arrays["adjusted_mu"]
+    valid = arrays["valid"]
+    opp_weight = arrays["opp_weight"]
+    title = arrays["title"]
+    title_win = arrays["title_win"]
+    defense = arrays["defense"]
+    title_win_division = arrays["title_win_division"]
+
     best = float("nan")
     best_selection_score = float("nan")
     best_window_weight_sum = float("nan")
@@ -540,62 +628,53 @@ def _per_fighter_window_period(
     best_effective_n = float("nan")
     best_window_var = float("nan")
     window_ns = np.timedelta64(window_days, "D")
-    for j in range(len(g)):
-        end_date = dates[j]
-        start_date = end_date - window_ns
-        i = j
-        while i > 0 and dates[i - 1] >= start_date:
-            i -= 1
-        window = g.iloc[i : j + 1].copy()
-        if not _qualifies_window(window, min_fights, title_effective_min_raw_fights):
-            continue
 
-        # Information-weighted appearance weights. A win is weighted by
-        # opponent quality (beating elites matters); a draw is a muted win; a
-        # loss is weighted by opponent *weakness* on top of a real floor —
-        # losing to a weak opponent is more damning than losing to a champion.
-        # Opponent quality is the first-priority signal.
-        score_arr = (
-            pd.to_numeric(window["actual_score"], errors="coerce").fillna(0.0).to_numpy()
+    i = lo
+    for j in range(lo, hi):
+        start_date = dates[j] - window_ns
+        while dates[i] < start_date:
+            i += 1
+        window_n = j + 1 - i
+
+        title_count = int(title[i : j + 1].sum())
+        title_win_count = int(title_win[i : j + 1].sum())
+        defense_count = int(defense[i : j + 1].sum())
+        effective_n = float(
+            window_n
+            + PERIOD_TITLE_EFFECTIVE_APPEARANCE_CREDIT * title_count
+            + PERIOD_TITLE_EFFECTIVE_WIN_CREDIT * title_win_count
+            + PERIOD_TITLE_EFFECTIVE_DEFENSE_CREDIT * defense_count
         )
-        opp_w = pd.to_numeric(window["opp_weight"], errors="coerce").fillna(0.0).to_numpy()
-        level = (
-            pd.to_numeric(window["opponent_quality_level"], errors="coerce")
-            .fillna(0.0)
-            .clip(0.0, 1.0)
-            .to_numpy()
-        )
-        is_win = score_arr >= 1.0
-        is_draw = (score_arr > 0.0) & (score_arr < 1.0)
-        weights_arr = np.where(
-            is_win,
-            PERIOD_WIN_BASE_WEIGHT + opp_w,
-            np.where(
-                is_draw,
-                PERIOD_DRAW_BASE_WEIGHT + 0.5 * opp_w,
-                PERIOD_LOSS_BASE_WEIGHT + PERIOD_LOSS_QUALITY_SCALE * (1.0 - level),
-            ),
-        )
-        weights = pd.Series(weights_arr, index=window.index)
-        mu = pd.to_numeric(window[mu_col], errors="coerce")
-        adjusted_mu = (
-            mu
-            + _result_adjustment(window["actual_score"])
-            + _context_adjustment(window)
-        )
-        valid = weights.gt(0) & adjusted_mu.notna()
-        w_sum = float(weights.loc[valid].sum())
+        if window_n < min_fights:
+            if window_n < title_effective_min_raw_fights or effective_n < float(min_fights):
+                continue
+
+        window_valid = valid[i : j + 1]
+        wv = weights[i : j + 1][window_valid]
+        w_sum = float(wv.sum())
         if w_sum <= 0:
             continue
-        wv = weights.loc[valid]
-        am = adjusted_mu.loc[valid]
+        am = adjusted_mu[i : j + 1][window_valid]
         w_mean = float((wv * am).sum() / w_sum)
+
+        window_weight_sum = float(opp_weight[i : j + 1].sum())
+        activity_raw = (
+            PERIOD_ACTIVITY_BONUS_PER_FIGHT * max(0, window_n - min_fights)
+            + PERIOD_ACTIVITY_BONUS_PER_OPP_WEIGHT * window_weight_sum
+        )
+        divisions = title_win_division[i : j + 1]
+        divisions = divisions[divisions >= 0]
+        n_divisions = len(np.unique(divisions)) if divisions.size else 0
+
         score = w_mean
-        score += _activity_bonus(window, min_fights)
-        score += _multi_division_title_bonus(window)
-        window_weights = pd.to_numeric(window["opp_weight"], errors="coerce").fillna(0.0)
-        window_weight_sum = float(window_weights.sum())
-        title_ladder_mass = _title_ladder_mass(window)
+        score += float(np.clip(activity_raw, 0.0, PERIOD_ACTIVITY_BONUS_CAP))
+        score += float(max(0, n_divisions - 1) * PERIOD_EXTRA_TITLE_DIVISION_BONUS)
+
+        title_ladder_mass = float(
+            HEADLINE_TITLE_APPEARANCE_MASS * title_count
+            + HEADLINE_TITLE_WIN_MASS * title_win_count
+            + HEADLINE_TITLE_DEFENSE_MASS * defense_count
+        )
         selection_score = score
         if optimize_for_headline:
             selection_score += _resume_bonus(window_weight_sum, title_ladder_mass)
@@ -604,8 +683,8 @@ def _per_fighter_window_period(
             best_selection_score = selection_score
             best_window_weight_sum = window_weight_sum
             best_title_ladder_mass = title_ladder_mass
-            best_window_n = int(len(window))
-            best_effective_n = _title_effective_count(window)
+            best_window_n = int(window_n)
+            best_effective_n = effective_n
             # Weighted variance of adjusted mu — feeds the EB score shrinkage.
             best_window_var = float((wv * (am - w_mean) ** 2).sum() / w_sum)
     return best, best_window_weight_sum, best_title_ladder_mass, best_window_n, best_effective_n, best_window_var
@@ -728,8 +807,13 @@ def rolling_peak(
         merged, mu_col, detrend_era=era_detrend
     )
 
+    merged = merged.sort_values(
+        ["fighter", "event_date", "event_name"], kind="stable"
+    ).reset_index(drop=True)
+    arrays = _appearance_arrays(merged, "mu_period_normalized")
+
     rows = []
-    for fighter, group in merged.groupby("fighter", sort=False):
+    for fighter, lo, hi in zip(arrays["fighters"], arrays["starts"], arrays["stops"]):
         (
             score,
             window_weight_sum,
@@ -737,9 +821,10 @@ def rolling_peak(
             window_n,
             effective_n,
             window_var,
-        ) = _per_fighter_window_period(
-            group,
-            mu_col="mu_period_normalized",
+        ) = _best_window_period(
+            arrays,
+            int(lo),
+            int(hi),
             window_days=window_days,
             min_fights=min_fights,
             title_effective_min_raw_fights=title_effective_min_raw_fights,
