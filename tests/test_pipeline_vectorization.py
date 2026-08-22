@@ -12,13 +12,9 @@ import pandas as pd
 import pytest
 
 from ratings.division_resume import division_resume_rows
-from ratings.peaks import (
-    _appearance_arrays,
-    _best_window_period,
+from ratings.appearance_context import (
     _context_adjustment,
     _result_adjustment,
-    _title_effective_count,
-    _title_ladder_mass,
 )
 from ratings.performance_adjustment import (
     _group_bounds,
@@ -185,7 +181,8 @@ def _reference_prefight_ranking_context(fights: pd.DataFrame, history: pd.DataFr
 
         for _, row in group.iterrows():
             winner, division = row.get("winner"), row.get("division")
-            if not winner or not division or not bool(row.get("is_championship_bout", False)):
+            if (pd.isna(winner) or not winner or not division
+                    or not bool(row.get("is_championship_bout", False))):
                 continue
             if bool(row.get("is_interim_title_bout", False)):
                 interim_champions[division] = winner
@@ -229,22 +226,30 @@ def test_prefight_ranking_context_matches_the_row_loop():
             assert ((av == bv) | (np.isnan(av) & np.isnan(bv))).all(), col
 
 
-def test_drawn_title_bout_vacates_the_modelled_lineage():
-    """A NaN winner falls through the ``if not winner`` guard, as it always has.
-
-    Real-world consequence: Frankie Edgar does not enter UFC 136 flagged as
-    champion, because UFC 125 was a draw. This is preserved behaviour, not an
-    endorsement — see the 2026-08-18 report.
-    """
-    fights = _synthetic_fights()
+def test_drawn_title_bout_preserves_the_modelled_lineage():
+    fights = pd.DataFrame([
+        {
+            "fight_url": "title-1", "event_date": "2020-01-01", "event_name": "E1",
+            "fighter_a": "A", "fighter_b": "B", "winner": "A",
+            "weight_class": "UFC Lightweight Title Bout", "is_draw": False,
+        },
+        {
+            "fight_url": "title-draw", "event_date": "2020-06-01", "event_name": "E2",
+            "fighter_a": "A", "fighter_b": "C", "winner": np.nan,
+            "weight_class": "UFC Lightweight Title Bout", "is_draw": True,
+        },
+        {
+            "fight_url": "after-draw", "event_date": "2020-12-01", "event_name": "E3",
+            "fighter_a": "A", "fighter_b": "D", "winner": "D",
+            "weight_class": "Lightweight", "is_draw": False,
+        },
+    ])
     history = _synthetic_history(fights)
-    got = prefight_ranking_context(fights, history)
-    ref = _reference_prefight_ranking_context(fights, history)
-    key = ["fight_url"]
-    g = got.sort_values(key).reset_index(drop=True)
-    r = ref.sort_values(key).reset_index(drop=True)
-    for col in ("fighter_a_entered_as_champion", "fighter_b_entered_as_champion"):
-        assert (g[col].astype(bool) == r[col].astype(bool)).all()
+
+    got = prefight_ranking_context(fights, history).set_index("fight_url")
+
+    assert bool(got.loc["title-draw", "fighter_a_entered_as_champion"])
+    assert bool(got.loc["after-draw", "fighter_a_entered_as_champion"])
 
 
 # ---------------------------------------------------------------------------
@@ -368,40 +373,6 @@ def _appearance_frame(seed: int = 3) -> pd.DataFrame:
                 "opponent_prefight_p4p_rank": rng.choice([np.nan, 2, 7, 14, 30]),
             })
     return pd.DataFrame(rows)
-
-
-@pytest.mark.parametrize("window_days,min_fights", [(1825, 7), (3650, 13)])
-def test_best_window_period_matches_the_reframing_scan(window_days, min_fights):
-    frame = _appearance_frame()
-    frame = frame.sort_values(["fighter", "event_date", "event_name"],
-                              kind="stable").reset_index(drop=True)
-    arrays = _appearance_arrays(frame, "mu_period_normalized")
-    for fighter, lo, hi in zip(arrays["fighters"], arrays["starts"], arrays["stops"]):
-        score, wsum, ladder, n, _eff, _var = _best_window_period(
-            arrays, int(lo), int(hi), window_days=window_days, min_fights=min_fights,
-            title_effective_min_raw_fights=max(1, min_fights - 2))
-        ref = _reference_best_window(
-            frame[frame["fighter"] == fighter], mu_col="mu_period_normalized",
-            window_days=window_days, min_fights=min_fights,
-            title_effective_min_raw_fights=max(1, min_fights - 2))
-        if ref is None:
-            assert np.isnan(score), fighter
-            continue
-        assert score == pytest.approx(ref[0], abs=0, rel=0), fighter
-        assert wsum == pytest.approx(ref[1], abs=0, rel=0), fighter
-        assert ladder == pytest.approx(ref[2], abs=0, rel=0), fighter
-        assert n == ref[3], fighter
-
-
-def test_best_window_period_is_empty_for_an_empty_range():
-    arrays = _appearance_arrays(_appearance_frame().iloc[:0], "mu_period_normalized")
-    score, *_ = _best_window_period(arrays, 0, 0, window_days=1825, min_fights=7,
-                                    title_effective_min_raw_fights=5)
-    assert np.isnan(score)
-
-
-# ---------------------------------------------------------------------------
-# division resume
 
 
 def test_division_resume_rows_scores_each_fighter_division_once():

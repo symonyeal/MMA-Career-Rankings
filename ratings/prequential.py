@@ -1,14 +1,12 @@
-"""Rolling-origin prequential comparison of rating variants.
+"""Rolling-origin prequential comparison of the lean rating core.
 
 Why this exists
 ---------------
-The engine carries four differentiators over a plain skill ladder — an integrity
-sleeve, method/dominance scoring, market-relative weighting, and a
-participant-caliber cross-organization bridge. Until this module none of them
-had ever been scored against held-out fights: ``ratings/whr_backtest.py`` tunes
-exactly one constant and says so. This is the general yardstick, and it keeps
-that module's temporal discipline — predict each bout using only information
-available before it happened, and score the prediction against what happened.
+The production comparison is deliberately small: a causal binary-result
+Glicko-2 filter versus a binary-result Whole-History Rating smoother. Both see
+the same UFC bouts and outcomes. A separately named research arm may scale a
+whole bout's WHR likelihood by dominance-derived precision, but the winner and
+loser always receive the same evidence weight.
 
 The cheap part, and why it is cheap
 -----------------------------------
@@ -21,11 +19,9 @@ re-fit. Refitting per fold is reserved for WHR, which is a whole-history
 on the fights strictly before that event.
 
 The other saving is structural. Crawl output, identity resolution, organization
-mapping, bout reconciliation, and the per-appearance sleeve weight tables are
-invariant to every rating parameter, so they are built once per snapshot and
-cached. So are the period/peak scores, the division resumes, and every board
-artifact — the evaluation never needs them at all, and they were most of the
-pipeline's cost.
+mapping, bout reconciliation, and optional research inputs are invariant to
+every rating parameter, so they are built once per snapshot and cached. Period,
+peak, division-resume, and board artifacts are not needed for evaluation.
 
 What is deliberately *not* applied here
 ---------------------------------------
@@ -59,6 +55,7 @@ from ratings.integrity_adjustment import build_integrity_appearances
 from ratings.performance_adjustment import build_performance_appearances, normalize_division_label
 from ratings.whr import _ELO_PER_NAT, run_whr
 from ratings import rate_snapshot as RS
+from ratings import research_variants as RV
 from loaders.integrity_flags import INTEGRITY_COLUMNS, build_integrity_flags
 from loaders.odds_loader import has_odds_artifact, load_odds_lines
 from loaders.ufcstats_loader import METHOD_SCORES
@@ -72,7 +69,11 @@ EPS = 1e-6
 #   1 - initial harness
 #   2 - market-weighting removal (2026-08-18): performance/combined weights moved
 #       on 35 appearance rows, so every variant reading them changed
-CACHE_SCHEMA_VERSION = 2
+#   3 - principled core (2026-08-20): reciprocal Glicko forecasts, binary WHR,
+#       shared bout-level WHR weights, and UFC-only default scope
+#   4 - fixed-mass WHR prior (2026-08-20): virtual games plus per-fighter (not
+#       per-appearance) anchor mass, so every WHR rating moved
+CACHE_SCHEMA_VERSION = 4
 
 
 # ---------------------------------------------------------------------------
@@ -83,9 +84,10 @@ CACHE_SCHEMA_VERSION = 2
 class Variant:
     """One rating configuration to score.
 
-    ``engine`` picks the updater; ``weight`` names the per-appearance sleeve
-    weight table; the booleans switch individual mechanisms off so a
-    differentiator can be ablated without touching any other.
+    ``engine`` picks the updater. ``weight`` is retained only for explicit
+    weighted-Glicko research; WHR rejects side-specific appearance sleeves.
+    Outcome softening and dominance weighting are opt-in so a base WHR variant
+    cannot silently stop being a binary Bradley--Terry model.
     """
 
     name: str
@@ -93,48 +95,25 @@ class Variant:
     stream: str = "canonical"  # for engine="glicko": "canonical" or "method"
     score_mode: str = "canonical"  # weighted engine scorer
     weight: str | None = None  # None | "integrity" | "performance" | "combined"
-    use_odds: bool = True  # market weighting inside the performance sleeve
     use_org_weight: bool = True  # cross-organization participant-caliber bridge
-    use_dominance: bool = True  # WHR dominance likelihood amplification
-    use_quality_score: bool = True  # method/integrity score damp at the score layer
+    use_dominance: bool = False  # shared bout-level WHR likelihood precision
+    use_quality_score: bool = False  # explicit fractional winner score research
+    virtual_games: float | None = None  # WHR prior mass; None = engine default
 
     def key(self) -> str:
         return self.name
 
 
 def default_variants() -> list[Variant]:
-    """The production streams plus the ablations that isolate each differentiator."""
+    """The two coherent core estimators plus one labelled research arm."""
     return [
-        # --- production streams -------------------------------------------
         Variant("canonical", engine="glicko", stream="canonical"),
-        Variant("method", engine="glicko", stream="method"),
-        Variant("method_integrity", engine="weighted_glicko",
-                score_mode="quality_method", weight="integrity"),
-        Variant("method_performance", engine="weighted_glicko",
-                score_mode="quality_method", weight="performance"),
-        Variant("method_integrity_performance", engine="weighted_glicko",
-                score_mode="quality_method", weight="combined"),
-        Variant("whr", engine="whr", weight=None),
-        Variant("whr_integrity", engine="whr", weight="integrity"),
-        Variant("whr_performance", engine="whr", weight="performance"),
-        Variant("whr_integrity_performance", engine="whr", weight="combined"),
-        # --- ablations ----------------------------------------------------
-        # Integrity sleeve off, everything else as the full stream.
-        Variant("abl_no_integrity", engine="weighted_glicko",
-                score_mode="quality_method", weight="performance", use_quality_score=False),
-        # Method + dominance off: binary W/L scoring under the same weights.
-        Variant("abl_no_method", engine="weighted_glicko",
-                score_mode="canonical", weight="combined"),
-        # Market weighting off inside the performance sleeve.
-        Variant("abl_no_market", engine="weighted_glicko",
-                score_mode="quality_method", weight="combined", use_odds=False),
-        # Cross-org bridge off (weights forced to 1.0 for non-UFC bouts).
-        Variant("abl_no_crossorg", engine="weighted_glicko",
-                score_mode="quality_method", weight="combined", use_org_weight=False),
-        # WHR ablations on the same axes.
-        Variant("abl_whr_no_dominance", engine="whr", weight="combined", use_dominance=False),
-        Variant("abl_whr_no_crossorg", engine="whr", weight="combined", use_org_weight=False),
-        Variant("abl_whr_no_quality", engine="whr", weight="combined", use_quality_score=False),
+        Variant("whr", engine="whr"),
+        Variant(
+            "whr_symmetric_dominance_research",
+            engine="whr",
+            use_dominance=True,
+        ),
     ]
 
 
@@ -155,8 +134,12 @@ class Inputs:
     quality_score: pd.DataFrame = field(default_factory=pd.DataFrame)
 
 
-def load_fight_table(snapshot_dir: Path, *, with_crossorg: bool = True) -> pd.DataFrame:
-    """The rated fight table exactly as ``rate_snapshot.run()`` assembles it."""
+def load_fight_table(snapshot_dir: Path, *, with_crossorg: bool = False) -> pd.DataFrame:
+    """Load rated bouts, defaulting to the auditable UFC-only scope.
+
+    ``with_crossorg=True`` is an explicit experimental scope. Its historical
+    weights must be made fold-local before it can support a production claim.
+    """
     snapshot_dir = Path(snapshot_dir)
     fights = pd.read_parquet(snapshot_dir / "canonical_fights.parquet")
     fights["org_weight"] = 1.0
@@ -190,11 +173,11 @@ def load_fight_table(snapshot_dir: Path, *, with_crossorg: bool = True) -> pd.Da
     return fights.reset_index(drop=True)
 
 
-def build_inputs(snapshot_dir: Path, *, with_crossorg: bool = True) -> Inputs:
+def build_inputs(snapshot_dir: Path, *, with_crossorg: bool = False) -> Inputs:
     """Load the fight table and every rating-parameter-invariant weight table.
 
-    The two performance tables (with and without odds) are both built here so a
-    market-weighting ablation costs nothing extra at sweep time.
+    Odds are retained only as an external benchmark and reporting segment. They
+    do not alter any rating variant in this harness.
     """
     snapshot_dir = Path(snapshot_dir)
     fights = load_fight_table(snapshot_dir, with_crossorg=with_crossorg)
@@ -210,9 +193,6 @@ def build_inputs(snapshot_dir: Path, *, with_crossorg: bool = True) -> Inputs:
 
     integrity_app = build_integrity_appearances(fights)
     perf_app = build_performance_appearances(
-        fights, history, odds if not odds.empty else None, fight_dominance=fight_dom
-    )
-    perf_app_no_odds = build_performance_appearances(
         fights, history, None, fight_dominance=fight_dom
     )
 
@@ -231,9 +211,7 @@ def build_inputs(snapshot_dir: Path, *, with_crossorg: bool = True) -> Inputs:
     weights = {
         "integrity": integrity_app,
         "performance": perf_app,
-        "performance_no_odds": perf_app_no_odds,
         "combined": _combined(perf_app),
-        "combined_no_odds": _combined(perf_app_no_odds),
     }
     quality_score = (
         perf_app.dropna(subset=["quality_score_winner"])
@@ -244,7 +222,7 @@ def build_inputs(snapshot_dir: Path, *, with_crossorg: bool = True) -> Inputs:
         fights=fights,
         history=history,
         weights=weights,
-        dominance_level=RS._winner_dominance_level(perf_app),
+        dominance_level=RV.winner_dominance_level(perf_app),
         odds=odds,
         quality_score=quality_score,
     )
@@ -253,14 +231,17 @@ def build_inputs(snapshot_dir: Path, *, with_crossorg: bool = True) -> Inputs:
 WEIGHT_COLUMN = {
     "integrity": "integrity_weight",
     "performance": "performance_weight",
-    "performance_no_odds": "performance_weight",
     "combined": "combined_weight",
-    "combined_no_odds": "combined_weight",
 }
 
 
 def _weighted_fights(inputs: Inputs, variant: Variant) -> pd.DataFrame:
     """Attach ``weight_a``/``weight_b`` and the score column for one variant."""
+    if variant.engine == "whr" and variant.weight is not None:
+        raise ValueError(
+            "WHR variants require one shared bout weight; "
+            "side-specific appearance sleeves are retired"
+        )
     fights = inputs.fights
     if variant.use_quality_score:
         fights = fights.merge(inputs.quality_score, on="fight_url", how="left")
@@ -272,15 +253,20 @@ def _weighted_fights(inputs: Inputs, variant: Variant) -> pd.DataFrame:
         out = RS._attach_org_only_weights(fights)
     else:
         table = variant.weight
-        if not variant.use_odds and f"{table}_no_odds" in inputs.weights:
-            table = f"{table}_no_odds"
-        out = RS._attach_appearance_weights(
+        out = RV.attach_appearance_weights(
             fights, inputs.weights[table], WEIGHT_COLUMN[table]
         )
     if variant.engine == "whr" and variant.use_dominance:
-        out = RS._amplify_dominance_weight(
+        out = RV.amplify_dominance_weight(
             out, inputs.dominance_level, WHR_DOMINANCE_WEIGHT_AMPLITUDE
         )
+    if variant.engine == "whr" and not np.allclose(
+        out["weight_a"].to_numpy(dtype=float),
+        out["weight_b"].to_numpy(dtype=float),
+        rtol=0.0,
+        atol=1e-12,
+    ):
+        raise ValueError("WHR requires equal winner and loser likelihood weights")
     return out
 
 
@@ -326,7 +312,7 @@ def online_predictions(inputs: Inputs, variant: Variant) -> pd.DataFrame:
         history = engine.history_df()
         mu_col, phi_col = f"mu_{variant.stream}", f"phi_{variant.stream}"
     elif variant.engine == "weighted_glicko":
-        engine = RS._run_weighted_engine(
+        engine = RV.run_weighted_engine(
             _weighted_fights(inputs, variant), tau=DEFAULT_TAU, score_mode=variant.score_mode
         )
         history = engine.history_df()
@@ -381,6 +367,10 @@ def whr_predictions(
         kwargs["iterations"] = iterations
     if w2_per_day is not None:
         kwargs["w2_per_day"] = w2_per_day
+    if variant.use_quality_score:
+        kwargs["winner_score_col"] = "quality_score_winner"
+    if variant.virtual_games is not None:
+        kwargs["virtual_games"] = float(variant.virtual_games)
 
     appearances = pd.concat([
         decided_all[["event_date", "fighter_a"]].rename(columns={"fighter_a": "fighter"}),

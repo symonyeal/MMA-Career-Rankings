@@ -138,10 +138,11 @@ def integrity_discounted_board(
     as "only penalises, never rewards" that lifts four fifths of the board is
     not a discount; it is noise with a moral label.
 
-    This is a **judgement board, not an accuracy board**. The 2026-08-18 audit
-    measured the integrity sleeve as slightly *worse* out-of-sample (+0.00051
-    log-loss [0.00006, 0.00094]), so it is kept for what it asserts, not for
-    what it predicts, and it is not the default headline.
+    This is a **judgement board, not an accuracy board**. The earlier predictive
+    audit used a forecast helper and variant bundle that were later retired, so
+    its numerical sleeve verdict is not repeated here. The policy survives for
+    what it asserts, not as a claimed predictive improvement, and it is not the
+    default headline.
     """
     if current is None or current.empty or rating_col not in current.columns:
         return pd.DataFrame(columns=["rank", "fighter", rating_col, "integrity_cost"])

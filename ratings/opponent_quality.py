@@ -182,7 +182,7 @@ def peak_opponent_weight_from_level(level: object) -> pd.Series:
     shape: weak opponents fade, mid-rank opponents weigh moderately, elite /
     champion opponents weigh near the maximum. Opponent quality is the
     first-priority signal. The title-bout multiplier is applied separately in
-    ``ratings.peaks.peak_appearance_quality``.
+    ``ratings.appearance_context.peak_appearance_quality``.
     """
     quality = _as_float_series(level).fillna(0.0).clip(lower=0.0, upper=1.0)
 

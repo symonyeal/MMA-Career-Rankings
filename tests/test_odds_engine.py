@@ -184,7 +184,7 @@ def test_weighted_engine_history_records_total_weight():
 
 
 # ---------------------------------------------------------------------------
-# Snapshot integration: rate_snapshot.run() with the 5-stream architecture
+# Snapshot integration: rate_snapshot.run() with the lean skill core
 
 
 def _build_synthetic_snapshot(snapshot_dir: Path) -> None:
@@ -257,13 +257,11 @@ def _build_odds_artifact(snapshot_dir: Path) -> None:
 _EXPECTED_STREAMS = (
     "canonical",
     "method",
-    "method_integrity",
-    "method_performance",
-    "method_integrity_performance",
+    "whr",
 )
 
 
-def test_rate_snapshot_produces_five_streams_without_odds(tmp_path: Path):
+def test_rate_snapshot_produces_lean_core_without_odds(tmp_path: Path):
     from ratings.rate_snapshot import run as run_ratings
 
     snap = tmp_path / "snap"
@@ -276,10 +274,19 @@ def test_rate_snapshot_produces_five_streams_without_odds(tmp_path: Path):
     assert summary["odds_covered_fights"] == 0
     for stream in _EXPECTED_STREAMS:
         assert f"mu_{stream}" in current.columns
-    assert "sustained_peak_mu_canonical" in current.columns
-    assert "five_year_peak_mu_canonical" in current.columns
-    assert "sustained_peak_mu_method_integrity_performance" in current.columns
-    assert "five_year_peak_mu_method_integrity_performance" in current.columns
+    assert "symon_career_skill_mass" in current.columns
+    assert "symon_prime_score" in current.columns
+    assert "symon_peak_score" in current.columns
+    for retired in (
+        "mu_method_integrity", "mu_method_performance",
+        "mu_method_integrity_performance", "mu_whr_integrity_performance",
+        # The rolling opponent-quality period scores were retired on
+        # 2026-08-20: they re-counted opponent quality and title status on top
+        # of a rating that already reflects them.
+        "sustained_peak_mu_canonical", "five_year_peak_mu_canonical",
+        "sustained_peak_headline_mu_whr", "five_year_peak_headline_mu_whr",
+    ):
+        assert retired not in current.columns
     # Legacy column names must not appear under the new architecture.
     for legacy in (
         "mu_ped_adjusted", "mu_odds_adjusted", "mu_quality_adjusted",
@@ -288,7 +295,7 @@ def test_rate_snapshot_produces_five_streams_without_odds(tmp_path: Path):
         assert legacy not in current.columns
 
 
-def test_rate_snapshot_with_odds_lights_up_performance_sleeve(tmp_path: Path):
+def test_rate_snapshot_with_odds_keeps_market_as_an_audit_only(tmp_path: Path):
     from ratings.rate_snapshot import run as run_ratings
 
     snap = tmp_path / "snap"
@@ -300,15 +307,14 @@ def test_rate_snapshot_with_odds_lights_up_performance_sleeve(tmp_path: Path):
     current = pd.read_parquet(snap / "ratings_current.parquet").set_index("fighter")
 
     assert summary["odds_covered_fights"] >= 2
-    assert "sustained_peak_mu_method_integrity_performance" in current.columns
-    assert "five_year_peak_mu_method_integrity_performance" in current.columns
+    assert "symon_career_skill_mass" in current.columns
+    assert "mu_method_performance" not in current.columns
     perf = pd.read_parquet(snap / "performance_appearances.parquet")
     for col in ["perf_factor_rank_context", "perf_factor_championship", "perf_factor_p4p", "perf_factor_weight_class"]:
         assert col in perf.columns
-    # Performance sleeve produces a non-trivial delta for Alice (KO underdog winner)
-    # relative to her plain method rating.
-    assert abs(current.loc["Alice", "mu_method_performance"] - current.loc["Alice", "mu_method"]) > 0.5
-    # Sleeve history files persist
-    assert (snap / "ratings_history_method_integrity.parquet").exists()
-    assert (snap / "ratings_history_method_performance.parquet").exists()
-    assert (snap / "ratings_history_method_integrity_performance.parquet").exists()
+    # Market/context features remain inspectable, but no retired rating history
+    # is silently recreated.
+    assert perf["performance_weight"].notna().all()
+    assert not (snap / "ratings_history_method_integrity.parquet").exists()
+    assert not (snap / "ratings_history_method_performance.parquet").exists()
+    assert not (snap / "ratings_history_method_integrity_performance.parquet").exists()

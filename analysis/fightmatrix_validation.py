@@ -6,7 +6,7 @@ import json
 
 import pandas as pd
 
-from analysis.source_scope import DEFAULT_SCORE_COLUMN
+from analysis.source_scope import resolve_score_column
 from project_helpers import normalize_name_key
 
 
@@ -65,11 +65,15 @@ def build_scope_validation(
     scopes: dict[str, Path],
     output_dir: Path,
     *,
-    score_column: str = DEFAULT_SCORE_COLUMN,
+    score_column: str | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Persist scope statistics and the required historical validation panel."""
     output_dir = Path(output_dir)
     base_name = "ufc_only" if "ufc_only" in scopes else next(iter(scopes))
+    score_column = resolve_score_column(
+        [pd.read_parquet(Path(path) / "ratings_current.parquet") for path in scopes.values()],
+        score_column,
+    )
     base = _rank_table(scopes[base_name], score_column)
     reference_path = Path(scopes[base_name]) / "fightmatrix_all_time.parquet"
     reference = pd.read_parquet(reference_path)[["fighter", "rank"]].copy()

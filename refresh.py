@@ -27,6 +27,7 @@ from loaders.odds_ingest_mdabbert import run as ingest_mdabbert_odds  # noqa: E4
 from ratings.glicko2_engine import DEFAULT_TAU  # noqa: E402
 from ratings.rate_snapshot import run as run_ratings  # noqa: E402
 from analysis.build_notebook import build as build_notebook  # noqa: E402
+from build_boards import select_core_rating_col, write_board_artifacts  # noqa: E402
 
 
 _MDABBERT_CANDIDATES = (
@@ -107,27 +108,13 @@ def append_changelog(project_root: Path, snapshot_date: str, counts: dict[str, i
     current_path = project_root / "data" / "snapshots" / snapshot_date / "ratings_current.parquet"
     current = pd.read_parquet(current_path)
     eligible = current[current["rating_periods"] >= 3].copy()
-    # WHR (Whole-History Rating smoother) is the default headline ranking.
-    headline_col = next(
-        (
-            col
-            for col in (
-                "sustained_peak_headline_mu_whr_integrity_performance",
-                "sustained_peak_headline_mu_whr",
-                "sustained_peak_headline_mu_method_integrity_performance",
-                "sustained_peak_mu_method_integrity_performance",
-                "five_year_peak_mu_canonical",
-            )
-            if col in eligible.columns
-        ),
-        "five_year_peak_mu_canonical",
-    )
+    headline_col = select_core_rating_col(eligible)
     top = eligible.sort_values(headline_col, ascending=False).head(10)
     top_line = "; ".join(f"{row.fighter} {getattr(row, headline_col):.1f}" for row in top.itertuples(index=False))
     from ratings.constants import rating_label
     headline_label = (
-        "All-time Prime"
-        if headline_col == "sustained_peak_headline_mu_whr_integrity_performance"
+        "Career Skill Mass"
+        if headline_col == "symon_career_skill_mass"
         else rating_label(headline_col)
     )
 
@@ -136,9 +123,10 @@ def append_changelog(project_root: Path, snapshot_date: str, counts: dict[str, i
         f"## {snapshot_date} - Refresh run",
         f"- Canonical snapshot rebuilt from Greco CSVs: events={counts['events_kept']}, fights={counts['fights_kept']}, rounds={counts['rounds_kept']}, excluded={counts['excluded_bouts']}.",
         f"- Ratings and dominance produced: fighters_rated={ratings_summary['current_fighters']}, fighter_event_rows={ratings_summary['history_rows']}, events_processed={ratings_summary['events_processed']}.",
-        "- Streams: wl (canonical) + method_rating + method_clean + method_perf + method_full + whr_rating + whr_clean + whr_perf + whr_full.",
-        "- Performance sleeve includes quality, market, rank context, championship context, and P4P context.",
-        "- Period metrics: 10-year and 5-year windows, opponent-weighted, result-aware, with all qualifying fights counted.",
+        "- Streams: canonical Glicko-2 filter + WHR smoother over the same binary W/L/D evidence, "
+        "plus a method-scored research diagnostic.",
+        "- Public scores: Career Skill Mass over the WHR trajectory; fixed 10-year Prime and 5-year Peak windows.",
+        "- Audit layers (integrity, dominance, odds, opponent context) do not enter the rating likelihood.",
         f"- Top 10 by {headline_label}: {top_line}",
     ]
     lines.extend(mover_lines(current_path, previous_dir))
@@ -158,6 +146,13 @@ def main() -> None:
     parser.add_argument("--greco-dir", default=None, help="Path to Greco scrape_ufc_stats CSV directory.")
     parser.add_argument("--tau", type=float, default=DEFAULT_TAU, help=f"Glicko-2 tau; default {DEFAULT_TAU}.")
     parser.add_argument("--min-fights", type=int, default=3, help="Ranking eligibility threshold for reporting.")
+    parser.add_argument(
+        "--bootstrap-replicates", type=int, default=0,
+        help=(
+            "Refit the smoother this many times under Dirichlet-reweighted events to "
+            "publish rank intervals (~8s each; 0 skips, 150 is a usable board)."
+        ),
+    )
     parser.add_argument("--include-external", action="store_true",
                         help="Also load project-local UFC-DataLab, FightMatrix, and cached odds artifacts into the snapshot.")
     parser.add_argument("--include-odds", action="store_true",
@@ -243,6 +238,35 @@ def main() -> None:
         min_fights=args.min_fights,
         mdabbert_csv=mdabbert_csv if mdabbert_csv and mdabbert_csv.exists() else None,
     )
+    board_summary = write_board_artifacts(
+        snapshot_dir,
+        min_rating_periods=args.min_fights,
+    )
+    print(
+        "[refresh] board artifacts: "
+        f"core={board_summary['core_rating_col']}, "
+        f"integrity={board_summary['integrity_rating_col']}, "
+        f"ledger_rows={board_summary['ledger_rows']:,}, "
+        f"ranked={board_summary['ranked_fighters']:,}, "
+        f"withheld={board_summary['withheld_fighters']:,}"
+    )
+    if args.bootstrap_replicates > 0:
+        from ratings.uncertainty import career_mass_bootstrap
+
+        bootstrap_fights = pd.read_parquet(snapshot_dir / "canonical_fights.parquet")
+        bootstrap_fights["event_date"] = pd.to_datetime(bootstrap_fights["event_date"])
+        if "is_excluded" in bootstrap_fights.columns:
+            bootstrap_fights = bootstrap_fights[
+                ~bootstrap_fights["is_excluded"].fillna(False).astype(bool)
+            ]
+        board = career_mass_bootstrap(
+            bootstrap_fights, replicates=args.bootstrap_replicates)
+        board.to_parquet(snapshot_dir / "career_mass_uncertainty.parquet", index=False)
+        widths = (board.head(50)["rank_hi"] - board.head(50)["rank_lo"]).median()
+        print(f"[refresh] rank intervals: {args.bootstrap_replicates} replicates, "
+              f"median top-50 width {widths:.0f}")
+    else:
+        print("[refresh] rank intervals skipped (--bootstrap-replicates 0)")
     append_changelog(project_root, args.snapshot_date, counts, ratings_summary, previous_dir)
     print(f"[refresh] changelog appended: {project_root / 'data' / 'CHANGELOG.md'}")
     notebook_path = rebuild_notebook(project_root)

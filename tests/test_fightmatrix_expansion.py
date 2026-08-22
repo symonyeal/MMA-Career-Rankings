@@ -16,7 +16,7 @@ from analysis.fightmatrix_graph import (
     reconcile_bouts,
 )
 from analysis.fightmatrix_validation import build_scope_validation
-from analysis.source_scope import DEFAULT_SCORE_COLUMN
+from analysis.source_scope import SCORE_CANDIDATES
 from analysis.fightmatrix_viz import (
     closure_by_depth_chart,
     component_sizes_chart,
@@ -377,7 +377,7 @@ def test_scope_comparison_report_generation(tmp_path: Path):
         path.mkdir()
         pd.DataFrame({
             "fighter": ["Jon Jones", "Georges St-Pierre"],
-            DEFAULT_SCORE_COLUMN: scores, "rating_periods": [10, 10], "gender": ["M", "M"],
+            SCORE_CANDIDATES[0]: scores, "rating_periods": [10, 10], "gender": ["M", "M"],
         }).to_parquet(path / "ratings_current.parquet", index=False)
         pd.DataFrame([{"fight_url": "x"}]).to_parquet(path / "canonical_fights.parquet", index=False)
         scopes[scope] = path

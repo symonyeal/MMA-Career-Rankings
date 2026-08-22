@@ -3,7 +3,10 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from ratings.rate_snapshot import _amplify_dominance_weight, _winner_dominance_level
+from ratings.research_variants import (
+    amplify_dominance_weight as _amplify_dominance_weight,
+    winner_dominance_level as _winner_dominance_level,
+)
 
 
 def test_winner_dominance_level_maps_to_unit_interval():

@@ -3,7 +3,7 @@ import sqlite3
 
 import pytest
 
-from build_database import build_database
+from build_database import TABLE_SPECS, build_database
 
 
 SNAPSHOT_DIR = Path("data/snapshots/2026-05-13")
@@ -19,6 +19,18 @@ def _tables(con: sqlite3.Connection) -> set[str]:
 
 def _indexes(con: sqlite3.Connection, table_name: str) -> set[str]:
     return {row[1] for row in con.execute(f'PRAGMA index_list("{table_name}")').fetchall()}
+
+
+def test_board_artifacts_are_optional_database_views():
+    specs = {spec.table_name: spec for spec in TABLE_SPECS}
+    expected = {
+        "integrity_ledger": "integrity_ledger.parquet",
+        "integrity_discounted_board": "integrity_discounted_board.parquet",
+        "completeness_gated_board": "completeness_gated_board.parquet",
+    }
+    for table_name, file_name in expected.items():
+        assert specs[table_name].file_name == file_name
+        assert specs[table_name].required is False
 
 
 def test_build_database_contains_core_tables_counts_and_indexes():
@@ -83,43 +95,9 @@ def test_build_database_contains_core_tables_counts_and_indexes():
         )
 
 
-def test_build_database_loads_optional_sleeve_history_tables(tmp_path: Path):
-    """Optional sleeve history tables surface in SQLite when their parquets exist."""
-    import shutil
-    import sqlite3 as _sqlite3
-    import pandas as _pd
-
-    if not SNAPSHOT_DIR.exists():
-        pytest.skip(f"snapshot not present: {SNAPSHOT_DIR}")
-
-    snap_copy = tmp_path / "snap"
-    shutil.copytree(SNAPSHOT_DIR, snap_copy)
-
-    # Minimal synthetic sleeve-history rows.
-    for suffix in (
-        "method_integrity",
-        "method_performance",
-        "method_integrity_performance",
-    ):
-        _pd.DataFrame([
-            {
-                "fighter": "A",
-                "event_date": "2024-01-01",
-                "event_name": "E1",
-                f"mu_{suffix}": 1520.0,
-                f"phi_{suffix}": 300.0,
-                f"sigma_{suffix}": 0.06,
-                "opponents_this_event": 1,
-                "total_weight": 1.0,
-            }
-        ]).to_parquet(snap_copy / f"ratings_history_{suffix}.parquet", index=False)
-
-    db = tmp_path / "ufc_rank_engine_sleeves.sqlite"
-    build_database(snap_copy, db)
-    with _sqlite3.connect(db) as con:
-        tables = _tables(con)
-        assert {
-            "ratings_history_method_integrity",
-            "ratings_history_method_performance",
-            "ratings_history_method_integrity_performance",
-        }.issubset(tables)
+def test_retired_sleeve_histories_are_not_database_views():
+    names = {spec.table_name for spec in TABLE_SPECS}
+    assert "ratings_history_method_integrity" not in names
+    assert "ratings_history_method_performance" not in names
+    assert "ratings_history_method_integrity_performance" not in names
+    assert "sleeve_attribution" not in names

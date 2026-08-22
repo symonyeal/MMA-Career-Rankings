@@ -1,6 +1,7 @@
 """Compare UFC-only and public FightMatrix-cohort rating snapshots."""
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
 
 import pandas as pd
@@ -8,7 +9,33 @@ import pandas as pd
 from project_helpers import normalize_name_key
 
 
-DEFAULT_SCORE_COLUMN = "sustained_peak_headline_mu_whr_integrity_performance"
+SCORE_CANDIDATES = (
+    "symon_career_skill_mass",
+    "mu_whr",
+)
+
+
+def resolve_score_column(
+    frames: Sequence[pd.DataFrame],
+    requested: str | None = None,
+) -> str:
+    """Return the score column every scope carries, preferring the public one.
+
+    Scopes are compared on one shared column or not at all: a scope missing the
+    requested score is a data error, not a reason to score it differently.
+    """
+    if requested is not None:
+        missing = [i for i, frame in enumerate(frames) if requested not in frame.columns]
+        if missing:
+            raise ValueError(f"score column is not present in every scope: {requested}")
+        return requested
+    for column in SCORE_CANDIDATES:
+        if all(column in frame.columns for frame in frames):
+            return column
+    raise ValueError(
+        "no common lean-core score column found; expected one of "
+        + ", ".join(SCORE_CANDIDATES)
+    )
 
 
 def _ranked(frame: pd.DataFrame, prefix: str, score_column: str) -> pd.DataFrame:
@@ -31,13 +58,14 @@ def build_scope_comparison(
     public_snapshot: Path,
     *,
     output_path: Path | None = None,
-    score_column: str = DEFAULT_SCORE_COLUMN,
+    score_column: str | None = None,
 ) -> pd.DataFrame:
     """Return one row per fighter comparing the two source scopes."""
     ufc_snapshot = Path(ufc_snapshot)
     public_snapshot = Path(public_snapshot)
     ufc = pd.read_parquet(ufc_snapshot / "ratings_current.parquet")
     public = pd.read_parquet(public_snapshot / "ratings_current.parquet")
+    score_column = resolve_score_column((ufc, public), score_column)
     out = _ranked(ufc, "ufc_only", score_column).merge(
         _ranked(public, "fightmatrix_public", score_column),
         on="fighter",

@@ -57,7 +57,9 @@ def main() -> None:
     args = ap.parse_args()
 
     t0 = time.process_time()
-    inputs = PQ.build_inputs(args.snapshot_dir)
+    # This driver is explicitly a cross-organization sensitivity experiment;
+    # the production prequential default is intentionally UFC-only.
+    inputs = PQ.build_inputs(args.snapshot_dir, with_crossorg=True)
     anchor = pd.read_parquet(args.anchor)
     crossorg_mask = inputs.fights.get("source", pd.Series("ufc", index=inputs.fights.index)).ne("ufc")
     n_crossorg = int(crossorg_mask.sum())

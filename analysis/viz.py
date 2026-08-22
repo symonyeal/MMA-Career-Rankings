@@ -193,6 +193,9 @@ def _metric_label(column: str) -> str:
         "mu_method_integrity_performance": "Complete rating",
         "mu_whr": "Legacy rating",
         "mu_whr_integrity_performance": "Legacy complete rating",
+        "symon_career_skill_mass": "All-time career skill mass",
+        "symon_prime_score": "Prime score",
+        "symon_peak_score": "Peak score",
     }
     if column in labels:
         return labels[column]
@@ -240,14 +243,17 @@ TABLE_KEY_MAP = [
     ("canonical_fighters", "fighters"),
     ("canonical_events", "events"),
     ("ratings_history", "ratings_history"),
+    ("ratings_history_whr", "ratings_history_whr"),
     ("ratings_history_method_performance", "ratings_history_method_performance"),
     ("ratings_current", "ratings_current"),
     ("performance_appearances", "performance_appearances"),
     ("integrity_appearances", "integrity_appearances"),
+    ("integrity_ledger", "integrity_ledger"),
+    ("integrity_discounted_board", "integrity_discounted_board"),
     ("fight_dominance", "fight_dominance"),
     ("fighter_dominance", "fighter_dominance"),
     ("calibration_residuals", "calibration_residuals"),
-    ("sleeve_attribution", "sleeve_attribution"),
+    ("career_mass_uncertainty", "career_mass_uncertainty"),
     ("division_entropy", "division_entropy"),
     ("division_resume", "division_resume"),
     ("datalab_bouts_all", "datalab_bouts_all"),
@@ -257,6 +263,9 @@ TABLE_KEY_MAP = [
     ("fightmatrix_rankings", "fightmatrix_rankings"),
     ("fightmatrix_all_time", "fightmatrix_all_time"),
     ("odds_lines", "odds_lines"),
+    ("prequential_predictions", "prequential_predictions"),
+    ("prequential_scores", "prequential_scores"),
+    ("prequential_paired", "prequential_paired"),
 ]
 
 CSV_KEY_MAP = [
@@ -331,6 +340,324 @@ def load_project_data(
     if prefer_database and database_path is not None and Path(database_path).exists():
         return load_database(database_path)
     return load_snapshot(snapshot_dir)
+
+
+# ---------------------------------------------------------------------------
+# Held-out evidence
+
+_PREQUENTIAL_VARIANT_LABELS = {
+    "bench_market": "Closing odds",
+    "bench_naive": "Coin flip",
+    "canonical": "Wins filter",
+    "method": "Method filter",
+    "method_integrity": "Method + integrity",
+    "method_performance": "Method + strength",
+    "method_integrity_performance": "Complete filter",
+    "whr": "All-time smoother",
+    "whr_integrity": "All-time + integrity",
+    "whr_performance": "All-time + strength",
+    "whr_integrity_performance": "Complete all-time",
+    "abl_no_integrity": "Without integrity",
+    "abl_no_method": "Without method scoring",
+    "abl_no_market": "Without market weighting",
+    "abl_no_crossorg": "Without cross-org bridge",
+    "abl_whr_no_dominance": "All-time without dominance",
+    "abl_whr_no_crossorg": "All-time without cross-org bridge",
+    "abl_whr_no_quality": "All-time without score damp",
+}
+
+def _prequential_label(value: object) -> str:
+    key = str(value)
+    return _PREQUENTIAL_VARIANT_LABELS.get(key, key.replace("_", " ").strip().title())
+
+
+def _boolean_mask(values: pd.Series, expected: bool) -> pd.Series:
+    """Coerce parquet booleans and CSV-like strings without truthy-string bugs."""
+    if pd.api.types.is_bool_dtype(values.dtype):
+        parsed = values.fillna(False)
+    else:
+        parsed = values.astype("string").str.strip().str.lower().map({
+            "true": True, "1": True, "yes": True,
+            "false": False, "0": False, "no": False,
+        })
+    return parsed.eq(bool(expected)).fillna(False)
+
+
+def _score_calibration_slice(scores: pd.DataFrame, calibrated: bool) -> pd.DataFrame:
+    """Select calibrated/raw rows across both supported artifact schemas."""
+    if "prob_column" in scores.columns:
+        wanted = "p_a_calibrated" if calibrated else "p_a"
+        return scores[scores["prob_column"].astype("string").eq(wanted)]
+    if "calibrated" in scores.columns:
+        return scores[_boolean_mask(scores["calibrated"], calibrated)]
+    return scores.iloc[0:0] if calibrated else scores
+
+
+def heldout_scorecard_chart(
+    scores: pd.DataFrame,
+    calibrated: bool = True,
+    segment_type: str = "overall",
+    *,
+    segment_value: str | None = None,
+    min_n: int = 200,
+    variants: list[str] | tuple[str, ...] | None = None,
+    height: int | None = None,
+) -> go.Figure:
+    """Held-out scorecard with metric direction and sample size made explicit.
+
+    Scores are descriptive. In particular, a benchmark with different coverage
+    is not presented as a paired comparison; the row-level ``n`` remains visible.
+    """
+    mode = "temperature-calibrated" if calibrated else "raw"
+    title = f"Held-out prediction scorecard · {mode}"
+    if scores is None or scores.empty:
+        return _empty_figure("held-out score artifact unavailable", title=title)
+    required = {"variant", "segment_type", "n"}
+    if not required.issubset(scores.columns):
+        return _empty_figure("held-out score artifact has an unsupported schema", title=title)
+
+    df = _score_calibration_slice(scores.copy(), calibrated)
+    df = df[df["segment_type"].astype("string").str.casefold().eq(str(segment_type).casefold())]
+    if segment_value is not None and "segment_value" in df.columns:
+        df = df[df["segment_value"].astype("string").eq(str(segment_value))]
+    if df.empty:
+        return _empty_figure(
+            f"no {mode} rows for segment '{segment_type}'", title=title)
+
+    df["n"] = pd.to_numeric(df["n"], errors="coerce")
+    floor = max(1, int(min_n))
+    df = df[df["n"].ge(floor)]
+    if variants is not None:
+        wanted = {str(v) for v in variants}
+        df = df[df["variant"].astype("string").isin(wanted)]
+    elif (~df["variant"].astype("string").str.startswith("abl_")).any():
+        # Ablations have their own paired forest below; keep this overview lean.
+        df = df[~df["variant"].astype("string").str.startswith("abl_")]
+    if df.empty:
+        return _empty_figure(
+            f"no score rows meet the n ≥ {floor:,} evidence floor", title=title)
+
+    metric_specs = [
+        ("log_loss", "Log loss ↓", "lower is better", 0.693147, ".4f"),
+        ("brier", "Brier score ↓", "lower is better", 0.25, ".4f"),
+        ("auc", "AUC ↑", "higher is better", 0.5, ".3f"),
+    ]
+    metric_specs = [spec for spec in metric_specs if spec[0] in df.columns]
+    if not metric_specs:
+        return _empty_figure("no supported score metrics in artifact", title=title)
+    for metric, *_ in metric_specs:
+        df[metric] = pd.to_numeric(df[metric], errors="coerce")
+    df = df.dropna(subset=[m[0] for m in metric_specs], how="all")
+    if df.empty:
+        return _empty_figure("all held-out score values are missing", title=title)
+
+    identity = ["variant"] + (["segment_value"] if "segment_value" in df.columns else [])
+    df = df.sort_values("n", ascending=False).drop_duplicates(identity)
+    sort_metric = "log_loss" if "log_loss" in df.columns else metric_specs[0][0]
+    df = df.sort_values(sort_metric, ascending=sort_metric != "auc", na_position="last")
+    labels = df["variant"].map(_prequential_label)
+    if str(segment_type).casefold() != "overall" and "segment_value" in df.columns:
+        labels = labels + " · " + df["segment_value"].astype("string")
+    row_labels = [f"{label}  ·  n={int(n):,}" for label, n in zip(labels, df["n"])]
+
+    colors = [
+        THEME["accent"] if str(v) == "bench_market"
+        else THEME["text_muted"] if str(v) == "bench_naive"
+        else THEME["secondary"] if str(v).startswith("whr")
+        else THEME["primary"]
+        for v in df["variant"]
+    ]
+    fig = make_subplots(
+        rows=1, cols=len(metric_specs), shared_yaxes=True,
+        horizontal_spacing=0.055,
+        subplot_titles=[f"{label}<br><span style='font-size:10px;color:{THEME['text_muted']}'>{direction}</span>"
+                        for _, label, direction, _, _ in metric_specs],
+    )
+    all_hover = np.stack([
+        labels.astype("string"),
+        df["n"].round().astype("Int64").astype("string"),
+    ], axis=-1)
+    for col, (metric, _label, _direction, reference, number_format) in enumerate(metric_specs, start=1):
+        vals = pd.to_numeric(df[metric], errors="coerce")
+        fig.add_trace(go.Scatter(
+            x=vals,
+            y=row_labels,
+            mode="markers+text",
+            marker=dict(color=colors, size=11, line=dict(color=THEME["bg"], width=0.7)),
+            text=[format(v, number_format) if pd.notna(v) else "" for v in vals],
+            textposition="middle right",
+            textfont=dict(color=THEME["text_2"], size=10),
+            customdata=all_hover,
+            hovertemplate=(f"<b>%{{customdata[0]}}</b><br>{_label}=%{{x:{number_format}}}"
+                           "<br>held-out n=%{customdata[1]}<extra></extra>"),
+            cliponaxis=False,
+            showlegend=False,
+        ), row=1, col=col)
+        fig.add_vline(
+            x=reference, line_color=THEME["border_strong"], line_dash="dot",
+            line_width=1, row=1, col=col,
+        )
+        fig.update_xaxes(tickformat=number_format, row=1, col=col)
+
+    chart_height = height or max(410, 31 * len(df) + 205)
+    _apply_chart_layout(fig, height=chart_height)
+    fig.update_layout(
+        title=title,
+        margin=dict(t=90, r=76, b=105, l=220),
+        hovermode="closest",
+    )
+    fig.update_yaxes(autorange="reversed", showgrid=False, automargin=True, row=1, col=1)
+    fig.add_annotation(
+        x=0, y=-0.20, xref="paper", yref="paper", xanchor="left", yanchor="top",
+        text=(f"Dotted lines are uninformative references (coin-flip probability). "
+              f"Rows below n={floor:,} are omitted. Each row uses its own available held-out sample; "
+              "these are descriptive scores, not paired causal claims."),
+        showarrow=False, align="left", font=dict(color=THEME["text_caption"], size=10),
+    )
+    return fig
+
+
+def ablation_forest_chart(
+    paired: pd.DataFrame,
+    calibrated: bool = True,
+    metric: str = "log_loss",
+    min_n: int = 200,
+    *,
+    height: int | None = None,
+) -> go.Figure:
+    """Paired ablation intervals with direction interpreted for the metric.
+
+    ``delta`` is challenger minus baseline. Loss metrics favour the challenger
+    to the left of zero; accuracy favours it to the right. Intervals crossing
+    zero remain explicitly unresolved.
+    """
+    metric_labels = {
+        "log_loss": ("log loss", True, ".2e"),
+        "brier": ("Brier score", True, ".2e"),
+        "accuracy": ("accuracy", False, ".2%"),
+    }
+    metric_key = str(metric).strip().lower()
+    metric_label, lower_is_better, tickformat = metric_labels.get(
+        metric_key, (str(metric), True, ".3f"))
+    mode = "temperature-calibrated" if calibrated else "raw"
+    title = f"Paired ablations · {mode} {metric_label}"
+    if metric_key not in metric_labels:
+        return _empty_figure(f"paired intervals do not support metric '{metric}'", title=title)
+    if paired is None or paired.empty:
+        return _empty_figure("paired ablation artifact unavailable", title=title)
+    required = {"baseline", "challenger", "metric", "n", "delta", "lo", "hi"}
+    if not required.issubset(paired.columns):
+        return _empty_figure("paired ablation artifact has an unsupported schema", title=title)
+
+    df = paired.copy()
+    if "calibrated" in df.columns:
+        df = df[_boolean_mask(df["calibrated"], calibrated)]
+    elif calibrated:
+        df = df.iloc[0:0]
+    df = df[df["metric"].astype("string").str.lower().eq(metric_key)]
+    for column in ("n", "delta", "lo", "hi"):
+        df[column] = pd.to_numeric(df[column], errors="coerce")
+    floor = max(1, int(min_n))
+    df = df[df["n"].ge(floor)].dropna(subset=["delta", "lo", "hi"])
+    finite = np.isfinite(df[["delta", "lo", "hi"]].to_numpy(dtype=float)).all(axis=1)
+    df = df.loc[finite].copy()
+    if df.empty:
+        return _empty_figure(
+            f"no {mode} {metric_label} intervals meet n ≥ {floor:,}", title=title)
+
+    # Tolerate interval columns arriving in reverse order, but never alter the
+    # point estimate or infer a verdict from the artifact's prose field.
+    df[["lo", "hi"]] = np.sort(df[["lo", "hi"]].to_numpy(dtype=float), axis=1)
+    df["isolates"] = (
+        df["isolates"].astype("string")
+        if "isolates" in df.columns
+        else df["baseline"].astype("string") + " → " + df["challenger"].astype("string")
+    )
+
+    if lower_is_better:
+        df["verdict"] = np.select(
+            [df["hi"].lt(0), df["lo"].gt(0)],
+            ["interval favors challenger", "interval favors baseline"],
+            default="unresolved",
+        )
+        axis_title = f"Δ challenger − baseline {metric_label}  (← challenger lower · baseline lower →)"
+    else:
+        df["verdict"] = np.select(
+            [df["lo"].gt(0), df["hi"].lt(0)],
+            ["interval favors challenger", "interval favors baseline"],
+            default="unresolved",
+        )
+        axis_title = f"Δ challenger − baseline {metric_label}  (← baseline higher · challenger higher →)"
+
+    df = df.sort_values("delta")
+    df["row_label"] = [
+        f"{str(isolates)}<br><span style='font-size:10px;color:{THEME['text_muted']}'>"
+        f"{_prequential_label(base)} → {_prequential_label(challenger)} · n={int(n):,}</span>"
+        for isolates, base, challenger, n in zip(
+            df["isolates"], df["baseline"], df["challenger"], df["n"])
+    ]
+    verdict_style = {
+        "interval favors challenger": (THEME["positive"], "Challenger favored"),
+        "interval favors baseline": (THEME["negative"], "Baseline favored"),
+        "unresolved": (THEME["neutral"], "Unresolved"),
+    }
+
+    fig = go.Figure()
+    for verdict in ("interval favors challenger", "interval favors baseline", "unresolved"):
+        group = df[df["verdict"].eq(verdict)]
+        if group.empty:
+            continue
+        color, legend = verdict_style[verdict]
+        customdata = np.stack([
+            group["isolates"].astype("string"),
+            group["baseline"].map(_prequential_label).astype("string"),
+            group["challenger"].map(_prequential_label).astype("string"),
+            group["n"].round().astype("Int64").astype("string"),
+            group["lo"].map(lambda v: f"{v:.6g}").astype("string"),
+            group["hi"].map(lambda v: f"{v:.6g}").astype("string"),
+            pd.Series([legend] * len(group), index=group.index).astype("string"),
+        ], axis=-1)
+        fig.add_trace(go.Scatter(
+            x=group["delta"], y=group["row_label"], mode="markers",
+            name=legend,
+            marker=dict(color=color, size=11, line=dict(color=THEME["bg"], width=0.8)),
+            error_x=dict(
+                type="data", symmetric=False,
+                array=(group["hi"] - group["delta"]).clip(lower=0),
+                arrayminus=(group["delta"] - group["lo"]).clip(lower=0),
+                color=color, thickness=1.6, width=4,
+            ),
+            customdata=customdata,
+            hovertemplate=(
+                "<b>%{customdata[0]}</b><br>%{customdata[1]} → %{customdata[2]}"
+                "<br>Δ=%{x:.6g}<br>95% interval=[%{customdata[4]}, %{customdata[5]}]"
+                "<br>paired n=%{customdata[3]}<br><b>%{customdata[6]}</b><extra></extra>"
+            ),
+        ))
+
+    fig.add_vline(x=0, line_color=THEME["text_2"], line_width=1.2)
+    chart_height = height or max(420, 49 * len(df) + 190)
+    _apply_chart_layout(fig, height=chart_height)
+    fig.update_layout(
+        title=title,
+        xaxis_title=axis_title,
+        yaxis_title="",
+        margin=dict(t=70, r=44, b=112, l=285),
+        legend=dict(orientation="h", y=1.04, x=1, xanchor="right", yanchor="bottom"),
+    )
+    fig.update_xaxes(tickformat=tickformat)
+    fig.update_yaxes(
+        autorange="reversed", showgrid=False, automargin=True,
+        categoryorder="array", categoryarray=df["row_label"].tolist()[::-1],
+    )
+    fig.add_annotation(
+        x=0, y=-0.22, xref="paper", yref="paper", xanchor="left", yanchor="top",
+        text=("Points are challenger − baseline; bars are 95% paired bootstrap intervals. "
+              "Crossing zero is unresolved. "
+              f"Rows below n={floor:,} are omitted. Results describe this held-out sample, not universal value."),
+        showarrow=False, align="left", font=dict(color=THEME["text_caption"], size=10),
+    )
+    return fig
 
 
 # ---------------------------------------------------------------------------
@@ -525,11 +852,7 @@ def top_n_table(
     df["phi_canonical"] = df["phi_canonical"].round(1)
     df["mu_method"] = df["mu_method"].round(1)
     for col in [
-        "sustained_peak_headline_mu_whr", "five_year_peak_headline_mu_whr", "mu_whr",
-        "sustained_peak_mu_canonical", "five_year_peak_mu_canonical",
-        "sustained_peak_mu_method", "five_year_peak_mu_method",
-        "sustained_peak_mu_method_performance", "five_year_peak_mu_method_performance",
-        "mu_method_performance", "delta_mu_method_performance",
+        "symon_career_skill_mass", "symon_prime_score", "symon_peak_score", "mu_whr",
     ]:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce").round(1)
@@ -538,10 +861,7 @@ def top_n_table(
     display_cols = [
         "rank", "fighter", "mu_canonical", "phi_canonical",
         "gender", "career_division", "current_division", "recent_division",
-        "sustained_peak_headline_mu_whr", "five_year_peak_headline_mu_whr",
-        "sustained_peak_mu_method_performance", "five_year_peak_mu_method_performance",
-        "sustained_peak_mu_canonical", "five_year_peak_mu_canonical",
-        "mu_method_performance", "delta_mu_method_performance",
+        "symon_career_skill_mass", "symon_prime_score", "symon_peak_score", "mu_whr",
         "mu_method", "rating_periods", "last_event_date",
         "height_inches", "weight_lb", "reach_inches", "stance",
     ]
@@ -587,17 +907,10 @@ def fighter_detail(
             "phi_canonical":               round(float(row["phi_canonical"]), 1),
             "ci95_lower":                  round(float(row["mu_canonical"]) - 1.96 * float(row["phi_canonical"]), 1),
             "ci95_upper":                  round(float(row["mu_canonical"]) + 1.96 * float(row["phi_canonical"]), 1),
-            "sustained_peak_mu_canonical": _opt_round(row.get("sustained_peak_mu_canonical")),
-            "five_year_peak_mu_canonical": _opt_round(row.get("five_year_peak_mu_canonical")),
-            "mu_method":                   round(float(row["mu_method"]), 1),
-            "sustained_peak_mu_method":    _opt_round(row.get("sustained_peak_mu_method")),
-            "five_year_peak_mu_method":    _opt_round(row.get("five_year_peak_mu_method")),
-            "mu_method_performance":       _opt_round(row.get("mu_method_performance")),
-            "sustained_peak_mu_method_performance": _opt_round(row.get("sustained_peak_mu_method_performance")),
-            "five_year_peak_mu_method_performance": _opt_round(row.get("five_year_peak_mu_method_performance")),
-            "mu_whr":                      _opt_round(row.get("mu_whr")),
-            "whr_rating":                  _opt_round(row.get("sustained_peak_headline_mu_whr")),
-            "whr_rating_5yr":              _opt_round(row.get("five_year_peak_headline_mu_whr")),
+            "career_skill_mass":           _opt_round(row.get("symon_career_skill_mass")),
+            "prime_score":                 _opt_round(row.get("symon_prime_score")),
+            "peak_score":                  _opt_round(row.get("symon_peak_score")),
+            "whr_rating":                  _opt_round(row.get("mu_whr")),
             "rating_periods":              int(row["rating_periods"]),
             "last_event_date":             row.get("last_event_date"),
         }
@@ -733,7 +1046,7 @@ def trajectory_chart(
                 ))
 
         # 5-Yr Peak annotation: simple visual guide; official peak columns
-        # use opponent-quality top-N windows generated in ratings.peaks.
+        # use opponent-quality windows from ratings.appearance_context.
         peak_roll = h.set_index("event_date")[rating_col].rolling(
             f"{FIVE_YEAR_PEAK_WINDOW_DAYS}D",
             min_periods=FIVE_YEAR_PEAK_MIN_FIGHTS,
@@ -1673,7 +1986,7 @@ def external_source_coverage_dashboard(data: dict[str, pd.DataFrame]) -> go.Figu
 
 
 
-def sustained_peak_leaderboard_chart(
+def period_leaderboard_chart(
     ratings_current: pd.DataFrame,
     n: int = 25,
     min_fights: int = SUSTAINED_PEAK_MIN_FIGHTS,
@@ -1686,15 +1999,10 @@ def sustained_peak_leaderboard_chart(
     peak_col = next(
         (
             col
-            for col in (
-                "sustained_peak_headline_mu_whr",
-                "sustained_peak_mu_method_performance",
-                "five_year_peak_mu_method_performance",
-                "five_year_peak_mu_canonical",
-            )
+            for col in ("symon_prime_score", "symon_peak_score", "mu_whr")
             if col in df.columns
         ),
-        "five_year_peak_mu_canonical",
+        "mu_whr",
     )
     df = df[df["rating_periods"] >= min_fights].dropna(subset=[peak_col])
     df = df.sort_values(peak_col, ascending=False).head(n)
@@ -1703,14 +2011,10 @@ def sustained_peak_leaderboard_chart(
     five_col = next(
         (
             col
-            for col in (
-                "five_year_peak_headline_mu_whr",
-                "five_year_peak_mu_method_performance",
-                "five_year_peak_mu_canonical",
-            )
+            for col in ("symon_peak_score", "symon_prime_score", "mu_whr")
             if col in df.columns
         ),
-        "five_year_peak_mu_canonical",
+        "mu_whr",
     )
     fig = go.Figure(go.Bar(
         x=df[peak_col],
@@ -1814,7 +2118,7 @@ def division_strength_comparison_chart(
 def top_fighter_placement_scatter(
     ratings_current: pd.DataFrame,
     *,
-    rating_col: str = "sustained_peak_headline_mu_whr",
+    rating_col: str = "symon_career_skill_mass",
     n: int = 100,
     min_fights: int = 0,
 ) -> go.Figure:
@@ -1918,7 +2222,7 @@ def top_fighter_placement_scatter(
 def top100_division_density_chart(
     ratings_current: pd.DataFrame,
     *,
-    rating_col: str = "sustained_peak_headline_mu_whr",
+    rating_col: str = "symon_career_skill_mass",
     n: int = 100,
 ) -> go.Figure:
     """Share of the top-N occupied by each division."""
@@ -2320,22 +2624,21 @@ def datalab_scorecard_insight_chart(scorecards: pd.DataFrame) -> go.Figure:
 
 
 # ---------------------------------------------------------------------------
-# Rating-stream sleeve composer (notebook UX)
+# Rating-stream composer (notebook UX)
 #
-# The performance sleeve rewards quality of win + signed market line + rank,
-# championship, and P4P context (impressive results vs expectation).
-# Sleeves only apply to the method stream. Canonical is always pristine.
-# Peak views resolve only against the two base streams (canonical / method).
+# ``canonical`` is the Glicko-2 filter and ``method`` is the method-scored
+# research diagnostic; the weighted sleeves that used to appear here are
+# retired. Period views no longer depend on the stream — there is one Prime and
+# one Peak, both fixed windows over the WHR trajectory.
 
 RATING_STREAMS: tuple[tuple[str, str], ...] = (
     ("Wins", "canonical"),
     ("Finishes", "method"),
-    ("Strength", "method_performance"),
 )
 
 PEAK_VIEWS: tuple[tuple[str, str], ...] = (
-    ("Prime", "sustained_peak"),
-    ("Peak", "five_year_peak"),
+    ("Prime", "prime"),
+    ("Peak", "peak"),
     ("Now", "current"),
 )
 
@@ -2344,78 +2647,104 @@ SCORING_METHODS: tuple[tuple[str, str], ...] = (
     ("Finishes", "method"),
 )
 
-PUBLIC_RATING_LENSES: tuple[tuple[str, str], ...] = (
-    ("Wins", "wins"),
-    ("Skill peak", "complete"),
-    ("All-time", "legacy"),
+PUBLIC_RANKING_VIEWS: tuple[tuple[str, str], ...] = (
+    ("All-time", "all_time"),
+    ("Prime · best 10 years / 13+ bouts", "prime"),
+    ("Peak · best 5 years / 8+ bouts", "peak"),
+    ("Current skill", "current"),
 )
 
-# 2026-06-25: "Now" (current-form) removed. This engine is a retrospective
-# analysis of what has happened, not a current-form or predictive view, so the
-# only time lenses are the two best-run windows.
-PUBLIC_TIME_VIEWS: tuple[tuple[str, str], ...] = (
-    ("Peak", "five_year_peak"),
-    ("Prime", "sustained_peak"),
-)
+# Compatibility aliases for callers that imported the old public constants.
+# They deliberately expose the new one-dimensional choices, never retired
+# weighted/sleeved streams.
+PUBLIC_RATING_LENSES = PUBLIC_RANKING_VIEWS
+PUBLIC_TIME_VIEWS: tuple[tuple[str, str], ...] = ()
 
-# Public lens -> internal stream. Skill peak and All-time are two DIFFERENT
-# estimators run on the same fight graph, not one-plus-a-bonus.
-#   * Wins (canonical Glicko-2) — sequential filter on binary win/loss; no
-#     method, no opponent-quality.
-#   * Skill peak (method_integrity_performance) — the Glicko-2 filter with a
-#     continuous finish-quality score, the +/-10% context sleeve, and integrity
-#     adjustments. Forward-only; best-window output is retrospective.
-#   * All-time (whr_integrity_performance) — a Whole-History Rating Bayesian
-#     *smoother* (Coulom 2008):
-#     it re-estimates every fighter's entire rating curve jointly on a binary
-#     Bradley-Terry likelihood (the base stream is unsleeved), with a Wiener
-#     drift prior plus an explicit bounded era premium; uses look-ahead, so it is a
-#     retrospective view, not a predictive one.
-#   Both public contextual views use the integrity + performance streams.
-_PUBLIC_LENS_STREAM = {
-    "wins": "canonical",
-    "complete": "method_integrity_performance",
-    # 2026-06-25: Legacy now points at the SLEEVED WHR smoother so the era-bridged
-    # all-time view also reflects opponent quality / finish / integrity. The base
-    # unsleeved `whr` ranked binary records, which floated padded undefeated
-    # regional resumes to the top of the all-time list.
-    "legacy": "whr_integrity_performance",
+_PUBLIC_VIEW_LABELS = {
+    "all_time": "All-time",
+    "prime": "Prime · 10 years / 13+ bouts",
+    "peak": "Peak · 5 years / 8+ bouts",
+    "current": "Current skill",
 }
 
-_PUBLIC_LENS_HISTORY_KEY = {
-    "wins": "ratings_history",
-    "complete": "ratings_history_method_integrity_performance",
-    "legacy": "ratings_history_whr_integrity_performance",
+# New snapshots provide the first column in each tuple. Older snapshots fall
+# back only to unsleeved WHR, then canonical, so a stale weighted artifact can
+# never silently re-enter the public board.
+_PUBLIC_VIEW_COLUMN_CANDIDATES = {
+    "all_time": (
+        "symon_career_skill_mass",
+        "mu_whr",
+        "mu_canonical",
+    ),
+    "prime": ("symon_prime_score", "mu_whr", "mu_canonical"),
+    "peak": ("symon_peak_score", "mu_whr", "mu_canonical"),
+    "current": ("mu_whr", "mu_canonical"),
 }
 
 
-def public_rating_label(lens: str, time_view: str) -> str:
-    lens_label = dict((value, label) for label, value in PUBLIC_RATING_LENSES).get(lens, lens)
-    time_label = dict((value, label) for label, value in PUBLIC_TIME_VIEWS).get(time_view, time_view)
-    return f"{time_label} {lens_label}"
+def _normalize_public_view(view: str, time_view: str | None = None) -> str:
+    """Normalize the retired lens×form API onto one public ranking choice."""
+    if view in _PUBLIC_VIEW_COLUMN_CANDIDATES:
+        return view
+    if time_view is not None:
+        old_time = {
+            "sustained_peak": "prime",
+            "five_year_peak": "peak",
+            "current": "current",
+        }.get(time_view)
+        if old_time is not None:
+            return old_time
+    old_lens = {
+        "legacy": "all_time",
+        "complete": "current",
+        "wins": "current",
+    }.get(view)
+    if old_lens is not None:
+        return old_lens
+    raise ValueError(f"unknown public ranking view: {view!r}")
 
 
-def public_rating_stream(lens: str) -> str:
-    """Return the internal rating stream behind a public lens label."""
-    stream = _PUBLIC_LENS_STREAM.get(lens)
-    if stream is None:
-        raise ValueError(f"unknown rating lens: {lens!r}")
-    return stream
+def public_rating_label(view: str, time_view: str | None = None) -> str:
+    normalized = _normalize_public_view(view, time_view)
+    return _PUBLIC_VIEW_LABELS[normalized]
+
+
+def public_rating_stream(view: str) -> str:
+    """Compatibility helper: every new public view uses the base WHR stream."""
+    _normalize_public_view(view)
+    return "whr"
+
+
+def select_public_ranking_column(
+    ratings_current: pd.DataFrame,
+    view: str,
+) -> str | None:
+    """Resolve one public ranking choice to a new or unsleeved fallback column."""
+    if ratings_current is None:
+        return None
+    normalized = _normalize_public_view(view)
+    return next(
+        (column for column in _PUBLIC_VIEW_COLUMN_CANDIDATES[normalized]
+         if column in ratings_current.columns),
+        None,
+    )
 
 
 def select_public_rating_column(
     ratings_current: pd.DataFrame,
-    lens: str,
-    time_view: str,
+    view: str,
+    time_view: str | None = None,
 ) -> str | None:
-    """Resolve public notebook controls to the backing ratings_current column."""
-    stream = public_rating_stream(lens)
-    return select_rating_column(ratings_current, stream, time_view)
+    """Compatibility wrapper for the retired lens×form public API."""
+    return select_public_ranking_column(
+        ratings_current, _normalize_public_view(view, time_view))
 
 
-def public_history_key(lens: str) -> str:
-    """Return the SNAP key for the time-series table backing a public lens."""
-    return _PUBLIC_LENS_HISTORY_KEY.get(lens, "ratings_history")
+def public_history_key(view: str | None = None) -> str:
+    """Every public time-series view is the base, unsleeved WHR history."""
+    if view is not None:
+        _normalize_public_view(view)
+    return "ratings_history_whr"
 
 
 def affine_match_scale(values, target):
@@ -2435,75 +2764,6 @@ def affine_match_scale(values, target):
     out = (v - vm) / vs * ts + tm
     out.index = pd.Series(values).index
     return out
-
-
-def prime_window_min_fights(years: int | float) -> int:
-    """Minimum appearances for an adjustable Prime window.
-
-    The fixed 10-year Prime view qualifies at 13 fights, so the adjustable
-    control scales from that same density while keeping a practical floor.
-    """
-    import math
-
-    return max(8, int(math.ceil(float(years) * 1.25)))
-
-
-def prime_window_title_min_fights(
-    years: int | float,
-    min_fights: int | None = None,
-) -> int:
-    """Title-heavy effective minimum for an adjustable Prime window."""
-    import math
-
-    base = prime_window_min_fights(years) if min_fights is None else int(min_fights)
-    return max(6, int(math.ceil(base * 0.75)))
-
-
-def prime_window_column_names(
-    stream: str,
-    years: int | float,
-    min_fights: int | None = None,
-) -> tuple[str, str]:
-    """Raw/headline column names for a notebook-calculated N-year Prime view."""
-    y = int(years)
-    suffix = f"prime_{y}yr"
-    if min_fights is not None:
-        suffix = f"{suffix}_{int(min_fights)}f"
-    return f"{suffix}_mu_{stream}", f"{suffix}_headline_mu_{stream}"
-
-
-def n_year_prime_scores(
-    history: pd.DataFrame,
-    canonical_history: pd.DataFrame,
-    canonical_fights: pd.DataFrame,
-    *,
-    mu_col: str,
-    stream: str,
-    years: int | float,
-    min_fights: int | None = None,
-    appearance_quality: pd.DataFrame | None = None,
-) -> pd.DataFrame:
-    """Calculate an adjustable N-year Prime score for notebook controls.
-
-    This uses the same period-scoring machinery as the persisted 5-year Peak
-    and 10-year Prime columns; only the window length changes.
-    """
-    from ratings.peaks import rolling_peak
-
-    min_fights = prime_window_min_fights(years) if min_fights is None else int(min_fights)
-    raw_col, headline_col = prime_window_column_names(stream, years, min_fights)
-    return rolling_peak(
-        history,
-        canonical_history,
-        canonical_fights,
-        mu_col=mu_col,
-        out_col=raw_col,
-        headline_col=headline_col,
-        window_days=int(round(float(years) * 365.25)),
-        min_fights=min_fights,
-        title_effective_min_raw_fights=prime_window_title_min_fights(years, min_fights),
-        appearance_quality=appearance_quality,
-    )
 
 
 def compose_rating_stream(
@@ -2563,30 +2823,10 @@ def select_rating_column(
     """
     if peak == "current":
         col = f"mu_{stream}"
-    elif peak == "sustained_peak":
-        peak_base = "method" if stream.startswith("method") else "canonical"
-        for candidate in (
-            f"sustained_peak_headline_mu_{stream}",
-            f"sustained_peak_mu_{stream}",
-            f"sustained_peak_headline_mu_{peak_base}",
-            f"sustained_peak_mu_{peak_base}",
-            f"five_year_peak_headline_mu_{stream}",
-            f"five_year_peak_mu_{stream}",
-        ):
-            if candidate in ratings_current.columns:
-                return candidate
-        return None
-    elif peak == "five_year_peak":
-        peak_base = "method" if stream.startswith("method") else "canonical"
-        for candidate in (
-            f"five_year_peak_headline_mu_{stream}",
-            f"five_year_peak_mu_{stream}",
-            f"five_year_peak_headline_mu_{peak_base}",
-            f"five_year_peak_mu_{peak_base}",
-        ):
-            if candidate in ratings_current.columns:
-                return candidate
-        return None
+    elif peak in ("sustained_peak", "prime"):
+        col = "symon_prime_score"
+    elif peak in ("five_year_peak", "peak"):
+        col = "symon_peak_score"
     else:
         raise ValueError(f"unknown peak view: {peak!r}")
     return col if col in ratings_current.columns else None
@@ -3458,8 +3698,8 @@ def fighter_profile_chart(
     r = row.iloc[0]
     metrics = [
         ("Current rating", r.get("mu_canonical")),
-        ("10-year peak", r.get("sustained_peak_headline_mu_whr", r.get("sustained_peak_mu_canonical"))),
-        ("5-year peak", r.get("five_year_peak_headline_mu_whr", r.get("five_year_peak_mu_canonical"))),
+        ("Prime (10 yr)", r.get("symon_prime_score")),
+        ("Peak (5 yr)", r.get("symon_peak_score")),
     ]
     plot = pd.DataFrame(metrics, columns=["metric", "value"]).dropna()
     if plot.empty:
@@ -4184,69 +4424,228 @@ def _integrity_long(integrity_appearances: pd.DataFrame) -> pd.DataFrame:
 
 
 def integrity_ledger_table(
-    integrity_appearances: pd.DataFrame,
+    integrity_appearances: pd.DataFrame | None = None,
     sleeve_attribution: pd.DataFrame | None = None,
     *,
-    n: int = 25,
+    integrity_ledger: pd.DataFrame | None = None,
+    n: int | None = 25,
 ) -> pd.DataFrame:
-    """Per-fight integrity hits (PED / DQ / missed weight) and the rating cost."""
-    cols = ["event_date", "fighter", "opponent", "reason", "integrity_weight", "integrity_delta"]
-    fired = _integrity_long(integrity_appearances)
-    if fired.empty:
-        return pd.DataFrame(columns=cols)
-    if sleeve_attribution is not None and not sleeve_attribution.empty:
-        attr = sleeve_attribution[["fight_url", "fighter", "event_date", "opponent", "integrity_delta"]].copy()
-        fired = fired.merge(attr, on=["fight_url", "fighter"], how="left")
+    """Return the auditable per-result policy ledger.
+
+    New snapshots provide ``integrity_ledger`` as a finished artifact.  For an
+    older snapshot, the same view is reconstructed from ``integrity_appearances``
+    and is limited to the result-weight discount that artifact actually records.
+    ``sleeve_attribution`` remains accepted for call compatibility, but it is
+    deliberately not used to manufacture a per-fight rating-point debit.
+    """
+    del sleeve_attribution
+    cols = [
+        "event_date", "fighter", "opponent", "reason", "detail",
+        "integrity_weight", "discount_pct",
+    ]
+    reason_labels = {
+        "ped": "PED-confirmed win",
+        "ped-confirmed_win": "PED-confirmed win",
+        "ped-confirmed win": "PED-confirmed win",
+        "dq": "Disqualification win",
+        "win_by_disqualification": "Disqualification win",
+        "win by disqualification": "Disqualification win",
+        "missed_weight": "Missed-weight win",
+        "missed weight": "Missed-weight win",
+        "won_after_missing_weight": "Missed-weight win",
+        "won after missing weight": "Missed-weight win",
+    }
+
+    # Column presence distinguishes a real-but-empty ledger artifact from a
+    # missing artifact, so a clean modern snapshot never falls back to stale
+    # appearance rows.
+    has_ledger_artifact = (
+        integrity_ledger is not None
+        and {"fighter", "reason"}.issubset(integrity_ledger.columns)
+    )
+    if has_ledger_artifact:
+        out = integrity_ledger.copy()
     else:
-        fired["event_date"] = pd.NaT
-        fired["opponent"] = pd.NA
-        fired["integrity_delta"] = pd.NA
-    fired["integrity_delta"] = pd.to_numeric(fired["integrity_delta"], errors="coerce")
-    fired["_abs"] = fired["integrity_delta"].abs().fillna(1 - fired["integrity_weight"])
-    fired = fired.sort_values("_abs", ascending=False).head(n)
-    out = fired[[c for c in cols if c in fired.columns]].copy()
-    if "event_date" in out.columns:
-        out["event_date"] = pd.to_datetime(out["event_date"], errors="coerce").dt.date
-    for c in ("integrity_weight", "integrity_delta"):
-        if c in out.columns:
-            out[c] = pd.to_numeric(out[c], errors="coerce").round(2)
+        fired = _integrity_long(integrity_appearances)
+        if fired.empty:
+            return pd.DataFrame(columns=cols)
+        out = fired.copy()
+        out["event_date"] = pd.NaT
+        out["opponent"] = pd.NA
+        out["detail"] = pd.NA
+        out["discount_pct"] = 100.0 * (
+            1.0 - pd.to_numeric(out["integrity_factor"], errors="coerce")
+        )
+
+    for col in cols:
+        if col not in out.columns:
+            out[col] = pd.NA
+    raw_reason = out["reason"].astype("string").str.strip()
+    reason_key = raw_reason.str.lower().str.replace(" ", "_", regex=False)
+    out["reason"] = reason_key.map(reason_labels).fillna(raw_reason)
+    out["integrity_weight"] = pd.to_numeric(out["integrity_weight"], errors="coerce")
+    out["discount_pct"] = pd.to_numeric(out["discount_pct"], errors="coerce")
+    missing_discount = out["discount_pct"].isna() & out["integrity_weight"].notna()
+    out.loc[missing_discount, "discount_pct"] = (
+        100.0 * (1.0 - out.loc[missing_discount, "integrity_weight"])
+    )
+    out["_event_sort"] = pd.to_datetime(out["event_date"], errors="coerce")
+    out = out.sort_values(
+        ["discount_pct", "_event_sort", "fighter"],
+        ascending=[False, False, True],
+        na_position="last",
+        kind="stable",
+    )
+    if n is not None:
+        out = out.head(max(0, int(n)))
+    out = out[cols].copy()
+    out["event_date"] = pd.to_datetime(out["event_date"], errors="coerce").dt.date
+    out["integrity_weight"] = out["integrity_weight"].round(3)
+    out["discount_pct"] = out["discount_pct"].round(1)
     return out.reset_index(drop=True)
 
 
 def integrity_impact_chart(
-    integrity_appearances: pd.DataFrame,
+    integrity_appearances: pd.DataFrame | None = None,
     sleeve_attribution: pd.DataFrame | None = None,
     *,
+    integrity_discounted_board: pd.DataFrame | None = None,
     n: int = 15,
 ) -> go.Figure:
-    """Fighters who lost the most rating to the integrity (clean-record) sleeve."""
-    title = "Integrity sleeve — biggest rating costs"
+    """Show the largest explicit integrity-policy debits without mixing units.
+
+    The modern view consumes ``integrity_discounted_board`` and therefore uses
+    base-WHR rating points.  If that artifact is absent, old snapshots fall
+    back to their recorded result-weight discounts and say so in the chart.
+    """
+    del sleeve_attribution
+    n = max(1, int(n))
+    board_available = (
+        integrity_discounted_board is not None
+        and {"fighter", "integrity_cost"}.issubset(integrity_discounted_board.columns)
+    )
+    if board_available:
+        board = integrity_discounted_board.copy()
+        board["integrity_cost"] = pd.to_numeric(board["integrity_cost"], errors="coerce")
+        board = board[board["integrity_cost"] > 0].copy()
+        debited_n = len(board)
+        title = (
+            "Integrity policy view — largest explicit debits"
+            f"<br><sup>Fixed judgement on base WHR points · {debited_n:,} fighters debited "
+            "· Career Skill Mass unchanged</sup>"
+        )
+        if board.empty:
+            return _empty_figure("no fighters are debited by this policy", title=title)
+
+        discounted_fights = (
+            board["discounted_fights"]
+            if "discounted_fights" in board.columns
+            else pd.Series(0, index=board.index)
+        )
+        rank_change = (
+            board["rank_change"]
+            if "rank_change" in board.columns
+            else pd.Series(0, index=board.index)
+        )
+        board["discounted_fights"] = pd.to_numeric(
+            discounted_fights, errors="coerce"
+        ).fillna(0).astype(int)
+        board["rank_change"] = pd.to_numeric(rank_change, errors="coerce").fillna(0)
+        base_col = next(
+            (col for col in ("mu_whr", "symon_prime_score") if col in board.columns),
+            None,
+        )
+        policy_rating = (
+            board["integrity_discounted_rating"]
+            if "integrity_discounted_rating" in board.columns
+            else pd.Series(np.nan, index=board.index)
+        )
+        board["_policy_rating"] = pd.to_numeric(policy_rating, errors="coerce")
+        if base_col:
+            board["_base_rating"] = pd.to_numeric(board[base_col], errors="coerce")
+        else:
+            board["_base_rating"] = board["_policy_rating"] + board["integrity_cost"]
+
+        def _rank_effect(value: float) -> str:
+            places = int(abs(value))
+            suffix = "place" if places == 1 else "places"
+            if value > 0:
+                return f"down {places} {suffix}"
+            if value < 0:
+                return f"up {places} {suffix} relative to other debits"
+            return "same rank"
+
+        board["_rank_effect"] = board["rank_change"].map(_rank_effect)
+        shown = board.nlargest(n, "integrity_cost").sort_values("integrity_cost")
+        custom = np.column_stack([
+            shown["_base_rating"],
+            shown["_policy_rating"],
+            shown["discounted_fights"],
+            shown["_rank_effect"],
+        ])
+        fig = go.Figure(go.Bar(
+            x=shown["integrity_cost"], y=shown["fighter"], orientation="h",
+            marker_color=SIGN_COLORS["negative"],
+            text=shown["integrity_cost"].map(lambda value: f"−{value:.1f}"),
+            textposition="outside",
+            customdata=custom,
+            hovertemplate=(
+                "<b>%{y}</b><br>"
+                "Base WHR=%{customdata[0]:.1f}<br>"
+                "Policy view=%{customdata[1]:.1f}<br>"
+                "Debit=−%{x:.1f} points across %{customdata[2]} flagged result(s)<br>"
+                "Rank effect: %{customdata[3]}<extra></extra>"
+            ),
+        ))
+        _apply_chart_layout(fig, height=max(380, 30 * len(shown) + 155))
+        fig.update_layout(
+            title=title,
+            xaxis_title="Base WHR points debited (larger bar = larger stated debit)",
+            yaxis_title="",
+            showlegend=False,
+        )
+        fig.update_xaxes(rangemode="tozero")
+        return fig
+
     fired = _integrity_long(integrity_appearances)
+    title = "Integrity policy flags — legacy snapshot fallback"
     if fired.empty:
-        return _empty_figure("no integrity adjustments in this snapshot", title=title)
-    if sleeve_attribution is not None and not sleeve_attribution.empty:
-        attr = sleeve_attribution[["fight_url", "fighter", "integrity_delta"]].copy()
-        fired = fired.merge(attr, on=["fight_url", "fighter"], how="left")
-        fired["integrity_delta"] = pd.to_numeric(fired["integrity_delta"], errors="coerce").fillna(0.0)
-        agg = fired.groupby("fighter", as_index=False)["integrity_delta"].sum()
-        agg = agg[agg["integrity_delta"] < 0].sort_values("integrity_delta").head(n).iloc[::-1]
-        xcol, xtitle, fmt = "integrity_delta", "Rating points lost", "{:.1f}"
-    else:
-        fired["loss"] = 1.0 - fired["integrity_weight"]
-        agg = fired.groupby("fighter", as_index=False)["loss"].sum()
-        agg = agg.sort_values("loss", ascending=False).head(n).iloc[::-1]
-        agg["integrity_delta"] = -agg["loss"]
-        xcol, xtitle, fmt = "integrity_delta", "Integrity weight lost (sum)", "{:.2f}"
+        return _empty_figure("no flagged results in this snapshot", title=title)
+    fired["discount_pct"] = 100.0 * (
+        1.0 - pd.to_numeric(fired["integrity_factor"], errors="coerce")
+    )
+    agg = fired.groupby("fighter", as_index=False).agg(
+        discount_pct=("discount_pct", "sum"),
+        flagged_results=("fight_url", "size"),
+    )
+    agg = agg[agg["discount_pct"] > 0]
+    flagged_n = agg["fighter"].nunique()
+    title += (
+        f"<br><sup>Result-weight records only · {flagged_n:,} fighters flagged "
+        "· no rating-point debit inferred</sup>"
+    )
     if agg.empty:
-        return _empty_figure("no measurable integrity rating cost", title=title)
+        return _empty_figure("no positive result-weight discounts", title=title)
+    shown = agg.nlargest(n, "discount_pct").sort_values("discount_pct")
     fig = go.Figure(go.Bar(
-        x=agg[xcol], y=agg["fighter"], orientation="h",
-        marker_color=SIGN_COLORS["negative"],
-        text=agg[xcol].map(lambda v: fmt.format(v)), textposition="outside",
-        hovertemplate="<b>%{y}</b><br>%{x:.2f}<extra></extra>",
+        x=shown["discount_pct"], y=shown["fighter"], orientation="h",
+        marker_color=THEME["accent"],
+        text=shown["discount_pct"].map(lambda value: f"{value:.0f} pp"),
+        textposition="outside",
+        customdata=shown[["flagged_results"]],
+        hovertemplate=(
+            "<b>%{y}</b><br>Recorded result-weight discount=%{x:.1f} percentage points"
+            "<br>%{customdata[0]} flagged policy entry/entries<extra></extra>"
+        ),
     ))
-    _apply_chart_layout(fig, height=max(380, 28 * len(agg)))
-    fig.update_layout(title=title, xaxis_title=xtitle, yaxis_title="", showlegend=False)
+    _apply_chart_layout(fig, height=max(380, 30 * len(shown) + 145))
+    fig.update_layout(
+        title=title,
+        xaxis_title="Result-weight discount (percentage points, summed)",
+        yaxis_title="",
+        showlegend=False,
+    )
+    fig.update_xaxes(rangemode="tozero")
     return fig
 
 
@@ -4257,14 +4656,14 @@ def legacy_vs_prime_scatter(
     min_fights: int = 13,
     label_outliers: int = 10,
 ) -> go.Figure:
-    """All-time WHR smoother vs forward-filter skill peak — where they disagree."""
-    title = "All-time vs Skill peak — where the two methods disagree"
-    x_col = "sustained_peak_headline_mu_method_integrity_performance"
-    y_col = "sustained_peak_headline_mu_whr_integrity_performance"
+    """Career skill mass vs the audited ten-year Prime window."""
+    title = "All-time vs Prime — longevity beyond the best decade"
     if ratings_current is None or ratings_current.empty:
         return _empty_figure("ratings unavailable", title=title)
-    if x_col not in ratings_current.columns or y_col not in ratings_current.columns:
-        return _empty_figure("peak columns not present in this snapshot", title=title)
+    x_col = select_public_ranking_column(ratings_current, "prime")
+    y_col = select_public_ranking_column(ratings_current, "all_time")
+    if not x_col or not y_col or x_col == y_col:
+        return _empty_figure("distinct All-time and Prime scores unavailable", title=title)
     df = ratings_current.copy()
     df["rating_periods"] = pd.to_numeric(df.get("rating_periods"), errors="coerce").fillna(0)
     df = df[df["rating_periods"] >= min_fights]
@@ -4280,11 +4679,13 @@ def legacy_vs_prime_scatter(
     else:
         slope = intercept = None
         df["resid"] = 0.0
-    # Off-trend direction tells the story without a name label: above the line a
-    # fighter's all-time résumé outshines their single best window (a longevity
-    # story); below it one dominant peak outruns the career body of work.
+    # Off-trend direction tells the story without pretending these two scores
+    # share a unit: the dashed regression is the comparison, not x=y.
     df["_leans"] = np.where(
-        df["resid"] >= 0, "All-time &gt; Skill peak (longevity)", "Skill peak &gt; All-time (peak)")
+        df["resid"] >= 0,
+        "More All-time mass than typical for this Prime",
+        "More Prime than typical for this All-time mass",
+    )
     df["_bouts"] = pd.to_numeric(df.get("rating_periods"), errors="coerce").fillna(0).astype(int)
     div = df.get("career_division", pd.Series("", index=df.index)).fillna("")
     fig = go.Figure()
@@ -4309,16 +4710,19 @@ def legacy_vs_prime_scatter(
             ], axis=-1),
             hovertemplate=(
                 "<b>%{customdata[0]}</b><br>"
-                "Skill peak=%{x:.0f}<br>"
-                "All-time=%{y:.0f}<br>"
+                "Prime score=%{x:.2f}<br>"
+                "All-time skill mass=%{y:.2f}<br>"
                 "Division=%{customdata[1]} &middot; %{customdata[2]} UFC bouts<br>"
                 "<b>%{customdata[3]}</b><extra></extra>"
             ),
         ))
     _apply_chart_layout(fig, height=560)
     fig.update_layout(
-        title=title, xaxis_title="Skill-peak rating (forward filter)",
-        yaxis_title="All-time rating (whole-history smoother)",
+        title=title,
+        xaxis_title=("Prime score · best 10 years, at least 13 appearances"
+                     if x_col == "symon_prime_score" else "Prime score · legacy base-WHR fallback"),
+        yaxis_title=("All-time career skill mass"
+                     if y_col == "symon_career_skill_mass" else "All-time · legacy base-WHR fallback"),
         legend=dict(orientation="h", y=-0.22),
         hovermode="closest",
     )
@@ -4461,5 +4865,279 @@ def title_lineage_chart(
         xaxis=dict(type="date", title_text=""),
         yaxis=dict(title_text="", showticklabels=False, showgrid=False),
         showlegend=False,
+    )
+    return fig
+
+
+# ---------------------------------------------------------------------------
+# Career-functional diagnostics. These answer, in order: how firm is the rank,
+# what shape of career produced it, does the ordering survive a higher bar, how
+# much evidence sits under the rating, and where one fighter's score came from.
+
+
+def career_rank_interval_chart(
+    uncertainty: pd.DataFrame,
+    *,
+    n: int = 25,
+    title: str = "All-time rank, with the interval it actually supports",
+) -> go.Figure:
+    """Top-N career ranks drawn as bootstrap intervals rather than integers.
+
+    Reads ``career_mass_uncertainty.parquet``. A wide bar means the placement
+    rests on little evidence: the same engine, refit under reweighted events,
+    puts that fighter anywhere in that range.
+    """
+    if uncertainty is None or uncertainty.empty:
+        return _empty_figure(
+            "run build_uncertainty.py to bootstrap the board", title=title)
+    need = {"fighter", "rank", "rank_lo", "rank_hi"}
+    if not need.issubset(uncertainty.columns):
+        return _empty_figure("uncertainty artifact is missing rank columns", title=title)
+
+    df = uncertainty.nsmallest(int(n), "rank").copy()
+    lo = pd.to_numeric(df["rank_lo"], errors="coerce")
+    hi = pd.to_numeric(df["rank_hi"], errors="coerce")
+    point = pd.to_numeric(df["rank"], errors="coerce")
+    width = (hi - lo).fillna(0.0)
+    mass = pd.to_numeric(df.get("mass", point), errors="coerce")
+
+    fig = go.Figure()
+    for low, high, fighter in zip(lo, hi, df["fighter"]):
+        fig.add_trace(go.Scatter(
+            x=[low, high], y=[fighter, fighter], mode="lines",
+            line=dict(color=THEME["border_strong"], width=8),
+            hoverinfo="skip", showlegend=False,
+        ))
+    fig.add_trace(go.Scatter(
+        x=point, y=df["fighter"], mode="markers",
+        marker=dict(color=THEME["accent"], size=11,
+                    line=dict(color=THEME["bg"], width=1)),
+        customdata=np.stack([lo, hi, width, mass], axis=-1),
+        hovertemplate=(
+            "<b>%{y}</b><br>rank %{x:.0f}"
+            "<br>interval %{customdata[0]:.0f} to %{customdata[1]:.0f}"
+            " (width %{customdata[2]:.0f})"
+            "<br>career mass %{customdata[3]:.0f}<extra></extra>"
+        ),
+        showlegend=False,
+    ))
+    fig.update_layout(
+        title=title, height=max(360, 26 * len(df) + 130),
+        xaxis_title="rank (lower is better)", yaxis_title="",
+        yaxis=dict(autorange="reversed"),
+    )
+    return fig
+
+
+def career_shape_scatter(
+    ratings_current: pd.DataFrame,
+    *,
+    n: int = 40,
+    title: str = "What built the score: years above the field vs distance above it",
+) -> go.Figure:
+    """Career mass decomposed into its two and only two factors.
+
+    Mass is a sum of yearly excess, so it is exactly ``active years x mean
+    yearly excess``. Plotting those axes makes the trade explicit, and the
+    dotted curves join careers of equal mass: up-and-left is a short towering
+    peak, down-and-right is a long climb, and both can reach the same score.
+    """
+    need = {"fighter", "symon_career_skill_mass", "symon_career_active_years"}
+    if ratings_current is None or ratings_current.empty or not need.issubset(ratings_current.columns):
+        return _empty_figure("career decomposition columns unavailable", title=title)
+
+    df = ratings_current.dropna(subset=["symon_career_skill_mass"]).copy()
+    df = df.nlargest(int(n), "symon_career_skill_mass")
+    if df.empty:
+        return _empty_figure("no rated careers", title=title)
+    years = pd.to_numeric(df["symon_career_active_years"], errors="coerce")
+    mass = pd.to_numeric(df["symon_career_skill_mass"], errors="coerce")
+    height = mass / years.replace(0, np.nan)
+    span = max(float(mass.max() - mass.min()), 1e-9)
+
+    fig = go.Figure()
+    grid = np.linspace(max(1.0, float(years.min()) - 0.5), float(years.max()) + 0.5, 60)
+    for level in np.quantile(mass.dropna(), [0.25, 0.5, 0.75, 0.95]):
+        fig.add_trace(go.Scatter(
+            x=grid, y=level / grid, mode="lines",
+            line=dict(color=THEME["border"], width=1, dash="dot"),
+            hoverinfo="skip", showlegend=False,
+        ))
+    fig.add_trace(go.Scatter(
+        x=years, y=height, mode="markers+text",
+        text=df["fighter"], textposition="top center",
+        textfont=dict(size=9, color=THEME["text_muted"]),
+        marker=dict(
+            size=8 + 14 * (mass - mass.min()) / span,
+            color=mass, colorscale="Cividis", showscale=True,
+            colorbar=dict(title="career<br>mass"),
+            line=dict(color=THEME["bg"], width=1),
+        ),
+        customdata=np.stack(
+            [mass, pd.to_numeric(df.get("rating_periods", years), errors="coerce")], axis=-1),
+        hovertemplate=(
+            "<b>%{text}</b><br>active years %{x:.0f}"
+            "<br>mean yearly excess %{y:.0f}"
+            "<br>career mass %{customdata[0]:.0f}"
+            "<br>rated bouts %{customdata[1]:.0f}<extra></extra>"
+        ),
+        showlegend=False,
+    ))
+    fig.update_layout(
+        title=title, height=560,
+        xaxis_title="active years (each contributes once)",
+        yaxis_title="mean yearly rating excess over the field",
+    )
+    return fig
+
+
+def career_bar_ladder_chart(
+    family: pd.DataFrame,
+    *,
+    n: int = 15,
+    title: str = "Does the order survive a higher bar?",
+) -> go.Figure:
+    """Rank against the bar each year is measured from.
+
+    ``ratings.symon_score.career_mass_family`` recomputes the same functional
+    with the yearly reference moved from the field mean up to its 95th
+    percentile. Flat lines mark fighters the bar choice does not decide; lines
+    that dive were collecting credit for years spent slightly above average.
+    """
+    need = {"fighter", "reference", "rank"}
+    if family is None or family.empty or not need.issubset(family.columns):
+        return _empty_figure("career mass family unavailable", title=title)
+
+    order = ["mean", "0.5", "0.75", "0.9", "0.95"]
+    seen = set(family["reference"].astype(str))
+    present = [r for r in order if r in seen]
+    present += [r for r in sorted(seen) if r not in present]
+    if not present:
+        return _empty_figure("career mass family unavailable", title=title)
+
+    fam = family.copy()
+    fam["reference"] = fam["reference"].astype(str)
+    base = fam[fam["reference"].eq(present[0])].nsmallest(int(n), "rank")
+    fig = go.Figure()
+    for i, fighter in enumerate(base["fighter"]):
+        rows = fam[fam["fighter"].eq(fighter)].set_index("reference")["rank"]
+        fig.add_trace(go.Scatter(
+            x=present, y=[rows.get(r, np.nan) for r in present],
+            mode="lines+markers", name=fighter,
+            line=dict(width=2), marker=dict(size=7),
+            hovertemplate=f"<b>{fighter}</b><br>bar %{{x}}<br>rank %{{y:.0f}}<extra></extra>",
+        ))
+    fig.update_layout(
+        title=title, height=560,
+        xaxis_title="yearly bar: field mean to the 95th percentile of the field",
+        yaxis_title="rank (lower is better)",
+        yaxis=dict(autorange="reversed"),
+    )
+    return fig
+
+
+def evidence_vs_rating_chart(
+    ratings_current: pd.DataFrame,
+    *,
+    rating_col: str = "mu_whr",
+    title: str = "Rating against the evidence under it",
+) -> go.Figure:
+    """Current skill against how many rated bouts produced it.
+
+    An undefeated record has no interior maximum-likelihood rating, so this is
+    where a mis-specified prior shows itself: if one-bout fighters sit level
+    with thirty-bout careers, prior mass is scaling with career length instead
+    of staying fixed. Undefeated fighters are marked so the ladder reads
+    directly.
+    """
+    if ratings_current is None or ratings_current.empty or rating_col not in ratings_current.columns:
+        return _empty_figure("ratings unavailable", title=title)
+    df = ratings_current.dropna(subset=[rating_col]).copy()
+    df["rating_periods"] = pd.to_numeric(df.get("rating_periods"), errors="coerce")
+    df = df.dropna(subset=["rating_periods"])
+    if df.empty:
+        return _empty_figure("no rated fighters", title=title)
+
+    losses = pd.to_numeric(df.get("losses", pd.Series(np.nan, index=df.index)), errors="coerce")
+    unbeaten = losses.eq(0) if losses.notna().any() else pd.Series(False, index=df.index)
+
+    fig = go.Figure()
+    for mask, name, color, size in (
+        (~unbeaten, "has a loss", THEME["neutral"], 5),
+        (unbeaten, "undefeated", THEME["accent_2"], 8),
+    ):
+        part = df[mask]
+        if part.empty:
+            continue
+        fig.add_trace(go.Scatter(
+            x=part["rating_periods"], y=part[rating_col], mode="markers", name=name,
+            marker=dict(color=color, size=size, opacity=0.75,
+                        line=dict(color=THEME["bg"], width=0.5)),
+            text=part["fighter"],
+            hovertemplate=("<b>%{text}</b><br>rated bouts %{x:.0f}"
+                           "<br>rating %{y:.0f}<extra></extra>"),
+        ))
+    fig.update_layout(
+        title=title, height=460,
+        xaxis_title="rated UFC bouts", yaxis_title="current skill rating",
+    )
+    return fig
+
+
+def career_contribution_chart(
+    whr_history: pd.DataFrame,
+    fighter: str,
+    *,
+    reference: str | float = "mean",
+    title: str | None = None,
+) -> go.Figure:
+    """One fighter's yearly skill against the bar, with the credited part shaded.
+
+    The score's own receipt: these bars are what that fighter's career mass is
+    made of, and a year below the line contributes nothing rather than
+    subtracting.
+    """
+    from ratings.symon_score import year_reference
+
+    title = title or f"Where {fighter} earned it"
+    if whr_history is None or whr_history.empty or "mu_whr" not in whr_history.columns:
+        return _empty_figure("rating history unavailable", title=title)
+    h = whr_history.copy()
+    h["event_date"] = pd.to_datetime(h["event_date"], errors="coerce")
+    h = h.dropna(subset=["event_date", "mu_whr"])
+    if h.empty:
+        return _empty_figure("rating history unavailable", title=title)
+    h["year"] = h["event_date"].dt.year
+    annual = (
+        h.groupby(["fighter", "year"], sort=False)["mu_whr"]
+        .mean().rename("annual_mean").reset_index()
+    )
+    bar = year_reference(annual, reference)
+    mine = annual[annual["fighter"].eq(fighter)].sort_values("year")
+    if mine.empty:
+        return _empty_figure(f"no rated years for {fighter}", title=title)
+    mine = mine.assign(bar=mine["year"].map(bar))
+    mine["excess"] = (mine["annual_mean"] - mine["bar"]).clip(lower=0.0)
+    total = float(mine["excess"].sum())
+
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        x=mine["year"], y=mine["excess"], base=mine["bar"], name="credited excess",
+        marker=dict(color=THEME["primary"], opacity=0.85),
+        hovertemplate="year %{x}<br>credited %{y:.0f} rating points<extra></extra>",
+    ))
+    fig.add_trace(go.Scatter(
+        x=mine["year"], y=mine["bar"], mode="lines", name="that year's bar",
+        line=dict(color=THEME["accent"], width=2, dash="dash"),
+        hovertemplate="year %{x}<br>bar %{y:.0f}<extra></extra>",
+    ))
+    fig.add_trace(go.Scatter(
+        x=mine["year"], y=mine["annual_mean"], mode="lines+markers", name="rating that year",
+        line=dict(color=THEME["text"], width=2), marker=dict(size=7),
+        hovertemplate="year %{x}<br>rating %{y:.0f}<extra></extra>",
+    ))
+    fig.update_layout(
+        title=f"{title} — career mass {total:.0f}",
+        height=430, xaxis_title="year", yaxis_title="rating", barmode="overlay",
     )
     return fig

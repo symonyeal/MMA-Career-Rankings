@@ -37,7 +37,7 @@ from ratings.constants import (
     PERIOD_TITLE_EFFECTIVE_WIN_CREDIT,
     PERIOD_WIN_BASE_WEIGHT,
 )
-from ratings.peaks import (
+from ratings.appearance_context import (
     _context_adjustment,
     _resume_bonus,
     _result_adjustment,

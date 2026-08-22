@@ -1,31 +1,25 @@
-"""Shared rating/reporting constants.
+"""Shared rating and reporting constants.
 
-Convention after the 2026-05-13 consolidation:
+What these constants do and do not touch, after the 2026-08-20 core evolution:
 
-* All per-result multiplicative factors fall inside a symmetric [-10%, +10%]
-  envelope; ``SLEEVE_FACTOR_MIN`` and ``SLEEVE_FACTOR_MAX`` are the canonical
-  floor / roof. Every sleeve sub-factor amplitude is ``<= 0.10`` so it cannot
-  by itself exceed the envelope, and the final per-fight sleeve weight is
-  clamped back to ``[SLEEVE_FACTOR_MIN, SLEEVE_FACTOR_MAX]`` after the
-  factors are combined. (2026-06-25: envelope tightened from +/-20% to +/-10%;
-  every sub-factor amplitude and ``PERF_TANH_SCALE`` were halved with it, so the
-  relative weighting and the Strickland/Serra anchors are unchanged — only the
-  absolute sleeve magnitude is compressed.)
-* Canonical rating is never sleeved. Sleeves only attach to the method
-  stream. Streams that exist in ``ratings_current.parquet``:
-  ``canonical``, ``method``, ``method_integrity``, ``method_performance``,
-  ``method_integrity_performance``.
-* Period scores are emitted for every stream. ``sustained_peak`` is a
-  10-year rolling window and ``five_year_peak`` is a 5-year rolling window.
-  The 2-year career peak surface is intentionally discarded. Period scores
-  use all appearances in the window, with opponent quality, result, and
-  activity all contributing.
-* Window mu is era/division normalized before scoring (see
-  ``ratings/peaks.py``): each appearance's rating is de-trended for the
-  calendar-year inflation of the Glicko scale and rescaled for the depth of
-  its division, so a 2005 welterweight and a 2024 flyweight are comparable.
-  Normalization is self-calibrated to the snapshot's global mean/std, so an
-  average-era / average-division fighter is unchanged.
+* The **production rating** reads binary W/L/D evidence only. Its parameters are
+  the Glicko-2 ``DEFAULT_TAU`` and the four WHR terms (``WHR_W2_PER_DAY``,
+  ``WHR_PRIOR_VAR``, ``WHR_VIRTUAL_GAMES``, ``WHR_ITERATIONS``). Nothing else in
+  this file can move a production rating.
+* The **weighted-evidence factors** (``SLEEVE_*``, ``PERF_*``, ``INTEGRITY_*``)
+  belong to audit layers and to the research variants in
+  ``ratings.research_variants``. They are kept inside a symmetric [-10%, +10%]
+  envelope so no single factor can dominate a bout, and they are not applied to
+  the public board.
+* The **period constants** (``PERIOD_*``, ``HEADLINE_*``) now serve only the
+  division resume boards through ``ratings.appearance_context``. The rolling
+  opponent-quality peak scores that used most of them were retired: the public
+  period views are fixed windows over the WHR trajectory in
+  ``ratings.symon_score``, and opponent quality is counted once, inside the
+  rating itself.
+* **Era normalisation is gone.** A common era offset cancels from every
+  within-era Bradley--Terry comparison, so it was never identifiable from bout
+  outcomes; the smoother is era-flat by construction.
 """
 from __future__ import annotations
 
@@ -43,11 +37,8 @@ SLEEVE_FACTOR_MAX: float = 1.10   # +10% roof — best performance bonus hits th
 FIVE_YEAR_PEAK_WINDOW_DAYS: int = 1825  # 5 years
 FIVE_YEAR_PEAK_WINDOW_LABEL: str = "5-Yr Period"
 FIVE_YEAR_PEAK_MIN_FIGHTS: int = 8
-FIVE_YEAR_PEAK_TITLE_EFFECTIVE_MIN_RAW_FIGHTS: int = 6
-SUSTAINED_PEAK_WINDOW_DAYS: int = 3650  # 10 years
 SUSTAINED_PEAK_WINDOW_LABEL: str = "10-Yr Period"
 SUSTAINED_PEAK_MIN_FIGHTS: int = 13
-SUSTAINED_PEAK_TITLE_EFFECTIVE_MIN_RAW_FIGHTS: int = 10
 
 
 # ---------------------------------------------------------------------------
@@ -73,7 +64,6 @@ RATING_COLUMN_LABELS: dict[str, str] = {
 }
 
 # Reverse lookup: short label -> on-disk column.
-RATING_COLUMN_LOOKUP: dict[str, str] = {v: k for k, v in RATING_COLUMN_LABELS.items()}
 
 
 def rating_label(column: str) -> str:
@@ -116,9 +106,6 @@ def rename_rating_columns(df):
 # one-era pioneers toward parity. At 0.20 we keep ~80% of that premium (so modern
 # stays harder, automatically and asymmetrically), and lean on the 10-year Prime
 # WINDOW — not era-equalization — to reward greatness sustained across eras.
-ERA_NORM_MIN_POPULATION: int = 200
-ERA_NORM_MAX_STRENGTH: float = 0.20      # cap on realized normalization; EB+bridges scale within it
-ERA_NORM_STD_FLOOR_FRAC: float = 0.5     # effective division std >= frac * global std
 
 # Peak opponent-quality weight — opponent quality is the single most important
 # signal in the engine. A title-heavy schedule against elite opponents must
@@ -156,7 +143,6 @@ PERIOD_LOSS_PENALTY: float = 55.0
 # of all qualifying fighters, by window sample size (James-Stein). Small-sample
 # windows regress to the centre; the shrink constant K is EB-estimated from the
 # data. No-op below PERIOD_SCORE_SHRINK_MIN_FIGHTERS qualifying fighters.
-PERIOD_SCORE_SHRINK_MIN_FIGHTERS: int = 30
 # Raw fight-count activity bonus reduced (it rewarded padding and punished
 # efficient short careers like Khabib) but not removed. Resume depth is also
 # rewarded through PERIOD_ACTIVITY_BONUS_PER_OPP_WEIGHT (quality of schedule)
@@ -447,55 +433,35 @@ WHR_PRIOR_VAR: float = 4.0
 WHR_ITERATIONS: int = 50
 WHR_STEP_CLIP: float = 1.5
 
-# Modern-era premium for the Legacy (WHR) board.
+# * WHR_VIRTUAL_GAMES — prior evidence, in bouts, that every fighter carries
+#   against an average opponent: half a win and half a loss per virtual game.
 #
-# WHR re-anchors its global mean to 0 on every coordinate-ascent pass
-# (ratings/whr.py), so it is era-FLAT by construction: a Bayesian smoother
-# cannot, on its own, encode "the modern field is deeper/harder." Without help an
-# era-bridged Legacy board lets one-era pioneers sit beside multi-era greats.
+# Without it a fighter who has never lost has no interior maximum-likelihood
+# rating: the Bradley--Terry gradient stays positive and only the prior stops
+# the climb. When the prior is applied per appearance, its mass grows with
+# career length at the same rate as the likelihood, so the stopping point is a
+# constant that does not depend on how much evidence exists. Measured on the
+# 2026-08-13 snapshot before this term existed: 56 fighters with a single UFC
+# win averaged 1646, above the 98th percentile of the roster, and the highest
+# rating in the database belonged to a fighter with one bout. Going from 1-0 to
+# 10-0 moved the rating only 67 points.
 #
-# We add the belief explicitly, but DATA-DRIVEN rather than as a hand-set slope.
-# The Glicko canonical filter's per-fight mean mu BY YEAR is the engine's own
-# empirical measurement of how the pool's strength has risen over time
-# (~+130 mu, 2002->2025, concave: fast professionalization early, plateau
-# recently). ``rate_snapshot._build_era_premium_by_year`` takes that measured
-# curve, monotonizes it (era difficulty does not regress), scales it by
-# WHR_ERA_PREMIUM_STRENGTH, and centers it on WHR_ERA_PREMIUM_REFERENCE_YEAR;
-# the result is added per-appearance to every WHR mu (base + sleeved) BEFORE peak
-# windowing. So Legacy inherits the Complete lens's *measured* era shape instead
-# of a linear guess — the newest years stop being over-rewarded and spanning
-# eras beats simply being newest.
-#
-# WHR_ERA_PREMIUM_STRENGTH is the single magnitude knob: 1.0 = reproduce the
-# measured Glicko era inflation exactly on the WHR scale. The 2026-08-13
-# sensitivity audit found that full transfer overstates recency: strength 1.0
-# had 0.60 Spearman agreement with the independent FightMatrix all-time top 35,
-# versus 0.74 at 0.25. Retain one quarter of the measured shape so modern depth
-# still counts without letting it dominate the career evidence. The reference
-# year is COSMETIC (a constant offset
-# cancels out of within-snapshot ranks and of the affine rescale onto Complete).
-# whr_* streams are exempt from the peaks.py era-de-trend (see ERA_NORM note), so
-# the realized premium equals the nominal curve. 0 disables the premium.
-WHR_ERA_PREMIUM_STRENGTH: float = 0.25
-WHR_ERA_PREMIUM_REFERENCE_YEAR: int = 2010
-
+# Virtual games are Coulom's remedy in the WHR paper. They are prior evidence of
+# fixed size, so real bouts outweigh them as a career accumulates: a 20-0 record
+# now rates far above a 1-0 record, which is the behaviour a rating must have.
+# Value: 2.0. Selected 2026-08-20 on 60 held-out events / 406 decided bouts.
+# Point estimates favoured it (log loss 0.65192 vs 0.65496 at v=0, and the best
+# Brier of the five candidates), but **every paired event-level interval crossed
+# zero**, so held-out prediction does not resolve this parameter and no accuracy
+# claim is made for it. Tie broken by taking the smallest prior mass that wins
+# the point estimate: prior mass is an assumption, so the least of it that does
+# the job is preferred. Candidates measured: 0, 2, 4, 6, 10 (see
+# docs/PRIOR_MASS_AND_UNCERTAINTY_2026-08-20.md).
+WHR_VIRTUAL_GAMES: float = 2.0
 
 # ---------------------------------------------------------------------------
-# Stream catalogue. Single source of truth for the engine, viz, and database.
+# Production/research stream catalogue.
 
-CANONICAL_STREAM: str = "canonical"
-METHOD_STREAM: str = "method"
-METHOD_SLEEVE_STREAMS: tuple[str, ...] = (
-    "method_integrity",
-    "method_performance",
-    "method_integrity_performance",
-)
-ALL_STREAMS: tuple[str, ...] = (CANONICAL_STREAM, METHOD_STREAM, *METHOD_SLEEVE_STREAMS)
-# WHR is a Bayesian smoother stream. The base stream uses binary win/loss
-# with no sleeves. Sleeved variants reweight each fight's Bradley-Terry
-# likelihood contribution by the sleeve factor — priors are unweighted.
 WHR_STREAM: str = "whr"
-WHR_INTEGRITY_PERFORMANCE_STREAM: str = "whr_integrity_performance"
-WHR_SLEEVE_STREAMS: tuple[str, ...] = (
-    WHR_INTEGRITY_PERFORMANCE_STREAM,
-)
+# Canonical and WHR are the two production estimators of binary W/L/D evidence.
+# Method is a same-pass research diagnostic, not a public/core model.

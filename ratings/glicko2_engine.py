@@ -3,9 +3,9 @@
 Two parallel ratings are maintained for every fighter:
 - `μ_canonical`: scores strictly {0, 0.5, 1}. Use this for calibration plots
    and win-probability predictions — it's mathematically clean.
-- `μ_method`:   continuous winner-score in [0.7, 1.0] depending on Greco's
-   method bucket. Use this for the "method-bonus" leaderboard the user
-   asked for. Flagged as experimental — DO NOT use for calibration.
+- `μ_method`: continuous winner-score in [0.7, 1.0] depending on Greco's
+  method bucket. Retained as a same-pass research diagnostic; it is not a
+  public leaderboard or calibration stream.
 
 Rating periods: per-event. Each UFC event triggers one round of updates for
 every fighter on the card. Fighters who didn't fight on the event are NOT
@@ -21,9 +21,7 @@ of 0.5.
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, field
-from datetime import date, datetime
-from typing import Iterable
+from dataclasses import dataclass
 
 import pandas as pd
 
@@ -422,14 +420,26 @@ def predict_win_prob_from_ratings(
     mu_b: float, phi_b: float,
     tau: float = DEFAULT_TAU,
 ) -> float:
-    """Probability that fighter A beats B given their (μ, φ) pairs."""
+    """Reciprocal probability that fighter A beats B from two rating states.
+
+    Match prediction is a comparison of *both* uncertain ratings.  Glickman's
+    predictive equation therefore applies ``g`` to the root-sum-square of the
+    two scaled deviations, rather than to whichever fighter happened to be
+    passed as the opponent.  Besides using all available uncertainty, this
+    guarantees ``P(A > B) + P(B > A) == 1`` (within floating-point error).
+    """
     env = Glicko2(tau=tau)
     ra = env.create_rating(mu_a, phi_a)
     rb = env.create_rating(mu_b, phi_b)
     ra_s = env.scale_down(ra)
     rb_s = env.scale_down(rb)
-    impact = env.reduce_impact(rb_s)
-    return env.expect_score(ra_s, rb_s, impact)
+    combined_phi = math.hypot(ra_s.phi, rb_s.phi)
+    impact = 1.0 / math.sqrt(1.0 + 3.0 * combined_phi**2 / math.pi**2)
+    logit = impact * (ra_s.mu - rb_s.mu)
+    if logit >= 0.0:
+        return 1.0 / (1.0 + math.exp(-logit))
+    exp_logit = math.exp(logit)
+    return exp_logit / (1.0 + exp_logit)
 
 
 def matchup_quality_from_ratings(

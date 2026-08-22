@@ -1,26 +1,17 @@
-"""Run the Glicko-2 engine over a canonical snapshot and persist results.
+"""Build the lean rating core and its explicitly separate audit layers.
 
-Five Glicko-2 rating streams are emitted into ``ratings_current.parquet``:
+The production skill model has two views of one binary W/L/D evidence stream:
+causal Glicko-2 (``canonical``) and retrospective Whole-History Rating
+(``whr``). ``method`` is retained as a zero-extra-pass research diagnostic.
+Side-specific performance/integrity sleeves and the era premium are not
+production ratings: they either fail to define one paired likelihood or add a
+scenario assumption that bout outcomes cannot identify.
 
-* ``canonical``   — strict Glicko-2 on W/L/D scoring. Never sleeved.
-* ``method``      — method-bonus winner score in [0.7, 1.0]. Never sleeved.
-* ``method_integrity``             — method + integrity sleeve (PED + DQ + MW).
-* ``method_performance``           — method + performance sleeve (opponent quality).
-* ``method_integrity_performance`` — method + both sleeves.
-
-plus the WHR smoother in two variants: base ``whr`` (the headline) and
-``whr_integrity_performance`` (the public "All-time" lens). The two
-single-sleeve WHR variants were removed on 2026-08-19 — each cost a full
-smoother pass and two period-score passes per rebuild and nothing read them.
-
-The canonical and method ratings are produced by a single ``RatingEngine``
-pass (canonical / method evolve side-by-side). Each method-sleeve stream is
-produced by a separate ``WeightedRatingEngine`` pass over the same fight
-table with per-(fight, fighter) update weights attached.
-
-Career-peak (2-year), five-year, and ten-year period metrics are emitted for
-every stream, each with a headline proven-resume-adjusted variant. Window mu
-is era/division normalized before scoring (see ``ratings/peaks.py``).
+The public career functional is Symon Career Skill Mass: the sum of positive
+annual WHR skill above that year's field mean, with at most one contribution
+per active year. Five- and ten-year Symon scores are separate peak diagnostics.
+Legacy period tables remain temporarily for compatibility, never as the public
+All-time definition.
 """
 from __future__ import annotations
 
@@ -35,35 +26,23 @@ import pandas as pd
 if __package__ is None or __package__ == "":
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from ratings.glicko2_engine import DEFAULT_TAU, RatingEngine, WeightedRatingEngine
+from ratings.glicko2_engine import DEFAULT_TAU, RatingEngine
 from ratings.dominance import per_fight_dominance, per_fighter_dominance
 from ratings.constants import (
     ACTIVITY_MU_PENALTY_CAP,
     ACTIVITY_MU_PENALTY_FULL_MONTHS,
     ACTIVITY_MU_PENALTY_START_MONTHS,
-    FIVE_YEAR_PEAK_MIN_FIGHTS,
-    SLEEVE_FACTOR_MAX,
-    SLEEVE_FACTOR_MIN,
-    SUSTAINED_PEAK_MIN_FIGHTS,
-    SUSTAINED_PEAK_WINDOW_LABEL,
-    FIVE_YEAR_PEAK_WINDOW_LABEL,
-    WHR_DOMINANCE_SCORE_SCALE,
-    WHR_DOMINANCE_WEIGHT_AMPLITUDE,
-    WHR_ERA_PREMIUM_REFERENCE_YEAR,
-    WHR_ERA_PREMIUM_STRENGTH,
     WHR_STREAM,
-    WHR_SLEEVE_STREAMS,
-    rating_label,
     rename_rating_columns,
 )
 from ratings.diagnostics import (
     calibration_residual_rows,
     division_entropy_rows,
-    sleeve_attribution_rows,
 )
 from ratings.division_resume import division_resume_rows, primary_division_rows
 from ratings.integrity_adjustment import build_integrity_appearances
-from ratings.peaks import five_year_peak, peak_appearance_quality, sustained_peak
+from ratings.appearance_context import peak_appearance_quality
+from ratings.symon_score import career_skill_mass, symon_peak_score, symon_prime_score
 from ratings.whr import run_whr
 from ratings.performance_adjustment import build_performance_appearances
 from ratings.performance_adjustment import _group_bounds, normalize_division_label
@@ -116,139 +95,11 @@ def _run_canonical_engine(fights: pd.DataFrame, tau: float) -> RatingEngine:
     return engine
 
 
-def _attach_appearance_weights(
-    fights: pd.DataFrame,
-    weight_table: pd.DataFrame,
-    weight_col: str,
-) -> pd.DataFrame:
-    """Pivot per-appearance weights back onto bout rows as ``weight_a/weight_b``."""
-    out = fights.copy()
-    w = weight_table[["fight_url", "fighter", weight_col]].copy()
-    a = w.rename(columns={"fighter": "fighter_a", weight_col: "weight_a"})
-    b = w.rename(columns={"fighter": "fighter_b", weight_col: "weight_b"})
-    out = out.merge(a, on=["fight_url", "fighter_a"], how="left")
-    out = out.merge(b, on=["fight_url", "fighter_b"], how="left")
-    out["weight_a"] = out["weight_a"].fillna(1.0).astype(float)
-    out["weight_b"] = out["weight_b"].fillna(1.0).astype(float)
-    # Cross-org down-weight: a non-UFC bout updates ratings at a bridge-
-    # calibrated percentile of a UFC bout. UFC bouts carry org_weight 1.0, so
-    # this is a no-op for them. Applied on top of the sleeve weight so it
-    # scales the whole per-fight update in both the weighted Glicko engine and
-    # the WHR likelihood.
-    if "org_weight" in out.columns:
-        ow = pd.to_numeric(out["org_weight"], errors="coerce").fillna(1.0)
-        out["weight_a"] = out["weight_a"] * ow
-        out["weight_b"] = out["weight_b"] * ow
-    return out
-
-
-def _winner_dominance_level(perf_app: pd.DataFrame) -> dict:
-    """Map fight_url -> winner dominance level in [0, 1].
-
-    Uses ``dominance_score_winner`` (signed so the winner is positive) through
-    the same sigmoid the Glicko score bonus uses, then folds to a positive-only
-    [0, 1] level. Non-dominant or unknown fights map to 0.
-    """
-    if perf_app is None or perf_app.empty or "dominance_score_winner" not in perf_app.columns:
-        return {}
-    dom = perf_app[["fight_url", "dominance_score_winner"]].drop_duplicates("fight_url")
-    d = pd.to_numeric(dom["dominance_score_winner"], errors="coerce").fillna(0.0)
-    level = (2.0 / (1.0 + np.exp(-d / max(WHR_DOMINANCE_SCORE_SCALE, 1e-9))) - 1.0).clip(lower=0.0, upper=1.0)
-    return dict(zip(dom["fight_url"], level))
-
-
-def _amplify_dominance_weight(
-    weighted: pd.DataFrame, dom_level_by_fight: dict, amplitude: float,
-) -> pd.DataFrame:
-    """Scale BOTH fighters' WHR likelihood weight by how dominant the bout was.
-
-    A dominant bout is stronger evidence in both directions: each side's weight
-    is multiplied by ``1 + amplitude * dom_level`` (``dom_level`` is the winner's
-    dominance level in [0, 1], so it is symmetric across the bout). The winner is
-    pushed up AND the blown-out loser pushed down harder, spreading dominant
-    fighters from the field rather than only floating the winner. Ceiling-free
-    (unlike the [0, 1] score), so it rewards dominant finishes too. A close bout
-    (``dom_level`` 0) is unchanged.
-    """
-    if amplitude <= 0 or not dom_level_by_fight:
-        return weighted
-    out = weighted.copy()
-    lvl = out["fight_url"].map(dom_level_by_fight).fillna(0.0)
-    factor = 1.0 + amplitude * lvl
-    out["weight_a"] = pd.to_numeric(out["weight_a"], errors="coerce") * factor
-    out["weight_b"] = pd.to_numeric(out["weight_b"], errors="coerce") * factor
-    return out
-
-
-def _build_era_premium_by_year(history: pd.DataFrame) -> dict:
-    """Data-driven modern-era premium curve for the Legacy (WHR) board.
-
-    The Glicko canonical filter's per-fight mean ``mu_canonical`` BY YEAR is the
-    engine's own empirical measurement of how the pool's strength has risen over
-    time. We use that measured curve — lightly smoothed and monotonized so era
-    difficulty never regresses — as the SHAPE of the WHR era premium, scaled by
-    ``WHR_ERA_PREMIUM_STRENGTH`` and centered on ``WHR_ERA_PREMIUM_REFERENCE_YEAR``.
-
-    So Legacy inherits the Complete lens's *measured* era shape (concave: fast
-    professionalization early, plateau recently) rather than a hand-set linear
-    slope. Returns ``{year: premium_mu}``; empty if disabled or no data.
-    """
-    if (
-        history is None
-        or history.empty
-        or "mu_canonical" not in history.columns
-        or not WHR_ERA_PREMIUM_STRENGTH
-    ):
-        return {}
-    h = history[["event_date", "mu_canonical"]].copy()
-    h["year"] = pd.to_datetime(h["event_date"], errors="coerce").dt.year
-    stats = h.dropna(subset=["year"]).groupby("year")["mu_canonical"].agg(["mean", "count"])
-    if stats.empty:
-        return {}
-    # Drop init-transient early years (a year with too few rated fight-rows sits
-    # near the 1500 seed and would anchor a spurious deep early-era penalty).
-    reliable = stats.loc[stats["count"] >= 40, "mean"].sort_index()
-    if reliable.empty:
-        reliable = stats["mean"].sort_index()
-    # Light 3-year smoothing to denoise, then a running max so the era ladder is
-    # monotone non-decreasing (difficulty does not regress).
-    ladder = reliable.rolling(3, center=True, min_periods=1).mean().cummax()
-    ref = WHR_ERA_PREMIUM_REFERENCE_YEAR
-    at_or_before_ref = ladder.loc[ladder.index <= ref]
-    ref_level = float(at_or_before_ref.iloc[-1]) if not at_or_before_ref.empty else float(ladder.iloc[0])
-    premium = (ladder - ref_level) * float(WHR_ERA_PREMIUM_STRENGTH)
-    # Extend to the full observed year span so dropped thin years still map (the
-    # earliest reliable era level back-fills the pre-history seed years).
-    full_years = range(int(stats.index.min()), int(stats.index.max()) + 1)
-    premium = premium.reindex(full_years).ffill().bfill()
-    return {int(y): float(v) for y, v in premium.items()}
-
-
-def _apply_whr_era_premium(history: pd.DataFrame, mu_col: str, premium_by_year: dict) -> pd.DataFrame:
-    """Add the data-driven modern-era premium to a WHR history's mu, by event year.
-
-    WHR re-anchors its global mean to 0 every coordinate-ascent pass
-    (ratings/whr.py), so it is era-FLAT by construction. ``premium_by_year`` (from
-    ``_build_era_premium_by_year``) is added per appearance BEFORE peak windowing
-    so a later-era prime window can outrank an equally dominant pioneer's window.
-    whr_* streams are exempt from the peaks.py era-de-trend, so this lands at full
-    nominal magnitude. The reference year only sets the zero point (a constant
-    offset cancels out of within-snapshot ranks and the affine rescale).
-    """
-    if history is None or history.empty or mu_col not in history.columns or not premium_by_year:
-        return history
-    out = history.copy()
-    year = pd.to_datetime(out["event_date"], errors="coerce").dt.year
-    add = year.map(premium_by_year).fillna(0.0)
-    out[mu_col] = pd.to_numeric(out[mu_col], errors="coerce") + add
-    return out
-
-
 def _attach_org_only_weights(fights: pd.DataFrame) -> pd.DataFrame:
     """Set ``weight_a``/``weight_b`` to the per-fight ``org_weight`` only.
 
-    Used for the base (sleeve-free) WHR headline so cross-org bouts are
-    down-weighted there too; UFC bouts (org_weight 1.0) are unaffected.
+    UFC bouts are unchanged at 1.0. Non-UFC weights are accepted only in the
+    explicitly requested experimental cross-org scope.
     """
     out = fights.copy()
     ow = pd.to_numeric(out.get("org_weight", 1.0), errors="coerce")
@@ -256,35 +107,6 @@ def _attach_org_only_weights(fights: pd.DataFrame) -> pd.DataFrame:
     out["weight_a"] = ow
     out["weight_b"] = ow
     return out
-
-
-def _attach_quality_scores(fights: pd.DataFrame, perf_appearances: pd.DataFrame) -> pd.DataFrame:
-    """Carry ``quality_score_winner`` to bout rows for the quality_method scorer."""
-    out = fights.copy()
-    qs = (
-        perf_appearances.dropna(subset=["quality_score_winner"])
-        .drop_duplicates("fight_url")[["fight_url", "quality_score_winner"]]
-    )
-    out = out.merge(qs, on="fight_url", how="left")
-    return out
-
-
-def _run_weighted_engine(
-    fights: pd.DataFrame,
-    *,
-    tau: float,
-    score_mode: str,
-) -> WeightedRatingEngine:
-    engine = WeightedRatingEngine(tau=tau, score_mode=score_mode)
-    cols_needed = [
-        "fighter_a", "fighter_b", "winner", "is_draw",
-        "method_score_winner", "weight_a", "weight_b",
-    ]
-    if "quality_score_winner" in fights.columns:
-        cols_needed.append("quality_score_winner")
-    for event_date, event_name, bouts in _iter_event_bouts(fights, cols_needed):
-        engine.process_event(event_date, event_name, bouts)
-    return engine
 
 
 def _stream_current_columns(
@@ -345,6 +167,36 @@ def _attach_activity_adjusted_mu(current: pd.DataFrame, snapshot_max_date: pd.Ti
     return out
 
 
+def _attach_record(current: pd.DataFrame, fights: pd.DataFrame) -> pd.DataFrame:
+    """Attach each fighter's rated win/loss/draw record.
+
+    The board already carried an appearance count, which cannot distinguish a
+    fighter who has never lost from one who splits every card. That difference
+    is exactly what decides how far a Bradley--Terry rating can travel, so it
+    belongs beside the rating.
+    """
+    for col in ("wins", "losses", "draws"):
+        current[col] = 0
+    if fights is None or fights.empty:
+        return current
+    sides = [
+        fights[[side, "winner", "is_draw"]].rename(columns={side: "fighter"})
+        for side in ("fighter_a", "fighter_b")
+    ]
+    long = pd.concat(sides, ignore_index=True, sort=False).dropna(subset=["fighter"])
+    long["is_draw"] = long["is_draw"].fillna(False).astype(bool)
+    long["win"] = long["winner"].eq(long["fighter"]) & ~long["is_draw"]
+    long["loss"] = long["winner"].notna() & ~long["winner"].eq(long["fighter"]) & ~long["is_draw"]
+    record = long.groupby("fighter").agg(
+        wins=("win", "sum"), losses=("loss", "sum"), draws=("is_draw", "sum"),
+    ).reset_index()
+    out = current.drop(columns=["wins", "losses", "draws"]).merge(
+        record, on="fighter", how="left")
+    for col in ("wins", "losses", "draws"):
+        out[col] = out[col].fillna(0).astype(int)
+    return out
+
+
 def _attach_recent_division_gender(current: pd.DataFrame, fights: pd.DataFrame) -> pd.DataFrame:
     """Attach each fighter's most recent UFC division and inferred gender split."""
     if fights is None or fights.empty:
@@ -401,29 +253,31 @@ def run(
     min_fights: int = 3,
     *,
     mdabbert_csv: Path | None = None,
+    include_experimental_crossorg: bool = False,
 ) -> dict:
     snapshot_dir = Path(snapshot_dir).resolve()
     fights = pd.read_parquet(snapshot_dir / "canonical_fights.parquet")
     rounds = pd.read_parquet(snapshot_dir / "canonical_rounds.parquet")
-    excluded_path = snapshot_dir / "_excluded_bouts.csv"
-    excluded = pd.read_csv(excluded_path) if excluded_path.exists() else pd.DataFrame()
-
-    # UFC bouts are the elite reference: org_weight 1.0. Cross-org bouts (if a
-    # crossorg_fights.parquet was staged) carry their own bridge-calibrated
-    # org_weight < 1.0 and are concatenated into the canonical fight table so
-    # they flow through every stream, sleeve, and period score.
+    # The production scope is UFC-only. Existing cross-org weights were derived
+    # from fighters' eventual UFC careers, so automatically consuming them here
+    # would leak future information into historical evidence. They remain an
+    # explicitly requested research scope until weights are fold-local or
+    # outcome-independent.
     fights["org_weight"] = 1.0
     if "source" not in fights.columns:
         fights["source"] = "ufc"
     crossorg_path = snapshot_dir / "crossorg_fights.parquet"
-    if crossorg_path.exists():
+    if crossorg_path.exists() and include_experimental_crossorg:
         crossorg = pd.read_parquet(crossorg_path)
         if not crossorg.empty:
             if "org_weight" not in crossorg.columns:
                 crossorg["org_weight"] = 1.0
             fights = pd.concat([fights, crossorg], ignore_index=True, sort=False)
             print(f"[rate] merged {len(crossorg):,} cross-org bouts "
-                  f"(orgs: {sorted(crossorg.get('org', pd.Series(dtype=str)).dropna().unique())})")
+                  f"(EXPERIMENTAL; orgs: "
+                  f"{sorted(crossorg.get('org', pd.Series(dtype=str)).dropna().unique())})")
+    elif crossorg_path.exists():
+        print("[rate] cross-org artifact quarantined from the UFC production core")
 
     fights["event_date"] = pd.to_datetime(fights["event_date"])
     if "method_class" in fights.columns:
@@ -436,7 +290,7 @@ def run(
     # ------------------------------------------------------------------
     # Integrity flags (PED + DQ + missed-weight)
     integrity = build_integrity_flags(fights, mdabbert_csv=mdabbert_csv)
-    # Merge flags onto the fight rows so sleeves can pick them up.
+    # Merge flags onto the fight rows for the audit layers and exclusions.
     fights = fights.drop(columns=[c for c in INTEGRITY_COLUMNS if c != "fight_url" and c in fights.columns], errors="ignore")
     fights = fights.merge(integrity, on="fight_url", how="left")
     fights = _ensure_integrity_columns(fights)
@@ -456,7 +310,8 @@ def run(
     current = current.merge(fight_counts, on="fighter", how="left")
 
     # ------------------------------------------------------------------
-    # Sleeves: integrity, performance, integrity+performance
+    # Audit layers. These explain source coverage, method/dominance and policy
+    # questions, but they do not mutate the production skill likelihood.
     integrity_app = build_integrity_appearances(rated_fights)
 
     odds_lines = load_odds_lines(snapshot_dir) if has_odds_artifact(snapshot_dir) else pd.DataFrame()
@@ -477,79 +332,12 @@ def run(
     integrity_app.to_parquet(snapshot_dir / "integrity_appearances.parquet", index=False)
     perf_app.to_parquet(snapshot_dir / "performance_appearances.parquet", index=False)
 
-    combined_app = integrity_app[["fight_url", "fighter", "integrity_weight"]].merge(
-        perf_app[["fight_url", "fighter", "performance_weight"]],
-        on=["fight_url", "fighter"],
-        how="outer",
-    )
-    combined_app["integrity_weight"] = combined_app["integrity_weight"].fillna(1.0)
-    combined_app["performance_weight"] = combined_app["performance_weight"].fillna(1.0)
-    combined_app["combined_weight"] = (
-        combined_app["integrity_weight"] * combined_app["performance_weight"]
-    ).clip(lower=SLEEVE_FACTOR_MIN, upper=SLEEVE_FACTOR_MAX)
-
-    # Attach quality_score_winner onto fights for quality_method scoring.
-    rated_with_qs = _attach_quality_scores(rated_fights, perf_app)
-
-    sleeve_specs: list[dict] = [
-        {
-            # 2026-05-15: read quality_score_winner so the integrity score
-            # damp applied in performance_adjustment.quality_score_winner
-            # flows into the Glicko-2 integrity stream (PED win ~ 0.55
-            # instead of 1.0). The weight column still applies the legacy
-            # update-weight damp on top, as an additional softener.
-            "suffix": "method_integrity",
-            "score_mode": "quality_method",
-            "weight_source": integrity_app,
-            "weight_col": "integrity_weight",
-        },
-        {
-            "suffix": "method_performance",
-            "score_mode": "quality_method",
-            "weight_source": perf_app,
-            "weight_col": "performance_weight",
-        },
-        {
-            "suffix": "method_integrity_performance",
-            "score_mode": "quality_method",
-            "weight_source": combined_app,
-            "weight_col": "combined_weight",
-        },
-    ]
-
-    sleeve_histories: dict[str, pd.DataFrame] = {}
-    for spec in sleeve_specs:
-        suffix = spec["suffix"]
-        weighted = _attach_appearance_weights(rated_with_qs, spec["weight_source"], spec["weight_col"])
-        eng = _run_weighted_engine(weighted, tau=tau, score_mode=spec["score_mode"])
-        sleeve_hist = eng.history_df()
-        sleeve_histories[suffix] = sleeve_hist
-        stream_current = _stream_current_columns(eng.current_table(), sleeve_hist, suffix=suffix)
-        current = current.merge(stream_current, on="fighter", how="left")
-        current = _attach_rank_and_delta(
-            current, suffix=suffix, baseline_col="mu_method", min_fights=min_fights,
-        )
-
     # ------------------------------------------------------------------
-    # WHR sidecar - a Bayesian smoother over the whole fight history (Coulom
-    # 2008). Unlike the Glicko-2 filter, it estimates every fighter's rating
-    # history jointly, so ratings are comparable across eras at the rating
-    # layer. Persisted as its own history + period columns.
-    #
-    # 2026-05-15: the bout table fed to WHR also carries quality_score_winner,
-    # so PED / DQ / missed-weight wins are downgraded at the score layer in
-    # WHR identically to how they are downgraded in the Glicko-2 method
-    # streams. The canonical method/integrity Glicko stream remains binary;
-    # the integrity penalty here is the WHR analog of the Glicko-2 method
-    # stream's quality_score_winner damp.
-    # Base (sleeve-free) WHR is the headline ranking — down-weight cross-org
-    # bouts here too via org-only weights (UFC stays 1.0).
-    # Data-driven modern-era premium curve (from the Glicko year-mean), applied
-    # to every WHR stream. Built once; whr_* streams are era-de-trend-exempt in
-    # peaks so this lands at full nominal magnitude.
-    era_premium_by_year = _build_era_premium_by_year(history)
-    whr_history = run_whr(_attach_org_only_weights(rated_with_qs))
-    whr_history = _apply_whr_era_premium(whr_history, "mu_whr", era_premium_by_year)
+    # WHR is the retrospective estimator of the same binary/draw evidence used
+    # by canonical Glicko. It receives one shared source weight per bout and no
+    # implicit quality-score column. Era is neutral by default because a common
+    # additive era term cancels from every within-era Bradley--Terry matchup.
+    whr_history = run_whr(_attach_org_only_weights(rated_fights))
     whr_history.to_parquet(snapshot_dir / "ratings_history_whr.parquet", index=False)
     whr_current = (
         whr_history.sort_values(["fighter", "event_date"])
@@ -559,90 +347,33 @@ def run(
     )
     current = current.merge(whr_current, on="fighter", how="left")
 
-    # ------------------------------------------------------------------
-    # WHR sleeved variants. The sleeve weight scales each fight's Bradley-Terry
-    # likelihood contribution (g *= w, h_diag *= w); the Wiener-process and
-    # anchor priors are left unweighted so temporal coupling and global scale
-    # remain structural constraints. Same weight tables as Glicko-2 sleeves.
-    # Only the fully-sleeved WHR variant is produced. ``whr_integrity`` and
-    # ``whr_performance`` were each a full smoother pass plus two period-score
-    # passes per rebuild, and nothing read them — no board, chart, table or
-    # export. Removed 2026-08-19; see docs/DIFFERENTIATOR_AUDIT_2026-08-18.md.
-    _whr_sleeve_specs = [
-        ("whr_integrity_performance", combined_app, "combined_weight"),
-    ]
-    # Dominance reward for Legacy: a dominant win is stronger evidence, so the
-    # winner's WHR likelihood weight is scaled up by how lopsided the win was.
-    dom_level_by_fight = _winner_dominance_level(perf_app)
-    whr_sleeve_histories: dict[str, tuple[pd.DataFrame, str]] = {}
-    for whr_suffix, weight_source, weight_col in _whr_sleeve_specs:
-        # Use rated_with_qs so the WHR sleeve sees the integrity score damp at
-        # the score layer as well as the sleeve update-weight at the
-        # likelihood layer.
-        weighted_fights = _attach_appearance_weights(rated_with_qs, weight_source, weight_col)
-        weighted_fights = _amplify_dominance_weight(
-            weighted_fights, dom_level_by_fight, WHR_DOMINANCE_WEIGHT_AMPLITUDE)
-        mu_col_name = f"mu_{whr_suffix}"
-        slv_hist = run_whr(weighted_fights, out_col=mu_col_name)
-        slv_hist = _apply_whr_era_premium(slv_hist, mu_col_name, era_premium_by_year)
-        slv_hist.to_parquet(snapshot_dir / f"ratings_history_{whr_suffix}.parquet", index=False)
-        whr_sleeve_histories[whr_suffix] = (slv_hist, mu_col_name)
-        slv_current = (
-            slv_hist.sort_values(["fighter", "event_date"])
-            .groupby("fighter")[mu_col_name]
-            .last()
-            .reset_index()
+    # One all-time functional and two clearly separate period diagnostics. The
+    # score inputs are only latent WHR appearances; title labels, opponent rank,
+    # streaks, activity bonuses and market prices are not counted again.
+    symon_tables = (
+        (career_skill_mass(whr_history), "symon_career"),
+        (symon_prime_score(whr_history), "symon_prime"),
+        (symon_peak_score(whr_history), "symon_peak"),
+    )
+    for table, prefix in symon_tables:
+        renamed = table.rename(
+            columns={
+                c: (f"{prefix}_skill_mass" if prefix == "symon_career" and c == "score"
+                    else f"{prefix}_score" if c == "score"
+                    else f"{prefix}_{c}")
+                for c in table.columns
+                if c != "fighter"
+            }
         )
-        current = current.merge(slv_current, on="fighter", how="left")
+        current = current.merge(renamed, on="fighter", how="left")
 
+    current = _attach_record(current, rated_fights)
     current = _attach_recent_division_gender(current, rated_fights)
     current = _attach_activity_adjusted_mu(current, rated_fights["event_date"].max())
 
-    # ------------------------------------------------------------------
-    # Five-year and ten-year period scores. Each call emits both the raw
-    # column (``*_mu_<stream>``) and the headline proven-resume-adjusted
-    # column (``*_headline_mu_<stream>``).
+    # Opponent context per appearance. Division boards score a fighter inside
+    # one weight class from it; the latent skill model does not read it.
     peak_quality = peak_appearance_quality(rated_fights, history)
-    # (peak function, prefix) pairs — five-year and ten-year period windows.
-    peak_specs = (
-        (five_year_peak, "five_year_peak"),
-        (sustained_peak, "sustained_peak"),
-    )
-    # Base streams: (source history, mu column, label). WHR lives in its own
-    # history frame; canonical/method share the Glicko-2 history. Sleeved WHR
-    # variants use the same peak machinery with their own history frames.
-    base_peak_sources = (
-        (history, "mu_canonical", "canonical"),
-        (history, "mu_method", "method"),
-        (whr_history, "mu_whr", WHR_STREAM),
-        *((hist, mu_col, suffix) for suffix, (hist, mu_col) in whr_sleeve_histories.items()),
-    )
-    for peak_fn, prefix in peak_specs:
-        for src_hist, mu_col, base in base_peak_sources:
-            current = current.merge(
-                peak_fn(
-                    src_hist, history, rated_fights,
-                    mu_col=mu_col, out_col=f"{prefix}_mu_{base}",
-                    headline_col=f"{prefix}_headline_mu_{base}",
-                    appearance_quality=peak_quality,
-                    # WHR/Legacy streams keep their intentional era premium.
-                    era_detrend=not base.startswith("whr"),
-                ),
-                on="fighter", how="left",
-            )
-        for suffix, sleeve_hist in sleeve_histories.items():
-            out_col = f"{prefix}_mu_{suffix}"
-            headline_col = f"{prefix}_headline_mu_{suffix}"
-            current = current.drop(columns=[out_col, headline_col], errors="ignore")
-            current = current.merge(
-                peak_fn(
-                    sleeve_hist, history, rated_fights,
-                    mu_col="mu", out_col=out_col,
-                    headline_col=headline_col,
-                    appearance_quality=peak_quality,
-                ),
-                on="fighter", how="left",
-            )
 
     # Division-context all-time rows. These are the correct source for
     # divisional leaderboards; they use only bouts fought in that division and
@@ -668,18 +399,17 @@ def run(
             current[col] = 0
         current[col] = current[col].fillna(0).astype(int)
 
-    current = current.sort_values("mu_canonical", ascending=False).reset_index(drop=True)
+    # 203 fighters tie on mu_canonical (mostly unrated debutants at the 1500
+    # default), and sort_values defaults to a non-stable quicksort, so two
+    # identical runs used to emit byte-different row orders. Tie-break on the
+    # name so a rebuild is reproducible and can be diffed against its inputs.
+    current = current.sort_values(
+        ["mu_canonical", "fighter"], ascending=[False, True]
+    ).reset_index(drop=True)
 
     # ------------------------------------------------------------------
     # Persist
     history.to_parquet(snapshot_dir / "ratings_history.parquet", index=False)
-    for suffix, hist in sleeve_histories.items():
-        out_hist = hist.rename(columns={
-            "mu": f"mu_{suffix}",
-            "phi": f"phi_{suffix}",
-            "sigma": f"sigma_{suffix}",
-        })
-        out_hist.to_parquet(snapshot_dir / f"ratings_history_{suffix}.parquet", index=False)
     current.to_parquet(snapshot_dir / "ratings_current.parquet", index=False)
 
     # Audit exports.
@@ -707,22 +437,25 @@ def run(
         snapshot_dir / "calibration_residuals.parquet",
         index=False,
     )
-    sleeve_attribution_rows(
-        history,
-        sleeve_histories,
-        integrity_app,
-        perf_app,
-    ).to_parquet(snapshot_dir / "sleeve_attribution.parquet", index=False)
     division_entropy_rows(history, rated_fights).to_parquet(
         snapshot_dir / "division_entropy.parquet",
         index=False,
     )
 
-    # Remove legacy artifacts produced by the pre-consolidation pipeline.
+    # Remove artifacts a previous pipeline version wrote that this one does not,
+    # so a rebuilt snapshot never carries a stale file alongside fresh ones.
     for legacy in (
         "ratings_history_ped_adjusted.parquet",
         "ratings_history_odds_adjusted.parquet",
         "odds_adjustment_distribution.parquet",
+        # Retired 2026-08-19: each cost a full smoother pass and nothing read it.
+        "ratings_history_whr_integrity.parquet",
+        "ratings_history_whr_performance.parquet",
+        "ratings_history_whr_integrity_performance.parquet",
+        "ratings_history_method_integrity.parquet",
+        "ratings_history_method_performance.parquet",
+        "ratings_history_method_integrity_performance.parquet",
+        "sleeve_attribution.parquet",
     ):
         legacy_path = snapshot_dir / legacy
         if legacy_path.exists():
@@ -745,45 +478,32 @@ def run(
     cov_rows = int((odds_lines.get('odds_data_quality', pd.Series(dtype=object)).eq('ok')).sum()) if not odds_lines.empty else 0
     print(f"odds-covered fights (ok-quality rows): {cov_rows}")
 
-    # The WHR sidecar (Bayesian smoother) is the DEFAULT HEADLINE ranking — it
-    # is comparable across eras at the rating layer, so it does not carry the
-    # era-inflation / career-shape artifacts of the windowed Glicko-2 streams.
-    # The method_integrity_performance stream is kept as a comparison print.
-    print("headline = WHR (Whole-History Rating smoother); period scores are proven-resume-adjusted.")
+    print(
+        "headline = Symon Career Skill Mass over binary, era-neutral WHR; "
+        "Prime and Peak are separate diagnostics."
+    )
     _print_top(
         current,
-        rating_col="sustained_peak_headline_mu_whr",
-        extra_cols=["five_year_peak_headline_mu_whr", "career_division", "current_division", "sustained_peak_mu_whr", "rating_periods"],
-        title=f"HEADLINE — Top 25 by whr_rating ({SUSTAINED_PEAK_WINDOW_LABEL}, min {SUSTAINED_PEAK_MIN_FIGHTS})",
+        rating_col="symon_career_skill_mass",
+        extra_cols=[
+            "symon_career_contributing_years", "symon_career_peak_year_excess",
+            "symon_prime_score", "symon_peak_score", "career_division", "rating_periods",
+        ],
+        title="HEADLINE — Top 25 by Symon Career Skill Mass",
         n=25, min_fights=0,
     )
     _print_top(
         current,
-        rating_col="five_year_peak_headline_mu_whr",
-        extra_cols=["sustained_peak_headline_mu_whr", "five_year_peak_mu_whr", "rating_periods"],
-        title=f"HEADLINE — Top 25 by whr_rating (5-yr) ({FIVE_YEAR_PEAK_WINDOW_LABEL}, min {FIVE_YEAR_PEAK_MIN_FIGHTS})",
+        rating_col="symon_prime_score",
+        extra_cols=["symon_prime_raw_mean", "symon_prime_window_fights", "symon_peak_score"],
+        title="DIAGNOSTIC — Top 25 ten-year Prime (minimum 13 appearances)",
         n=25, min_fights=0,
     )
     _print_top(
         current,
-        rating_col="sustained_peak_headline_mu_method_integrity_performance",
-        extra_cols=[
-            "five_year_peak_headline_mu_method_integrity_performance",
-            "sustained_peak_mu_method_integrity_performance",
-            "rating_periods",
-        ],
-        title=f"comparison — Top 25 by method_full ({SUSTAINED_PEAK_WINDOW_LABEL}, min {SUSTAINED_PEAK_MIN_FIGHTS})",
-        n=25, min_fights=SUSTAINED_PEAK_MIN_FIGHTS,
-    )
-    _print_top(
-        current,
-        rating_col="sustained_peak_headline_mu_whr_integrity_performance",
-        extra_cols=[
-            "five_year_peak_headline_mu_whr_integrity_performance",
-            "sustained_peak_headline_mu_whr",
-            "rating_periods",
-        ],
-        title=f"whr_full — Top 25 sustained ({SUSTAINED_PEAK_WINDOW_LABEL}, min {SUSTAINED_PEAK_MIN_FIGHTS})",
+        rating_col="symon_peak_score",
+        extra_cols=["symon_peak_raw_mean", "symon_peak_window_fights", "symon_prime_score"],
+        title="DIAGNOSTIC — Top 25 five-year Peak (minimum 8 appearances)",
         n=25, min_fights=0,
     )
 
@@ -809,12 +529,21 @@ def main() -> None:
         default=None,
         help="Optional path to mdabbert ufc-master.csv for missed-weight cross-check.",
     )
+    parser.add_argument(
+        "--experimental-crossorg",
+        action="store_true",
+        help=(
+            "Explicitly include staged cross-org bouts. Research only: current "
+            "org weights are not yet cutoff-local."
+        ),
+    )
     args = parser.parse_args()
     run(
         Path(args.snapshot_dir).resolve(),
         tau=args.tau,
         min_fights=args.min_fights,
         mdabbert_csv=Path(args.mdabbert_csv).resolve() if args.mdabbert_csv else None,
+        include_experimental_crossorg=args.experimental_crossorg,
     )
 
 

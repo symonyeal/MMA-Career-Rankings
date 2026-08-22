@@ -10,7 +10,7 @@ def test_scope_comparison_ranks_and_matches_reference_names(tmp_path: Path):
     public = tmp_path / "public"
     ufc.mkdir()
     public.mkdir()
-    score = "sustained_peak_headline_mu_whr_integrity_performance"
+    score = "symon_career_skill_mass"
     pd.DataFrame([
         {"fighter": "Georges St-Pierre", score: 2000.0, "rating_periods": 22, "gender": "M"},
         {"fighter": "Fedor Emelianenko", score: 1800.0, "rating_periods": 0, "gender": "M"},

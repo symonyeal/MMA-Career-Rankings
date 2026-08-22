@@ -1,5 +1,11 @@
 # Notebook Chart Plan
 
+> **Historical (2026-06-23).** This is the plan the chart batch was built from, kept
+> because code comments cite it. It predates the 2026-08-20 core evolution: the
+> sleeve streams and the rolling peak columns it refers to no longer exist. For the
+> current design see `docs/PRIOR_MASS_AND_UNCERTAINTY_2026-08-20.md`.
+
+
 > **Update 2026-06-25 (dashboard cleanup):** three of the boards below were
 > removed per user review — **#1 Model Accuracy** (calibration curve, "means
 > nothing"), **#6 Since Last Snapshot** ("useless"), and **#7 Ring Rust**. The

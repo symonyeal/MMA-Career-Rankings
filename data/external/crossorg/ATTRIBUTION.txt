@@ -1,0 +1,9 @@
+identity_overrides.csv is OUR OWN hand-verified file, not vendored from anywhere.
+
+It exists because data/external/aliases/fighter_aliases.csv is third-party
+(Tiger Millionaire, MIT, see its ATTRIBUTION.txt) and must not be edited.
+
+Every row is a person whose Sherdog legal-name entry and canonical UFC-set name
+differ in a way no name rule can derive. Add a row only after checking the two
+records are the same fighter -- the audit's weaker tiers are full of siblings
+(Murilo/Mauricio Rua, Patricky/Patricio Freire) who are not.

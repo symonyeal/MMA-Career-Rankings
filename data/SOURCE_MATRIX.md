@@ -149,7 +149,9 @@ profile completeness scores. The UFC-only default remains unchanged.
 Current Sherdog staging: `loaders/sherdog_loader.py` resolves fighter pages,
 caches HTML under `data/external/sherdog/`, parses non-UFC histories, and
 `build_crossorg.py` writes `crossorg_fights.parquet`. `ratings/rate_snapshot.py`
-merges that file into all rating streams when present.
+quarantines that file by default. It is merged only under the explicit
+`--experimental-crossorg` research flag because current participant weights
+use future UFC-career information.
 
 `loaders/fightmatrix_loader.py` stages the ranking and all-time tables.
 `loaders/fightmatrix_profiles.py` then follows only the profile links in those
@@ -172,11 +174,11 @@ not a separate source of truth. Tables include:
   `canonical_rounds`, `canonical_fighters`.
 - Canonical extension tables: `crossorg_fights` when present.
 - Rating and derived tables: `ratings_current`, `ratings_history`,
-  `ratings_history_method_integrity`, `ratings_history_method_performance`,
-  `ratings_history_method_integrity_performance`, `ratings_history_whr`,
-  `integrity_appearances`, `performance_appearances`,
+  `ratings_history_whr`, `integrity_appearances`, `performance_appearances`,
   `fight_dominance`, `fighter_dominance`.
-- Audit tables: `excluded_bouts`, `ped_confirmed_bouts`, `missed_weight_bouts`.
+- Policy/audit tables: `integrity_ledger`, `integrity_discounted_board`,
+  `completeness_gated_board`, `excluded_bouts`, `ped_confirmed_bouts`,
+  `missed_weight_bouts`.
 - External staged tables: `datalab_bouts_all`,
   `datalab_merged_stats_scorecards`, `datalab_fighter_details`,
   `datalab_scorecards`, `fightmatrix_rankings`, `fightmatrix_all_time`,
@@ -203,31 +205,35 @@ source-specific fighter/division fields where those columns exist.
 
 All excluded bouts are persisted to `_excluded_bouts.csv` for audit.
 
-## Sleeve architecture (post 2026-05-13 consolidation)
+## Rating and policy architecture (2026-08-20)
 
-The rating engine emits five Glicko-2 streams plus one WHR sidecar stream in
-`ratings_current.parquet`:
+The production engine exposes two estimators of the same binary W/L/D evidence,
+plus one same-pass method research diagnostic:
 
-| Stream | Sleeves applied | Notes |
+| Stream/score | Role | Notes |
 |---|---|---|
-| `mu_canonical` | none | Strict W/L/D Glicko-2. Never sleeved. |
-| `mu_method` | none | Method-bonus winner score in [0.7, 1.0]. Never sleeved. |
-| `mu_method_integrity` | integrity | Method + PED/DQ/missed-weight damp. |
-| `mu_method_performance` | performance | Method + opponent-quality/context reward (no odds term). |
-| `mu_method_integrity_performance` | both | Method with both sleeves composed. |
-| `mu_whr` | n/a — sidecar | Whole-History Rating smoother (Coulom 2008); see `ratings/whr.py`. **The default headline ranking** — comparable across eras at the rating layer. |
+| `mu_canonical` | causal skill filter | Strict W/L/D Glicko-2. |
+| `mu_whr` | retrospective skill smoother | Binary Whole-History Rating, one shared likelihood weight per bout, era-neutral. Prior mass is fixed per fighter (anchor + virtual games), so an undefeated record's rating rises with the evidence behind it. |
+| `mu_method` | research diagnostic | Fractional method score produced in the canonical pass; not public/core evidence. |
+| `symon_career_skill_mass` | public All-time functional | Annual field-relative WHR skill mass, one contribution per active year. |
+| `symon_prime_score` / `symon_peak_score` | fixed diagnostics | 10y/13-appearance and 5y/8-appearance EB-shrunk WHR means. |
+| `wins` / `losses` / `draws` | rated record | Counted from the rated fight table; the evidence behind a rating, not an input to it. |
+| `career_mass_uncertainty.parquet` | rank intervals | Career mass and rank re-estimated under Dirichlet-reweighted events; overlapping intervals are not a ranking. |
 
-All per-fight sleeve weights fall in the symmetric envelope
-`[SLEEVE_FACTOR_MIN, SLEEVE_FACTOR_MAX] = [0.80, 1.20]`. No individual
-sub-factor amplitude exceeds 0.20. Tunables live in `ratings/constants.py`.
-WHR period scores (`sustained_peak_*_whr`, `five_year_peak_*_whr`) and history
-(`ratings_history_whr.parquet`) are emitted alongside the Glicko-2 streams.
+Former `method_*_integrity`, `method_*_performance`, and
+`whr_integrity_performance` production histories are retired. In particular,
+WHR rejects different winner/loser weights for one bout because they cannot be
+the gradient of one joint likelihood.
 
-### Integrity sleeve
+The rolling opponent-quality period columns (`sustained_peak_*`,
+`five_year_peak_*`) were removed outright on 2026-08-20 rather than kept for
+compatibility: they re-scored opponent quality, titles, activity and era on top
+of a rating that already reflects them. A snapshot built before that date still
+carries them; the public controls ignore them and resolve to base WHR instead.
 
-`mu_method_integrity` damps tainted results on the winner's side. Three
-authoritative signals are OR-merged into per-fight flags
-(`integrity_flags.parquet` audit table):
+### Integrity audit and direct-debit policy
+
+Three authoritative signals are OR-merged into per-fight audit flags:
 
 * PED-confirmed (from `loaders/ped_flags.py`): factor `0.80` (-20% floor —
   the most severe integrity penalty). Confirmed cases also exported to
@@ -238,12 +244,16 @@ authoritative signals are OR-merged into per-fight flags
   available, mdabbert `R_Weight_lbs`/`B_Weight_lbs` vs `weight_class`
   divergence (cross-check). Audit export: `missed_weight_bouts.csv`.
 
-Factors compose multiplicatively and are then clamped to
-`[SLEEVE_FACTOR_MIN, 1.0]` (integrity only penalises, never rewards).
+The standard board builder writes the event ledger and an optional direct
+rating-point debit against base WHR. It never propagates a policy penalty
+through opponents and it does not subtract rating points from Career Skill
+Mass, whose unit is rating-point-years.
 
-### Performance sleeve
+### Retired performance-weight research table
 
-`mu_method_performance` rewards impressive results and damps poor ones. The
+`performance_appearances.parquet` preserves the former proposed weighting
+features for audit and research; it is not consumed by a production rating.
+The
 2026-05-14 rewrite replaced the old multiplicative-product-and-clamp design
 with a tanh-smoothed additive log-signal `S`:
 
@@ -270,7 +280,7 @@ with a tanh-smoothed additive log-signal `S`:
 
 All sub-factor amplitudes live in `ratings/constants.py`; the per-factor
 `perf_factor_*` columns in `performance_appearances.parquet` are retained for
-audit even though only the deduplicated signal feeds `S`.
+audit. The derived signal no longer feeds a public/core rating.
 
 ### Optional odds artifact
 
@@ -296,14 +306,14 @@ Field map for `odds_lines.parquet` (one row per bout, joined back to
 joined on `frozenset({fighter_a, fighter_b})` + event_date (±1 day),
 covers ~78% of canonical bouts with American moneyline odds spanning
 ~2010-2026. Ingested by `loaders/odds_ingest_mdabbert.py`. The
-performance sleeve's odds sub-factor is active wherever this artifact is
-present; rate_snapshot prints the realised coverage at end-of-run.
+odds artifact is used as a held-out benchmark and results analysis; it never
+changes a rating. `rate_snapshot` prints realised coverage at end-of-run.
 
 Loaded odds sources:
 
 | Source | Format | Era | License | Current role |
 |--------|--------|-----|---------|--------------|
-| mdabbert `ultimate_ufc_dataset` — `ufc-master.csv` | CSV American moneyline | 2010-03-21 -> 2026-03-28 (~6,900 bouts with both-side odds) | Apache-2.0 (`F U N/ultimate_ufc_dataset-main/LICENSE`); attribution required, redistributable | Primary ingest backing `odds_lines.parquet` and the performance sleeve's market sub-factor. Joined via fighter-pair + date. |
+| mdabbert `ultimate_ufc_dataset` — `ufc-master.csv` | CSV American moneyline | 2010-03-21 -> 2026-03-28 (~6,900 bouts with both-side odds) | Apache-2.0 (`F U N/ultimate_ufc_dataset-main/LICENSE`); attribution required, redistributable | Primary ingest backing `odds_lines.parquet` as an external benchmark. Joined via fighter-pair + date. |
 
 **Candidate external sources (not ingested, not redistributed in this repo):**
 

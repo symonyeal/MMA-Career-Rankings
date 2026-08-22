@@ -5,6 +5,7 @@ import pytest
 
 from analysis.viz import (
     PEAK_VIEWS,
+    PUBLIC_RANKING_VIEWS,
     RATING_STREAMS,
     compose_rating_stream,
     _fight_duration_seconds,
@@ -32,18 +33,16 @@ from analysis.viz import (
     sleeve_effects_by_fight_table,
     weight_class_context_impact_table,
     normalize_division,
-    n_year_prime_scores,
-    prime_window_column_names,
-    prime_window_min_fights,
     public_history_key,
     public_rating_label,
     public_rating_stream,
     select_modular_rating_column,
+    select_public_ranking_column,
     select_public_rating_column,
     select_rating_column,
     sleeve_ranking_table,
     striker_grappler_scatter,
-    sustained_peak_leaderboard_chart,
+    period_leaderboard_chart,
     fighter_odds_history_chart,
     fighter_profile_chart,
     top_n_table,
@@ -94,7 +93,7 @@ def test_viz_builders_smoke(snapshot):
             snapshot.get("integrity_appearances", pd.DataFrame()),
             snapshot.get("sleeve_attribution", pd.DataFrame()),
         ),
-        sustained_peak_leaderboard_chart(rc),
+        period_leaderboard_chart(rc),
         division_strength_comparison_chart(rc, fights, snapshot["fightmatrix_rankings"]),
         datalab_scorecard_insight_chart(snapshot["datalab_scorecards"]),
         top_fighter_placement_scatter(rc, n=50),
@@ -196,19 +195,30 @@ def test_select_rating_column_resolves_canonical_current(snapshot):
     assert col == "mu_canonical"
 
 
-def test_select_rating_column_resolves_five_year_peak(snapshot):
-    col = select_rating_column(snapshot["ratings_current"], "canonical", "five_year_peak")
-    assert col in {"five_year_peak_headline_mu_canonical", "five_year_peak_mu_canonical"}
+def test_period_views_resolve_to_the_published_period_scores():
+    """Both period aliases land on the Symon window scores, for any stream asked.
 
+    The per-stream rolling peak columns were retired, so a period view is no
+    longer a function of the stream: there is one Prime and one Peak. A snapshot
+    built before they existed resolves to nothing rather than to a retired
+    column.
+    """
+    modern = pd.DataFrame({
+        "fighter": ["A"], "mu_canonical": [1500.0], "mu_whr": [1520.0],
+        "symon_prime_score": [1700.0], "symon_peak_score": [1750.0],
+    })
+    for stream in ("canonical", "whr"):
+        for alias in ("five_year_peak", "peak"):
+            assert select_rating_column(modern, stream, alias) == "symon_peak_score"
+        for alias in ("sustained_peak", "prime"):
+            assert select_rating_column(modern, stream, alias) == "symon_prime_score"
+    assert select_rating_column(modern, "canonical", "current") == "mu_canonical"
 
-def test_select_rating_column_resolves_sustained_peak(snapshot):
-    col = select_rating_column(snapshot["ratings_current"], "canonical", "sustained_peak")
-    assert col in {
-        "sustained_peak_headline_mu_canonical",
-        "sustained_peak_mu_canonical",
-        "five_year_peak_headline_mu_canonical",
-        "five_year_peak_mu_canonical",
-    }
+    legacy = pd.DataFrame({
+        "fighter": ["A"], "mu_canonical": [1500.0],
+        "sustained_peak_mu_canonical": [1600.0],
+    })
+    assert select_rating_column(legacy, "canonical", "prime") is None
 
 
 def test_select_rating_column_returns_none_when_missing():
@@ -231,9 +241,11 @@ def test_normalize_division_preserves_womens_labels():
 def test_rating_streams_and_peak_views_are_aligned():
     stream_keys = [v for _, v in RATING_STREAMS]
     peak_keys = [v for _, v in PEAK_VIEWS]
-    # Streams were consolidated (2026-05-28): Wins / Finishes / Strength only.
-    assert set(stream_keys) == {"canonical", "method", "method_performance"}
-    assert set(peak_keys) == {"current", "sustained_peak", "five_year_peak"}
+    # The weighted "Strength" stream is retired: it gave one bout different
+    # winner and loser weights, which is not one joint likelihood.
+    assert set(stream_keys) == {"canonical", "method"}
+    # Period views are published scores now, not per-stream rolling columns.
+    assert set(peak_keys) == {"current", "prime", "peak"}
 
 
 def test_compose_rating_stream_locks_canonical():
@@ -252,70 +264,54 @@ def test_modular_lookup_resolves_to_method_streams(snapshot):
         assert select_modular_rating_column(rc, "method", use_performance=True) == "mu_method_performance"
 
 
-def test_public_rating_lookup_resolves_casual_views(snapshot):
-    rc = snapshot["ratings_current"]
-    assert select_public_rating_column(rc, "wins", "current") == "mu_canonical"
-    if "mu_method_performance" in rc.columns:
-        assert select_public_rating_column(rc, "complete", "current") == "mu_method_integrity_performance"
-    assert public_history_key("complete") == "ratings_history_method_integrity_performance"
-    assert public_rating_stream("complete") == "method_integrity_performance"
-    assert public_rating_label("legacy", "sustained_peak") == "Prime All-time"
+def test_public_ranking_views_resolve_new_columns_only():
+    rc = pd.DataFrame({
+        "symon_career_skill_mass": [10.0],
+        "symon_prime_score": [1600.0],
+        "symon_peak_score": [1650.0],
+        "mu_whr": [1550.0],
+        # Retired columns must never win public resolution, even when present.
+        "mu_method_integrity_performance": [9999.0],
+        "mu_whr_integrity_performance": [9999.0],
+    })
+    expected = {
+        "all_time": "symon_career_skill_mass",
+        "prime": "symon_prime_score",
+        "peak": "symon_peak_score",
+        "current": "mu_whr",
+    }
+    assert dict(PUBLIC_RANKING_VIEWS).keys() == {
+        "All-time", "Prime · best 10 years / 13+ bouts",
+        "Peak · best 5 years / 8+ bouts", "Current skill",
+    }
+    for view, column in expected.items():
+        assert select_public_ranking_column(rc, view) == column
+        assert public_history_key(view) == "ratings_history_whr"
+        assert public_rating_stream(view) == "whr"
+        assert "integrity_performance" not in select_public_ranking_column(rc, view)
+    assert public_rating_label("all_time") == "All-time"
+    retired_only = rc[["mu_method_integrity_performance", "mu_whr_integrity_performance"]]
+    assert all(select_public_ranking_column(retired_only, view) is None for view in expected)
 
 
-def test_adjustable_prime_window_uses_distinct_columns(snapshot):
-    assert prime_window_column_names("canonical", 7) == (
-        "prime_7yr_mu_canonical",
-        "prime_7yr_headline_mu_canonical",
-    )
-    raw, headline = prime_window_column_names("canonical", 7, 9)
-    assert raw == "prime_7yr_9f_mu_canonical"
-    assert headline == "prime_7yr_9f_headline_mu_canonical"
-    assert prime_window_min_fights(10) == 13
-
-    scores = n_year_prime_scores(
-        snapshot["ratings_history"],
-        snapshot["ratings_history"],
-        snapshot["fights"],
-        mu_col="mu_canonical",
-        stream="canonical",
-        years=7,
-        min_fights=9,
-    )
-    assert {"fighter", raw, headline}.issubset(scores.columns)
-
-
-def test_method_peak_columns_resolve_when_present(snapshot):
-    rc = snapshot["ratings_current"]
-    if "sustained_peak_mu_method" in rc.columns:
-        assert select_rating_column(rc, "method", "sustained_peak") in {
-            "sustained_peak_headline_mu_method",
-            "sustained_peak_mu_method",
-        }
-    if "five_year_peak_mu_method" in rc.columns:
-        assert select_rating_column(rc, "method", "five_year_peak") in {
-            "five_year_peak_headline_mu_method",
-            "five_year_peak_mu_method",
-        }
-
-
-def test_sleeved_peak_columns_resolve_when_present(snapshot):
-    rc = snapshot["ratings_current"]
-    if "sustained_peak_mu_method_integrity_performance" in rc.columns:
-        assert (
-            select_rating_column(rc, "method_integrity_performance", "sustained_peak")
-            in {
-                "sustained_peak_headline_mu_method_integrity_performance",
-                "sustained_peak_mu_method_integrity_performance",
-            }
-        )
-    if "five_year_peak_mu_method_integrity_performance" in rc.columns:
-        assert (
-            select_rating_column(rc, "method_integrity_performance", "five_year_peak")
-            in {
-                "five_year_peak_headline_mu_method_integrity_performance",
-                "five_year_peak_mu_method_integrity_performance",
-            }
-        )
+def test_public_ranking_views_fall_back_to_base_old_snapshot_columns():
+    # A snapshot built before the Symon scores existed, still carrying retired
+    # weighted columns: every view must land on base WHR, never on a retired
+    # sleeve or on the withdrawn opponent-quality period columns.
+    old = pd.DataFrame({
+        "mu_whr": [1550.0],
+        "mu_canonical": [1500.0],
+        "sustained_peak_headline_mu_whr": [1600.0],
+        "five_year_peak_headline_mu_whr": [1650.0],
+        "mu_method_integrity_performance": [9999.0],
+        "mu_whr_integrity_performance": [9999.0],
+    })
+    assert select_public_ranking_column(old, "all_time") == "mu_whr"
+    assert select_public_ranking_column(old, "prime") == "mu_whr"
+    assert select_public_ranking_column(old, "peak") == "mu_whr"
+    assert select_public_ranking_column(old, "current") == "mu_whr"
+    # Retired two-argument callers normalize onto the same base-only mapping.
+    assert select_public_rating_column(old, "complete", "current") == "mu_whr"
 
 
 def test_sleeve_ranking_table_filters_and_delta(snapshot):

@@ -10,9 +10,9 @@ direction (past -> future), so a fighter who debuts in an inflated modern pool
 and one who debuted in a compressed early pool are not directly comparable.
 WHR is a *smoother*: it computes the joint MAP estimate of every fighter's
 whole rating history at once, propagating information both directions, so
-ratings are comparable across distant time by construction. ``ratings/peaks.py``
-era-normalization is a post-hoc patch for the filtering artifact; WHR addresses
-it at the rating layer.
+ratings are comparable across distant time by construction, which is why the
+era-normalisation patches that used to sit downstream of the filter were
+retired: the smoother addresses the artifact at the rating layer.
 
 Model
 -----
@@ -21,8 +21,25 @@ Model
   ``s in {1, 0.5, 0}`` has expected value ``P = sigma(r - r_opp)``.
 * Wiener-process prior between a fighter's consecutive appearances: the rating
   change over ``dt`` days is ``N(0, w2_per_day * dt)``.
-* A weak Gaussian anchor prior ``r ~ N(0, prior_var)`` pins the global scale
-  and regularizes.
+* A weak Gaussian anchor prior ``r ~ N(0, prior_var)`` pins the global scale.
+* ``virtual_games`` bouts of prior evidence against an average opponent, half
+  won and half lost. Both priors carry a *fixed mass per fighter*, spread over
+  that fighter's appearances, so prior strength does not grow with career
+  length the way the likelihood does.
+
+Why the prior mass is fixed per fighter
+---------------------------------------
+An undefeated fighter has no interior maximum-likelihood rating: the
+Bradley--Terry gradient ``sum_j (1 - sigma(r - r_j))`` is positive for every
+finite ``r``, so only the prior stops the climb. If the prior is applied once
+per appearance, its mass grows with career length at the same rate as the
+likelihood and the stopping point becomes a constant independent of the
+evidence. That is a real failure, not a corner case: before ``virtual_games``
+existed, the highest rating in the UFC database belonged to a fighter with a
+single bout, and 56 fighters at 1-0 averaged above the 98th percentile of the
+roster. With fixed prior mass ``v``, an undefeated fighter with ``k`` wins over
+average opposition settles at ``sigma(r) = (k + v/2) / (k + v)``, which rises
+with ``k`` as it must.
 
 Inference
 ---------
@@ -48,6 +65,7 @@ from ratings.constants import (
     WHR_ITERATIONS,
     WHR_PRIOR_VAR,
     WHR_STEP_CLIP,
+    WHR_VIRTUAL_GAMES,
     WHR_W2_PER_DAY,
 )
 
@@ -112,15 +130,18 @@ def _tridiag_inv_diag(a_diag: np.ndarray, a_off: np.ndarray) -> np.ndarray:
 
 def _build_appearances(
     fights: pd.DataFrame,
+    *,
+    winner_score_col: str | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, dict[str, list[int]]]:
     """Explode bouts into appearance nodes.
 
     Returns ``(app_fighter, app_event, app_day, app_score, app_opp, app_weight, by_fighter)``
     where appearance ``2i`` is fighter_a of bout ``i`` and ``2i+1`` is
     fighter_b. ``app_opp`` maps each node to its bout-paired node.
-    ``app_weight`` is the per-node likelihood sleeve weight (1.0 if the fights
-    table has no ``weight_a``/``weight_b`` columns). ``by_fighter`` maps a
-    fighter to their node ids in chronological order.
+    ``app_weight`` repeats one shared bout-likelihood weight on both nodes
+    (1.0 when the fight table has no weight columns). A paired Bradley--Terry
+    likelihood cannot coherently give its winner and loser different evidence
+    weights. ``by_fighter`` maps a fighter to chronological node ids.
     """
     f = fights.copy()
     f["event_date"] = pd.to_datetime(f["event_date"], errors="coerce")
@@ -145,15 +166,35 @@ def _build_appearances(
     )
     event_name = f["event_name"].to_numpy() if "event_name" in f.columns else np.full(n, "")
     days = ((f["event_date"] - _EPOCH).dt.days).to_numpy(dtype=float)
-    weight_a_arr = f["weight_a"].to_numpy(dtype=float) if "weight_a" in f.columns else np.ones(n, dtype=float)
-    weight_b_arr = f["weight_b"].to_numpy(dtype=float) if "weight_b" in f.columns else np.ones(n, dtype=float)
-    # Optional per-bout winner-score override. When the canonical fight table
-    # carries quality_score_winner (which already folds in the integrity score
-    # damp from performance_adjustment.quality_score_winner), the WHR
-    # likelihood reads the same downgraded outcome a Glicko-2 method/sleeve
-    # stream sees. Falls back to {0, 1} when the column is absent.
-    if "quality_score_winner" in f.columns:
-        winner_score_arr = pd.to_numeric(f["quality_score_winner"], errors="coerce").to_numpy(dtype=float)
+    has_weight_a, has_weight_b = "weight_a" in f.columns, "weight_b" in f.columns
+    if has_weight_a != has_weight_b:
+        raise ValueError("WHR requires both weight_a and weight_b, or neither")
+    if has_weight_a:
+        weight_a_arr = pd.to_numeric(f["weight_a"], errors="coerce").to_numpy(dtype=float)
+        weight_b_arr = pd.to_numeric(f["weight_b"], errors="coerce").to_numpy(dtype=float)
+        if (not np.isfinite(weight_a_arr).all() or not np.isfinite(weight_b_arr).all()
+                or (weight_a_arr <= 0.0).any() or (weight_b_arr <= 0.0).any()):
+            raise ValueError("WHR likelihood weights must be finite and positive")
+        if not np.allclose(weight_a_arr, weight_b_arr, rtol=0.0, atol=1e-12):
+            raise ValueError(
+                "WHR requires one shared likelihood weight per bout; "
+                "side-specific weight_a/weight_b values are not a joint model"
+            )
+        bout_weight = weight_a_arr
+    else:
+        bout_weight = np.ones(n, dtype=float)
+
+    # Binary/draw scoring is the default. Fractional winner scores must be
+    # requested explicitly so an audit column cannot silently change the model.
+    if winner_score_col is not None:
+        if winner_score_col not in f.columns:
+            raise ValueError(f"winner score column not found: {winner_score_col}")
+        winner_score_arr = pd.to_numeric(
+            f[winner_score_col], errors="coerce"
+        ).to_numpy(dtype=float)
+        valid_scores = winner_score_arr[np.isfinite(winner_score_arr)]
+        if ((valid_scores < 0.5) | (valid_scores > 1.0)).any():
+            raise ValueError("winner scores must lie in [0.5, 1.0]")
     else:
         winner_score_arr = np.full(n, np.nan, dtype=float)
 
@@ -167,8 +208,7 @@ def _build_appearances(
         app_day[nb] = days[i]
         app_opp[na] = nb
         app_opp[nb] = na
-        app_weight[na] = weight_a_arr[i]
-        app_weight[nb] = weight_b_arr[i]
+        app_weight[na] = app_weight[nb] = bout_weight[i]
         if bool(is_draw[i]):
             app_score[na] = app_score[nb] = 0.5
         elif winner[i] == fighter_a[i]:
@@ -194,43 +234,49 @@ def run_whr(
     *,
     w2_per_day: float = WHR_W2_PER_DAY,
     prior_var: float = WHR_PRIOR_VAR,
+    virtual_games: float = WHR_VIRTUAL_GAMES,
     iterations: int = WHR_ITERATIONS,
     step_clip: float = WHR_STEP_CLIP,
     out_col: str = "mu_whr",
     return_variance: bool = False,
+    winner_score_col: str | None = None,
 ) -> pd.DataFrame:
     """Run the WHR smoother over a canonical fight table.
 
     Required ``fights`` columns: ``fighter_a``, ``fighter_b``, ``winner``,
     ``is_draw``, ``event_date``, ``event_name``.
 
-    Optional columns ``weight_a`` / ``weight_b`` (added by
-    ``_attach_appearance_weights``) scale each fight's Bradley-Terry likelihood
-    contribution — the Wiener-process and anchor priors are unweighted, so the
-    temporal coupling and global scale remain structural constraints. This makes
-    the sleeve concept fully modular: the same integrity / performance weight
-    tables used for Glicko-2 apply here without modification.
+    Optional ``weight_a`` / ``weight_b`` columns scale each bout's
+    Bradley--Terry likelihood contribution. They must be equal within every
+    bout: one likelihood has one evidence weight. The Wiener-process and anchor
+    priors remain unweighted. Binary/draw scoring is always used unless an
+    explicit ``winner_score_col`` is supplied.
 
     Returns a per-appearance history frame with columns
     ``fighter``, ``event_date``, ``event_name``, ``out_col`` — the same shape as
-    ``ratings_history.parquet`` so it feeds ``ratings.peaks`` unchanged.
+    ``ratings_history.parquet`` so every downstream consumer reads one shape.
 
     With ``return_variance=True`` an extra ``var_<stream>`` column carries each
-    rating's posterior variance on the natural scale (the diagonal of the inverse
-    per-fighter Hessian). This is WHR's own uncertainty — the analog of Glicko-2's
-    RD — used by the backtest to shrink uncertain predictions toward a coin flip.
+    rating's conditional block-curvature variance on the natural scale. It
+    holds opponents fixed and is useful only as an experimental attenuation
+    feature; it is not a marginal posterior variance or a rank interval.
     """
     cols = ["fighter", "event_date", "event_name", out_col]
     if fights is None or fights.empty:
         return pd.DataFrame(columns=cols)
 
-    app_fighter, app_event, app_day, app_score, app_opp, app_weight, by_fighter = _build_appearances(fights)
+    app_fighter, app_event, app_day, app_score, app_opp, app_weight, by_fighter = (
+        _build_appearances(fights, winner_score_col=winner_score_col)
+    )
     n_app = len(app_fighter)
     if n_app == 0:
         return pd.DataFrame(columns=cols)
 
     ratings = np.zeros(n_app, dtype=float)
     inv_prior = 1.0 / float(prior_var)
+    vg_total = float(virtual_games)
+    if vg_total < 0.0:
+        raise ValueError("virtual_games must be non-negative")
 
     # Pre-extract per-fighter node arrays once.
     fighter_node_arrays = {
@@ -253,9 +299,20 @@ def run_whr(
             g = w * (s - p)
             h_diag = w * (-p * (1.0 - p))
 
-            # Weak Gaussian anchor prior r ~ N(0, prior_var) — unweighted.
-            g -= r * inv_prior
-            h_diag -= inv_prior
+            # Priors carry a fixed mass per fighter, spread over the career, so
+            # they do not scale with career length the way the likelihood does.
+            anchor = inv_prior / k
+            g -= r * anchor
+            h_diag -= anchor
+
+            # Virtual games against an average opponent (rating 0): half won,
+            # half lost. Unbiased at r = 0, and the only term that gives an
+            # undefeated record a finite maximum that grows with the evidence.
+            if vg_total > 0.0:
+                vg = vg_total / k
+                p0 = 1.0 / (1.0 + np.exp(-r))
+                g += vg * (0.5 - p0)
+                h_diag -= vg * p0 * (1.0 - p0)
 
             # Wiener-process prior between consecutive appearances — unweighted.
             if k > 1:
@@ -291,11 +348,9 @@ def run_whr(
     }
 
     if return_variance:
-        # Posterior variance of each rating on the NATURAL scale: the diagonal of
-        # the inverse per-fighter Hessian (A = -H) evaluated at the converged
-        # ratings. Same A as the Newton step, so this is the curvature the fit
-        # already used. Larger variance = a thin / stale record the prediction
-        # should shrink toward a coin flip.
+        # Conditional per-fighter block curvature on the NATURAL scale. The full
+        # WHR Hessian also couples opponents, so this is deliberately not called
+        # a marginal posterior variance.
         variances = np.zeros(n_app, dtype=float)
         for nodes in fighter_node_arrays.values():
             k = len(nodes)
@@ -305,7 +360,10 @@ def run_whr(
             opp = ratings[app_opp[nodes]]
             w = app_weight[nodes]
             p = 1.0 / (1.0 + np.exp(-(r - opp)))
-            h_diag = w * (-p * (1.0 - p)) - inv_prior
+            h_diag = w * (-p * (1.0 - p)) - inv_prior / k
+            if vg_total > 0.0:
+                p0 = 1.0 / (1.0 + np.exp(-r))
+                h_diag -= (vg_total / k) * p0 * (1.0 - p0)
             if k > 1:
                 gaps = np.maximum(app_day[nodes][1:] - app_day[nodes][:-1], 1.0)
                 inv_v = 1.0 / (w2_per_day * gaps)

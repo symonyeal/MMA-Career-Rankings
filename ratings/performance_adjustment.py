@@ -1,7 +1,8 @@
-"""Performance sleeve: how impressive was this result vs expectation.
+"""Retired performance-weight proposal, retained as an audit feature table.
 
-The performance sleeve operates on the **method** rating stream only. The
-canonical stream is never performance-aware.
+Production ratings do not consume these side-specific weights. They remain
+available for diagnostics and for designing a future shared bout-level
+reliability term, which would require fresh held-out validation.
 
 Architecture (2026-05-14 rewrite — see ``MODEL_ISSUES_AND_DIAGNOSIS.md``
 Issue 8 for the saturation diagnosis that motivated this):
@@ -46,12 +47,10 @@ Draws stay at 1.0 on both sides.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
 
-from project_helpers import normalize_name_key
 from ratings.constants import (
     ACTIVITY_GAP_FULL_PENALTY,
     ACTIVITY_GAP_NORMAL,
@@ -69,11 +68,7 @@ from ratings.constants import (
     METHOD_SCORE_NON_UNANIMOUS_DECISION,
     METHOD_SCORE_UNANIMOUS,
     PERF_DECISIVENESS_AMPLITUDE,
-    PERF_OPPONENT_QUALITY_AMPLITUDE,
     PERF_OPPONENT_STREAK_AMPLITUDE,
-    PERF_CHAMPIONSHIP_AMPLITUDE,
-    PERF_P4P_AMPLITUDE,
-    PERF_RANK_CONTEXT_AMPLITUDE,
     PERF_TANH_SCALE,
     PERF_UPSET_AMPLITUDE,
     PERF_UPSET_RANK_CHAMPION_VALUE,
@@ -84,9 +79,7 @@ from ratings.constants import (
     PERF_WEIGHT_CLASS_DOWN_LOSS_AMPLITUDE,
     PERF_WEIGHT_CLASS_UP_LOSS_DAMP,
     PERF_WEIGHT_CLASS_UP_WIN_AMPLITUDE,
-    P4P_CONTEXT_TOP_N,
     RANK_CONTEXT_ACTIVE_DAYS,
-    RANK_CONTEXT_TOP_N,
     SLEEVE_FACTOR_MAX,
     SLEEVE_FACTOR_MIN,
 )
@@ -589,18 +582,10 @@ def prefight_ranking_context(canonical_fights: pd.DataFrame, ratings_history: pd
     is_title = f["is_championship_bout"].fillna(False).astype(bool).to_numpy()
     is_interim = f["is_interim_title_bout"].fillna(False).astype(bool).to_numpy()
     winner_id = _ids(f["winner"]) if "winner" in f.columns else np.full(len(f), -1, dtype=np.int64)
-    # The row loop this replaces guarded with ``if not winner``, which skips
-    # None and "" but NOT NaN — so a drawn title bout falls through and writes
-    # a champion nobody matches, vacating the modeled lineage. That is why
-    # Edgar does not enter UFC 136 flagged as champion. Preserved deliberately;
-    # see the 2026-08-18 report for why it is a defect worth deciding on
-    # separately rather than silently fixing inside a performance change.
-    winner_values = (
-        f["winner"].to_numpy() if "winner" in f.columns else np.full(len(f), None, dtype=object)
-    )
-    winner_falsy = np.array(
-        [w is None or (isinstance(w, str) and not w) for w in winner_values], dtype=bool
-    )
+    # Missing/drawn/invalid winners map to -1.  They must leave the incumbent
+    # lineage unchanged: NaN is truthy in Python, so a plain ``if not winner``
+    # guard would silently replace the champion with a non-fighter sentinel.
+    winner_valid = winner_id >= 0
     post_mu_a = pd.to_numeric(f["_post_mu_a"], errors="coerce").to_numpy(dtype=float)
     post_mu_b = pd.to_numeric(f["_post_mu_b"], errors="coerce").to_numpy(dtype=float)
     event_days = (f["event_date"] - pd.Timestamp(0)).dt.days.to_numpy(dtype=np.int64)
@@ -670,10 +655,8 @@ def prefight_ranking_context(canonical_fights: pd.DataFrame, ratings_history: pd
         # captured, so same-card title bouts cannot leak into each other.
         for k in range(lo, hi):
             d = division_code[k]
-            if winner_falsy[k] or d < 0 or not is_title[k]:
+            if not winner_valid[k] or d < 0 or not is_title[k]:
                 continue
-            # A NaN winner lands here as -1, which matches no fighter id — the
-            # vacating behaviour described above.
             if is_interim[k]:
                 interim_champions[d] = winner_id[k]
             else:

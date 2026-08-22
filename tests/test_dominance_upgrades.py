@@ -10,8 +10,6 @@ import pytest
 
 from ratings.constants import DOMINANCE_FINISH_FLOOR_Z
 from ratings.dominance import per_fight_dominance
-from ratings.peaks import _era_division_normalized_mu
-from ratings.rate_snapshot import _build_era_premium_by_year
 
 
 def _rounds(rows):
@@ -76,43 +74,3 @@ def test_scorecard_round_gap_separates_decisions():
     })
     fd = per_fight_dominance(rounds, fights, scorecards=scorecards).set_index("fight_url")["dominance_a"]
     assert fd["sweep"] > fd["close"]
-
-
-def test_era_premium_curve_monotone_and_zeroed_at_reference():
-    rng = np.random.default_rng(0)
-    rows = []
-    for year, level in [(2005, 1580), (2010, 1640), (2015, 1660), (2020, 1685)]:
-        for _ in range(60):  # > 40-row reliability floor
-            rows.append({"event_date": pd.Timestamp(f"{year}-06-01"),
-                         "mu_canonical": level + rng.normal(0, 5)})
-    hist = pd.DataFrame(rows)
-    prem = _build_era_premium_by_year(hist)
-    years = sorted(prem)
-    assert all(prem[years[i]] <= prem[years[i + 1]] + 1e-9 for i in range(len(years) - 1))
-    assert prem[2010] == pytest.approx(0.0, abs=1e-6)   # reference year is the zero point
-    assert prem[2020] > prem[2005]                       # modern era carries a premium
-
-
-def test_era_detrend_flag_preserves_year_structure():
-    # Build a cross-era field (fighters spanning years => bridges identifiable).
-    rng = np.random.default_rng(1)
-    rows = []
-    for fid in range(150):  # > ERA_NORM_MIN_POPULATION (200 rows) so the normalizer runs
-        for year in (2005, 2015):
-            rows.append({
-                "mu": (1500 if year == 2005 else 1650) + rng.normal(0, 20),
-                "event_date": pd.Timestamp(f"{year}-06-01"),
-                "division": "LW" if fid % 2 else "WW",
-                "fighter": f"f{fid}",
-            })
-    merged = pd.DataFrame(rows)
-
-    detr = _era_division_normalized_mu(merged, "mu", detrend_era=True)
-    keep = _era_division_normalized_mu(merged, "mu", detrend_era=False)
-    yr = merged["event_date"].dt.year
-
-    def year_gap(series):
-        return series[yr == 2015].mean() - series[yr == 2005].mean()
-
-    # De-trending compresses the cross-era gap; the exemption leaves it intact.
-    assert year_gap(keep) > year_gap(detr)

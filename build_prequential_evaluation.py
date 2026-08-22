@@ -1,4 +1,4 @@
-"""Score every rating stream, sleeve and ablation against held-out fights.
+"""Score the lean rating core against held-out fights.
 
 Rolling-origin prequential evaluation (see ``ratings/prequential.py`` for why it
 is cheap and why it is honest). Writes four artifacts into the snapshot:
@@ -26,18 +26,12 @@ from ratings import prequential as PQ
 
 # (baseline, challenger, what the comparison isolates)
 ABLATION_PAIRS = [
-    ("method_performance", "abl_no_integrity", "integrity score damp"),
-    ("method_integrity_performance", "abl_no_method", "method + dominance scoring"),
-    ("method_integrity_performance", "abl_no_market", "market (odds) weighting"),
-    ("method_integrity_performance", "abl_no_crossorg", "cross-org participant bridge"),
-    ("canonical", "method", "method scoring alone"),
-    ("method", "method_integrity", "integrity sleeve alone"),
-    ("method", "method_performance", "performance sleeve alone"),
-    ("whr_integrity_performance", "abl_whr_no_dominance", "WHR dominance amplification"),
-    ("whr_integrity_performance", "abl_whr_no_crossorg", "WHR cross-org bridge"),
-    ("whr_integrity_performance", "abl_whr_no_quality", "WHR integrity score damp"),
-    ("whr", "whr_integrity_performance", "WHR sleeves together"),
     ("canonical", "whr", "smoother vs filter"),
+    (
+        "whr",
+        "whr_symmetric_dominance_research",
+        "shared bout-level dominance precision (research)",
+    ),
 ]
 
 
@@ -53,7 +47,11 @@ def main() -> None:
     ap.add_argument("--min-n", type=int, default=200,
                     help="segment sample floor below which no conclusion is drawn")
     ap.add_argument("--whr-iterations", type=int, default=None)
-    ap.add_argument("--no-crossorg", action="store_true", help="ignore crossorg_fights.parquet")
+    ap.add_argument(
+        "--with-crossorg",
+        action="store_true",
+        help="EXPERIMENTAL: include crossorg_fights.parquet (default is UFC-only)",
+    )
     ap.add_argument("--online-only", action="store_true", help="skip the WHR refit variants")
     ap.add_argument("--variants", default=None,
                     help="comma-separated variant names to score (default: all)")
@@ -66,7 +64,7 @@ def main() -> None:
 
     t_wall, t_cpu = time.perf_counter(), time.process_time()
     print(f"[inputs] {args.snapshot_dir}")
-    inputs = PQ.build_inputs(args.snapshot_dir, with_crossorg=not args.no_crossorg)
+    inputs = PQ.build_inputs(args.snapshot_dir, with_crossorg=args.with_crossorg)
     build_cpu = time.process_time() - t_cpu
     print(f"[inputs] {len(inputs.fights):,} rated bouts, {build_cpu:.1f}s cpu")
 
@@ -153,6 +151,7 @@ def main() -> None:
         "since_year": args.since_year,
         "min_prior_fights": args.min_prior_fights,
         "min_n_for_conclusions": args.min_n,
+        "with_crossorg_experimental": bool(args.with_crossorg),
         "variants": sorted(names),
         "scored_bouts_per_variant": int(len(predictions) / max(len(names), 1)),
         "cpu_seconds": {"inputs": round(build_cpu, 1), "sweep": round(sweep_cpu, 1),

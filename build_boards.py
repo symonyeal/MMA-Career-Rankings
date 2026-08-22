@@ -24,34 +24,157 @@ from ratings.boards import (
     integrity_discounted_board,
     integrity_ledger,
 )
-from ratings.constants import SUSTAINED_PEAK_MIN_FIGHTS
+from ratings.constants import SUSTAINED_PEAK_MIN_FIGHTS  # board eligibility floor
+
+
+# The public/core board may use the engine's unit-consistent career aggregate,
+# but the integrity debit is denominated in rating points.  Until a debit is
+# defined in rating-point-years, keep that judgement on a base WHR point scale.
+CORE_RATING_CANDIDATES = (
+    "symon_career_skill_mass",
+    "mu_whr",
+)
+INTEGRITY_RATING_CANDIDATES = (
+    "mu_whr",
+)
+
+
+def _select_rating_col(
+    current: pd.DataFrame,
+    candidates: tuple[str, ...],
+    *,
+    board_name: str,
+) -> str:
+    for column in candidates:
+        if column in current.columns:
+            return column
+    raise ValueError(
+        f"cannot build {board_name}: none of the supported rating columns are present "
+        f"({', '.join(candidates)})"
+    )
+
+
+def select_core_rating_col(current: pd.DataFrame) -> str:
+    """Choose the lean headline score, never a retired weighted stream."""
+    return _select_rating_col(current, CORE_RATING_CANDIDATES, board_name="core board")
+
+
+def select_integrity_rating_col(current: pd.DataFrame) -> str:
+    """Choose a base WHR point score compatible with the direct integrity debit."""
+    return _select_rating_col(
+        current,
+        INTEGRITY_RATING_CANDIDATES,
+        board_name="integrity-discounted board",
+    )
+
+
+def _requested_core_rating_col(current: pd.DataFrame, requested: str | None) -> str:
+    if requested is None:
+        return select_core_rating_col(current)
+    if "whr_integrity_performance" in requested:
+        raise ValueError("retired whr_integrity_performance scores cannot be a core board")
+    if requested not in current.columns:
+        raise ValueError(f"requested core rating column is absent: {requested}")
+    return requested
+
+
+def _requested_integrity_rating_col(current: pd.DataFrame, requested: str | None) -> str:
+    if requested is None:
+        return select_integrity_rating_col(current)
+    if requested not in INTEGRITY_RATING_CANDIDATES:
+        raise ValueError(
+            "the integrity debit is defined only for base WHR rating-point columns: "
+            f"{', '.join(INTEGRITY_RATING_CANDIDATES)}"
+        )
+    if requested not in current.columns:
+        raise ValueError(f"requested integrity rating column is absent: {requested}")
+    return requested
+
+
+def write_board_artifacts(
+    snapshot_dir: Path,
+    *,
+    rating_col: str | None = None,
+    integrity_rating_col: str | None = None,
+    min_rating_periods: int = SUSTAINED_PEAK_MIN_FIGHTS,
+    out_dir: Path | None = None,
+) -> dict[str, object]:
+    """Build and persist the three standard board views for one snapshot.
+
+    ``rating_col`` controls the completeness-gated core view.  The integrity
+    view deliberately has a separate selector because its debit is measured in
+    ordinary rating points and therefore must not be applied to Career Skill
+    Mass (rating-point-years).
+    """
+    snap = Path(snapshot_dir)
+    current = pd.read_parquet(snap / "ratings_current.parquet")
+    appearances = pd.read_parquet(snap / "integrity_appearances.parquet")
+    fights = PQ.load_fight_table(snap)
+
+    core_col = _requested_core_rating_col(current, rating_col)
+    integrity_col = _requested_integrity_rating_col(current, integrity_rating_col)
+    ledger = integrity_ledger(appearances, fights)
+    board = integrity_discounted_board(current, ledger, rating_col=integrity_col)
+    gated = completeness_gated_board(
+        current,
+        rating_col=core_col,
+        min_rating_periods=min_rating_periods,
+    )
+
+    target = Path(out_dir) if out_dir is not None else (
+        snap
+        if not any(snap.glob("*_FINALIZED"))
+        else Path("data/model_tuning") / snap.name
+    )
+    target.mkdir(parents=True, exist_ok=True)
+    ledger.to_parquet(target / "integrity_ledger.parquet", index=False)
+    board.to_parquet(target / "integrity_discounted_board.parquet", index=False)
+    gated.to_parquet(target / "completeness_gated_board.parquet", index=False)
+
+    return {
+        "out_dir": target,
+        "core_rating_col": core_col,
+        "integrity_rating_col": integrity_col,
+        "ledger_rows": len(ledger),
+        "ledger_fighters": ledger["fighter"].nunique() if len(ledger) else 0,
+        "board_rows": len(board),
+        "debited_fighters": int((board["integrity_cost"] > 0).sum()) if len(board) else 0,
+        "ranked_fighters": int(gated["status"].eq("ranked").sum()) if len(gated) else 0,
+        "withheld_fighters": int((~gated["status"].eq("ranked")).sum()) if len(gated) else 0,
+    }
 
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("snapshot_dir", type=Path)
-    ap.add_argument("--rating-col", default="sustained_peak_headline_mu_whr")
+    ap.add_argument(
+        "--rating-col",
+        default=None,
+        help="Core completeness-board score; defaults to Career Skill Mass, then base WHR.",
+    )
+    ap.add_argument(
+        "--integrity-rating-col",
+        choices=INTEGRITY_RATING_CANDIDATES,
+        default=None,
+        help="Base WHR point score for the direct integrity debit.",
+    )
     ap.add_argument("--min-rating-periods", type=int, default=SUSTAINED_PEAK_MIN_FIGHTS)
     ap.add_argument("--top", type=int, default=25)
     ap.add_argument("--out-dir", type=Path, default=None)
     args = ap.parse_args()
 
-    snap = Path(args.snapshot_dir)
-    current = pd.read_parquet(snap / "ratings_current.parquet")
-    appearances = pd.read_parquet(snap / "integrity_appearances.parquet")
-    fights = PQ.load_fight_table(snap)
-
-    ledger = integrity_ledger(appearances, fights)
-    board = integrity_discounted_board(current, ledger, rating_col=args.rating_col)
-    gated = completeness_gated_board(
-        current, rating_col=args.rating_col, min_rating_periods=args.min_rating_periods)
-
-    out = args.out_dir or (snap if not any(snap.glob("*_FINALIZED")) else Path("data/model_tuning") / snap.name)
-    out.mkdir(parents=True, exist_ok=True)
-    ledger.to_parquet(out / "integrity_ledger.parquet", index=False)
-    board.to_parquet(out / "integrity_discounted_board.parquet", index=False)
-    gated.to_parquet(out / "completeness_gated_board.parquet", index=False)
-
+    summary = write_board_artifacts(
+        args.snapshot_dir,
+        rating_col=args.rating_col,
+        integrity_rating_col=args.integrity_rating_col,
+        min_rating_periods=args.min_rating_periods,
+        out_dir=args.out_dir,
+    )
+    out = Path(summary["out_dir"])
+    ledger = pd.read_parquet(out / "integrity_ledger.parquet")
+    board = pd.read_parquet(out / "integrity_discounted_board.parquet")
+    gated = pd.read_parquet(out / "completeness_gated_board.parquet")
+    core_col = str(summary["core_rating_col"])
     debited = board[board["integrity_cost"] > 0]
     print(f"integrity ledger: {len(ledger):,} discounted appearances across "
           f"{ledger['fighter'].nunique() if len(ledger) else 0} fighters")
@@ -66,7 +189,7 @@ def main() -> None:
     ranked = gated[gated["status"].eq("ranked")]
     print(f"\ncompleteness-gated board: {len(ranked):,} ranked, "
           f"{len(gated) - len(ranked):,} withheld as insufficient history")
-    print(ranked.head(args.top)[["rank", "fighter", args.rating_col]].round(1).to_string(index=False))
+    print(ranked.head(args.top)[["rank", "fighter", core_col]].round(1).to_string(index=False))
     print(f"\nwritten to {out}")
 
 

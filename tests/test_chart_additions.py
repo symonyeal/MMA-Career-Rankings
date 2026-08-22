@@ -9,9 +9,12 @@ import pandas as pd
 import pytest
 
 from analysis.viz import (
+    TABLE_KEY_MAP,
+    ablation_forest_chart,
     all_time_benchmark_chart,
     all_time_benchmark_table,
     dominance_leaderboard_chart,
+    heldout_scorecard_chart,
     inactivity_table,
     integrity_impact_chart,
     integrity_ledger_table,
@@ -61,6 +64,74 @@ def test_snapshot_movers_signs_and_empty_branch():
     assert len(snapshot_movers_chart(cur, None).data) == 0
 
 
+def test_prequential_artifacts_are_in_snapshot_loader_map():
+    mapped = dict(TABLE_KEY_MAP)
+    assert mapped["prequential_predictions"] == "prequential_predictions"
+    assert mapped["prequential_scores"] == "prequential_scores"
+    assert mapped["prequential_paired"] == "prequential_paired"
+
+
+def test_heldout_scorecard_selects_calibrated_rows_and_shows_n():
+    scores = pd.DataFrame({
+        "variant": ["method", "method", "bench_naive", "tiny"],
+        "segment_type": ["overall"] * 4,
+        "segment_value": ["all"] * 4,
+        "log_loss": [0.80, 0.67, 0.693147, 0.40],
+        "brier": [0.30, 0.24, 0.25, 0.10],
+        "auc": [0.55, 0.59, 0.50, 0.90],
+        "n": [500, 500, 500, 20],
+        "prob_column": ["p_a", "p_a_calibrated", "p_a_calibrated", "p_a_calibrated"],
+    })
+    fig = heldout_scorecard_chart(scores, calibrated=True, min_n=200)
+    assert len(fig.data) == 3
+    assert sorted(float(v) for v in fig.data[0].x) == pytest.approx([0.67, 0.693147])
+    assert all("n=500" in str(v) for v in fig.data[0].y)
+    assert "temperature-calibrated" in fig.layout.title.text
+    assert len(heldout_scorecard_chart(pd.DataFrame()).data) == 0
+
+
+def test_ablation_forest_respects_lower_is_better_and_evidence_floor():
+    paired = pd.DataFrame({
+        "baseline": ["canonical", "canonical", "canonical", "canonical"],
+        "challenger": ["method", "abl_no_method", "abl_no_market", "tiny"],
+        "metric": ["log_loss"] * 4,
+        "n": [500, 500, 500, 50],
+        "delta": [-0.01, 0.01, 0.0, -0.50],
+        "lo": [-0.02, 0.005, -0.01, -0.60],
+        "hi": [-0.005, 0.02, 0.01, -0.40],
+        "isolates": ["method", "binary", "market", "small sample"],
+        "calibrated": [True] * 4,
+        # Deliberately wrong: the chart must derive direction from interval + metric.
+        "favours": ["baseline", "challenger", "baseline", "challenger"],
+    })
+    fig = ablation_forest_chart(paired, calibrated=True, metric="log_loss", min_n=200)
+    traces = {trace.name: [float(v) for v in trace.x] for trace in fig.data}
+    assert traces["Challenger favored"] == pytest.approx([-0.01])
+    assert traces["Baseline favored"] == pytest.approx([0.01])
+    assert traces["Unresolved"] == pytest.approx([0.0])
+    assert "challenger lower" in fig.layout.xaxis.title.text
+    assert all("n=500" in str(y) for trace in fig.data for y in trace.y)
+    assert all(-0.50 not in values for values in traces.values())
+
+
+def test_ablation_forest_reverses_direction_for_accuracy():
+    paired = pd.DataFrame({
+        "baseline": ["canonical", "canonical"],
+        "challenger": ["method", "abl_no_method"],
+        "metric": ["accuracy", "accuracy"],
+        "n": [400, 400],
+        "delta": [0.02, -0.02],
+        "lo": [0.01, -0.03],
+        "hi": [0.03, -0.01],
+        "isolates": ["method", "binary"],
+        "calibrated": [True, True],
+    })
+    fig = ablation_forest_chart(paired, metric="accuracy")
+    traces = {trace.name: [float(v) for v in trace.x] for trace in fig.data}
+    assert traces["Challenger favored"] == pytest.approx([0.02])
+    assert traces["Baseline favored"] == pytest.approx([-0.02])
+
+
 def test_method_mix_buckets_and_shares():
     fights = pd.DataFrame({
         "event_date": ["2020-01-01"] * 4,
@@ -108,8 +179,10 @@ def test_integrity_ledger_and_impact():
         "integrity_delta": [-49.0, -40.0],
     })
     ledger = integrity_ledger_table(integ, attr, n=10)
-    assert set(ledger["reason"]) == {"PED", "DQ"}  # C never fired
-    assert ledger.iloc[0]["fighter"] == "A"        # biggest hit first
+    # The ledger is a reader-facing audit table, so it carries display labels;
+    # the machine reason codes stay in the boards artifact. C never fired.
+    assert set(ledger["reason"]) == {"PED-confirmed win", "Disqualification win"}
+    assert ledger.iloc[0]["fighter"] == "A"        # biggest discount first
     fig = integrity_impact_chart(integ, attr)
     assert len(fig.data) == 1
 

@@ -117,7 +117,10 @@ def main() -> None:
         stage_rating_snapshot(base, output, rated, model_policy=args.policy)
         if args.run_ratings:
             rating_started = time.perf_counter()
-            result["ratings"] = run_ratings(rated)
+            result["ratings"] = run_ratings(
+                rated,
+                include_experimental_crossorg=True,
+            )
             rating_runtime = round(time.perf_counter() - rating_started, 3)
             (rated / "fightmatrix_rating_runtime.json").write_text(
                 json.dumps({"policy": args.policy, "runtime_seconds": rating_runtime}, indent=2),

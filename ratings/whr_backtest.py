@@ -89,7 +89,7 @@ def backtest_w2(
     both fighters have >= ``min_prior_fights`` prior appearances are scored.
     """
     lambdas = list(var_lambdas) if var_lambdas else [0.0]
-    need_var = any(l > 0 for l in lambdas)
+    need_var = any(value > 0 for value in lambdas)
     bouts = _decided_bouts(fights)
     cols = ["w2", "var_lambda", "brier", "log_loss", "n"]
     if bouts.empty:
