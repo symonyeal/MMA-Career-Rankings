@@ -169,6 +169,22 @@ The public narrative is intentionally short:
 FightMatrix is a sanity check, never a tuning target. The odds are an external
 prediction benchmark, never a rating input.
 
+### Investigations
+
+One-off analyses live beside the dashboard and are built the same way:
+
+```bash
+python -m analysis.investigations.build_cache          # pre-warm the refits
+python -m analysis.investigations.build_top100_notebook
+jupyter lab analysis/investigations/top100_era_skew.ipynb
+```
+
+`top100_era_skew.ipynb` asks why the all-time board is dominated by active
+fighters and why several champions score zero career mass. It tests six
+hypotheses, each with a stated falsification rule and a verdict, and closes with
+a ranked defect list. Its expensive refits cache to
+`data/model_tuning/top100-era-skew/`; the committed notebook carries no outputs.
+
 ## Current Data Scope
 
 The standard local snapshot is `data/snapshots/2026-08-13`:
@@ -254,6 +270,7 @@ comparison is rerun.
 
 ```text
 analysis/                    Notebook builder and Plotly charts
+analysis/investigations/     One-off investigations: notebook + its module
 ratings/                     Glicko-2, WHR, Career Skill Mass, policy boards
 loaders/                     UFCStats and optional-source ingestion
 build_boards.py              Integrity ledger/debit and completeness views
