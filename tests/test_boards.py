@@ -6,7 +6,12 @@ import pandas as pd
 import pytest
 
 import build_boards
-from ratings.boards import INTEGRITY_PENALTY_SCALE
+from ratings.boards import (
+    INTEGRITY_PENALTY_SCALE,
+    UNRANKED_AT_FLOOR_STATUS,
+    completeness_gated_board,
+    integrity_discounted_board,
+)
 from ratings.constants import INTEGRITY_PED_FACTOR
 
 
@@ -74,7 +79,13 @@ def test_write_board_artifacts_separates_core_score_from_integrity_units(
             "ped_confirmation_detail": ["confirmed test"],
         }
     )
-    monkeypatch.setattr(build_boards.PQ, "load_fight_table", lambda _: fights)
+    seen_scope = []
+
+    def fake_load(_snapshot, *, scope):
+        seen_scope.append(scope)
+        return fights
+
+    monkeypatch.setattr(build_boards.PQ, "load_fight_table", fake_load)
 
     summary = build_boards.write_board_artifacts(
         snapshot,
@@ -83,6 +94,7 @@ def test_write_board_artifacts_separates_core_score_from_integrity_units(
     )
 
     assert summary["core_rating_col"] == "symon_career_skill_mass"
+    assert seen_scope == ["majors,pre_unified"]
     assert summary["integrity_rating_col"] == "mu_whr"
     assert summary["ledger_rows"] == 1
     assert summary["ranked_fighters"] == 2
@@ -106,3 +118,78 @@ def test_write_board_artifacts_separates_core_score_from_integrity_units(
     assert gated.set_index("fighter").loc["Carl", "status"].startswith(
         "insufficient observed history"
     )
+
+
+def test_gated_board_shares_one_place_across_a_tie():
+    """A tie is one place. It used to be a positional arange over a sort.
+
+    With an ordinal rank, two fighters on an identical score printed at
+    consecutive ranks, so the sort's own tie-break read as a rank difference.
+    """
+    current = pd.DataFrame(
+        {
+            "fighter": ["Alice", "Bob", "Carl", "Dana"],
+            "rating_periods": [20, 20, 20, 20],
+            "mu_whr": [1700.0, 1600.0, 1600.0, 1500.0],
+        }
+    )
+    gated = completeness_gated_board(current, rating_col="mu_whr", min_rating_periods=5)
+    rank = dict(zip(gated["fighter"], gated["rank"]))
+
+    assert rank["Alice"] == 1
+    assert rank["Bob"] == rank["Carl"] == 2
+    assert rank["Dana"] == 4, "a min rank leaves the gap the tie consumed"
+
+
+def test_gated_board_withholds_a_rank_at_the_score_floor():
+    """Career Skill Mass zero means "no year above the bar", not "lowest rated".
+
+    Every fighter on that floor is tied, so ranking them 116..400 published an
+    ordering that measured nothing. They are withheld with a stated reason.
+    """
+    current = pd.DataFrame(
+        {
+            "fighter": ["Alice", "Bob", "Carl", "Dana"],
+            "rating_periods": [20, 20, 20, 2],
+            "symon_career_skill_mass": [180.0, 0.0, 0.0, 0.0],
+        }
+    )
+    gated = completeness_gated_board(
+        current,
+        rating_col="symon_career_skill_mass",
+        min_rating_periods=5,
+        unranked_at_or_below=0.0,
+    )
+    status = dict(zip(gated["fighter"], gated["status"]))
+    rank = dict(zip(gated["fighter"], gated["rank"]))
+
+    assert status["Alice"] == "ranked" and rank["Alice"] == 1
+    assert status["Bob"] == status["Carl"] == UNRANKED_AT_FLOOR_STATUS
+    assert pd.isna(rank["Bob"]) and pd.isna(rank["Carl"])
+    # The evidence gate still takes precedence over the floor reason.
+    assert status["Dana"].startswith("insufficient observed history")
+
+    # Without the floor the board keeps its old behaviour for scores that have
+    # no such floor, and the tied zeros share one place rather than vanishing.
+    ungated = completeness_gated_board(
+        current, rating_col="symon_career_skill_mass", min_rating_periods=5
+    )
+    tied = ungated[ungated["fighter"].isin(["Bob", "Carl"])]["rank"]
+    assert tied.nunique() == 1
+
+
+def test_integrity_rank_change_is_zero_when_nothing_was_debited():
+    """rank_change compared a positional rank to a min rank, so ties drifted."""
+    current = pd.DataFrame(
+        {
+            "fighter": ["Alice", "Bob", "Carl"],
+            "rating_periods": [20, 20, 20],
+            "mu_whr": [1700.0, 1600.0, 1600.0],
+        }
+    )
+    empty_ledger = pd.DataFrame(columns=["fighter", "reason"])
+    board = integrity_discounted_board(current, empty_ledger, rating_col="mu_whr")
+
+    assert (board["integrity_cost"] == 0).all()
+    assert (board["rank_change"] == 0).all(), "no debit must cost nobody a place"
+    assert sorted(board["rank"]) == [1, 2, 2]

@@ -50,7 +50,7 @@ def main() -> None:
     ap.add_argument(
         "--with-crossorg",
         action="store_true",
-        help="EXPERIMENTAL: include crossorg_fights.parquet (default is UFC-only)",
+        help="Deprecated alias for the named FightMatrix scope (default is UFC-only)",
     )
     ap.add_argument("--online-only", action="store_true", help="skip the WHR refit variants")
     ap.add_argument("--variants", default=None,

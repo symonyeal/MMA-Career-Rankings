@@ -17,6 +17,7 @@ from analysis.fightmatrix_validation import (
 )
 from loaders.fightmatrix_expansion import DEFAULT_PROFILE_CACHE_DIR, ExpansionConfig, run_expansion
 from ratings.rate_snapshot import run as run_ratings
+from ratings.scope import SCOPE_ARTIFACT, scope_guard
 
 
 def stage_rating_snapshot(
@@ -37,7 +38,8 @@ def stage_rating_snapshot(
         "division_resume.parquet", "calibration_residuals.parquet",
     }
     for source in base.iterdir():
-        if source.is_file() and source.name not in rating_outputs and source.name != "crossorg_fights.parquet":
+        if (source.is_file() and source.name not in rating_outputs
+                and source.name != SCOPE_ARTIFACT["fightmatrix"]):
             shutil.copy2(source, target / source.name)
     model_file = (
         expansion / f"fightmatrix_model_bouts_{model_policy}.parquet"
@@ -45,13 +47,25 @@ def stage_rating_snapshot(
     )
     eligible = pd.read_parquet(model_file)
     eligible = eligible[~eligible["is_excluded"].fillna(False)].copy()
-    existing_path = base / "crossorg_fights.parquet"
+    existing_path = base / SCOPE_ARTIFACT["fightmatrix"]
     if existing_path.exists():
         existing = pd.read_parquet(existing_path)
         if "source" in existing:
             existing = existing[existing["source"].ne("fightmatrix_public_expanded")]
         eligible = pd.concat([existing, eligible], ignore_index=True, sort=False)
-    eligible.to_parquet(target / "crossorg_fights.parquet", index=False)
+    # The graph builder computes ``is_cross_organization`` and never filters on
+    # it, so without this the staged artifact carries UFC bouts -- some of them
+    # the same bout as a canonical row, which would update those ratings twice.
+    canonical_path = base / "canonical_fights.parquet"
+    canonical = (
+        pd.read_parquet(canonical_path) if canonical_path.exists() else pd.DataFrame()
+    )
+    eligible, dropped = scope_guard(
+        eligible, canonical, source="fightmatrix", strict=False
+    )
+    if dropped:
+        print(f"[expand] scope guard dropped {sum(dropped.values()):,} rows: {dropped}")
+    eligible.to_parquet(target / SCOPE_ARTIFACT["fightmatrix"], index=False)
     for source in expansion.glob("fightmatrix_*.*"):
         if source.is_file():
             shutil.copy2(source, target / source.name)

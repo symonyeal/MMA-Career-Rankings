@@ -25,7 +25,7 @@ from loaders.sherdog_loader import (
     org_from_event,
     to_canonical_fights,
 )
-from project_helpers import normalize_name_key
+from project_helpers import bout_fingerprint, normalize_name_key
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -354,14 +354,9 @@ def _dedupe_bouts(bouts: pd.DataFrame) -> pd.DataFrame:
 
 
 def _bout_fingerprint(frame: pd.DataFrame) -> pd.Series:
-    dates = pd.to_datetime(frame["event_date"], errors="coerce").dt.strftime("%Y%m%d").fillna("")
-    pairs = [
-        "::".join(sorted([
-            normalize_name_key(a, compact=True), normalize_name_key(b, compact=True),
-        ]))
-        for a, b in zip(frame["fighter_a"], frame["fighter_b"])
-    ]
-    return dates + "::" + pd.Series(pairs, index=frame.index)
+    # One definition, shared with the rating-side merge guard. Two copies of a
+    # dedupe key drift, and the direction they drift in is silent duplication.
+    return bout_fingerprint(frame)
 
 
 def build_public_profile_snapshot(
@@ -434,18 +429,6 @@ def build_public_profile_snapshot(
         fm_crossorg["source"] = "fightmatrix_public"
     fm_crossorg.to_parquet(snapshot_dir / "fightmatrix_crossorg_fights.parquet", index=False)
 
-    combined = fm_crossorg.copy()
-    existing_path = snapshot_dir / "crossorg_fights.parquet"
-    if existing_path.exists():
-        existing = pd.read_parquet(existing_path)
-        if "source" in existing.columns:
-            existing = existing[existing["source"].ne("fightmatrix_public")]
-        combined = pd.concat([existing, fm_crossorg], ignore_index=True, sort=False)
-    if not combined.empty:
-        combined["_fingerprint"] = _bout_fingerprint(combined)
-        combined = combined.drop_duplicates("_fingerprint", keep="first").drop(columns="_fingerprint")
-    combined.to_parquet(existing_path, index=False)
-
     org_counts = fm_crossorg["org"].value_counts() if not fm_crossorg.empty else pd.Series(dtype=int)
     top_org_counts = org_counts.head(50).to_dict()
     if len(org_counts) > 50:
@@ -460,7 +443,6 @@ def build_public_profile_snapshot(
         "unique_public_bouts": int(len(bouts)),
         "public_non_ufc_bouts": int(bouts["org"].ne("UFC").sum()) if not bouts.empty else 0,
         "rated_crossorg_bouts": int(len(fm_crossorg)),
-        "combined_crossorg_bouts": int(len(combined)),
         "rated_crossorg_org_count": int(len(org_counts)),
         "rated_crossorg_by_org_top50": top_org_counts,
         "profile_cache": str(cache_dir.relative_to(PROJECT_ROOT)),

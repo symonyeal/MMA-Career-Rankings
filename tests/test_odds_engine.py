@@ -7,12 +7,12 @@ Three layers:
 2. Engine regression — ``WeightedRatingEngine`` with unit weights produces
    the same ``mu`` trajectory as ``RatingEngine``'s ``mu_canonical`` and
    ``mu_method``.
-3. Snapshot smoke — ``ratings.rate_snapshot.run()`` produces the new
-   5-stream column set; with ``odds_lines.parquet`` present the
-   performance sleeve registers movement vs the plain method baseline.
+3. Snapshot smoke — ``ratings.rate_snapshot.run()`` produces the lean
+   three-stream core; odds remain an audit input rather than a rating stream.
 """
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pandas as pd
@@ -268,10 +268,14 @@ def test_rate_snapshot_produces_lean_core_without_odds(tmp_path: Path):
     snap.mkdir()
     _build_synthetic_snapshot(snap)
 
-    summary = run_ratings(snap, min_fights=1)
+    summary = run_ratings(snap, min_fights=1, scope="ufc")
     current = pd.read_parquet(snap / "ratings_current.parquet")
 
     assert summary["odds_covered_fights"] == 0
+    metadata = json.loads((snap / "rating_run.json").read_text(encoding="utf-8"))
+    assert metadata == summary
+    assert metadata["scope"] == "ufc"
+    assert metadata["career_reference"] == "contender:60"
     for stream in _EXPECTED_STREAMS:
         assert f"mu_{stream}" in current.columns
     assert "symon_career_skill_mass" in current.columns
@@ -303,7 +307,7 @@ def test_rate_snapshot_with_odds_keeps_market_as_an_audit_only(tmp_path: Path):
     _build_synthetic_snapshot(snap)
     _build_odds_artifact(snap)
 
-    summary = run_ratings(snap, min_fights=1)
+    summary = run_ratings(snap, min_fights=1, scope="ufc")
     current = pd.read_parquet(snap / "ratings_current.parquet").set_index("fighter")
 
     assert summary["odds_covered_fights"] >= 2

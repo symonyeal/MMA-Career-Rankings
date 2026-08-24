@@ -8,14 +8,15 @@ production ratings: they either fail to define one paired likelihood or add a
 scenario assumption that bout outcomes cannot identify.
 
 The public career functional is Symon Career Skill Mass: the sum of positive
-annual WHR skill above that year's field mean, with at most one contribution
-per active year. Five- and ten-year Symon scores are separate peak diagnostics.
+annual WHR skill above that year's global contender line, with at most one
+contribution per active year. Five- and ten-year Symon scores are separate peak diagnostics.
 Legacy period tables remain temporarily for compatibility, never as the public
 All-time definition.
 """
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -32,7 +33,6 @@ from ratings.constants import (
     ACTIVITY_MU_PENALTY_CAP,
     ACTIVITY_MU_PENALTY_FULL_MONTHS,
     ACTIVITY_MU_PENALTY_START_MONTHS,
-    WHR_STREAM,
     rename_rating_columns,
 )
 from ratings.diagnostics import (
@@ -42,8 +42,15 @@ from ratings.diagnostics import (
 from ratings.division_resume import division_resume_rows, primary_division_rows
 from ratings.integrity_adjustment import build_integrity_appearances
 from ratings.appearance_context import peak_appearance_quality
-from ratings.symon_score import career_skill_mass, symon_peak_score, symon_prime_score
+from ratings.symon_score import (
+    DEFAULT_CAREER_REFERENCE,
+    career_skill_mass,
+    parse_reference,
+    symon_peak_score,
+    symon_prime_score,
+)
 from ratings.whr import run_whr
+from ratings.age import load_birth_dates
 from ratings.performance_adjustment import build_performance_appearances
 from ratings.performance_adjustment import _group_bounds, normalize_division_label
 from loaders.integrity_flags import (
@@ -52,6 +59,15 @@ from loaders.integrity_flags import (
     confirmed_counts,
 )
 from loaders.odds_loader import has_odds_artifact, load_odds_lines
+from ratings.rules_era import RULES_ERA_WEIGHT, label_rules_era, rules_era_factor
+from ratings.scope import (  # noqa: F401
+    DEFAULT_PUBLISHED_SCOPE,
+    SCOPE_ARTIFACT,
+    SCOPES,
+    UFC_ONLY,
+    merge_scope,
+    scope_guard,
+)
 from loaders.ufcstats_loader import METHOD_SCORES
 
 
@@ -95,18 +111,115 @@ def _run_canonical_engine(fights: pd.DataFrame, tau: float) -> RatingEngine:
     return engine
 
 
-def _attach_org_only_weights(fights: pd.DataFrame) -> pd.DataFrame:
-    """Set ``weight_a``/``weight_b`` to the per-fight ``org_weight`` only.
+CROSSORG_ARTIFACT = SCOPE_ARTIFACT["fightmatrix"]
 
-    UFC bouts are unchanged at 1.0. Non-UFC weights are accepted only in the
-    explicitly requested experimental cross-org scope.
+
+def _career_columns(table: pd.DataFrame) -> pd.DataFrame:
+    """Give the public career table its stable snapshot column names."""
+    return table.rename(
+        columns={
+            c: ("symon_career_skill_mass" if c == "score" else f"symon_career_{c}")
+            for c in table.columns
+            if c != "fighter"
+        }
+    )
+
+
+def refresh_career_columns(
+    snapshot_dir: Path,
+    *,
+    reference: str | float = DEFAULT_CAREER_REFERENCE,
+    scope: str = DEFAULT_PUBLISHED_SCOPE,
+) -> dict[str, object]:
+    """Recompute only the career functional from an existing WHR history."""
+    snapshot_dir = Path(snapshot_dir)
+    history = pd.read_parquet(snapshot_dir / "ratings_history_whr.parquet")
+    current_path = snapshot_dir / "ratings_current.parquet"
+    current = pd.read_parquet(current_path)
+    current = current.drop(
+        columns=[c for c in current.columns if c.startswith("symon_career_")],
+        errors="ignore",
+    )
+    current = current.merge(
+        _career_columns(career_skill_mass(history, reference=reference)),
+        on="fighter",
+        how="left",
+    )
+    current = current.sort_values(
+        ["mu_canonical", "fighter"], ascending=[False, True]
+    ).reset_index(drop=True)
+    current.to_parquet(current_path, index=False)
+
+    metadata_path = snapshot_dir / "rating_run.json"
+    metadata: dict[str, object] = {}
+    if metadata_path.exists():
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    metadata.update(
+        {
+            "scope": scope,
+            "career_reference": str(reference),
+            "age_drift": True,
+            "rated_bouts": int(len(history) // 2),
+            "birth_dates": int(len(load_birth_dates(snapshot_dir))),
+            "history_rows": int(len(history)),
+            "current_fighters": int(len(current)),
+            "events_processed": int(history["event_date"].nunique()),
+        }
+    )
+    metadata_path.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
+    return metadata
+
+
+def merge_crossorg_fights(
+    fights: pd.DataFrame,
+    snapshot_dir: Path,
+    *,
+    enabled: bool,
+    label: str = "rate",
+) -> pd.DataFrame:
+    """Back-compatible entry point for the FightMatrix cross-org scope.
+
+    Kept because ``--experimental-crossorg`` is a documented flag, but it is one
+    scope among several now: see :mod:`ratings.scope`, which is where the scope
+    registry, the missing-artifact error and the dedupe guard live.
+    """
+    return merge_scope(
+        fights, snapshot_dir,
+        scope="fightmatrix" if enabled else UFC_ONLY,
+        label=label,
+    )
+
+
+def attach_bout_weights(
+    fights: pd.DataFrame,
+    *,
+    rules_era_weight: float = RULES_ERA_WEIGHT,
+) -> pd.DataFrame:
+    """Set the one shared likelihood weight each bout contributes.
+
+    Two factors, and both are the same number on both sides -- WHR needs a
+    single bout likelihood, so a side-specific weight is not admissible here.
+
+    ``org_weight``
+        1.0 in production. The column is read rather than hard-coded so the
+        research sweep can vary it without a second code path; see the
+        org-weight note in :func:`run` for why production never does.
+    ``rules_era``
+        how far a UFC bout fought before the unified rules is allowed to move a
+        rating. Defaults to 1.0 -- full admission -- and is a measured quantity,
+        not an asserted one. See :mod:`ratings.rules_era`.
     """
     out = fights.copy()
     ow = pd.to_numeric(out.get("org_weight", 1.0), errors="coerce")
-    ow = ow.fillna(1.0) if hasattr(ow, "fillna") else 1.0
-    out["weight_a"] = ow
-    out["weight_b"] = ow
+    ow = ow.fillna(1.0) if hasattr(ow, "fillna") else pd.Series(1.0, index=out.index)
+    weight = ow * rules_era_factor(out, weight=rules_era_weight)
+    out["weight_a"] = weight
+    out["weight_b"] = weight
     return out
+
+
+# The name this was called before the rules-era term joined the org weight.
+_attach_org_only_weights = attach_bout_weights
 
 
 def _stream_current_columns(
@@ -254,30 +367,37 @@ def run(
     *,
     mdabbert_csv: Path | None = None,
     include_experimental_crossorg: bool = False,
+    experimental_org_weight: bool = False,
+    scope: str = DEFAULT_PUBLISHED_SCOPE,
+    career_reference: str | float = DEFAULT_CAREER_REFERENCE,
 ) -> dict:
     snapshot_dir = Path(snapshot_dir).resolve()
     fights = pd.read_parquet(snapshot_dir / "canonical_fights.parquet")
     rounds = pd.read_parquet(snapshot_dir / "canonical_rounds.parquet")
-    # The production scope is UFC-only. Existing cross-org weights were derived
-    # from fighters' eventual UFC careers, so automatically consuming them here
-    # would leak future information into historical evidence. They remain an
-    # explicitly requested research scope until weights are fold-local or
-    # outcome-independent.
     fights["org_weight"] = 1.0
     if "source" not in fights.columns:
         fights["source"] = "ufc"
-    crossorg_path = snapshot_dir / "crossorg_fights.parquet"
-    if crossorg_path.exists() and include_experimental_crossorg:
-        crossorg = pd.read_parquet(crossorg_path)
-        if not crossorg.empty:
-            if "org_weight" not in crossorg.columns:
-                crossorg["org_weight"] = 1.0
-            fights = pd.concat([fights, crossorg], ignore_index=True, sort=False)
-            print(f"[rate] merged {len(crossorg):,} cross-org bouts "
-                  f"(EXPERIMENTAL; orgs: "
-                  f"{sorted(crossorg.get('org', pd.Series(dtype=str)).dropna().unique())})")
-    elif crossorg_path.exists():
-        print("[rate] cross-org artifact quarantined from the UFC production core")
+    if include_experimental_crossorg and scope == UFC_ONLY:
+        scope = "fightmatrix"
+    fights = merge_scope(fights, snapshot_dir, scope=scope, label="rate")
+    fights["rules_era"] = label_rules_era(fights)
+    # No organisation weight. ``compute_fight_weights`` prices a non-UFC bout by
+    # both participants' UFC-anchored caliber percentiles, so a 2003 PRIDE bout
+    # would be weighted by what those two fighters went on to do years later --
+    # future information inside historical evidence. Setting every bout to 1.0
+    # dissolves that by construction rather than patching it: there is no weight
+    # derived from future careers because there is no weight, and promotion
+    # strength becomes an output of the joint fit, read off the fighters who
+    # crossed. Measured cost of the removal: none. On held-out UFC bouts with
+    # both fighters covered, the cross-org gain is -0.01896 [-0.02376, -0.01397]
+    # log-loss weighted and byte-identical unweighted for the Glicko filters,
+    # which never read the column at all.
+    if not experimental_org_weight:
+        staged = pd.to_numeric(fights["org_weight"], errors="coerce").fillna(1.0)
+        if not np.allclose(staged.to_numpy(dtype=float), 1.0):
+            print(f"[rate] discarding staged org_weight on "
+                  f"{int((staged != 1.0).sum()):,} bouts; the joint fit is unweighted")
+        fights["org_weight"] = 1.0
 
     fights["event_date"] = pd.to_datetime(fights["event_date"])
     if "method_class" in fights.columns:
@@ -337,7 +457,12 @@ def run(
     # by canonical Glicko. It receives one shared source weight per bout and no
     # implicit quality-score column. Era is neutral by default because a common
     # additive era term cancels from every within-era Bradley--Terry matchup.
-    whr_history = run_whr(_attach_org_only_weights(rated_fights))
+    birth_dates = load_birth_dates(snapshot_dir)
+    whr_history = run_whr(
+        _attach_org_only_weights(rated_fights),
+        birth_dates=birth_dates,
+        age_drift=True,
+    )
     whr_history.to_parquet(snapshot_dir / "ratings_history_whr.parquet", index=False)
     whr_current = (
         whr_history.sort_values(["fighter", "event_date"])
@@ -351,16 +476,14 @@ def run(
     # score inputs are only latent WHR appearances; title labels, opponent rank,
     # streaks, activity bonuses and market prices are not counted again.
     symon_tables = (
-        (career_skill_mass(whr_history), "symon_career"),
+        (career_skill_mass(whr_history, reference=career_reference), "symon_career"),
         (symon_prime_score(whr_history), "symon_prime"),
         (symon_peak_score(whr_history), "symon_peak"),
     )
     for table, prefix in symon_tables:
-        renamed = table.rename(
+        renamed = _career_columns(table) if prefix == "symon_career" else table.rename(
             columns={
-                c: (f"{prefix}_skill_mass" if prefix == "symon_career" and c == "score"
-                    else f"{prefix}_score" if c == "score"
-                    else f"{prefix}_{c}")
+                c: (f"{prefix}_score" if c == "score" else f"{prefix}_{c}")
                 for c in table.columns
                 if c != "fighter"
             }
@@ -479,7 +602,7 @@ def run(
     print(f"odds-covered fights (ok-quality rows): {cov_rows}")
 
     print(
-        "headline = Symon Career Skill Mass over binary, era-neutral WHR; "
+        "headline = Symon Career Skill Mass over binary, age-aware WHR; "
         "Prime and Peak are separate diagnostics."
     )
     _print_top(
@@ -507,7 +630,12 @@ def run(
         n=25, min_fights=0,
     )
 
-    return {
+    summary = {
+        "scope": scope,
+        "career_reference": str(career_reference),
+        "age_drift": True,
+        "rated_bouts": int(len(rated_fights)),
+        "birth_dates": int(len(birth_dates)),
         "history_rows": int(len(history)),
         "current_fighters": int(len(current)),
         "events_processed": int(history["event_date"].nunique()),
@@ -516,6 +644,10 @@ def run(
         "missed_weight_fights": int(integrity["missed_weight"].fillna(False).sum()),
         "odds_covered_fights": cov_rows,
     }
+    (snapshot_dir / "rating_run.json").write_text(
+        json.dumps(summary, indent=2) + "\n", encoding="utf-8"
+    )
+    return summary
 
 
 def main() -> None:
@@ -524,26 +656,63 @@ def main() -> None:
     parser.add_argument("--tau", type=float, default=DEFAULT_TAU)
     parser.add_argument("--min-fights", type=int, default=3, help="ranking eligibility threshold")
     parser.add_argument(
+        "--reference",
+        default=str(DEFAULT_CAREER_REFERENCE),
+        help="Career bar: contender:N (published), count:N, mean, hybrid:L, or quantile.",
+    )
+    parser.add_argument(
+        "--career-only",
+        action="store_true",
+        help="Recompute career columns from existing WHR history without refitting ratings.",
+    )
+    parser.add_argument(
         "--mdabbert-csv",
         type=str,
         default=None,
         help="Optional path to mdabbert ufc-master.csv for missed-weight cross-check.",
     )
     parser.add_argument(
+        "--scope", default=DEFAULT_PUBLISHED_SCOPE,
+        help=(
+            "Which bouts the rating may see. 'majors' is the roster-complete "
+            "six-promotion Sherdog corpus; 'fightmatrix' is the bounded "
+            "ranked-cohort crawl; 'all' admits both. They move the board in "
+            "opposite directions, so nothing merges unless it is named. "
+            "Combine explicitly: --scope majors,pre_unified."
+        ),
+    )
+    parser.add_argument(
         "--experimental-crossorg",
         action="store_true",
+        help="Deprecated alias for --scope fightmatrix.",
+    )
+    parser.add_argument(
+        "--experimental-org-weight",
+        action="store_true",
         help=(
-            "Explicitly include staged cross-org bouts. Research only: current "
-            "org weights are not yet cutoff-local."
+            "Also consume the staged per-bout org_weight. Research only, and it "
+            "leaks: those weights are derived from fighters' eventual UFC careers."
         ),
     )
     args = parser.parse_args()
+    if args.career_only:
+        print(
+            refresh_career_columns(
+                Path(args.snapshot_dir).resolve(),
+                reference=parse_reference(args.reference),
+                scope=args.scope,
+            )
+        )
+        return
     run(
         Path(args.snapshot_dir).resolve(),
         tau=args.tau,
         min_fights=args.min_fights,
         mdabbert_csv=Path(args.mdabbert_csv).resolve() if args.mdabbert_csv else None,
         include_experimental_crossorg=args.experimental_crossorg,
+        experimental_org_weight=args.experimental_org_weight,
+        scope=args.scope,
+        career_reference=parse_reference(args.reference),
     )
 
 

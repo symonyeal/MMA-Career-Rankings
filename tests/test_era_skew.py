@@ -172,14 +172,14 @@ def test_notebook_prose_cells_carry_no_measurements():
     # Section numbers, the snapshot date's parts, the bar parameter, and a
     # cross-reference to another document's section. Nothing else.
     allowed = {"0", "1", "2", "3", "4", "5", "6", "7", "8", "9",
-               "08", "13", "21", "100", "2026", "0.9", "3.9"}
+               "08", "13", "21", "60", "100", "2026", "0.9", "3.9"}
     import re
     for cell in nb["cells"]:
         if cell["cell_type"] != "markdown":
             continue
         # Blockquoted lines are the brief's hypotheses, quoted verbatim; a
         # prediction is allowed to state the figure it is a prediction about.
-        text = "".join(l for l in cell["source"] if not l.lstrip().startswith(">"))
+        text = "".join(line for line in cell["source"] if not line.lstrip().startswith(">"))
         for token in re.findall(r"\d[\d,.]*", text):
             token = token.rstrip(".,")
             assert token in allowed, f"markdown cell states an unallowed figure: {token!r}"

@@ -43,7 +43,7 @@ add(md(r"""
 # Why the all-time top 100 is mostly active fighters, and Randy Couture scores zero
 
 Investigation against `data/snapshots/2026-08-13`, career mass at the production
-bar `DEFAULT_CAREER_REFERENCE = 0.9`.
+bar `DEFAULT_CAREER_REFERENCE = "contender:60"`.
 
 Six hypotheses, one section each. Every section opens with a **falsifiable
 prediction** and closes with a verdict of **supported**, **refuted** or
@@ -87,7 +87,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from analysis.investigations import era_skew as es
 from analysis.investigations import era_skew_viz as ev
 from ratings.constants import WHR_W2_PER_DAY
-from ratings.symon_score import DEFAULT_CAREER_REFERENCE
+from ratings.symon_score import DEFAULT_CAREER_REFERENCE, year_reference
 
 pd.set_option("display.max_rows", 120)
 pd.set_option("display.width", 200)
@@ -101,7 +101,7 @@ current = es.load_current(SNAPSHOT)
 uncertainty = es.load_uncertainty(SNAPSHOT)
 
 annual = es.annual_means(history)
-bar90 = annual.groupby("year")["annual_mean"].quantile(REFERENCE)
+bar90 = year_reference(annual, REFERENCE)
 career_bouts = history.groupby("fighter").size()
 base_board = es.board(history, reference=REFERENCE)
 
@@ -787,24 +787,15 @@ add(md(r"""
 > **Prediction: Wanderlei, Faber, Aldo and Cro Cop move a great deal; Couture and
 > Lawler move less because their missing bouts are mostly outside the majors.**
 
-The six-promotion ingest is joined with `loaders.crossorg_identity` — never by
-hand; the sibling and namesake traps are documented in that module — and the
-smoother is refit over one joint likelihood. There is deliberately **no
+The six-promotion and pre-unified artifacts are loaded through the same named
+scope and dedupe guard as production, and the smoother is refit over one joint
+likelihood. There is deliberately **no
 promotion weight**: relative promotion strength is an output of a joint fit, read
 off the fighters who crossed between them, and a weight would assert the answer.
 """))
 
 add(code(r"""
-MAJORS = PROJECT_ROOT / "data/external/sherdog/majors_bouts.parquet"
-if not MAJORS.exists():
-    raise FileNotFoundError(
-        f"{MAJORS} is missing. It is a scrape artifact and is gitignored like every other "
-        "data file; rebuild it with `python build_sherdog_majors.py` before running H5."
-    )
-majors = pd.read_parquet(MAJORS)
-majors["event_date"] = pd.to_datetime(majors["event_date"])
-identity = es.identity_map(fights, majors)
-joint = es.joint_fights(fights, majors, identity)
+joint = es.load_fights(SNAPSHOT, scope="majors,pre_unified")
 joint_hist = es.joint_history(joint)
 
 joint_board = es.board(joint_hist, reference=REFERENCE)
@@ -812,13 +803,10 @@ core = set(fights["fighter_a"]) | set(fights["fighter_b"])
 core_board = joint_board[joint_board["fighter"].isin(core)].copy()
 core_board["rank"] = np.arange(1, len(core_board) + 1)
 
-join_counts = identity["join_method"].value_counts()
 show(
-    f"**{len(majors):,}** bouts over **{majors['event_id'].nunique()}** cards in "
-    f"{', '.join(sorted(majors['org'].unique()))}. Identity resolution joins "
-    f"**{int(join_counts.get('name_key', 0) + join_counts.get('override', 0) + join_counts.get('bout_evidence', 0) + join_counts.get('collision_resolved', 0)):,}** "
-    f"Sherdog ids to a canonical fighter and refuses **{int(join_counts.get('collision', 0))}** "
-    f"collisions. The joint fit runs over **{len(joint):,}** bouts and "
+    "Scope `majors,pre_unified` passed through the production identity map and "
+    "duplicate guard. The joint fit runs over "
+    f"**{len(joint):,}** bouts and "
     f"**{joint_hist['fighter'].nunique():,}** fighters against **{len(fights):,}** and "
     f"**{history['fighter'].nunique():,}** UFC-only.\n\n"
     "Two boards are read from it. The **core-only** board re-ranks the original UFC population "
@@ -826,7 +814,7 @@ show(
     "board ranks everyone the joint fit rates, which is a different question and is shown "
     "second, with its own caveat."
 )
-identity["join_method"].value_counts().rename("sherdog ids").to_frame()
+pd.Series({"rated bouts": len(joint), "rated fighters": joint_hist['fighter'].nunique()})
 """))
 
 add(code(r"""

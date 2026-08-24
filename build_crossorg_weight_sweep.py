@@ -36,8 +36,12 @@ import pandas as pd
 from ratings import prequential as PQ
 from loaders.sherdog_loader import compute_fight_weights
 
+# ``use_org_weight`` is explicit: this driver's entire purpose is to vary that
+# weight, and the Variant default is off. Without it the sweep would run 35
+# identical fits and report the spread as a result.
 SWEEP_VARIANT = PQ.Variant(
-    "sweep", engine="weighted_glicko", score_mode="quality_method", weight="combined"
+    "sweep", engine="weighted_glicko", score_mode="quality_method", weight="combined",
+    use_org_weight=True,
 )
 
 

@@ -6,7 +6,7 @@ Given a base UFC snapshot and a raw Sherdog scrape, this:
   2. computes a bridge-calibrated per-fight weight from the UFC-caliber of the
      two fighters, with one-hop opponent inference for non-UFC greats,
   3. stages a new snapshot directory cloned from the base plus
-     ``crossorg_fights.parquet`` and ``org_weights.json``.
+     ``sherdog_seeded_crossorg_fights.parquet`` and ``org_weights.json``.
 
 Then ``ratings/rate_snapshot.run()`` over the new snapshot merges those bouts
 into every rating stream. Re-running is cheap because the HTML is cached.
@@ -24,8 +24,8 @@ PROJECT_ROOT = Path(__file__).resolve().parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from project_helpers import normalize_name_key
-from loaders.sherdog_loader import (
+from project_helpers import normalize_name_key  # noqa: E402
+from loaders.sherdog_loader import (  # noqa: E402
     DEFAULT_CACHE_DIR,
     build_crossorg_bouts,
     compute_fight_weights,
@@ -98,7 +98,10 @@ def build(
         src = base_snapshot / fname
         if src.exists():
             shutil.copy2(src, new_snapshot / fname)
-    crossorg.to_parquet(new_snapshot / "crossorg_fights.parquet", index=False)
+    # This legacy fighter-seeded Sherdog corpus is not the registered
+    # FightMatrix scope. A suffixed filename keeps the two definitions from
+    # silently overwriting each other; promote it only by adding a named scope.
+    crossorg.to_parquet(new_snapshot / "sherdog_seeded_crossorg_fights.parquet", index=False)
     (new_snapshot / "org_weights.json").write_text(json.dumps(org_weights, indent=2))
 
     org_mean_weight = crossorg.groupby("org")["org_weight"].mean().round(3).to_dict()

@@ -25,6 +25,7 @@ import numpy as np
 import pandas as pd
 
 from ratings.constants import WHR_W2_PER_DAY
+from ratings import prequential as PQ
 from ratings.symon_score import career_skill_mass
 from ratings.whr import run_whr
 
@@ -59,13 +60,13 @@ TRUNCATION_CONTROLS = ["Tony Ferguson", "Anderson Silva", "BJ Penn"]
 # Loading and caching
 
 
-def load_fights(snapshot_dir: Path = DEFAULT_SNAPSHOT) -> pd.DataFrame:
-    """Rated bouts, in the shape ``run_whr`` and the bootstrap both take."""
-    f = pd.read_parquet(Path(snapshot_dir) / "canonical_fights.parquet")
-    f["event_date"] = pd.to_datetime(f["event_date"])
-    if "is_excluded" in f.columns:
-        f = f[~f["is_excluded"].fillna(False).astype(bool)]
-    return f.reset_index(drop=True)
+def load_fights(
+    snapshot_dir: Path = DEFAULT_SNAPSHOT,
+    *,
+    scope: str = "ufc",
+) -> pd.DataFrame:
+    """Rated bouts through the production scope loader and dedupe guard."""
+    return PQ.load_fight_table(Path(snapshot_dir), scope=scope)
 
 
 def load_history(snapshot_dir: Path = DEFAULT_SNAPSHOT) -> pd.DataFrame:
@@ -617,63 +618,6 @@ def case_year_placings(annual: pd.DataFrame, names=CASES) -> pd.DataFrame:
 
 # ---------------------------------------------------------------------------
 # H5 — scope
-
-
-def identity_map(fights: pd.DataFrame, majors: pd.DataFrame, *, force: bool = False) -> pd.DataFrame:
-    """Sherdog ids resolved to canonical names by the repo's own joiner."""
-    from loaders.crossorg_identity import (
-        apply_identity_map,  # noqa: F401  (re-exported for the notebook)
-        build_identity_map,
-        resolve_by_bout_evidence,
-        resolve_collisions,
-    )
-
-    def build() -> pd.DataFrame:
-        core = sorted(set(fights["fighter_a"]) | set(fights["fighter_b"]))
-        ident = build_identity_map(majors, core)
-        ident = resolve_collisions(ident, majors, fights)
-        return resolve_by_bout_evidence(ident, majors, fights)
-
-    return cached(f"identity_{fights_fingerprint(fights)}", build, force=force)
-
-
-def joint_fights(fights: pd.DataFrame, majors: pd.DataFrame, identity: pd.DataFrame) -> pd.DataFrame:
-    """UFC bouts plus the six-promotion cards, one likelihood, no org weight.
-
-    There is deliberately no promotion discount. Relative promotion strength is
-    an output of a joint fit read off the fighters who crossed between them;
-    a weight would assert the answer instead of estimating it.
-    """
-    from loaders.crossorg_identity import apply_identity_map
-
-    joined = apply_identity_map(majors, identity)
-    a_out = joined["fighter_a_outcome"].astype(str).str.lower()
-    b_out = joined["fighter_b_outcome"].astype(str).str.lower()
-    usable = a_out.isin(["win", "loss", "draw"]) & b_out.isin(["win", "loss", "draw"])
-    cross = pd.DataFrame({
-        "fighter_a": joined["fighter_a"],
-        "fighter_b": joined["fighter_b"],
-        "winner": np.where(a_out.eq("win"), joined["fighter_a"],
-                           np.where(b_out.eq("win"), joined["fighter_b"], None)),
-        "is_draw": a_out.eq("draw") | b_out.eq("draw"),
-        "event_date": pd.to_datetime(joined["event_date"]),
-        "event_name": joined["org"].astype(str) + " | " + joined["event_name"].astype(str),
-    })[usable]
-    cross = cross[cross["fighter_a"] != cross["fighter_b"]]
-
-    # A Sherdog card and the canonical set can carry the same bout a day apart.
-    ufc_keys = set()
-    for a, b, d in zip(fights["fighter_a"], fights["fighter_b"], fights["event_date"]):
-        for offset in (-1, 0, 1):
-            ufc_keys.add((frozenset((a, b)), (d + pd.Timedelta(days=offset)).normalize()))
-    duplicate = np.array([
-        (frozenset((a, b)), d.normalize()) in ufc_keys
-        for a, b, d in zip(cross["fighter_a"], cross["fighter_b"], cross["event_date"])
-    ])
-    cross = cross[~duplicate]
-
-    base = fights[["fighter_a", "fighter_b", "winner", "is_draw", "event_date", "event_name"]]
-    return pd.concat([base, cross], ignore_index=True)
 
 
 def joint_history(joint: pd.DataFrame, *, force: bool = False) -> pd.DataFrame:

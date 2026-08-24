@@ -73,6 +73,9 @@ from ratings.constants import (
 _ELO_PER_NAT = 400.0 / np.log(10.0)
 _ELO_ANCHOR = 1500.0
 _EPOCH = pd.Timestamp("2000-01-01")
+AGE_BIN_EDGES = np.array([24.0, 27.0, 30.0, 33.0, 36.0, 39.0, 42.0])
+AGE_BIN_LABELS = ("<24", "24-27", "27-30", "30-33", "33-36", "36-39", "39-42", "42+")
+_DAYS_PER_YEAR = 365.2425
 
 
 def _thomas(diag: np.ndarray, off: np.ndarray, rhs: np.ndarray) -> np.ndarray:
@@ -240,6 +243,8 @@ def run_whr(
     out_col: str = "mu_whr",
     return_variance: bool = False,
     winner_score_col: str | None = None,
+    birth_dates: dict[str, object] | pd.Series | None = None,
+    age_drift: bool = False,
 ) -> pd.DataFrame:
     """Run the WHR smoother over a canonical fight table.
 
@@ -260,6 +265,12 @@ def run_whr(
     rating's conditional block-curvature variance on the natural scale. It
     holds opponents fixed and is useful only as an experimental attenuation
     feature; it is not a marginal posterior variance or a rank interval.
+
+    With ``age_drift=True``, a neutral fit first estimates the population mean
+    trajectory in age buckets, then the model is refit under that fixed curve.
+    Only differences from the under-24 bucket are used: the common negative
+    offset in observed career changes is not identified as aging. Fighters
+    without a birth date retain the zero-drift prior.
     """
     cols = ["fighter", "event_date", "event_name", out_col]
     if fights is None or fights.empty:
@@ -283,8 +294,32 @@ def run_whr(
         fighter: np.asarray(nodes, dtype=np.int64) for fighter, nodes in by_fighter.items()
     }
 
-    for _ in range(int(iterations)):
-        for nodes in fighter_node_arrays.values():
+    app_age = np.full(n_app, np.nan, dtype=float)
+    transition_bins: dict[object, np.ndarray] = {}
+    drift_per_day = np.zeros(len(AGE_BIN_LABELS), dtype=float)
+    if age_drift:
+        if birth_dates is None:
+            raise ValueError("age_drift requires birth_dates")
+        dob_map = dict(birth_dates)
+        for fighter, nodes in fighter_node_arrays.items():
+            dob = pd.to_datetime(dob_map.get(str(fighter)), errors="coerce")
+            if pd.isna(dob):
+                transition_bins[fighter] = np.full(max(len(nodes) - 1, 0), -1, dtype=int)
+                continue
+            birth_day = float((pd.Timestamp(dob) - _EPOCH).days)
+            app_age[nodes] = (app_day[nodes] - birth_day) / _DAYS_PER_YEAR
+            if len(nodes) > 1:
+                mid_age = (app_age[nodes][1:] + app_age[nodes][:-1]) / 2.0
+                bins = np.digitize(mid_age, AGE_BIN_EDGES).astype(int)
+                bins[(mid_age < 14.0) | (mid_age > 65.0)] = -1
+                transition_bins[fighter] = bins
+            else:
+                transition_bins[fighter] = np.zeros(0, dtype=int)
+
+    fit_passes = int(iterations)
+    total_passes = fit_passes * (2 if age_drift else 1)
+    for pass_index in range(total_passes):
+        for fighter, nodes in fighter_node_arrays.items():
             k = len(nodes)
             if k == 0:
                 continue
@@ -318,9 +353,15 @@ def run_whr(
             if k > 1:
                 gaps = np.maximum(app_day[nodes][1:] - app_day[nodes][:-1], 1.0)
                 inv_v = 1.0 / (w2_per_day * gaps)
-                delta_r = r[1:] - r[:-1]
-                g[:-1] += delta_r * inv_v
-                g[1:] -= delta_r * inv_v
+                residual = r[1:] - r[:-1]
+                if age_drift:
+                    bins = transition_bins[fighter]
+                    known = bins >= 0
+                    expected = np.zeros_like(gaps)
+                    expected[known] = drift_per_day[bins[known]] * gaps[known]
+                    residual = residual - expected
+                g[:-1] += residual * inv_v
+                g[1:] -= residual * inv_v
                 h_diag[:-1] -= inv_v
                 h_diag[1:] -= inv_v
                 off = inv_v  # H[i][i+1]; for the (-H) system this is -inv_v
@@ -339,6 +380,38 @@ def run_whr(
         # this keeps the scale stable across iterations.
         ratings -= ratings.mean()
 
+        if age_drift and pass_index == fit_passes - 1:
+            change_sum = np.zeros(len(AGE_BIN_LABELS), dtype=float)
+            day_sum = np.zeros(len(AGE_BIN_LABELS), dtype=float)
+            for fighter, nodes in fighter_node_arrays.items():
+                if len(nodes) < 2:
+                    continue
+                bins = transition_bins[fighter]
+                gaps = np.maximum(app_day[nodes][1:] - app_day[nodes][:-1], 1.0)
+                changes = ratings[nodes][1:] - ratings[nodes][:-1]
+                for bucket in range(len(AGE_BIN_LABELS)):
+                    take = bins == bucket
+                    if take.any():
+                        change_sum[bucket] += float(changes[take].sum())
+                        day_sum[bucket] += float(gaps[take].sum())
+            raw = np.divide(
+                change_sum,
+                day_sum,
+                out=np.zeros_like(change_sum),
+                where=day_sum > 0,
+            )
+            # The common offset is confounded with scale and roster churn. Age
+            # is identified by the difference from the youngest observed bin.
+            baseline = raw[0] if day_sum[0] > 0 else 0.0
+            target = raw - baseline
+            target[day_sum == 0] = 0.0
+            limit = 25.0 / (_ELO_PER_NAT * _DAYS_PER_YEAR)
+            drift_per_day = np.clip(target, -limit, limit)
+            # Refit from the neutral initialization under the now-estimated
+            # prior mean. Re-estimating from the already drifted trajectory
+            # creates positive feedback and is not a valid empirical prior.
+            ratings.fill(0.0)
+
     mu_whr = _ELO_ANCHOR + ratings * _ELO_PER_NAT
     data = {
         "fighter": app_fighter,
@@ -346,6 +419,15 @@ def run_whr(
         "event_name": app_event,
         out_col: mu_whr,
     }
+    if age_drift:
+        app_bins = np.digitize(app_age, AGE_BIN_EDGES).astype(int)
+        valid_age = np.isfinite(app_age) & (app_age >= 14.0) & (app_age <= 65.0)
+        prior_drift = np.full(n_app, np.nan, dtype=float)
+        prior_drift[valid_age] = (
+            drift_per_day[app_bins[valid_age]] * _ELO_PER_NAT * _DAYS_PER_YEAR
+        )
+        data["age_years"] = app_age
+        data["prior_drift_elo_per_year"] = prior_drift
 
     if return_variance:
         # Conditional per-fighter block curvature on the NATURAL scale. The full

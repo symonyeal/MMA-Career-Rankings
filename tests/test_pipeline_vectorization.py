@@ -9,13 +9,8 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
-import pytest
 
 from ratings.division_resume import division_resume_rows
-from ratings.appearance_context import (
-    _context_adjustment,
-    _result_adjustment,
-)
 from ratings.performance_adjustment import (
     _group_bounds,
     pre_fight_win_streaks,
@@ -283,68 +278,6 @@ def test_pre_fight_win_streaks_matches_the_row_loop():
     ref = pd.DataFrame(rows).sort_values("fight_url").reset_index(drop=True)
     assert (got["streak_a"] == ref["streak_a"]).all()
     assert (got["streak_b"] == ref["streak_b"]).all()
-
-
-# ---------------------------------------------------------------------------
-# peaks window scan
-
-
-def _reference_best_window(group: pd.DataFrame, *, mu_col: str, window_days: int,
-                           min_fights: int, title_effective_min_raw_fights: int):
-    """Recompute each window from the frame slice, the way the old scan did."""
-    from ratings.constants import (
-        PERIOD_ACTIVITY_BONUS_CAP, PERIOD_ACTIVITY_BONUS_PER_FIGHT,
-        PERIOD_ACTIVITY_BONUS_PER_OPP_WEIGHT, PERIOD_DRAW_BASE_WEIGHT,
-        PERIOD_EXTRA_TITLE_DIVISION_BONUS, PERIOD_LOSS_BASE_WEIGHT,
-        PERIOD_LOSS_QUALITY_SCALE, PERIOD_WIN_BASE_WEIGHT,
-    )
-    g = group.sort_values(["event_date", "event_name"]).reset_index(drop=True)
-    dates = g["event_date"].to_numpy()
-    best = None
-    window_ns = np.timedelta64(window_days, "D")
-    for j in range(len(g)):
-        i = j
-        while i > 0 and dates[i - 1] >= dates[j] - window_ns:
-            i -= 1
-        window = g.iloc[i:j + 1]
-        if len(window) < min_fights:
-            if len(window) < title_effective_min_raw_fights:
-                continue
-            if _title_effective_count(window) < float(min_fights):
-                continue
-        score_arr = pd.to_numeric(window["actual_score"], errors="coerce").fillna(0.0).to_numpy()
-        opp_w = pd.to_numeric(window["opp_weight"], errors="coerce").fillna(0.0).to_numpy()
-        level = pd.to_numeric(window["opponent_quality_level"], errors="coerce").fillna(
-            0.0).clip(0.0, 1.0).to_numpy()
-        is_win = score_arr >= 1.0
-        is_draw = (score_arr > 0.0) & (score_arr < 1.0)
-        weights = np.where(is_win, PERIOD_WIN_BASE_WEIGHT + opp_w,
-                           np.where(is_draw, PERIOD_DRAW_BASE_WEIGHT + 0.5 * opp_w,
-                                    PERIOD_LOSS_BASE_WEIGHT
-                                    + PERIOD_LOSS_QUALITY_SCALE * (1.0 - level)))
-        adjusted = (pd.to_numeric(window[mu_col], errors="coerce")
-                    + _result_adjustment(window["actual_score"])
-                    + _context_adjustment(window)).to_numpy(dtype=float)
-        valid = (weights > 0) & ~np.isnan(adjusted)
-        if not valid.any():
-            continue
-        w_sum = float(weights[valid].sum())
-        if w_sum <= 0:
-            continue
-        w_mean = float((weights[valid] * adjusted[valid]).sum() / w_sum)
-        opp_sum = float(opp_w.sum())
-        score = w_mean + float(np.clip(
-            PERIOD_ACTIVITY_BONUS_PER_FIGHT * max(0, len(window) - min_fights)
-            + PERIOD_ACTIVITY_BONUS_PER_OPP_WEIGHT * opp_sum,
-            0.0, PERIOD_ACTIVITY_BONUS_CAP))
-        title_wins = window[window["is_championship_bout"].fillna(False).astype(bool)
-                            & (score_arr >= 1.0)]
-        n_div = title_wins["division"].dropna().nunique() if not title_wins.empty else 0
-        score += float(max(0, n_div - 1) * PERIOD_EXTRA_TITLE_DIVISION_BONUS)
-        candidate = (score, opp_sum, _title_ladder_mass(window), len(window))
-        if best is None or candidate[0] > best[0]:
-            best = candidate
-    return best
 
 
 def _appearance_frame(seed: int = 3) -> pd.DataFrame:

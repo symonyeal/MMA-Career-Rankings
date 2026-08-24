@@ -46,7 +46,7 @@ def test_loader_to_engine_roundtrip_on_ten_event_slice(tmp_path: Path):
     fights.to_parquet(snapshot_dir / "canonical_fights.parquet", index=False)
     rounds.to_parquet(snapshot_dir / "canonical_rounds.parquet", index=False)
 
-    summary = run_ratings(snapshot_dir)
+    summary = run_ratings(snapshot_dir, scope="ufc")
     current = pd.read_parquet(snapshot_dir / "ratings_current.parquet")
     history = pd.read_parquet(snapshot_dir / "ratings_history.parquet")
 

@@ -25,7 +25,34 @@ from loaders.fightmatrix_loader import build_snapshot as build_fightmatrix_snaps
 from loaders.fightmatrix_profiles import build_public_profile_snapshot  # noqa: E402
 from loaders.odds_ingest_mdabbert import run as ingest_mdabbert_odds  # noqa: E402
 from ratings.glicko2_engine import DEFAULT_TAU  # noqa: E402
+from ratings.constants import SUSTAINED_PEAK_MIN_FIGHTS  # noqa: E402
 from ratings.rate_snapshot import run as run_ratings  # noqa: E402
+from ratings.rules_era import stage_pre_unified_scope  # noqa: E402
+from ratings.scope import DEFAULT_PUBLISHED_SCOPE  # noqa: E402
+from ratings.symon_score import DEFAULT_CAREER_REFERENCE  # noqa: E402
+
+
+def stage_scopes(snapshot_dir: Path) -> dict[str, object]:
+    """Write every non-UFC scope artifact the inputs support.
+
+    Each one is optional and each failure is reported rather than raised: a
+    missing Sherdog corpus is a reason not to be able to *select* that scope,
+    not a reason to fail the refresh. Selecting a scope that was not staged
+    still raises, at the point of selection, where it means something.
+    """
+    from loaders.majors_scope import stage_majors_scope  # local: pulls bs4
+
+    staged: dict[str, object] = {}
+    for name, stage in (("pre_unified", stage_pre_unified_scope),
+                        ("majors", stage_majors_scope)):
+        try:
+            staged[name] = stage(snapshot_dir)
+            print(f"[refresh] staged scope {name}: "
+                  f"{staged[name].get('rateable_bouts', staged[name].get('bouts'))} bouts")
+        except (FileNotFoundError, ValueError) as exc:
+            staged[name] = f"not staged: {type(exc).__name__}: {exc}"
+            print(f"[refresh] scope {name} not staged: {exc}")
+    return staged
 from analysis.build_notebook import build as build_notebook  # noqa: E402
 from build_boards import select_core_rating_col, write_board_artifacts  # noqa: E402
 
@@ -145,12 +172,15 @@ def main() -> None:
     parser.add_argument("--project-root", default=str(PROJECT_ROOT), help="Project root path.")
     parser.add_argument("--greco-dir", default=None, help="Path to Greco scrape_ufc_stats CSV directory.")
     parser.add_argument("--tau", type=float, default=DEFAULT_TAU, help=f"Glicko-2 tau; default {DEFAULT_TAU}.")
-    parser.add_argument("--min-fights", type=int, default=3, help="Ranking eligibility threshold for reporting.")
+    parser.add_argument(
+        "--min-fights", type=int, default=SUSTAINED_PEAK_MIN_FIGHTS,
+        help="Completeness threshold for published ranking and uncertainty artifacts.",
+    )
     parser.add_argument(
         "--bootstrap-replicates", type=int, default=0,
         help=(
             "Refit the smoother this many times under Dirichlet-reweighted events to "
-            "publish rank intervals (~8s each; 0 skips, 150 is a usable board)."
+                "publish rank intervals (0 skips; benchmark the selected scope before a release run)."
         ),
     )
     parser.add_argument("--include-external", action="store_true",
@@ -172,6 +202,19 @@ def main() -> None:
         "--fightmatrix-insecure",
         action="store_true",
         help="Disable FightMatrix TLS verification only on a managed interception network.",
+    )
+    parser.add_argument(
+        "--scope", default=DEFAULT_PUBLISHED_SCOPE,
+        help=(
+            "Which bouts the rating may see: ufc, majors, pre_unified, "
+            "fightmatrix, all, or a comma-separated combination. Staging happens "
+            "either way; this only decides what is rated."
+        ),
+    )
+    parser.add_argument(
+        "--experimental-crossorg",
+        action="store_true",
+        help="Deprecated alias for --scope fightmatrix.",
     )
     args = parser.parse_args()
 
@@ -232,15 +275,24 @@ def main() -> None:
             )
         else:
             print(f"[refresh] mdabbert csv not found, skipping odds ingest: {mdabbert_csv}")
+    # Stage every scope the inputs allow, then rate only the one asked for.
+    # Staging is cheap and reversible; rating is the decision. Keeping them
+    # apart means "the corpus is not staged" and "the corpus is not admitted"
+    # cannot be confused for each other.
+    stage_scopes(snapshot_dir)
+
     ratings_summary = run_ratings(
         snapshot_dir,
         tau=args.tau,
         min_fights=args.min_fights,
         mdabbert_csv=mdabbert_csv if mdabbert_csv and mdabbert_csv.exists() else None,
+        include_experimental_crossorg=args.experimental_crossorg,
+        scope=args.scope,
     )
     board_summary = write_board_artifacts(
         snapshot_dir,
         min_rating_periods=args.min_fights,
+        scope=args.scope,
     )
     print(
         "[refresh] board artifacts: "
@@ -251,20 +303,55 @@ def main() -> None:
         f"withheld={board_summary['withheld_fighters']:,}"
     )
     if args.bootstrap_replicates > 0:
-        from ratings.uncertainty import career_mass_bootstrap
+        from ratings import prequential as PQ
+        from ratings.age import load_birth_dates
+        from ratings.uncertainty import career_mass_bootstrap, career_tiers, tier_summary
 
-        bootstrap_fights = pd.read_parquet(snapshot_dir / "canonical_fights.parquet")
-        bootstrap_fights["event_date"] = pd.to_datetime(bootstrap_fights["event_date"])
-        if "is_excluded" in bootstrap_fights.columns:
-            bootstrap_fights = bootstrap_fights[
-                ~bootstrap_fights["is_excluded"].fillna(False).astype(bool)
-            ]
-        board = career_mass_bootstrap(
-            bootstrap_fights, replicates=args.bootstrap_replicates)
+        # Through the scope loader, so the intervals describe the board that was
+        # just rated. Reading canonical_fights directly here published UFC-only
+        # intervals beside a joint board, and nothing in the artifacts said so.
+        bootstrap_fights = PQ.load_fight_table(snapshot_dir, scope=args.scope)
+        board, draws = career_mass_bootstrap(
+            bootstrap_fights,
+            replicates=args.bootstrap_replicates,
+            whr_kwargs={"birth_dates": load_birth_dates(snapshot_dir), "age_drift": True},
+            eligible_fighters=set(
+                pd.read_parquet(snapshot_dir / "ratings_current.parquet").loc[
+                    lambda x: x["rating_periods"].fillna(0) >= args.min_fights,
+                    "fighter",
+                ].astype(str)
+            ),
+            return_draws=True,
+        )
         board.to_parquet(snapshot_dir / "career_mass_uncertainty.parquet", index=False)
+        tiers = career_tiers(board, draws)
+        tiers.to_parquet(snapshot_dir / "career_mass_tiers.parquet", index=False)
         widths = (board.head(50)["rank_hi"] - board.head(50)["rank_lo"]).median()
+        ranked_tiers = tiers[tiers["tier"].notna()]
+        uncertainty_summary = {
+            "replicates": int(args.bootstrap_replicates),
+            "seed": 0,
+            "scope": args.scope,
+            "interval": [0.025, 0.975],
+            "reference": str(DEFAULT_CAREER_REFERENCE),
+            "age_drift": True,
+            "tier_confidence": 0.95,
+            "min_rating_periods": int(args.min_fights),
+            "tiers": int(ranked_tiers["tier"].nunique()),
+            "tiered_fighters": int(len(ranked_tiers)),
+            "unranked_at_floor": int(tiers["tier"].isna().sum()),
+            "fighters": int(len(board)),
+            "median_rank_width_top50": float(widths),
+        }
+        (snapshot_dir / "career_mass_uncertainty.json").write_text(
+            json.dumps(uncertainty_summary, indent=2) + "\n", encoding="utf-8"
+        )
         print(f"[refresh] rank intervals: {args.bootstrap_replicates} replicates, "
-              f"median top-50 width {widths:.0f}")
+              f"scope={args.scope}, median top-50 width {widths:.0f}")
+        print(f"[refresh] tiers: {ranked_tiers['tier'].nunique()} over "
+              f"{len(ranked_tiers):,} fighters, "
+              f"{int(tiers['tier'].isna().sum()):,} unranked at the score floor")
+        print(tier_summary(tiers).head(8).round(1).to_string(index=False))
     else:
         print("[refresh] rank intervals skipped (--bootstrap-replicates 0)")
     append_changelog(project_root, args.snapshot_date, counts, ratings_summary, previous_dir)

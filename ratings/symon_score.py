@@ -37,6 +37,7 @@ PERIOD_COLUMNS = [
 
 MASS_COLUMNS = [
     "fighter",
+    "rank",
     "score",
     "active_years",
     "contributing_years",
@@ -74,7 +75,37 @@ MASS_COLUMNS = [
 # The cost is honest and must travel with the board: a higher bar rests each
 # career on fewer terms, so rank intervals widen. That is the price of measuring
 # the intended thing, and is not a reason to measure a different one precisely.
-DEFAULT_CAREER_REFERENCE = 0.9
+#
+# 4. **A quantile bar is population-relative, and 0.9 was calibrated on the
+#    UFC-only population.** Point 3 justifies 0.9 by a *count* -- roughly 60
+#    fighter-years out of roughly 578 in a modern year. A quantile only names
+#    that count while the population stays that size. Measured on the
+#    2026-08-13 snapshot:
+#
+#        scope                 year   rated fighter-years   clear the 0.9 bar
+#        ufc                   2015                   570                  57
+#        ufc                   2024                   625                  63
+#        majors,pre_unified    2015                 4,190                 419
+#        majors,pre_unified    2024                 2,441                 245
+#
+#    Same bar, same name, four to seven times as many fighters clearing it -- a
+#    regional-circuit journeyman now clears a line that was chosen to mean "a
+#    dozen divisions' top five". The published whole-sport board therefore
+#    uses a capped contender line: the top decile while the observed sport is
+#    small, capped at 60 fighter-years once mature. This prevents both scope
+#    inflation (419 qualifiers on a whole-sport quantile) and the opposite
+#    fixed-count failure (the 60th of only 65 fighters becoming 1994's bar).
+DEFAULT_CAREER_REFERENCE = "contender:60"
+
+
+def parse_reference(value: str | float) -> str | float:
+    """Parse one CLI/config reference without rejecting named forms."""
+    if not isinstance(value, str):
+        return float(value)
+    text = value.strip()
+    if text == "mean" or text.startswith(("count:", "contender:", "hybrid:")):
+        return text
+    return float(text)
 
 
 def _empty(columns: list[str]) -> pd.DataFrame:
@@ -107,6 +138,15 @@ def _fighter_key(fighter: object) -> str:
 
 
 def _rank_order(df: pd.DataFrame, secondary: str) -> pd.DataFrame:
+    """Sort by score, then by the stated secondary key, then reproducibly.
+
+    The ``_fighter_key`` term is a determinism tie-break, not a ranking
+    criterion: it exists so two identical runs emit identical row order. Row
+    position is therefore **not** a rank, and callers must not read one off it.
+    Use the explicit ``rank`` column that :func:`career_skill_mass` attaches --
+    it is a ``method="min"`` rank, so tied fighters share one place instead of
+    being separated alphabetically.
+    """
     if df.empty:
         return df
     out = df.assign(_fighter_key=df["fighter"].map(_fighter_key))
@@ -276,8 +316,27 @@ def year_reference(annual: pd.DataFrame, reference: str | float) -> pd.Series:
     """Return each year's bar, indexed by year.
 
     ``"mean"`` is the mean of that year's fighter-year means; a float in [0, 1]
-    is that quantile of them. ``"hybrid:<lam>"`` blends the contemporaneous bar
-    with a fixed level taken over the whole sample:
+    is that quantile of them.
+
+    ``"count:<n>"`` is the level the ``n``-th best fighter-year of that year
+    reached -- the same statement a quantile was chosen to make, but stated as
+    a count so it survives a change of scope. A quantile names a fixed
+    *fraction* of whoever happens to be rated; admitting a second corpus can
+    multiply the rated population without changing the sport, and the bar then
+    silently admits four to seven times as many fighters (see the note above
+    ``DEFAULT_CAREER_REFERENCE``). A year with fewer than ``n`` rated
+    fighter-years returns no local bar. :func:`career_skill_mass` then uses the
+    whole-sample contender level, so sparse pioneer seasons do not get a free
+    floor from their weakest observed fighter.
+
+    ``"contender:<n>"`` is the capped contender line used in production: the
+    top decile in a field smaller than ``10*n``, otherwise the top ``n``. It
+    keeps a constant elite fraction while the sport is genuinely small, then a
+    constant global contender capacity once roster growth becomes undercard
+    breadth rather than more divisions.
+
+    ``"hybrid:<lam>"`` blends the contemporaneous bar with a fixed level taken
+    over the whole sample:
 
         bar(a) = lam * year_bar(a) + (1 - lam) * absolute_bar
 
@@ -294,6 +353,22 @@ def year_reference(annual: pd.DataFrame, reference: str | float) -> pd.Series:
     if isinstance(reference, str):
         if reference == "mean":
             return by_year.mean()
+        if reference.startswith("count:"):
+            n = int(reference.split(":", 1)[1])
+            if n < 1:
+                raise ValueError("a count reference must name at least one fighter-year")
+            return by_year.apply(
+                lambda s: float(s.nlargest(n).iloc[-1]) if len(s) >= n else float("nan")
+            )
+        if reference.startswith("contender:"):
+            n = int(reference.split(":", 1)[1])
+            if n < 1:
+                raise ValueError("a contender reference must name at least one fighter-year")
+            return by_year.apply(
+                lambda s: float(
+                    s.nlargest(min(n, max(1, int(np.ceil(0.10 * len(s)))))).iloc[-1]
+                ) if len(s) else float("nan")
+            )
         if reference.startswith("hybrid:"):
             lam = float(reference.split(":", 1)[1])
             if not 0.0 <= lam <= 1.0:
@@ -349,11 +424,19 @@ def career_skill_mass(
 
     bar = year_reference(annual, reference)
     # A year too thin to describe its own field falls back to the whole-sample
-    # bar, so a sparse early season cannot hand out cheap excess.
+    # bar, so a sparse early season cannot hand out cheap excess. If the entire
+    # sample is thinner than a requested count, use its maximum: nobody clears
+    # an unidentifiable contender line, which is conservative abstention rather
+    # than a cheap floor or NaN scores.
     global_bar = float(year_reference(annual.assign(year=0), reference).iloc[0])
+    if not np.isfinite(global_bar):
+        global_bar = float(annual["annual_mean"].max())
     population = annual.groupby("year", sort=False)["annual_mean"].transform("size")
     annual["field_mean"] = annual["year"].map(bar)
-    annual.loc[population < int(field_min_population), "field_mean"] = global_bar
+    annual.loc[
+        (population < int(field_min_population)) | annual["field_mean"].isna(),
+        "field_mean",
+    ] = global_bar
     annual["excess"] = (annual["annual_mean"] - annual["field_mean"]).clip(lower=0.0)
 
     grouped = annual.groupby("fighter", sort=False)["excess"]
@@ -367,7 +450,13 @@ def career_skill_mass(
     years = annual.groupby("fighter", sort=False)["year"]
     out["first_year"] = years.min().astype(int)
     out["last_year"] = years.max().astype(int)
-    out = out.reset_index()[MASS_COLUMNS]
+    out = out.reset_index()
+    # A "min" rank, so a tie prints as one shared place. The mass distribution
+    # has one enormous tie by construction -- every fighter who never cleared
+    # the bar in any year scores exactly zero -- and an ordinal rank across it
+    # would present the determinism tie-break as if it measured something.
+    out["rank"] = out["score"].rank(ascending=False, method="min").astype(int)
+    out = out[MASS_COLUMNS]
     return _rank_order(out, "peak_year_excess")
 
 
@@ -389,11 +478,8 @@ def career_mass_family(
         board = career_skill_mass(history, reference=reference, **kwargs)
         if board.empty:
             continue
-        board = board.assign(
-            reference=str(reference),
-            rank=board["score"].rank(ascending=False, method="min").astype(int),
-        )
+        board = board.assign(reference=str(reference))
         frames.append(board)
     if not frames:
-        return pd.DataFrame(columns=[*MASS_COLUMNS, "reference", "rank"])
+        return pd.DataFrame(columns=[*MASS_COLUMNS, "reference"])
     return pd.concat(frames, ignore_index=True)

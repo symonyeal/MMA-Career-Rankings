@@ -684,9 +684,9 @@ def draw_benchmark():
         f"line-height:1.55;padding:10px 12px;border-left:3px solid {THEME['accent']};"
         f"background:{THEME['surface']}'>"
         f"Matched <b style='color:{THEME['text']}'>{matched} of {len(audit)}</b> engine leaders. "
-        f"This is a <b>sanity check, not a target</b>: FightMatrix includes full MMA careers; "
-        f"the standard Rank Engine snapshot is UFC-only, so WEC/PRIDE/Strikeforce careers can "
-        f"legitimately create large gaps.</div>"
+        f"This is a <b>sanity check, not a target</b>: the published engine covers UFC, "
+        f"PRIDE, WEC, Strikeforce, Affliction, Bellator and RIZIN careers, while "
+        f"FightMatrix uses a different source boundary and ranking definition.</div>"
     )
 
 
@@ -1668,7 +1668,7 @@ probability. The residual is not betting profit and is not a rating bonus.
 For an anomalous board, compare the selected engine ranking with FightMatrix's
 all-time absolute list. Long connectors expose names worth investigating. This
 does not force agreement: FightMatrix covers whole MMA careers while the
-standard engine snapshot is UFC-only, and the ranking definitions also differ.
+published whole-sport engine uses a different source boundary and ranking definition.
 """),
     code(BENCHMARK),
 ]

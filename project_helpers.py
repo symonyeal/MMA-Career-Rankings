@@ -69,6 +69,24 @@ def normalize_name_key(name: str | None, *, compact: bool = False, apply_aliases
     return key
 
 
+def bout_fingerprint(frame: pd.DataFrame) -> pd.Series:
+    """``YYYYMMDD::<name>::<name>`` per bout, order-independent.
+
+    The one identity a bout has across sources: UFCStats, Sherdog and
+    FightMatrix agree on who fought whom on what day and on nothing else --
+    not the URL, not the event name, not the spelling of the method. Two rows
+    sharing a fingerprint are the same bout and must not both update a rating.
+    """
+    dates = pd.to_datetime(frame["event_date"], errors="coerce").dt.strftime("%Y%m%d").fillna("")
+    pairs = [
+        "::".join(sorted([
+            normalize_name_key(a, compact=True), normalize_name_key(b, compact=True),
+        ]))
+        for a, b in zip(frame["fighter_a"], frame["fighter_b"])
+    ]
+    return dates + "::" + pd.Series(pairs, index=frame.index)
+
+
 def date_range(df: pd.DataFrame) -> tuple[str | None, str | None]:
     """Return the first usable min/max date range from a snapshot table."""
     for col in ("event_date", "last_event_date", "last_event_date_method", "dob"):

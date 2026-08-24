@@ -6,6 +6,8 @@ import json
 
 import pandas as pd
 
+from ratings.scope import SCOPE_ARTIFACT
+
 from analysis.source_scope import resolve_score_column
 from project_helpers import normalize_name_key
 
@@ -123,7 +125,7 @@ def build_scope_validation(
             ).fillna(False).sum())
         else:
             headline_count = int(ranked["rating_periods"].fillna(0).ge(3).sum())
-        cross_path = Path(path) / "crossorg_fights.parquet"
+        cross_path = Path(path) / SCOPE_ARTIFACT["fightmatrix"]
         cross = pd.read_parquet(cross_path) if cross_path.exists() else pd.DataFrame()
         canonical = pd.read_parquet(Path(path) / "canonical_fights.parquet")
         runtime_path = Path(path) / "fightmatrix_rating_runtime.json"
@@ -179,7 +181,7 @@ def build_anomaly_traces(
 ) -> pd.DataFrame:
     """Trace added-bout evidence and rating movement for required anomaly fighters."""
     snapshot = Path(snapshot)
-    cross_path = snapshot / "crossorg_fights.parquet"
+    cross_path = snapshot / SCOPE_ARTIFACT["fightmatrix"]
     history_path = snapshot / "ratings_history_method_integrity_performance.parquet"
     completeness_path = snapshot / "fightmatrix_fighter_completeness.parquet"
     if not cross_path.exists() or not history_path.exists():

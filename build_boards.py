@@ -20,11 +20,13 @@ import pandas as pd
 
 from ratings import prequential as PQ
 from ratings.boards import (
+    UNRANKED_AT_FLOOR_STATUS,
     completeness_gated_board,
     integrity_discounted_board,
     integrity_ledger,
 )
 from ratings.constants import SUSTAINED_PEAK_MIN_FIGHTS  # board eligibility floor
+from ratings.scope import DEFAULT_PUBLISHED_SCOPE
 
 
 # The public/core board may use the engine's unit-consistent career aggregate,
@@ -37,6 +39,14 @@ CORE_RATING_CANDIDATES = (
 INTEGRITY_RATING_CANDIDATES = (
     "mu_whr",
 )
+
+# Scores with a hard floor that means "no evidence of clearing the bar", not
+# "the lowest measured level". Career Skill Mass sums a clipped positive excess,
+# so zero is an abstention and every fighter sitting on it is tied, not ordered.
+# Base WHR mu has no such floor and must not appear here.
+RATING_FLOOR_IS_UNRANKED = {
+    "symon_career_skill_mass": 0.0,
+}
 
 
 def _select_rating_col(
@@ -97,6 +107,7 @@ def write_board_artifacts(
     rating_col: str | None = None,
     integrity_rating_col: str | None = None,
     min_rating_periods: int = SUSTAINED_PEAK_MIN_FIGHTS,
+    scope: str = DEFAULT_PUBLISHED_SCOPE,
     out_dir: Path | None = None,
 ) -> dict[str, object]:
     """Build and persist the three standard board views for one snapshot.
@@ -109,7 +120,7 @@ def write_board_artifacts(
     snap = Path(snapshot_dir)
     current = pd.read_parquet(snap / "ratings_current.parquet")
     appearances = pd.read_parquet(snap / "integrity_appearances.parquet")
-    fights = PQ.load_fight_table(snap)
+    fights = PQ.load_fight_table(snap, scope=scope)
 
     core_col = _requested_core_rating_col(current, rating_col)
     integrity_col = _requested_integrity_rating_col(current, integrity_rating_col)
@@ -119,6 +130,7 @@ def write_board_artifacts(
         current,
         rating_col=core_col,
         min_rating_periods=min_rating_periods,
+        unranked_at_or_below=RATING_FLOOR_IS_UNRANKED.get(core_col),
     )
 
     target = Path(out_dir) if out_dir is not None else (
@@ -133,6 +145,7 @@ def write_board_artifacts(
 
     return {
         "out_dir": target,
+        "scope": scope,
         "core_rating_col": core_col,
         "integrity_rating_col": integrity_col,
         "ledger_rows": len(ledger),
@@ -141,6 +154,9 @@ def write_board_artifacts(
         "debited_fighters": int((board["integrity_cost"] > 0).sum()) if len(board) else 0,
         "ranked_fighters": int(gated["status"].eq("ranked").sum()) if len(gated) else 0,
         "withheld_fighters": int((~gated["status"].eq("ranked")).sum()) if len(gated) else 0,
+        "unranked_at_floor": (
+            int(gated["status"].eq(UNRANKED_AT_FLOOR_STATUS).sum()) if len(gated) else 0
+        ),
     }
 
 
@@ -159,6 +175,7 @@ def main() -> None:
         help="Base WHR point score for the direct integrity debit.",
     )
     ap.add_argument("--min-rating-periods", type=int, default=SUSTAINED_PEAK_MIN_FIGHTS)
+    ap.add_argument("--scope", default=DEFAULT_PUBLISHED_SCOPE)
     ap.add_argument("--top", type=int, default=25)
     ap.add_argument("--out-dir", type=Path, default=None)
     args = ap.parse_args()
@@ -168,6 +185,7 @@ def main() -> None:
         rating_col=args.rating_col,
         integrity_rating_col=args.integrity_rating_col,
         min_rating_periods=args.min_rating_periods,
+        scope=args.scope,
         out_dir=args.out_dir,
     )
     out = Path(summary["out_dir"])
@@ -188,7 +206,8 @@ def main() -> None:
 
     ranked = gated[gated["status"].eq("ranked")]
     print(f"\ncompleteness-gated board: {len(ranked):,} ranked, "
-          f"{len(gated) - len(ranked):,} withheld as insufficient history")
+          f"{len(gated) - len(ranked):,} withheld")
+    print(gated.loc[~gated["status"].eq("ranked"), "status"].value_counts().to_string())
     print(ranked.head(args.top)[["rank", "fighter", core_col]].round(1).to_string(index=False))
     print(f"\nwritten to {out}")
 

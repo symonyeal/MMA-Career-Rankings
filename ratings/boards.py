@@ -177,10 +177,14 @@ def integrity_discounted_board(
         pd.to_numeric(board[rating_col], errors="coerce") - cost
     )
 
-    reference_rank = board[rating_col].rank(ascending=False, method="min")
-    board["undiscounted_rank"] = reference_rank
+    # Both ranks are "min" ranks. They used to disagree: the reference was a min
+    # rank and the post-discount rank was a positional arange, so two fighters
+    # tied before and after the debit reported rank_change of 0 and +1 -- a place
+    # lost to row order, not to any discount.
+    board["undiscounted_rank"] = board[rating_col].rank(ascending=False, method="min")
     board = board.sort_values("integrity_discounted_rating", ascending=False).reset_index(drop=True)
-    board["rank"] = np.arange(1, len(board) + 1)
+    board["rank"] = board["integrity_discounted_rating"].rank(
+        ascending=False, method="min").astype(int)
     # Positive = the discount cost them places.
     board["rank_change"] = board["rank"] - board["undiscounted_rank"]
 
@@ -192,6 +196,9 @@ def integrity_discounted_board(
     return out.head(top) if top else out
 
 
+UNRANKED_AT_FLOOR_STATUS = "unranked (no year above the bar)"
+
+
 def completeness_gated_board(
     current: pd.DataFrame,
     *,
@@ -199,6 +206,7 @@ def completeness_gated_board(
     min_rating_periods: int = 5,
     completeness: pd.Series | None = None,
     min_completeness: float = 0.8,
+    unranked_at_or_below: float | None = None,
     top: int | None = None,
 ) -> pd.DataFrame:
     """Rank who can be ranked; say so plainly about everyone else.
@@ -206,6 +214,18 @@ def completeness_gated_board(
     Fighters below the evidence floor are returned with ``rank`` as NA and a
     ``status`` explaining which floor they failed, rather than being seated at
     the 1500 default and appearing as a mid-table fighter they are not.
+
+    Two changes stop this board from printing ordering as measurement:
+
+    * ``rank`` is a ``method="min"`` rank, so genuinely tied fighters share one
+      place. It used to be a positional ``arange`` over a sort, which turned the
+      sort's own tie-break into a rank difference.
+    * ``unranked_at_or_below`` withholds a rank from fighters sitting on the
+      score's floor. Career Skill Mass has a hard floor at zero that means "no
+      calendar year cleared the bar" -- 2,366 of 2,554 fighters on the
+      2026-08-13 snapshot, 285 of them past the evidence gate. Spreading those
+      across 285 consecutive printed ranks read as a measurement and was not
+      one. Leave it ``None`` for scores with no such floor (base WHR mu).
     """
     if current is None or current.empty or rating_col not in current.columns:
         return pd.DataFrame(columns=["rank", "fighter", rating_col, "status"])
@@ -226,11 +246,14 @@ def completeness_gated_board(
         thin = comp.notna() & (comp < min_completeness)
         status[thin & status.eq("ranked")] = (
             f"insufficient observed history to rank (completeness < {min_completeness:g})")
+    if unranked_at_or_below is not None:
+        at_floor = rated.notna() & (rated <= float(unranked_at_or_below))
+        status[at_floor & status.eq("ranked")] = UNRANKED_AT_FLOOR_STATUS
 
     board["status"] = status
     ranked = board[board["status"].eq("ranked")].sort_values(rating_col, ascending=False)
     ranked = ranked.reset_index(drop=True)
-    ranked["rank"] = np.arange(1, len(ranked) + 1)
+    ranked["rank"] = ranked[rating_col].rank(ascending=False, method="min").astype(int)
     withheld = board[~board["status"].eq("ranked")].copy()
     withheld["rank"] = pd.NA
 

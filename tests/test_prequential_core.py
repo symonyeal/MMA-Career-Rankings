@@ -7,6 +7,7 @@ import pytest
 
 import build_prequential_evaluation as build_eval
 from ratings import prequential as pq
+from ratings.scope import SCOPE_ARTIFACT
 
 
 def _fight(url: str, source: str, date: str) -> dict:
@@ -36,6 +37,7 @@ def test_default_variants_are_the_lean_coherent_set() -> None:
 
     whr = variants[1]
     assert whr.engine == "whr"
+    assert whr.use_age_drift is True
     assert whr.weight is None
     assert whr.use_quality_score is False
     assert whr.use_dominance is False
@@ -45,6 +47,7 @@ def test_default_variants_are_the_lean_coherent_set() -> None:
     assert research.weight is None
     assert research.use_quality_score is False
     assert research.use_dominance is True
+    assert research.use_age_drift is True
 
 
 def test_ablation_pairs_contain_no_retired_sleeves_or_market_arm() -> None:
@@ -61,7 +64,7 @@ def test_fight_loader_defaults_to_ufc_only(tmp_path: Path) -> None:
         snapshot / "canonical_fights.parquet", index=False
     )
     pd.DataFrame([_fight("x/1", "sherdog", "2023-01-01")]).to_parquet(
-        snapshot / "crossorg_fights.parquet", index=False
+        snapshot / SCOPE_ARTIFACT["fightmatrix"], index=False
     )
 
     core = pq.load_fight_table(snapshot)
@@ -156,3 +159,52 @@ def test_fractional_whr_score_is_passed_only_when_explicit(
 
     assert "winner_score_col" not in seen_kwargs[0]
     assert seen_kwargs[1]["winner_score_col"] == "quality_score_winner"
+
+
+def test_crossorg_scope_refuses_to_be_a_silent_no_op(tmp_path: Path) -> None:
+    """Asking for cross-org without the artifact must raise, not rate UFC-only.
+
+    The standard snapshot carries the bouts only under suffixed names, so the
+    flag used to merge zero rows and emit a board identical to UFC-only with no
+    signal that it had done nothing. That reads as "cross-org makes no
+    difference", which the differentiator audit contradicts.
+    """
+    snapshot = tmp_path / "snapshot"
+    snapshot.mkdir()
+    pd.DataFrame([_fight("ufc/1", "ufc", "2024-01-01")]).to_parquet(
+        snapshot / "canonical_fights.parquet", index=False
+    )
+    # Present, but under an obsolete suffix the loader does not read.
+    pd.DataFrame([_fight("x/1", "sherdog", "2023-01-01")]).to_parquet(
+        snapshot / "crossorg_fights.fightmatrix-public.parquet", index=False
+    )
+
+    # UFC-only still works and says nothing about a file it was not asked for.
+    assert pq.load_fight_table(snapshot)["fight_url"].tolist() == ["ufc/1"]
+
+    with pytest.raises(FileNotFoundError) as excinfo:
+        pq.load_fight_table(snapshot, with_crossorg=True)
+    message = str(excinfo.value)
+    assert "crossorg_fights.fightmatrix-public.parquet" in message, (
+        "the error must name the suffixed artifact that is actually present")
+
+
+def test_crossorg_scope_refuses_an_empty_artifact(tmp_path: Path) -> None:
+    snapshot = tmp_path / "snapshot"
+    snapshot.mkdir()
+    fights = pd.DataFrame([_fight("ufc/1", "ufc", "2024-01-01")])
+    fights.to_parquet(snapshot / "canonical_fights.parquet", index=False)
+    fights.iloc[0:0].to_parquet(snapshot / SCOPE_ARTIFACT["fightmatrix"], index=False)
+
+    with pytest.raises(ValueError, match="zero bouts"):
+        pq.load_fight_table(snapshot, with_crossorg=True)
+
+
+def test_crossorg_scope_reports_no_artifact_at_all(tmp_path: Path) -> None:
+    snapshot = tmp_path / "snapshot"
+    snapshot.mkdir()
+    pd.DataFrame([_fight("ufc/1", "ufc", "2024-01-01")]).to_parquet(
+        snapshot / "canonical_fights.parquet", index=False
+    )
+    with pytest.raises(FileNotFoundError, match="no cross-org artifact at all"):
+        pq.load_fight_table(snapshot, with_crossorg=True)

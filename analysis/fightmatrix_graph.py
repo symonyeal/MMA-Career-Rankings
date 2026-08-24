@@ -3,8 +3,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import math
-import re
 from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass
 from functools import lru_cache
@@ -472,7 +470,6 @@ def graph_audit(
     components_by_node, component_sizes = _graph_components(bouts)
     if not fighter_completeness.empty:
         fighter_completeness["component_size"] = fighter_completeness["profile_id"].map(components_by_node).fillna(1).astype(int)
-    ids = set(queue["profile_id"].astype(str))
     supported = []
     edge_weights = []
     for row in bouts.to_dict("records"):
@@ -610,6 +607,10 @@ def build_model_input(
             canonical[target] = canonical["fight_url"].map(meta[column])
     canonical["canonical_organization"] = canonical["org"]
     canonical["is_cross_organization"] = canonical["org"].ne("UFC")
+    # This artifact is the non-UFC scope. Keeping UFC rows here made the same
+    # bout eligible once from UFCStats and again from FightMatrix; the merge
+    # guard remains a second line of defence, but the producer must be clean.
+    canonical = canonical[canonical["is_cross_organization"]].copy()
     ufc_current = pd.read_parquet(Path(base_snapshot) / "ratings_current.parquet")
     canonical["org_weight"] = compute_fight_weights(canonical, ufc_current).values
     canonical["base_org_weight"] = canonical["org_weight"]

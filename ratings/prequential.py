@@ -53,7 +53,10 @@ from ratings.dominance import per_fight_dominance
 from ratings.glicko2_engine import DEFAULT_TAU, predict_win_prob_from_ratings
 from ratings.integrity_adjustment import build_integrity_appearances
 from ratings.performance_adjustment import build_performance_appearances, normalize_division_label
+from ratings.rules_era import label_rules_era
+from ratings.scope import merge_scope
 from ratings.whr import _ELO_PER_NAT, run_whr
+from ratings.age import load_birth_dates
 from ratings import rate_snapshot as RS
 from ratings import research_variants as RV
 from loaders.integrity_flags import INTEGRITY_COLUMNS, build_integrity_flags
@@ -73,7 +76,7 @@ EPS = 1e-6
 #       shared bout-level WHR weights, and UFC-only default scope
 #   4 - fixed-mass WHR prior (2026-08-20): virtual games plus per-fighter (not
 #       per-appearance) anchor mass, so every WHR rating moved
-CACHE_SCHEMA_VERSION = 4
+CACHE_SCHEMA_VERSION = 5
 
 
 # ---------------------------------------------------------------------------
@@ -95,9 +98,16 @@ class Variant:
     stream: str = "canonical"  # for engine="glicko": "canonical" or "method"
     score_mode: str = "canonical"  # weighted engine scorer
     weight: str | None = None  # None | "integrity" | "performance" | "combined"
-    use_org_weight: bool = True  # cross-organization participant-caliber bridge
+    # Opt-IN, because the staged cross-org weights are not outcome-independent:
+    # ``compute_fight_weights`` prices a 2003 PRIDE bout by both participants'
+    # UFC-anchored caliber percentiles, i.e. by what they went on to do years
+    # later. Defaulting this on let a research arm quietly consume future
+    # information. Promotion strength is an output of a joint fit, never an
+    # input to it, so anything that wants the bridge has to ask for it.
+    use_org_weight: bool = False  # cross-organization participant-caliber bridge
     use_dominance: bool = False  # shared bout-level WHR likelihood precision
     use_quality_score: bool = False  # explicit fractional winner score research
+    use_age_drift: bool = False  # estimated age-dependent Wiener prior mean
     virtual_games: float | None = None  # WHR prior mass; None = engine default
 
     def key(self) -> str:
@@ -108,11 +118,12 @@ def default_variants() -> list[Variant]:
     """The two coherent core estimators plus one labelled research arm."""
     return [
         Variant("canonical", engine="glicko", stream="canonical"),
-        Variant("whr", engine="whr"),
+        Variant("whr", engine="whr", use_age_drift=True),
         Variant(
             "whr_symmetric_dominance_research",
             engine="whr",
             use_dominance=True,
+            use_age_drift=True,
         ),
     ]
 
@@ -132,26 +143,31 @@ class Inputs:
     dominance_level: dict = field(default_factory=dict)
     odds: pd.DataFrame = field(default_factory=pd.DataFrame)
     quality_score: pd.DataFrame = field(default_factory=pd.DataFrame)
+    birth_dates: dict[str, pd.Timestamp] = field(default_factory=dict)
 
 
-def load_fight_table(snapshot_dir: Path, *, with_crossorg: bool = False) -> pd.DataFrame:
-    """Load rated bouts, defaulting to the auditable UFC-only scope.
+def load_fight_table(
+    snapshot_dir: Path,
+    *,
+    with_crossorg: bool = False,
+    scope: str | None = None,
+) -> pd.DataFrame:
+    """Load rated bouts for one named scope, defaulting to UFC-only.
 
-    ``with_crossorg=True`` is an explicit experimental scope. Its historical
-    weights must be made fold-local before it can support a production claim.
+    ``scope`` is the current interface (see :mod:`ratings.scope`);
+    ``with_crossorg=True`` is the older boolean and means ``scope="fightmatrix"``.
+    Either way an unsatisfiable request raises rather than quietly returning the
+    UFC-only table, because a joint fit that silently is not one gets believed.
     """
+    if scope is None:
+        scope = "fightmatrix" if with_crossorg else RS.UFC_ONLY
     snapshot_dir = Path(snapshot_dir)
     fights = pd.read_parquet(snapshot_dir / "canonical_fights.parquet")
     fights["org_weight"] = 1.0
     if "source" not in fights.columns:
         fights["source"] = "ufc"
-    crossorg_path = snapshot_dir / "crossorg_fights.parquet"
-    if with_crossorg and crossorg_path.exists():
-        crossorg = pd.read_parquet(crossorg_path)
-        if not crossorg.empty:
-            if "org_weight" not in crossorg.columns:
-                crossorg["org_weight"] = 1.0
-            fights = pd.concat([fights, crossorg], ignore_index=True, sort=False)
+    fights = merge_scope(fights, snapshot_dir, scope=scope, label="prequential")
+    fights["rules_era"] = label_rules_era(fights)
 
     fights["event_date"] = pd.to_datetime(fights["event_date"])
     if "method_class" in fights.columns:
@@ -173,14 +189,16 @@ def load_fight_table(snapshot_dir: Path, *, with_crossorg: bool = False) -> pd.D
     return fights.reset_index(drop=True)
 
 
-def build_inputs(snapshot_dir: Path, *, with_crossorg: bool = False) -> Inputs:
+def build_inputs(
+    snapshot_dir: Path, *, with_crossorg: bool = False, scope: str | None = None
+) -> Inputs:
     """Load the fight table and every rating-parameter-invariant weight table.
 
     Odds are retained only as an external benchmark and reporting segment. They
     do not alter any rating variant in this harness.
     """
     snapshot_dir = Path(snapshot_dir)
-    fights = load_fight_table(snapshot_dir, with_crossorg=with_crossorg)
+    fights = load_fight_table(snapshot_dir, with_crossorg=with_crossorg, scope=scope)
     base_engine = RS._run_canonical_engine(fights, tau=DEFAULT_TAU)
     history = base_engine.history_df()
 
@@ -225,6 +243,7 @@ def build_inputs(snapshot_dir: Path, *, with_crossorg: bool = False) -> Inputs:
         dominance_level=RV.winner_dominance_level(perf_app),
         odds=odds,
         quality_score=quality_score,
+        birth_dates=load_birth_dates(snapshot_dir),
     )
 
 
@@ -371,6 +390,9 @@ def whr_predictions(
         kwargs["winner_score_col"] = "quality_score_winner"
     if variant.virtual_games is not None:
         kwargs["virtual_games"] = float(variant.virtual_games)
+    if variant.use_age_drift:
+        kwargs["age_drift"] = True
+        kwargs["birth_dates"] = inputs.birth_dates
 
     appearances = pd.concat([
         decided_all[["event_date", "fighter_a"]].rename(columns={"fighter_a": "fighter"}),
@@ -396,6 +418,10 @@ def whr_predictions(
             mu_a = float(last.get(a, 1500.0))
             mu_b = float(last.get(c, 1500.0))
             gap = (mu_a - mu_b) / _ELO_PER_NAT
+            dob_a = pd.to_datetime(inputs.birth_dates.get(str(a)), errors="coerce")
+            dob_b = pd.to_datetime(inputs.birth_dates.get(str(c)), errors="coerce")
+            age_a = ((cutoff - dob_a).days / 365.2425) if pd.notna(dob_a) else np.nan
+            age_b = ((cutoff - dob_b).days / 365.2425) if pd.notna(dob_b) else np.nan
             rows.append({
                 "variant": variant.name,
                 "fight_url": b["fight_url"],
@@ -407,12 +433,19 @@ def whr_predictions(
                 "y_a": int(b["winner"] == a),
                 "prior_a": float(prior_counts.get(a, 0)),
                 "prior_b": float(prior_counts.get(c, 0)),
+                "age_a": age_a,
+                "age_b": age_b,
+                "involves_over_35": bool(
+                    (np.isfinite(age_a) and age_a >= 35.0)
+                    or (np.isfinite(age_b) and age_b >= 35.0)
+                ),
             })
         if progress and n % 5 == 0:
             print(f"    [{variant.name}] fold {n}/{len(eval_events)}", flush=True)
     return pd.DataFrame(rows, columns=[
         "variant", "fight_url", "event_date", "event_name", "fighter_a", "fighter_b",
-        "p_a", "y_a", "prior_a", "prior_b"])
+        "p_a", "y_a", "prior_a", "prior_b", "age_a", "age_b",
+        "involves_over_35"])
 
 
 # ---------------------------------------------------------------------------

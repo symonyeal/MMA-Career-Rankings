@@ -16,6 +16,8 @@ bootstrap rank intervals — is in
 The forward plan — whole-sport scope, evidence precision, era depth, and the
 Single-Entry principle that separates this engine from points-stacking systems —
 is in [Whole-Sport Engine](docs/PLAN_WHOLE_SPORT_ENGINE_2026-08-21.md).
+The final scope/bar/age pass and top-100 evaluation are summarized in
+[Final Outcome](docs/OUTCOME_2026-08-24.md).
 
 ## The Core
 
@@ -27,8 +29,9 @@ winner and loser share the same bout weight:
 +(1-y_b)\log\sigma(\theta_j-\theta_i)\}.
 \]
 
-The production scope currently has \(\omega_b=1\) for UFC bouts. Two estimators
-read the same evidence:
+The published scope is `majors,pre_unified`: UFCStats plus the six-promotion
+Sherdog corpus and UFC 1-27. Every admitted bout has \(\omega_b=1\). Two
+estimators read the same evidence:
 
 - **Skill filter**: causal Glicko-2 for one-step-ahead validation and current
   skill.
@@ -46,7 +49,7 @@ the fix, the highest rating of all 2,554 fighters belonged to a man with one UFC
 bout, and 56 fighters at 1-0 averaged above the 98th percentile of the roster;
 going from 1-0 to 10-0 bought 67 rating points.
 
-Both priors now carry a fixed mass per fighter, spread across that fighter's
+Both priors carry a fixed mass per fighter, spread across that fighter's
 appearances: a Gaussian anchor (`WHR_PRIOR_VAR`) and `WHR_VIRTUAL_GAMES = 2`
 bouts of prior evidence against an average opponent, half won and half lost, as
 in Coulom's paper. That value was measured over 60 held-out events and is
@@ -55,6 +58,12 @@ tie-break (the smallest prior mass that wins the point estimate), with no
 accuracy claim attached. An undefeated fighter with \(k\) wins over average
 opposition then settles at \(\sigma(r)=(k+v/2)/(k+v)\), which rises with the
 evidence as it must.
+
+The temporal prior is age-aware when a birth date is known. A neutral fit
+estimates a population trajectory in eight age buckets and the model is then
+refit under that curve; an unknown birth date retains zero drift. On the held-out
+age panel this improves log loss by **0.00382** overall and **0.00965** for bouts
+involving a fighter over 35.
 
 The public all-time score is **Symon Career Skill Mass**:
 
@@ -68,29 +77,49 @@ opponent strength, activity, and longevity therefore enter through the latent
 rating history without adding opponent rank, title, streak, or activity points
 a second time.
 
-The yearly bar is an explicit parameter, not a hidden default. At the field mean
-97% of the top fifty's years clear it, the positive part never binds, and the
-score reduces to *active years x mean excess* — a longevity board. Raising the
-bar to a quantile of the year's field makes the clip do real work.
-``career_mass_family`` recomputes the same functional from the mean up to the
-95th percentile and the notebook plots the whole ladder, so the
-dominance-versus-longevity choice is visible rather than asserted.
+The published yearly bar is `contender:60`: the top decile while a field has
+fewer than 600 fighter-years, capped at the 60th-best level thereafter. This
+keeps an elite fraction in genuinely small fields without letting a larger
+source corpus silently multiply the number of contenders. `count:60`, `mean`,
+numeric quantiles and `hybrid:<lambda>` remain explicit research alternatives.
 
 ### Rank uncertainty
 
 `build_uncertainty.py` refits the entire smoother under Dirichlet-reweighted
 events (the Bayesian bootstrap) and recomputes the career functional on each
 replicate, writing `career_mass_uncertainty.parquet`. Ranks are published with
-those intervals: where two intervals overlap, the board is not claiming an
+those intervals after applying the same 13-period completeness gate as the
+published board: where two intervals overlap, the board is not claiming an
 ordering.
 
-The first 150-replicate run says this matters. Median rank-interval width across
-the top 50 is **102 places**, and no pair inside the top twenty is separated.
-The defensible reading of the all-time board today is *Jon Jones, then a large
-tied group* — printing 1 through 25 as an ordering would claim precision the
-evidence does not contain. Resampling events with replacement is deliberately *not* used —
-career mass is a sum over years, so dropping ~37% of events biases every
-replicate low.
+The original 150-replicate UFC-only run showed that rank uncertainty matters,
+but it does not describe the published whole-sport, age-aware board. The current
+snapshot records its scope, bar, model and replicate count beside the interval
+artifact. Printing 1 through 25 without that qualification would claim
+precision the evidence does not contain. Resampling events with replacement is
+deliberately *not* used — career mass is a sum over years, so dropping ~37% of
+events biases every replicate low.
+
+The correctly gated 12-replicate exploratory run has a median top-50 rank width
+of **91** and four tiers; tier 1 runs from Jon Jones through Khabib Nurmagomedov.
+Those endpoints are diagnostic, not release-grade—a 150+ replicate run remains
+the release standard.
+
+So the board publishes **tiers**, and the rule is stated rather than implied.
+Walk the board in descending mass: the first fighter opens tier 1 and is its
+*leader*; each next fighter joins the current tier unless the leader outscores
+them in at least 95% of replicates, in which case they open the next tier and
+become its leader. A tier therefore means exactly one thing — **nobody in it is
+separated from the fighter at the top of it** — and a tier boundary is the only
+ordering claim the board makes.
+
+Separation is measured **paired**, from the replicate draws, not by comparing
+two marginal intervals. Both careers are reweighted by the same events, so most
+of what moves them moves them together; two heavily overlapping marginal
+intervals are perfectly consistent with a difference of the same sign in every
+replicate. Anchoring each tier on its leader rather than on neighbours is also
+deliberate: "indistinguishable" is not transitive, so chaining pairwise overlaps
+collapses the whole board into one block.
 
 WHR's optional `return_variance` is not this quantity and is not a rank
 interval: it inverts one fighter's Hessian block with every opponent held
@@ -219,14 +248,15 @@ python -m ratings.rate_snapshot --snapshot-dir "data/snapshots/2026-08-13"
 python build_boards.py "data/snapshots/2026-08-13"
 ```
 
-Publish rank intervals for the career board (about five seconds per replicate
-on an idle machine, so this is an offline step, not a notebook-time one):
+Publish rank intervals for the career board. The 67,920-bout age-aware scope
+took about 100 seconds per fit on the measured machine; 12 replicates are an
+exploratory check, while a 150-replicate release run needs a multi-hour budget:
 
 ```bash
-python build_uncertainty.py "data/snapshots/2026-08-13" --replicates 150
+python build_uncertainty.py "data/snapshots/2026-08-13" --replicates 12
 ```
 
-`refresh.py --bootstrap-replicates 150` does the same inside a full refresh.
+`refresh.py --bootstrap-replicates 12` does the same inside a full refresh.
 
 Regenerate held-out evaluation after any estimator or probability change:
 
@@ -248,23 +278,77 @@ Run the test suite:
 python -m pytest -q
 ```
 
-## Experimental Cross-Organization Scope
+## Scopes — which bouts a rating is allowed to see
 
-Build cross-organization data only as an isolated research snapshot:
+Scopes are **named**, and nothing is merged unless the merge is asked for by
+name. There is no single "cross-org" switch, because there is no single
+cross-org corpus.
+
+| scope | corpus | how it was built |
+|---|---|---|
+| `ufc` | UFCStats, UFC 28 onward | baseline research scope |
+| `majors` | the Sherdog whole-career corpus | seeded by an event crawl of PRIDE, WEC, Strikeforce, Affliction, Bellator and RIZIN, then extended to one page per fighter so the six-promotion boundary stops censoring records. 63,813 bouts, 28,491 fighters, 1980-2026 |
+| `pre_unified` | UFC 1-27 | recovered from the snapshot's own `_excluded_bouts.csv` |
+| `fightmatrix` | a bounded ranked-cohort crawl | seeded from **today's** FightMatrix rankings |
+| `all` | every staged corpus | |
+
+The published default is `majors,pre_unified`.
+
+Combine explicitly: `--scope majors,pre_unified`.
+
+The naming is not bureaucracy. The two non-UFC corpora move the board in
+**opposite directions**, because of how each was built — `majors` reaches back
+to 1997 and back-fills the early era, while `fightmatrix` is seeded from
+currently ranked fighters and back-fills the modern regional circuit:
+
+Earlier 0.9-bar scope sensitivity (not the current published board):
+
+| scope | bouts | top-100 active in 2024 | median debut |
+|---|---:|---:|---:|
+| `ufc` | 8,479 | 70 | 2015 |
+| `majors` | 67,820 | 57 | 2009 |
+| `majors,pre_unified` | 67,920 | 57 | 2009 |
+| `fightmatrix` | 18,312 | 85 | 2012 |
 
 ```bash
-python build_crossorg.py \
-  --base "data/snapshots/2026-08-13" \
-  --out "data/snapshots/2026-08-13-crossorg"
-
-python -m ratings.rate_snapshot \
-  --snapshot-dir "data/snapshots/2026-08-13-crossorg" \
-  --experimental-crossorg
+# Stage every corpus the inputs support, then rate one scope.
+python refresh.py --snapshot-date 2026-08-13 --scope majors,pre_unified
 ```
 
-The explicit flag is intentional. Results from that scope must be labelled
-experimental until the future-information problem is fixed and the held-out
-comparison is rerun.
+Two rules hold across every scope.
+
+**No organisation weight.** Relative promotion strength is an *output* of the
+joint fit, read off the fighters who crossed between promotions. A weight would
+assert the answer the fit exists to estimate — and the weights that existed
+were derived from fighters' *eventual UFC careers*, so a 2003 PRIDE bout was
+priced by what its participants went on to do years later. Production discards
+any staged `org_weight`; `--experimental-org-weight` opts back in and says so.
+
+**Ask for a scope and get it, or get an error.** A scope whose artifact is
+missing raises, and the error names the builder that makes it. Silently
+returning UFC-only and calling it a joint fit is how "cross-org makes no
+difference" became a believed result.
+
+### The Unified-Rules boundary
+
+UFC 1-27 (253 source rows; 252 rated after dedupe, 1993-11-12 to 2000-09-22)
+were scraped, parsed, and then
+dropped. That is defensible on its own terms, and it means the engine
+structurally could not rank the 1993-2000 generation — it is most of why Randy
+Couture scored zero.
+
+They are now admitted to the rating through the `pre_unified` scope, carrying an
+explicit `rules_era` label so the difference between the two rule sets is
+*estimated* rather than assumed. `build_rules_era_sweep.py` is the estimator,
+and its answer is that the term is **not identified by prediction**: only 36
+held-out bouts involve a fighter who crossed the boundary, and every interval
+crosses zero. `RULES_ERA_WEIGHT` therefore stays at 1.0 — full admission — by
+that finding, not by preference.
+
+The label is deliberately narrow. PRIDE never fought under unified rules either,
+but its rules differed *per promotion*, and a date-keyed rules indicator applied
+across promotions would quietly become an organisation weight wearing a
+different name.
 
 ## Project Layout
 

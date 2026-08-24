@@ -9,7 +9,9 @@ from ratings.symon_score import (
     DEFAULT_CAREER_REFERENCE,
     MASS_COLUMNS,
     PERIOD_COLUMNS,
+    career_mass_family,
     career_skill_mass,
+    year_reference,
     symon_peak_score,
     symon_period_score,
     symon_prime_score,
@@ -279,7 +281,7 @@ def test_the_production_bar_is_the_contender_line_not_the_field_mean():
     At the field mean the positive part never binds for elite careers and the
     board silently ranks duration; at the contender line the clip does real work.
     """
-    assert DEFAULT_CAREER_REFERENCE == 0.9
+    assert DEFAULT_CAREER_REFERENCE == "contender:60"
 
     levels = {"A": [1900.0, 1880.0], "B": [1700.0, 1690.0], "C": [1500.0, 1510.0],
               "D": [1480.0, 1470.0], "E": [1460.0, 1450.0], "F": [1440.0, 1430.0]}
@@ -295,3 +297,124 @@ def test_the_production_bar_is_the_contender_line_not_the_field_mean():
     assert at_bar.loc["B", "contributing_years"] == 0
     # The genuinely elite career still clears both.
     assert at_bar.loc["A", "contributing_years"] == 2
+
+
+def test_career_mass_rank_is_a_shared_place_across_the_zero_tie():
+    """Row order is a determinism tie-break, not a ranking.
+
+    Everyone who never cleared the bar scores exactly zero, so they are tied.
+    Printing them at consecutive ranks presented the ``repr(name)`` tie-break as
+    a measurement -- the defect that put Forrest Griffin, Randy Couture and
+    Wanderlei Silva at three different "ranks" on the same score of zero.
+    """
+    h = pd.concat([
+        _history("A", ["2020-01-01", "2021-01-01"], [90.0, 90.0]),
+        _history("B", ["2020-01-01", "2021-01-01"], [50.0, 50.0]),
+        # Three fighters at the same low level: all below the bar, all tied.
+        _history("Zeta", ["2020-01-01", "2021-01-01"], [10.0, 10.0]),
+        _history("Alpha", ["2020-01-01", "2021-01-01"], [10.0, 10.0]),
+        _history("Mid", ["2020-01-01", "2021-01-01"], [10.0, 10.0]),
+    ], ignore_index=True)
+    out = career_skill_mass(h, field_min_population=2, reference="mean")
+
+    assert list(out.columns) == MASS_COLUMNS
+    zero = out[out["score"] == 0.0]
+    assert len(zero) == 3
+    assert zero["rank"].nunique() == 1, "tied fighters must share one printed place"
+    assert out["rank"].min() == 1
+    # A "min" rank leaves the gap after the tie, and never exceeds the row count.
+    assert out["rank"].max() == int(zero["rank"].iloc[0])
+    assert out.loc[out["fighter"].eq("A"), "rank"].iloc[0] == 1
+
+
+def test_career_mass_family_keeps_one_rank_per_reference():
+    h = pd.concat([
+        _history("A", ["2020-01-01", "2021-01-01"], [90.0, 90.0]),
+        _history("B", ["2020-01-01", "2021-01-01"], [50.0, 50.0]),
+        _history("C", ["2020-01-01", "2021-01-01"], [10.0, 10.0]),
+    ], ignore_index=True)
+    fam = career_mass_family(h, references=("mean", 0.5), field_min_population=2)
+
+    assert list(fam.columns) == [*MASS_COLUMNS, "reference"]
+    assert set(fam["reference"]) == {"mean", "0.5"}
+    for reference, block in fam.groupby("reference"):
+        assert block["rank"].min() == 1, reference
+        # Rank is a function of score within the block, and only of score.
+        by_score = block.sort_values("score", ascending=False)["rank"]
+        assert by_score.is_monotonic_increasing, reference
+
+
+def test_count_reference_names_a_count_not_a_fraction():
+    """A quantile bar is population-relative; a count bar is not.
+
+    0.9 was chosen because it was ~60 fighter-years out of ~578 in a modern
+    UFC-only year. Admit a second corpus and the same quantile admits 245-419.
+    ``count:n`` states the intent directly and survives the scope change.
+    """
+    h = pd.concat([
+        _history(f"F{i}", ["2020-01-01"], [float(100 - i)]) for i in range(10)
+    ], ignore_index=True)
+    annual = pd.DataFrame({
+        "fighter": [f"F{i}" for i in range(10)],
+        "year": [2020] * 10,
+        "annual_mean": [float(100 - i) for i in range(10)],
+    })
+
+    # The 3rd best of ten fighter-years scored 98.
+    assert year_reference(annual, "count:3").loc[2020] == pytest.approx(98.0)
+    assert year_reference(annual, "count:1").loc[2020] == pytest.approx(100.0)
+    # A year thinner than the count has no local bar; career_skill_mass replaces
+    # it with the whole-sample contender level rather than handing out a free
+    # floor at that thin year's weakest fighter.
+    assert np.isnan(year_reference(annual, "count:50").loc[2020])
+
+    with pytest.raises(ValueError, match="at least one"):
+        year_reference(annual, "count:0")
+
+    board = career_skill_mass(h, field_min_population=2, reference="count:3")
+    assert list(board.columns) == MASS_COLUMNS
+    # Exactly three fighter-years sit at or above the third-best level.
+    assert int((board["score"] > 0).sum()) == 2
+
+
+def test_count_reference_sparse_year_uses_the_global_contender_level():
+    dense_levels = [100.0, 98.0, 97.0, 96.0, 95.0, 94.0, 93.0, 92.0, 91.0, 90.0]
+    dense = pd.concat([
+        _history(f"Dense{i}", ["2020-01-01"], [level])
+        for i, level in enumerate(dense_levels)
+    ], ignore_index=True)
+    thin = pd.concat([
+        _history("Thin elite", ["1993-01-01"], [99.0]),
+        _history("Thin low", ["1993-01-01"], [20.0]),
+    ], ignore_index=True)
+
+    board = career_skill_mass(
+        pd.concat([dense, thin], ignore_index=True),
+        field_min_population=1,
+        reference="count:3",
+    ).set_index("fighter")
+
+    # Global third-best is 98: the elite pioneer contributes one point and the
+    # weak pioneer contributes zero. Falling back to the thin-year minimum
+    # would have handed the elite pioneer 79 cheap points.
+    assert board.loc["Thin elite", "score"] == pytest.approx(1.0)
+    assert board.loc["Thin low", "score"] == pytest.approx(0.0)
+
+
+def test_contender_reference_is_a_decile_then_a_count_cap():
+    small = pd.DataFrame({
+        "fighter": [f"S{i}" for i in range(65)],
+        "year": 1994,
+        "annual_mean": np.arange(65, dtype=float),
+    })
+    mature = pd.DataFrame({
+        "fighter": [f"M{i}" for i in range(1000)],
+        "year": 2024,
+        "annual_mean": np.arange(1000, dtype=float),
+    })
+    bars = year_reference(pd.concat([small, mature], ignore_index=True), "contender:60")
+
+    # ceil(10% of 65) = seventh-best, not the 60th-best cheap floor.
+    assert bars.loc[1994] == pytest.approx(58.0)
+    # A mature field is capped at the 60th-best, not its 100th-best decile.
+    assert bars.loc[2024] == pytest.approx(940.0)

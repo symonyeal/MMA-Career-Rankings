@@ -37,7 +37,8 @@ class TableSpec:
 TABLE_SPECS = [
     TableSpec("canonical_events", "canonical_events.parquet", "Greco", "canonical"),
     TableSpec("canonical_fights", "canonical_fights.parquet", "Greco", "canonical"),
-    TableSpec("crossorg_fights", "crossorg_fights.parquet", "Sherdog", "canonical_extension", required=False),
+    TableSpec("majors_fights", "majors_fights.parquet", "Sherdog majors", "canonical_extension", required=False),
+    TableSpec("pre_unified_fights", "pre_unified_fights.parquet", "UFCStats", "canonical_extension", required=False),
     TableSpec("canonical_rounds", "canonical_rounds.parquet", "Greco", "canonical"),
     TableSpec("canonical_fighters", "canonical_fighters.parquet", "Greco", "canonical"),
     TableSpec("ratings_current", "ratings_current.parquet", "Rating engine", "ratings"),
@@ -365,14 +366,15 @@ def _row_counts(con: sqlite3.Connection, table_names: Iterable[str]) -> pd.DataF
 
 def _source_gaps(missing_optional: list[TableSpec]) -> pd.DataFrame:
     missing_table_names = {spec.table_name for spec in missing_optional}
-    if "crossorg_fights" in missing_table_names:
+    scope_tables = {"majors_fights", "pre_unified_fights", "fightmatrix_crossorg_fights"}
+    loaded_scopes = sorted(scope_tables - missing_table_names)
+    if not loaded_scopes:
         crossorg_row = {
             "gap_key": "cross_org_bouts_not_integrated",
             "severity": "known_gap",
             "status": "pending",
             "notes": (
-                "No crossorg_fights.parquet in this snapshot; PRIDE, Strikeforce, "
-                "WEC, and other non-UFC bouts are not merged into the headline stream."
+                "No named non-UFC scope artifact is staged in this snapshot."
             ),
         }
     else:
@@ -381,8 +383,8 @@ def _source_gaps(missing_optional: list[TableSpec]) -> pd.DataFrame:
             "severity": "info",
             "status": "loaded",
             "notes": (
-                "crossorg_fights.parquet is present; non-UFC bouts are merged into "
-                "the rating streams with per-fight caliber weights."
+                f"Named scope artifacts staged: {', '.join(loaded_scopes)}. The rating "
+                "run metadata decides which were admitted; no organization weight is used."
             ),
         }
     if "fightmatrix_bouts" in missing_table_names:

@@ -166,3 +166,25 @@ def test_virtual_games_are_unbiased_for_a_balanced_record():
 def test_negative_virtual_games_are_rejected():
     with pytest.raises(ValueError):
         run_whr(_chain_fights(), virtual_games=-1.0)
+
+
+def test_age_drift_is_explicit_and_auditable():
+    fights = _chain_fights(12)
+    with pytest.raises(ValueError, match="requires birth_dates"):
+        run_whr(fights, age_drift=True)
+
+    history = run_whr(
+        fights,
+        birth_dates={
+            "A": pd.Timestamp("1994-01-01"),
+            "B": pd.Timestamp("1984-01-01"),
+            "C": pd.Timestamp("1974-01-01"),
+        },
+        age_drift=True,
+    )
+
+    assert {"age_years", "prior_drift_elo_per_year"} <= set(history.columns)
+    assert history["age_years"].notna().all()
+    # The under-24 bin is the identifying baseline, never a youth bonus.
+    young = history[history["age_years"] < 24]
+    assert np.allclose(young["prior_drift_elo_per_year"], 0.0)

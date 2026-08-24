@@ -57,6 +57,17 @@ def test_every_fighter_survives_every_replicate():
     assert (out["replicates_present"] == out["replicates"]).all()
 
 
+def test_eligibility_gate_applies_to_point_and_replicate_ranks():
+    eligible = {"Best", "F0", "F1"}
+    board, draws = career_mass_bootstrap(
+        _fights(), replicates=4, seed=1,
+        eligible_fighters=eligible, return_draws=True,
+    )
+    assert set(board["fighter"]) <= eligible
+    assert set(draws.index) == set(board["fighter"])
+    assert "Thin" not in board["fighter"].tolist()
+
+
 def test_thin_evidence_gets_a_wider_rank_interval_than_a_long_career():
     out = career_mass_bootstrap(_fights(), replicates=16, seed=5).set_index("fighter")
     if "Thin" in out.index and "Best" in out.index:

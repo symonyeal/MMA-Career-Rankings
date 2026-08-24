@@ -24,10 +24,11 @@ def test_refresh_writes_board_artifacts_immediately_after_ratings(
         order.append("ratings")
         return {"current_fighters": 2, "history_rows": 3, "events_processed": 1}
 
-    def fake_boards(snapshot_dir, *, min_rating_periods):
+    def fake_boards(snapshot_dir, *, min_rating_periods, scope):
         order.append("boards")
         assert snapshot_dir == project_root / "data" / "snapshots" / "2026-08-20"
         assert min_rating_periods == 4
+        assert scope == "majors,pre_unified"
         return {
             "core_rating_col": "symon_career_skill_mass",
             "integrity_rating_col": "sustained_peak_mu_whr",
