@@ -927,13 +927,23 @@ earliest_event = fights.loc[fights["event_date"].idxmin(), "event_name"]
 fm_ufc = fm[fm["org"].astype(str).str.upper().eq("UFC")]
 fm_ufc_dates = pd.to_datetime(fm_ufc["event_date"], errors="coerce")
 
+excluded_path = SNAPSHOT / "_excluded_bouts.csv"
+excluded = pd.read_csv(excluded_path)
+excluded["event_date"] = pd.to_datetime(excluded["event_date"], errors="coerce")
+pre_unified = excluded[excluded["exclusion_reason"] == "pre_unified_rules"]
+pre_unified_bouts = int(len(pre_unified))
+pre_unified_events = int(pre_unified["event_name"].nunique())
+
 show(
-    f"The canonical set's first bout is **{window_opens:%Y-%m-%d}** — *{earliest_event}*. There is "
-    "no UFC event before it in the snapshot at all, so every UFC card before that date is missing. "
-    f"The FightMatrix cache alone carries UFC bouts back to **{fm_ufc_dates.min():%Y-%m-%d}**, "
-    f"{(window_opens - fm_ufc_dates.min()).days / 365.25:.1f} years earlier, and that cache is "
-    "itself a bounded cohort, so the true gap is wider. No cross-organisation ingest addresses "
-    "this, because the missing bouts are UFC bouts.\n\n"
+    f"The canonical set's first *rated* bout is **{window_opens:%Y-%m-%d}** — *{earliest_event}*. "
+    "The earlier cards are not missing from the repo: they are parsed and then deliberately "
+    f"excluded. `_excluded_bouts.csv` holds **{pre_unified_bouts} bouts over {pre_unified_events} "
+    f"events** ({pre_unified['event_date'].min():%Y-%m-%d} to "
+    f"{pre_unified['event_date'].max():%Y-%m-%d}) tagged `pre_unified_rules`, because "
+    "`loaders/ufcstats_loader.py` cuts the scope at the first event under the Unified Rules.\n\n"
+    "So this is a **stated scope boundary, not a data gap** — and its consequence was never "
+    "costed: the engine structurally cannot rank anyone whose career sat mostly before it, and no "
+    "cross-organisation ingest addresses that, because the excluded bouts are UFC bouts.\n\n"
     "Counted against the FightMatrix cache — used here purely as a **diagnostic** to size the "
     "hole, never to move a rating, and itself a bounded cohort so a zero means 'not cached' "
     f"rather than 'no such bouts' — its UFC rows start {fm_ufc_dates.min():%Y-%m-%d}. "
@@ -1106,11 +1116,12 @@ show(
     f"holds **{int(couture_missing['fm_bouts'])}** for him from "
     f"{pd.to_datetime(couture_missing['fm_from']):%Y-%m-%d}, of which "
     f"**{int(couture_missing['fm_bouts_before_window'])}** fall before the snapshot's window opens. "
-    f"About **{100*float(couture_missing['unseen_fraction']):.0f}%** of his career is invisible, "
-    "and it is the earliest third — the years before the ones the engine can see, in which every "
-    f"rated year he does have is already a decline. The six-promotion ingest recovers "
-    f"**{couture_added}** of the missing bouts, because they are UFC bouts from before "
-    f"*{earliest_event}* — the one gap the whole-sport scope does not address.\n\n"
+    f"About **{100*float(couture_missing['unseen_fraction']):.0f}%** of his career is outside the "
+    "scope, and it is the earliest third — the years before the ones the engine rates, in which "
+    "every rated year he does have is already a decline. The six-promotion ingest recovers "
+    f"**{couture_added}** of them, because they are not non-UFC bouts at all: they are UFC bouts "
+    f"held before the Unified Rules, sitting in `_excluded_bouts.csv` under `pre_unified_rules`. "
+    "No whole-sport scope reaches them — only a decision about that boundary does.\n\n"
     f"**H3 — real but small for him.** His peak is revised down {abs(couture_rev):.0f} points by "
     f"his own later results. Restored, his best year reaches {couture_trunc_peak:.0f} against a bar "
     f"of {couture_bar:.0f}: one thin contributing year.\n\n"
@@ -1146,12 +1157,16 @@ radius_w2x4 = es.blast_radius(base_board, sweep[sweep["w2_multiplier"] == 4.0].s
 defects = pd.DataFrame([
     {
         "#": 1,
-        "defect": f"Scope opens at {window_opens:%Y-%m-%d}; every earlier UFC card is absent",
-        "evidence": f"first rated bout is {earliest_event}; "
-                    f"{int(couture_missing['fm_bouts_before_window'])} of Couture's cached bouts precede it",
-        "recommended fix": "Ingest the earlier UFC cards into canonical_fights — the same loader on "
-                           "more events, not a new scope",
-        "blast radius": "not measured — the bouts are not in any table this repo holds",
+        "defect": f"The Unified-Rules boundary at {window_opens:%Y-%m-%d} makes a whole generation "
+                  "unrankable, and the board does not say so",
+        "evidence": f"{pre_unified_bouts} bouts over {pre_unified_events} events are parsed and "
+                    f"excluded as `pre_unified_rules`; {int(couture_missing['fm_bouts_before_window'])} "
+                    "of Couture's cached bouts fall inside that window",
+        "recommended fix": "A decision, not a patch — either keep the boundary and label the board "
+                           "'Unified-Rules era', or let pre-unified bouts inform the rating while "
+                           "staying out of the presentation",
+        "blast radius": f"{pre_unified_bouts} bouts / {pre_unified_events} events already on disk in "
+                        "`_excluded_bouts.csv`; effect on the board not measured",
     },
     {
         "#": 2,
