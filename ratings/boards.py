@@ -204,6 +204,7 @@ def completeness_gated_board(
     *,
     rating_col: str = "sustained_peak_headline_mu_whr",
     min_rating_periods: int = 5,
+    eligibility_override: pd.Series | None = None,
     completeness: pd.Series | None = None,
     min_completeness: float = 0.8,
     unranked_at_or_below: float | None = None,
@@ -237,7 +238,12 @@ def completeness_gated_board(
     rated = pd.to_numeric(board[rating_col], errors="coerce")
 
     status = pd.Series("ranked", index=board.index, dtype=object)
-    status[periods < min_rating_periods] = (
+    eligible_periods = periods >= min_rating_periods
+    if eligibility_override is not None:
+        override = eligibility_override.reindex(board.index).fillna(False).astype(bool)
+        eligible_periods = eligible_periods | override
+        board["eligibility_override"] = override
+    status[~eligible_periods] = (
         f"insufficient observed history to rank (< {min_rating_periods} rating periods)")
     status[rated.isna()] = "insufficient observed history to rank (no qualifying period score)"
     if completeness is not None:

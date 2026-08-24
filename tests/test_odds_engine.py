@@ -279,6 +279,9 @@ def test_rate_snapshot_produces_lean_core_without_odds(tmp_path: Path):
     for stream in _EXPECTED_STREAMS:
         assert f"mu_{stream}" in current.columns
     assert "symon_career_skill_mass" in current.columns
+    assert "public_legacy_score" in current.columns
+    assert "public_legacy_title_score" in current.columns
+    assert "public_legacy_schedule_score" in current.columns
     assert "symon_prime_score" in current.columns
     assert "symon_peak_score" in current.columns
     for retired in (
@@ -312,6 +315,7 @@ def test_rate_snapshot_with_odds_keeps_market_as_an_audit_only(tmp_path: Path):
 
     assert summary["odds_covered_fights"] >= 2
     assert "symon_career_skill_mass" in current.columns
+    assert "public_legacy_score" in current.columns
     assert "mu_method_performance" not in current.columns
     perf = pd.read_parquet(snap / "performance_appearances.parquet")
     for col in ["perf_factor_rank_context", "perf_factor_championship", "perf_factor_p4p", "perf_factor_weight_class"]:

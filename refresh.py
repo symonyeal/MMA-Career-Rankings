@@ -140,7 +140,9 @@ def append_changelog(project_root: Path, snapshot_date: str, counts: dict[str, i
     top_line = "; ".join(f"{row.fighter} {getattr(row, headline_col):.1f}" for row in top.itertuples(index=False))
     from ratings.constants import rating_label
     headline_label = (
-        "Career Skill Mass"
+        "Public Legacy Score"
+        if headline_col == "public_legacy_score"
+        else "Career Skill Mass"
         if headline_col == "symon_career_skill_mass"
         else rating_label(headline_col)
     )
@@ -152,7 +154,7 @@ def append_changelog(project_root: Path, snapshot_date: str, counts: dict[str, i
         f"- Ratings and dominance produced: fighters_rated={ratings_summary['current_fighters']}, fighter_event_rows={ratings_summary['history_rows']}, events_processed={ratings_summary['events_processed']}.",
         "- Streams: canonical Glicko-2 filter + WHR smoother over the same binary W/L/D evidence, "
         "plus a method-scored research diagnostic.",
-        "- Public scores: Career Skill Mass over the WHR trajectory; fixed 10-year Prime and 5-year Peak windows.",
+        "- Public scores: Public Legacy Score (exposure-adjusted Career Skill Mass plus an organization-evaluated championship resume ledger); fixed 10-year Prime and 5-year Peak windows.",
         "- Audit layers (integrity, dominance, odds, opponent context) do not enter the rating likelihood.",
         f"- Top 10 by {headline_label}: {top_line}",
     ]

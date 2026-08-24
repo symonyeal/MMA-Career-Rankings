@@ -7,11 +7,11 @@ Side-specific performance/integrity sleeves and the era premium are not
 production ratings: they either fail to define one paired likelihood or add a
 scenario assumption that bout outcomes cannot identify.
 
-The public career functional is Symon Career Skill Mass: the sum of positive
+The skill career functional is Symon Career Skill Mass: the sum of positive
 annual WHR skill above that year's global contender line, with at most one
-contribution per active year. Five- and ten-year Symon scores are separate peak diagnostics.
-Legacy period tables remain temporarily for compatibility, never as the public
-All-time definition.
+contribution per active year. The public legacy board adds a separate,
+auditable championship resume ledger on top of that skill mass. Five- and
+ten-year Symon scores are separate peak diagnostics.
 """
 from __future__ import annotations
 
@@ -49,6 +49,7 @@ from ratings.symon_score import (
     symon_peak_score,
     symon_prime_score,
 )
+from ratings.legacy_resume import public_legacy_score_rows
 from ratings.whr import run_whr
 from ratings.age import load_birth_dates
 from ratings.performance_adjustment import build_performance_appearances
@@ -125,6 +126,17 @@ def _career_columns(table: pd.DataFrame) -> pd.DataFrame:
     )
 
 
+def _source_fights_for_public_resume(snapshot_dir: Path, scope: str) -> pd.DataFrame:
+    fights = pd.read_parquet(snapshot_dir / "canonical_fights.parquet")
+    fights["org_weight"] = 1.0
+    if "source" not in fights.columns:
+        fights["source"] = "ufc"
+    fights = merge_scope(fights, snapshot_dir, scope=scope, label="resume")
+    if "is_excluded" in fights.columns:
+        fights = fights[~fights["is_excluded"].fillna(False).astype(bool)].copy()
+    return fights
+
+
 def refresh_career_columns(
     snapshot_dir: Path,
     *,
@@ -137,11 +149,25 @@ def refresh_career_columns(
     current_path = snapshot_dir / "ratings_current.parquet"
     current = pd.read_parquet(current_path)
     current = current.drop(
-        columns=[c for c in current.columns if c.startswith("symon_career_")],
+        columns=[
+            c for c in current.columns
+            if c.startswith("symon_career_") or c.startswith("public_legacy_")
+        ],
         errors="ignore",
     )
     current = current.merge(
         _career_columns(career_skill_mass(history, reference=reference)),
+        on="fighter",
+        how="left",
+    )
+    appearances_path = snapshot_dir / "performance_appearances.parquet"
+    appearances = pd.read_parquet(appearances_path) if appearances_path.exists() else pd.DataFrame()
+    current = current.merge(
+        public_legacy_score_rows(
+            current,
+            appearances,
+            source_fights=_source_fights_for_public_resume(snapshot_dir, scope),
+        ),
         on="fighter",
         how="left",
     )
@@ -490,6 +516,12 @@ def run(
         )
         current = current.merge(renamed, on="fighter", how="left")
 
+    current = current.merge(
+        public_legacy_score_rows(current, perf_app, source_fights=rated_fights),
+        on="fighter",
+        how="left",
+    )
+
     current = _attach_record(current, rated_fights)
     current = _attach_recent_division_gender(current, rated_fights)
     current = _attach_activity_adjusted_mu(current, rated_fights["event_date"].max())
@@ -602,17 +634,27 @@ def run(
     print(f"odds-covered fights (ok-quality rows): {cov_rows}")
 
     print(
-        "headline = Symon Career Skill Mass over binary, age-aware WHR; "
-        "Prime and Peak are separate diagnostics."
+        "headline = Public Legacy Score: exposure-adjusted Career Skill Mass "
+        "plus a transparent championship resume ledger; Prime and Peak are "
+        "separate diagnostics."
     )
     _print_top(
         current,
-        rating_col="symon_career_skill_mass",
+        rating_col="public_legacy_score",
         extra_cols=[
-            "symon_career_contributing_years", "symon_career_peak_year_excess",
-            "symon_prime_score", "symon_peak_score", "career_division", "rating_periods",
+            "public_legacy_skill_mass",
+            "public_legacy_skill_score",
+            "public_legacy_exposure_factor",
+            "public_legacy_title_score",
+            "public_legacy_schedule_score",
+            "public_legacy_title_wins",
+            "public_legacy_title_defenses",
+            "public_legacy_title_win_divisions",
+            "symon_prime_score",
+            "career_division",
+            "rating_periods",
         ],
-        title="HEADLINE — Top 25 by Symon Career Skill Mass",
+        title="HEADLINE - Top 25 by Public Legacy Score",
         n=25, min_fights=0,
     )
     _print_top(

@@ -21,6 +21,7 @@ def _current() -> pd.DataFrame:
             "fighter": ["Alice", "Bob", "Carl"],
             "rating_periods": [3, 3, 1],
             # Deliberately a different order from WHR to catch unit mixing.
+            "public_legacy_score": [25.0, 35.0, 45.0],
             "symon_career_skill_mass": [20.0, 30.0, 40.0],
             "mu_whr": [1600.0, 1550.0, 1700.0],
             "sustained_peak_headline_mu_whr_integrity_performance": [9000.0, 8000.0, 7000.0],
@@ -30,11 +31,19 @@ def _current() -> pd.DataFrame:
 
 def test_board_score_selection_is_lean_and_has_safe_fallbacks():
     current = _current()
-    assert build_boards.select_core_rating_col(current) == "symon_career_skill_mass"
+    assert build_boards.select_core_rating_col(current) == "public_legacy_score"
     assert build_boards.select_integrity_rating_col(current) == "mu_whr"
 
+    without_legacy = current.drop(columns="public_legacy_score")
+    assert build_boards.select_core_rating_col(without_legacy) == "symon_career_skill_mass"
+
     without_symon = current.drop(columns="symon_career_skill_mass")
-    assert build_boards.select_core_rating_col(without_symon) == "mu_whr"
+    assert build_boards.select_core_rating_col(without_symon) == "public_legacy_score"
+
+    without_legacy_or_symon = current.drop(
+        columns=["public_legacy_score", "symon_career_skill_mass"]
+    )
+    assert build_boards.select_core_rating_col(without_legacy_or_symon) == "mu_whr"
 
     current_mu_only = current[["fighter", "mu_whr"]]
     assert build_boards.select_core_rating_col(current_mu_only) == "mu_whr"
@@ -93,7 +102,7 @@ def test_write_board_artifacts_separates_core_score_from_integrity_units(
         out_dir=output,
     )
 
-    assert summary["core_rating_col"] == "symon_career_skill_mass"
+    assert summary["core_rating_col"] == "public_legacy_score"
     assert seen_scope == ["majors,pre_unified"]
     assert summary["integrity_rating_col"] == "mu_whr"
     assert summary["ledger_rows"] == 1
@@ -151,12 +160,12 @@ def test_gated_board_withholds_a_rank_at_the_score_floor():
         {
             "fighter": ["Alice", "Bob", "Carl", "Dana"],
             "rating_periods": [20, 20, 20, 2],
-            "symon_career_skill_mass": [180.0, 0.0, 0.0, 0.0],
+            "public_legacy_score": [180.0, 0.0, 0.0, 0.0],
         }
     )
     gated = completeness_gated_board(
         current,
-        rating_col="symon_career_skill_mass",
+        rating_col="public_legacy_score",
         min_rating_periods=5,
         unranked_at_or_below=0.0,
     )
@@ -172,10 +181,34 @@ def test_gated_board_withholds_a_rank_at_the_score_floor():
     # Without the floor the board keeps its old behaviour for scores that have
     # no such floor, and the tied zeros share one place rather than vanishing.
     ungated = completeness_gated_board(
-        current, rating_col="symon_career_skill_mass", min_rating_periods=5
+        current, rating_col="public_legacy_score", min_rating_periods=5
     )
     tied = ungated[ungated["fighter"].isin(["Bob", "Carl"])]["rank"]
     assert tied.nunique() == 1
+
+
+def test_public_legacy_title_resume_can_override_generic_period_floor():
+    current = pd.DataFrame(
+        {
+            "fighter": ["Champion", "Prospect"],
+            "rating_periods": [10, 10],
+            "public_legacy_score": [1000.0, 1100.0],
+            "public_legacy_title_wins": [3, 0],
+            "public_legacy_title_defenses": [1, 0],
+            "public_legacy_ufc_bouts": [10, 10],
+        }
+    )
+    override = build_boards.public_legacy_eligibility_override(current)
+    gated = completeness_gated_board(
+        current,
+        rating_col="public_legacy_score",
+        min_rating_periods=13,
+        eligibility_override=override,
+    )
+    status = dict(zip(gated["fighter"], gated["status"]))
+
+    assert status["Champion"] == "ranked"
+    assert status["Prospect"].startswith("insufficient observed history")
 
 
 def test_integrity_rank_change_is_zero_when_nothing_was_debited():

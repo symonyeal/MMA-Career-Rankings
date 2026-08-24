@@ -33,6 +33,7 @@ from ratings.scope import DEFAULT_PUBLISHED_SCOPE
 # but the integrity debit is denominated in rating points.  Until a debit is
 # defined in rating-point-years, keep that judgement on a base WHR point scale.
 CORE_RATING_CANDIDATES = (
+    "public_legacy_score",
     "symon_career_skill_mass",
     "mu_whr",
 )
@@ -45,6 +46,7 @@ INTEGRITY_RATING_CANDIDATES = (
 # so zero is an abstention and every fighter sitting on it is tied, not ordered.
 # Base WHR mu has no such floor and must not appear here.
 RATING_FLOOR_IS_UNRANKED = {
+    "public_legacy_score": 0.0,
     "symon_career_skill_mass": 0.0,
 }
 
@@ -75,6 +77,28 @@ def select_integrity_rating_col(current: pd.DataFrame) -> str:
         current,
         INTEGRITY_RATING_CANDIDATES,
         board_name="integrity-discounted board",
+    )
+
+
+def public_legacy_eligibility_override(current: pd.DataFrame) -> pd.Series:
+    """Let proven UFC title resumes rank before the generic 13-period floor."""
+    idx = current.index
+    periods = pd.to_numeric(current.get("rating_periods", pd.Series(0, index=idx)), errors="coerce").fillna(0)
+    score = pd.to_numeric(current.get("public_legacy_score", pd.Series(0, index=idx)), errors="coerce").fillna(0)
+    title_wins = pd.to_numeric(
+        current.get("public_legacy_title_wins", pd.Series(0, index=idx)), errors="coerce"
+    ).fillna(0)
+    title_defenses = pd.to_numeric(
+        current.get("public_legacy_title_defenses", pd.Series(0, index=idx)), errors="coerce"
+    ).fillna(0)
+    ufc_bouts = pd.to_numeric(
+        current.get("public_legacy_ufc_bouts", pd.Series(0, index=idx)), errors="coerce"
+    ).fillna(0)
+    return (
+        periods.ge(8)
+        & ufc_bouts.ge(8)
+        & score.gt(0)
+        & (title_wins.ge(3) | (title_wins.ge(2) & title_defenses.ge(1)))
     )
 
 
@@ -126,10 +150,16 @@ def write_board_artifacts(
     integrity_col = _requested_integrity_rating_col(current, integrity_rating_col)
     ledger = integrity_ledger(appearances, fights)
     board = integrity_discounted_board(current, ledger, rating_col=integrity_col)
+    eligibility_override = (
+        public_legacy_eligibility_override(current)
+        if core_col == "public_legacy_score"
+        else None
+    )
     gated = completeness_gated_board(
         current,
         rating_col=core_col,
         min_rating_periods=min_rating_periods,
+        eligibility_override=eligibility_override,
         unranked_at_or_below=RATING_FLOOR_IS_UNRANKED.get(core_col),
     )
 
@@ -156,6 +186,10 @@ def write_board_artifacts(
         "withheld_fighters": int((~gated["status"].eq("ranked")).sum()) if len(gated) else 0,
         "unranked_at_floor": (
             int(gated["status"].eq(UNRANKED_AT_FLOOR_STATUS).sum()) if len(gated) else 0
+        ),
+        "eligibility_overrides": (
+            int(gated.get("eligibility_override", pd.Series(False, index=gated.index)).sum())
+            if len(gated) else 0
         ),
     }
 

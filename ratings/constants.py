@@ -54,6 +54,7 @@ SUSTAINED_PEAK_MIN_FIGHTS: int = 13
 # sentence-case product names so reports and notebooks do not leak model jargon.
 
 RATING_COLUMN_LABELS: dict[str, str] = {
+    "public_legacy_score":                                      "Public Legacy",
     "sustained_peak_headline_mu_canonical":                       "Prime Wins",
     "sustained_peak_headline_mu_method":                          "Prime Finishes",
     "sustained_peak_headline_mu_method_integrity":                "Prime Clean",
