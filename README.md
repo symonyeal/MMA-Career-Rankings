@@ -8,16 +8,160 @@ mixed together:
 2. How much high-level skill did the fighter sustain across a career?
 3. Which data-quality or integrity policies should change what is displayed?
 
-The full design and 2026-08-20 audit are in
-[Principled Core Evolution](docs/PRINCIPLED_CORE_EVOLUTION_2026-08-20.md), and
-the follow-up pass — the prior-mass defect, the retired period scores, and the
-bootstrap rank intervals — is in
-[Prior Mass and Uncertainty](docs/PRIOR_MASS_AND_UNCERTAINTY_2026-08-20.md).
-The forward plan — whole-sport scope, evidence precision, era depth, and the
-Single-Entry principle that separates this engine from points-stacking systems —
-is in [Whole-Sport Engine](docs/PLAN_WHOLE_SPORT_ENGINE_2026-08-21.md).
-The final scope/bar/age pass and top-100 evaluation are summarized in
-[Final Outcome](docs/OUTCOME_2026-08-24.md).
+The design record, newest first. Each entry states what it settled, so nothing
+below is a summary of something else:
+
+| Document | What it settled |
+|---|---|
+| [Board and identification](docs/BOARD_AND_IDENTIFICATION_2026-08-25.md) | The current score contract: per-opponent title pricing, age decline projected through inactivity, and the two limits that gate the next scoring change |
+| [Cohesive engine pass](docs/COHESIVE_ENGINE_PASS_2026-08-25.md) | One deduped model-input table, `combined_fights.parquet` |
+| [Final outcome](docs/OUTCOME_2026-08-24.md) | Scope, career bar, age prior, and the top-100 evaluation |
+| [Whole-sport engine](docs/PLAN_WHOLE_SPORT_ENGINE_2026-08-21.md) | Whole-sport scope, era depth, and the Single-Entry principle that separates this engine from points-stacking systems |
+| [Prior mass and uncertainty](docs/PRIOR_MASS_AND_UNCERTAINTY_2026-08-20.md) | The prior-mass defect, retired period scores, bootstrap rank intervals |
+| [Principled core evolution](docs/PRINCIPLED_CORE_EVOLUTION_2026-08-20.md) | The original core design and audit |
+
+## All-time top 100
+
+Snapshot `2026-08-13`, scope `majors,pre_unified`, 67,920 rated bouts. The
+published score is **Public Legacy Score**, and it is the sum of three
+components, each divided by its own observed maximum and scaled to 1000 — so the
+three columns below add back to the total, and no exchange rate between them was
+hand-set:
+
+- **Skill** — Career Skill Mass, the years-above-the-field functional defined
+  under [The Core](#the-core), multiplied by an organisation-exposure factor.
+- **Title** — every title win priced by the opponent actually beaten: their
+  pre-fight rating against the contender line of their own division and year.
+- **Schedule** — wins over ranked opposition, on the same exposure factor.
+
+Three things this table does **not** claim:
+
+1. **The numbering is score order, not a separation claim.** The board's only
+   ordering claim is its tier boundaries; see [Rank uncertainty](#rank-uncertainty).
+2. **Careers far from the tested UFC core are pinned far less precisely.** The
+   interval on a mostly-external career can exceed its own published score,
+   against roughly 1% for Jon Jones. The measurement and its consequences are in
+   [Board and identification](docs/BOARD_AND_IDENTIFICATION_2026-08-25.md).
+3. **A fighter absent from this table is not ranked 101st.** Insufficient
+   history and a zero score are both abstentions, reported as such.
+4. **A `Skill` of 0.0 is an abstention too, not a measurement of no skill.**
+   Career Skill Mass counts only years spent above the annual contender line, so
+   zero means no year cleared that bar. Twelve of these hundred sit there. For
+   the women's classes it is also a **known defect**: men's and women's bouts
+   form separate rating components, and a sport-wide bar is not invariant to the
+   unidentified offset between them — which is why the bar is going to become
+   component-scoped. Weili, Namajunas, Andrade, Peña and Vieira rank here on
+   resume alone as a result.
+
+<!-- BOARD:TOP100:BEGIN -->
+
+| # | Fighter | Score | Skill | Title | Schedule |
+| ---: | --- | ---: | ---: | ---: | ---: |
+| 1 | Jon Jones | 2849.1 | 1000.0 | 1000.0 | 849.1 |
+| 2 | Georges St-Pierre | 2267.1 | 770.1 | 496.9 | 1000.0 |
+| 3 | Daniel Cormier | 1616.7 | 520.9 | 551.3 | 544.4 |
+| 4 | Alexander Volkanovski | 1518.0 | 495.2 | 418.2 | 604.5 |
+| 5 | Matt Hughes | 1501.0 | 188.1 | 828.7 | 484.2 |
+| 6 | Randy Couture | 1430.5 | 72.4 | 551.2 | 806.8 |
+| 7 | Stipe Miocic | 1370.9 | 276.0 | 612.2 | 482.7 |
+| 8 | Islam Makhachev | 1346.7 | 551.8 | 604.5 | 190.4 |
+| 9 | Anderson Silva | 1320.8 | 300.4 | 435.8 | 584.7 |
+| 10 | Demetrious Johnson | 1266.4 | 221.1 | 474.1 | 571.2 |
+| 11 | Amanda Nunes | 1259.2 | 118.5 | 361.3 | 779.4 |
+| 12 | Jose Aldo | 1242.4 | 347.9 | 429.0 | 465.4 |
+| 13 | Fedor Emelianenko | 1204.8 | 464.6 | 636.0 | 104.2 |
+| 14 | Chuck Liddell | 1049.4 | 291.2 | 184.9 | 573.3 |
+| 15 | Max Holloway | 1038.9 | 143.4 | 152.3 | 743.1 |
+| 16 | Francis Ngannou | 1034.3 | 294.7 | 286.3 | 453.3 |
+| 17 | Valentina Shevchenko | 978.8 | 36.3 | 142.9 | 799.6 |
+| 18 | Tito Ortiz | 961.6 | 150.0 | 494.3 | 317.3 |
+| 19 | Cain Velasquez | 943.8 | 174.7 | 258.6 | 510.5 |
+| 20 | Justin Gaethje | 935.7 | 216.7 | 274.9 | 444.1 |
+| 21 | Khabib Nurmagomedov | 925.9 | 489.4 | 214.5 | 221.9 |
+| 22 | Patricio Freire | 923.4 | 268.1 | 431.6 | 223.7 |
+| 23 | BJ Penn | 919.9 | 92.8 | 291.4 | 535.7 |
+| 24 | Dominick Cruz | 908.1 | 229.8 | 366.3 | 312.0 |
+| 25 | Ilia Topuria | 900.0 | 238.7 | 366.6 | 294.8 |
+| 26 | Lyoto Machida | 894.4 | 328.2 | 173.6 | 392.7 |
+| 27 | Aljamain Sterling | 875.5 | 145.0 | 215.9 | 514.6 |
+| 28 | Ryan Bader | 837.8 | 250.4 | 113.3 | 474.1 |
+| 29 | Merab Dvalishvili | 833.1 | 105.1 | 256.3 | 471.6 |
+| 30 | Dan Henderson | 791.8 | 416.7 | 58.6 | 316.5 |
+| 31 | Charles Oliveira | 790.5 | 106.8 | 71.4 | 612.3 |
+| 32 | Alex Pereira | 783.8 | 64.7 | 271.0 | 448.0 |
+| 33 | Rashad Evans | 781.1 | 167.4 | 45.7 | 567.9 |
+| 34 | Junior Dos Santos | 772.7 | 182.7 | 156.3 | 433.7 |
+| 35 | Jessica Andrade | 762.8 | 0.0 | 14.1 | 748.7 |
+| 36 | Frankie Edgar | 745.5 | 99.7 | 47.9 | 597.8 |
+| 37 | Rose Namajunas | 737.4 | 0.0 | 88.9 | 648.5 |
+| 38 | Israel Adesanya | 734.8 | 62.7 | 238.7 | 433.3 |
+| 39 | Kamaru Usman | 732.2 | 240.8 | 88.0 | 403.3 |
+| 40 | Fabricio Werdum | 728.2 | 131.1 | 109.5 | 487.6 |
+| 41 | Zhang Weili | 688.6 | 0.0 | 57.8 | 630.8 |
+| 42 | Benson Henderson | 685.5 | 168.1 | 238.4 | 279.0 |
+| 43 | Tim Sylvia | 684.1 | 105.5 | 231.8 | 346.8 |
+| 44 | Henry Cejudo | 676.2 | 22.1 | 233.8 | 420.2 |
+| 45 | Vadim Nemkov | 663.0 | 228.8 | 277.7 | 156.6 |
+| 46 | Josh Barnett | 661.7 | 421.4 | 66.8 | 173.4 |
+| 47 | Michael Chandler | 660.3 | 129.2 | 297.9 | 233.1 |
+| 48 | Dricus Du Plessis | 650.6 | 215.0 | 139.2 | 296.3 |
+| 49 | Frank Mir | 638.6 | 5.9 | 225.9 | 406.9 |
+| 50 | Petr Yan | 632.5 | 77.8 | 190.1 | 364.5 |
+| 51 | Chris Weidman | 624.6 | 71.2 | 138.8 | 414.7 |
+| 52 | Wanderlei Silva | 620.1 | 255.6 | 306.2 | 58.3 |
+| 53 | Ronda Rousey | 612.8 | 101.7 | 127.4 | 383.7 |
+| 54 | TJ Dillashaw | 612.1 | 0.0 | 46.1 | 565.9 |
+| 55 | Eddie Alvarez | 593.8 | 145.8 | 195.3 | 252.7 |
+| 56 | Andrei Arlovski | 585.4 | 40.3 | 109.4 | 435.7 |
+| 57 | Joseph Benavidez | 576.4 | 140.2 | 0.0 | 436.1 |
+| 58 | Quinton Jackson | 573.7 | 116.8 | 120.9 | 336.0 |
+| 59 | Mauricio Rua | 567.3 | 154.2 | 203.3 | 209.8 |
+| 60 | Antonio Rodrigo Nogueira | 561.7 | 369.8 | 24.1 | 167.8 |
+| 61 | Vitor Belfort | 558.1 | 132.0 | 44.9 | 381.2 |
+| 62 | Tyron Woodley | 544.0 | 47.4 | 59.6 | 437.0 |
+| 63 | Anthony Pettis | 539.5 | 30.6 | 283.1 | 225.8 |
+| 64 | Joanna Jedrzejczyk | 531.1 | 2.3 | 26.7 | 502.1 |
+| 65 | Sean Sherk | 525.2 | 243.8 | 41.7 | 239.8 |
+| 66 | Cristiane Justino | 519.4 | 388.7 | 67.1 | 63.6 |
+| 67 | Dustin Poirier | 513.0 | 95.7 | 100.3 | 317.0 |
+| 68 | Leon Edwards | 500.4 | 20.8 | 139.4 | 340.2 |
+| 69 | Mark Coleman | 495.0 | 38.9 | 444.6 | 11.5 |
+| 70 | Conor McGregor | 492.2 | 31.9 | 190.1 | 270.2 |
+| 71 | Rich Franklin | 484.4 | 96.4 | 41.4 | 346.5 |
+| 72 | Gegard Mousasi | 481.9 | 187.6 | 119.8 | 174.5 |
+| 73 | Ciryl Gane | 480.5 | 191.3 | 106.5 | 182.8 |
+| 74 | Kyoji Horiguchi | 477.6 | 278.1 | 91.4 | 108.1 |
+| 75 | Katlyn Cerminara | 477.5 | 0.0 | 0.0 | 477.5 |
+| 76 | Donald Cerrone | 474.6 | 71.4 | 0.0 | 403.2 |
+| 77 | Matt Serra | 458.9 | 0.0 | 370.5 | 88.4 |
+| 78 | Anthony Johnson | 452.5 | 102.4 | 0.0 | 350.2 |
+| 79 | Deiveson Figueiredo | 451.1 | 5.7 | 38.6 | 406.8 |
+| 80 | Julianna Pena | 447.9 | 0.0 | 108.9 | 339.1 |
+| 81 | Luke Rockhold | 447.4 | 46.5 | 73.9 | 327.0 |
+| 82 | Ketlen Vieira | 431.1 | 0.0 | 0.0 | 431.1 |
+| 83 | Brandon Moreno | 429.7 | 0.0 | 65.4 | 364.3 |
+| 84 | Phil Davis | 426.9 | 201.3 | 35.7 | 189.9 |
+| 85 | A.J. McKee | 420.9 | 269.1 | 69.4 | 82.4 |
+| 86 | Yaroslav Amosov | 419.9 | 304.8 | 95.3 | 19.8 |
+| 87 | Johnny Eblen | 418.1 | 217.3 | 107.9 | 92.9 |
+| 88 | Urijah Faber | 416.3 | 119.4 | 7.9 | 289.0 |
+| 89 | Rafael Dos Anjos | 405.3 | 0.0 | 54.5 | 350.9 |
+| 90 | Robbie Lawler | 398.8 | 15.6 | 59.8 | 323.4 |
+| 91 | Seika Izawa | 396.2 | 138.3 | 0.0 | 257.8 |
+| 92 | Forrest Griffin | 395.1 | 26.4 | 107.6 | 261.1 |
+| 93 | Usman Nurmagomedov | 392.3 | 273.0 | 116.4 | 2.9 |
+| 94 | Sean Strickland | 388.9 | 8.6 | 168.7 | 211.7 |
+| 95 | Yoel Romero | 386.0 | 22.5 | 0.0 | 363.5 |
+| 96 | Robert Whittaker | 385.8 | 0.0 | 36.8 | 349.0 |
+| 97 | Frank Shamrock | 382.2 | 19.4 | 362.8 | 0.0 |
+| 98 | Pedro Rizzo | 375.2 | 117.6 | 0.0 | 257.7 |
+| 99 | Sergio Pettis | 365.5 | 0.0 | 163.3 | 202.2 |
+| 100 | Ben Askren | 364.2 | 188.5 | 116.8 | 58.9 |
+
+<!-- BOARD:TOP100:END -->
+
+Regenerate this table from a rebuilt snapshot with `build_boards.py
+--write-readme`; see [Rebuild](#rebuild).
 
 ## The Core
 
@@ -30,8 +174,10 @@ winner and loser share the same bout weight:
 \]
 
 The published scope is `majors,pre_unified`: UFCStats plus the six-promotion
-Sherdog corpus and UFC 1-27. Every admitted bout has \(\omega_b=1\). Two
-estimators read the same evidence:
+Sherdog corpus and UFC 1-27. The selected scope is materialized as
+`combined_fights.parquet`, preserving source-specific columns while enforcing
+one bout fingerprint and one dedupe policy. Every admitted production bout has
+\(\omega_b=1\). Two estimators read the same evidence:
 
 - **Skill filter**: causal Glicko-2 for one-step-ahead validation and current
   skill.
@@ -65,7 +211,14 @@ refit under that curve; an unknown birth date retains zero drift. On the held-ou
 age panel this improves log loss by **0.00382** overall and **0.00965** for bouts
 involving a fighter over 35.
 
-The public all-time score is **Symon Career Skill Mass**:
+The same learned curve is projected forward through inactivity, so a rating does
+not sit frozen at its last fitted appearance through a long layoff. That
+projection improves held-out log loss by a further **0.00101**
+([−0.00190, −0.00025]), and it moves the current-skill view only — the all-time
+board is never decayed.
+
+The career functional underneath the public board is **Symon Career Skill
+Mass**:
 
 \[
 C_i=\sum_{y\in A_i}
@@ -76,6 +229,13 @@ It contributes at most once per active calendar year. Peak height, losses,
 opponent strength, activity, and longevity therefore enter through the latent
 rating history without adding opponent rank, title, streak, or activity points
 a second time.
+
+Career Skill Mass is a **skill diagnostic, not the published board**. Selecting
+it directly is what put three lightly-tested external careers in the all-time
+top ten: it backfills whole-career evidence into earlier years, so a clean
+low-loss record in a less-tested circuit accumulates above-bar years as though
+the resume question had been answered. The published board wraps it in the
+exposure factor and the two resume components above.
 
 The published yearly bar is `contender:60`: the top decile while a field has
 fewer than 600 fighter-years, capped at the 60th-best level thereafter. This
@@ -127,16 +287,15 @@ fixed.
 
 ## Public Ranking Views
 
-| View | Definition | Unit |
+| View | Column | Definition |
 |---|---|---|
-| All-time | Career Skill Mass | rating-points-years above the annual field |
-| Prime | Best fixed 10-year WHR mean, at least 13 appearances, EB-shrunk | rating points |
-| Peak | Best fixed 5-year WHR mean, at least 8 appearances, EB-shrunk | rating points |
-| Current skill | Latest base WHR state | rating points |
+| All-time | `public_legacy_score` | Exposure-adjusted Career Skill Mass, per-opponent title quality, and ranked-opponent wins, each value-normalised |
+| Prime | `symon_prime_score` | Best fixed 10-year WHR mean, at least 13 appearances, EB-shrunk |
+| Current skill | `mu_whr_age_activity_adjusted` | Latest WHR state with the learned age curve projected to the snapshot date |
 
-Prime and Peak are diagnostics; neither feeds back into All-time. Their
-windows and eligibility gates are fixed so the public leaderboard cannot be
-rank-shopped with sliders.
+Prime is a separate view and does not feed back into All-time. Career Skill Mass
+(`symon_career_skill_mass`) is published as a diagnostic column beside them, and
+is never the board.
 
 ## What Is Not in the Core
 
@@ -149,10 +308,11 @@ rank-shopped with sliders.
 - **Era strength** is neutral by default. A common era offset is not
   identifiable from within-era bout outcomes; any modern-depth premium must be
   labelled as an external scenario.
-- **Cross-organization history** is quarantined from production. The current
-  experimental weights use eventual UFC-career information and cannot support
-  a prequential accuracy claim until they are recomputed inside each cutoff or
-  replaced by outcome-independent source reliability.
+- **FightMatrix ranked-cohort history and organisation weights** are
+  diagnostics. The published whole-sport scope uses the named major-promotion
+  corpus, but production still gives every admitted bout unit evidence weight.
+  Candidate org weights are evaluated by `build_org_strength_audit.py`, not
+  hard-coded into the model.
 
 Former `method_*_performance`, `method_*_integrity`, and
 `whr_integrity_performance` production streams are retired. The WHR solver also
@@ -160,11 +320,11 @@ rejects side-specific winner/loser likelihood weights because they do not form
 one joint posterior.
 
 The rolling opponent-quality period scores (`sustained_peak_*`,
-`five_year_peak_*`) were retired on 2026-08-20 along with their era/division
-normaliser. They re-counted opponent quality, title status, activity volume and
-era position on top of a rating that already reflects all four, and needed about
-twenty hand-set constants to do it. Opponent context survives only where it
-answers a different question: `ratings/appearance_context.py` feeds the
+`five_year_peak_*`) and the public `symon_peak_score` output are retired. The
+old rolling scores re-counted opponent quality, title status, activity volume
+and era position on top of a rating that already reflects all four, and needed
+about twenty hand-set constants to do it. Opponent context survives only where
+it answers a different question: `ratings/appearance_context.py` feeds the
 division resume boards.
 
 ## Notebook
@@ -218,8 +378,9 @@ a ranked defect list. Its expensive refits cache to
 
 The standard local snapshot is `data/snapshots/2026-08-13`:
 
-- 8,479 rated UFC fights;
-- 2,554 fighters;
+- 68,415 combined fight rows, 67,920 model bouts;
+- 28,867 fighters in the whole-sport scope;
+- 0 duplicate bout fingerprints after scope guard;
 - UFCStats/Greco fight and round data;
 - optional UFC-DataLab, mdabbert odds, and FightMatrix comparison artifacts.
 
@@ -244,8 +405,20 @@ python refresh.py --snapshot-date 2026-08-13 \
 Rebuild only ratings and the three standard board artifacts:
 
 ```bash
-python -m ratings.rate_snapshot --snapshot-dir "data/snapshots/2026-08-13"
-python build_boards.py "data/snapshots/2026-08-13"
+python -m ratings.rate_snapshot --snapshot-dir "data/snapshots/2026-08-13" --scope majors,pre_unified
+python build_boards.py "data/snapshots/2026-08-13" --scope majors,pre_unified --write-readme
+```
+
+`--write-readme` rewrites the block between the `BOARD:TOP100` markers in this
+README from the board it just built, so the published table cannot drift away
+from the artifacts. It is opt-in; without it the boards are written and the
+README is left alone. Snapshots are not committed, so that table is the only
+published form of the board.
+
+Audit candidate organisation weights against the top-100 sanity panel:
+
+```bash
+python build_org_strength_audit.py "data/snapshots/2026-08-13" --out-dir data/model_tuning/org-strength/2026-08-13
 ```
 
 Publish rank intervals for the career board. The 67,920-bout age-aware scope
@@ -357,12 +530,14 @@ analysis/                    Notebook builder and Plotly charts
 analysis/investigations/     One-off investigations: notebook + its module
 ratings/                     Glicko-2, WHR, Career Skill Mass, policy boards
 loaders/                     UFCStats and optional-source ingestion
-build_boards.py              Integrity ledger/debit and completeness views
+build_boards.py              Integrity ledger/debit, completeness views, published table
+build_top100_audit.py        Board-regression check: read top25_unanchored_count
 build_prequential_evaluation.py  Rolling-origin validation artifacts
 build_database.py            SQLite export
 data/SOURCE_MATRIX.md        Field-level provenance and coverage contract
 docs/                        Current audit and design notes
 docs/archive/                Superseded historical reports
+_archive/                    Closed-question research drivers, with the answers they produced
 tests/                       Model, pipeline, database, and chart tests
 ```
 

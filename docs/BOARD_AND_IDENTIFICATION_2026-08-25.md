@@ -1,0 +1,149 @@
+# Board selection, title pricing, and the identification wall — 2026-08-25
+
+**Snapshot:** `data/snapshots/2026-08-13` · **Scope:** `majors,pre_unified`
+
+This is the closing state of 2026-08-25. It supersedes the score-contract
+sections of `COHESIVE_ENGINE_PASS_2026-08-25.md` and the addendum in
+`NEXT_2026-08-25.md`. Three changes shipped; three candidate changes were
+measured and rejected; two limits now gate the next scoring change.
+
+## Shipped
+
+### 1. The core board is `public_legacy_score`
+
+The cohesive pass promoted raw `symon_career_skill_mass` to the core board and
+that was reverted the same day. Career Skill Mass is a retrospective WHR
+functional: it backfills whole-career evidence into earlier years, so a clean
+low-loss record in a less-tested circuit accumulates above-bar years and lands
+beside title legends as though the public resume question had been answered.
+Top-25 unanchored names went from 7 under Career Skill Mass to **0** under
+Public Legacy. The standing comment is in `build_boards.CORE_RATING_CANDIDATES`,
+and `build_top100_audit.py` is the check that catches the regression.
+
+### 2. Title resume is priced per opponent
+
+`_title_points` (flat 20/45/60 per appearance/win/defense) and the title-path
+`ORG_FACTOR_BY_CANONICAL` are gone. Each title win is priced by the opponent's
+**pre-fight** rating against the contender line of that opponent's own division
+and year, contributing `q ** 4`. The three components of the published score are
+value-normalised by their own maxima, so no exchange rate is hand-set.
+
+A hinge at the contender bar was tried and is **wrong**: `(2q-1)+` zeroes the
+title component for 38 fighters with 3+ title wins, because a title challenger
+is by construction near contender level, so the modal title fight sits on the
+hinge. Any weight must be strictly positive.
+
+### 3. Age decline is projected through inactivity
+
+`age_drift=True` applied the learned eight-bin age curve only *between* fitted
+appearance nodes, so forecasts and the snapshot's current rating read the last
+fitted mean, and a fighter could hold the same age-adjusted score through a long
+layoff. `ratings.whr.project_age_rating` now integrates the same curve from the
+last appearance to the forecast/snapshot date, including age-bin crossings.
+`rate_snapshot` publishes `mu_whr_age_activity_adjusted`,
+`whr_age_inactivity_adjustment`, and `whr_last_event_date`; **Current skill**
+resolves to the adjusted column. **All-time is not decayed.**
+
+Paired held-out result on the same 17-event, 195-bout set used to approve age
+drift — projected minus unprojected log loss, event-bootstrap 95% CI:
+
+| subset | bouts | change in log loss | 95% CI |
+|---|---:|---:|---|
+| all | 195 | **-0.00101** | **[-0.00190, -0.00025]** |
+| a fighter over 35 | 69 | **-0.00274** | **[-0.00532, -0.00051]** |
+| at least 1 year inactive | 34 | -0.00391 | [-0.00879, +0.00009] |
+| at least 2 years inactive | 10 | **-0.01718** | **[-0.03737, -0.00506]** |
+
+The one-year subset is directionally favourable but **unresolved** at this
+sample size, and the two-year subset is too small to read as an effect size.
+5,603 of 28,867 rated fighters have enough birth-date and inactivity
+information to receive a nonzero adjustment; the observed range is 0 to
+-115.74 Elo. An unknown birth date stays neutral. The prequential cache schema
+moved 5 to 6.
+
+## Measured and rejected
+
+**Glicko/WHR `phi` as a mean signal.** Final `phi` is larger for thin records in
+aggregate (median 266.6 with no UFC bouts, 167.9 with 1-7, 119.5 with 8+), but
+the external top-100 careers that motivated the question sit at 115-136 and
+overlap established UFC fighters. On 4,978 held-out bouts from 2021 onward,
+fitted `phi` versus both `phi` set to zero moved log loss by -0.00005, 95%
+[-0.00064, +0.00050]. Do not turn `phi` into a mean penalty.
+
+**Organisation or connectivity shrinkage of `mu_whr`.** A time-aware appearance
+graph — bout edges at maximum Bradley-Terry Fisher information, temporal edges
+from `WHR_W2_PER_DAY`, appearances of fighters with 8+ UFC bouts grounded —
+found 135,840 appearance nodes, 11,094 grounded, 124,504 connected unknown, and
+only 242 disconnected. The major external pools are *connected* to the tested
+core, so an organisation discount is **not identified** and must not be applied.
+
+**One unified ledger over all wins.** Removing the title/non-title partition and
+pricing all 47,525 wins once against the opponent's pre-fight rating repairs the
+partition defect — a dominant champion fights his best opponents for the belt,
+so splitting the ledger rewards perennial contenders — but it does not repair
+the board. All five aggregations (sum, top-5, top-10, mean, mean times sqrt(n))
+trail the shipped board on all four external reference lists, and among fighters
+with 5+ priced wins the correlation between ledger value and raw win count stays
+at +0.36 to +0.59. Shevchenko falls to 54-86, Weili to 177-223, Pantoja to
+180-203.
+
+The external lists are **descriptive diagnostics, not acceptance criteria**:
+they were co-authored with the layer that scores them, and they agree with one
+another only modestly.
+
+## What gates the next scoring change
+
+**1. Individual identification is not reported.** A connected pool mean and a
+precisely pinned individual career are different questions. Optimistic
+lower-bound 95% half-widths on career mass, relative to the published mass:
+Freire 136%, Nemkov 135%, Izawa 131%, Amosov 123%, Eblen 116%, McKee 108%,
+Usman Nurmagomedov 99% — against Jones 1%, St-Pierre 7%, Demetrious Johnson 82%.
+Anchor and virtual-game priors were deliberately omitted from that computation
+because they assume the pool level under test, so the true intervals are wider
+than these. An identification/reliability field must ship before an
+opponent-priced ledger is presented as precise all-time evidence.
+
+**2. The career bar is gauge-dependent across rating components.** Men's and
+women's bouts form separate large components (26,953 and 1,748 fighters). Adding
+a constant to every rating in the women's component changes no modelled bout
+probability, but moves total female career mass from 0 at -200 Elo to 45,382 at
++200; Weili moves from rank 30 with zero mass to rank 13 with 886. A sport-wide
+bar is therefore not invariant to an unidentified gauge. Component and
+component-plus-division bars are invariant to every shift tested.
+
+A **full division** bar is not the answer either: adjacent divisions are bridged
+by many fighters (FW-LW 231, LW-WW 208, MW-WW 182, BW-FW 182, LHW-MW 162), so
+their relative level is structurally identified and already present in `mu_whr`,
+and scoping career mass by division risks subtracting earned depth twice. The
+defensible scope is the **large connected rating component**, with tiny
+components left unranked rather than given cheap local bars.
+
+This is a research conclusion, not a shipped change. Two things must be built
+first: graph-component identity as a production column, and repaired gender
+metadata — the current field implies 663 cross-gender model bouts because many
+external women default to male.
+
+## Acceptance rule
+
+Changes to `mu_whr`, its uncertainty, or the forecast must pass a paired
+prequential gate with event-level bootstrap intervals, and must report
+unresolved intervals as unresolved.
+
+A board-only ledger never enters the bout probability, so it **cannot** improve
+held-out log loss by construction. Log loss can approve or reject a
+rating-layer change; it cannot validate a retrospective achievement definition.
+That asymmetry is why the two limits above are the gate instead.
+
+## Reproduce
+
+```bash
+python -m ratings.rate_snapshot --snapshot-dir "data/snapshots/2026-08-13" --scope majors,pre_unified
+python build_boards.py "data/snapshots/2026-08-13" --scope majors,pre_unified --write-readme
+python build_top100_audit.py "data/snapshots/2026-08-13"   # read top25_unanchored_count
+```
+
+The one-off probes behind the rejected candidates (`probe_q1_*`, `probe_q2_*`,
+`probe_q3_*`, `probe_age_inactivity_projection.py`) and their CSV/JSON outputs
+are kept outside this repository, beside the working material for this project.
+The narrative report is `Claude Status Reports/UFC Opponent Quality Wall
+Investigation 2026-08-25.md`.
