@@ -151,10 +151,13 @@ def append_changelog(project_root: Path, snapshot_date: str, counts: dict[str, i
         "",
         f"## {snapshot_date} - Refresh run",
         f"- Canonical snapshot rebuilt from Greco CSVs: events={counts['events_kept']}, fights={counts['fights_kept']}, rounds={counts['rounds_kept']}, excluded={counts['excluded_bouts']}.",
+        f"- Combined model fight table written for scope {ratings_summary.get('scope', 'unknown')}: rows={ratings_summary.get('combined_fights', {}).get('rows', 'unknown')}, model_bouts={ratings_summary.get('combined_fights', {}).get('model_bouts', 'unknown')}.",
         f"- Ratings and dominance produced: fighters_rated={ratings_summary['current_fighters']}, fighter_event_rows={ratings_summary['history_rows']}, events_processed={ratings_summary['events_processed']}.",
         "- Streams: canonical Glicko-2 filter + WHR smoother over the same binary W/L/D evidence, "
         "plus a method-scored research diagnostic.",
-        "- Public scores: Public Legacy Score (exposure-adjusted Career Skill Mass plus an organization-evaluated championship resume ledger); fixed 10-year Prime and 5-year Peak windows.",
+        "- Public scores: Public Legacy Score (the core board) and fixed 10-year Prime. "
+        "Career Skill Mass is the skill diagnostic underneath the board; FightMatrix and the "
+        "public anchor lists are sanity checks for top-100 outliers, never tuning targets.",
         "- Audit layers (integrity, dominance, odds, opponent context) do not enter the rating likelihood.",
         f"- Top 10 by {headline_label}: {top_line}",
     ]

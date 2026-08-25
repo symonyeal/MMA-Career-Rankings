@@ -26,12 +26,28 @@ from ratings.boards import (
     integrity_ledger,
 )
 from ratings.constants import SUSTAINED_PEAK_MIN_FIGHTS  # board eligibility floor
+from ratings.legacy_resume import PUBLIC_LEGACY_DISPLAY_SCALE
 from ratings.scope import DEFAULT_PUBLISHED_SCOPE
 
 
-# The public/core board may use the engine's unit-consistent career aggregate,
-# but the integrity debit is denominated in rating points.  Until a debit is
-# defined in rating-point-years, keep that judgement on a base WHR point scale.
+# The public/core board is Public Legacy Score, NOT raw Career Skill Mass.
+#
+# Career Skill Mass is a retrospective WHR functional: it backfills whole-career
+# evidence into earlier years, so a clean low-loss record in a less-tested
+# circuit accumulates above-bar years and lands beside title legends as if the
+# public resume question had been answered. It had not been. Selecting it as the
+# public board is what put Usman Nurmagomedov 6th, Yaroslav Amosov 7th and Josh
+# Barnett 8th all-time (2026-08-25 audit); under Public Legacy the same fighters
+# sit 60th, 51st and 27th and the top 25 has zero unanchored names.
+#
+# This was diagnosed and repaired on 2026-08-24
+# (docs/PUBLIC_PERCEPTION_REPAIR_2026-08-24.md), reverted by the 2026-08-25
+# cohesive pass, and restored here. **Career Skill Mass is a skill diagnostic,
+# not the public board.** Do not promote it again without re-running
+# build_top100_audit.py and reading the unanchored top-25 count.
+#
+# The integrity debit is denominated in rating points, so keep that judgement on
+# a base WHR point scale.
 CORE_RATING_CANDIDATES = (
     "public_legacy_score",
     "symon_career_skill_mass",
@@ -49,6 +65,18 @@ RATING_FLOOR_IS_UNRANKED = {
     "public_legacy_score": 0.0,
     "symon_career_skill_mass": 0.0,
 }
+
+# The published score is a value-normalised sum: each component is divided by its
+# own observed maximum, so the three printed contributions add back to the total
+# exactly. Printing them is the receipt for a rank, not three more scores.
+PUBLIC_LEGACY_COMPONENTS = (
+    ("public_legacy_skill_score", "Skill"),
+    ("public_legacy_title_score", "Title"),
+    ("public_legacy_schedule_score", "Schedule"),
+)
+
+README_BOARD_BEGIN = "<!-- BOARD:TOP100:BEGIN -->"
+README_BOARD_END = "<!-- BOARD:TOP100:END -->"
 
 
 def _select_rating_col(
@@ -194,6 +222,70 @@ def write_board_artifacts(
     }
 
 
+def _public_legacy_contributions(current: pd.DataFrame) -> pd.DataFrame:
+    """Per-fighter display points for each component of the published score."""
+    out = current[["fighter"]].copy()
+    for column, label in PUBLIC_LEGACY_COMPONENTS:
+        values = pd.to_numeric(current[column], errors="coerce").fillna(0.0)
+        ceiling = float(values.max())
+        out[label] = (
+            PUBLIC_LEGACY_DISPLAY_SCALE * values / ceiling if ceiling > 0 else values * 0.0
+        )
+    return out
+
+
+def top_board_markdown(
+    gated: pd.DataFrame,
+    current: pd.DataFrame,
+    *,
+    rating_col: str,
+    top: int = 100,
+) -> str:
+    """Render the ranked head of the published board as a Markdown table."""
+    ranked = gated[gated["status"].eq("ranked")].head(top).copy()
+    if ranked.empty:
+        raise ValueError("the gated board has no ranked fighters to publish")
+
+    table = pd.DataFrame(
+        {
+            "#": ranked["rank"].astype(int).to_numpy(),
+            "Fighter": ranked["fighter"].str.replace("|", r"\|", regex=False).to_numpy(),
+            "Score": ranked[rating_col].round(1).to_numpy(),
+        }
+    )
+    if rating_col == "public_legacy_score":
+        merged = ranked[["fighter"]].merge(
+            _public_legacy_contributions(current), on="fighter", how="left"
+        )
+        for _, label in PUBLIC_LEGACY_COMPONENTS:
+            table[label] = merged[label].round(1).to_numpy()
+
+    header = "| " + " | ".join(table.columns) + " |"
+    align = "| ---: | --- |" + " ---: |" * (len(table.columns) - 2)
+    rows = [
+        "| " + " | ".join(str(value) for value in row) + " |"
+        for row in table.itertuples(index=False)
+    ]
+    return "\n".join([header, align, *rows])
+
+
+def update_readme_board(readme_path: Path, table: str) -> None:
+    """Replace the marked board block in the README with a freshly built table."""
+    readme = Path(readme_path)
+    text = readme.read_text(encoding="utf-8")
+    start = text.find(README_BOARD_BEGIN)
+    end = text.find(README_BOARD_END)
+    if start < 0 or end < 0:
+        raise ValueError(
+            f"{readme} has no board block: expected "
+            f"{README_BOARD_BEGIN} ... {README_BOARD_END}"
+        )
+    readme.write_text(
+        text[:start] + f"{README_BOARD_BEGIN}\n\n{table}\n\n" + text[end:],
+        encoding="utf-8",
+    )
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("snapshot_dir", type=Path)
@@ -212,6 +304,15 @@ def main() -> None:
     ap.add_argument("--scope", default=DEFAULT_PUBLISHED_SCOPE)
     ap.add_argument("--top", type=int, default=25)
     ap.add_argument("--out-dir", type=Path, default=None)
+    ap.add_argument(
+        "--write-readme",
+        type=Path,
+        nargs="?",
+        const=Path("README.md"),
+        default=None,
+        help="Also refresh the published board block in this README (default README.md).",
+    )
+    ap.add_argument("--readme-top", type=int, default=100)
     args = ap.parse_args()
 
     summary = write_board_artifacts(
@@ -244,6 +345,14 @@ def main() -> None:
     print(gated.loc[~gated["status"].eq("ranked"), "status"].value_counts().to_string())
     print(ranked.head(args.top)[["rank", "fighter", core_col]].round(1).to_string(index=False))
     print(f"\nwritten to {out}")
+
+    if args.write_readme is not None:
+        current = pd.read_parquet(Path(args.snapshot_dir) / "ratings_current.parquet")
+        update_readme_board(
+            args.write_readme,
+            top_board_markdown(gated, current, rating_col=core_col, top=args.readme_top),
+        )
+        print(f"published top {args.readme_top} to {args.write_readme}")
 
 
 if __name__ == "__main__":

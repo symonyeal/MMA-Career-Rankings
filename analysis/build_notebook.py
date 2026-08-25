@@ -464,7 +464,6 @@ def rating_label():
     primary = {
         "all_time": "symon_career_skill_mass",
         "prime": "symon_prime_score",
-        "peak": "symon_peak_score",
         "current": "mu_whr",
     }[g_rank_view.value]
     resolved = select_public_ranking_column(rc, g_rank_view.value)
@@ -523,8 +522,7 @@ display(Markdown(
     f"<b style='color:{THEME['text_2']}'>Ranking</b> is one audited question: "
     f"<b>All-time</b> adds positive annual skill above the field; "
     f"<b>Prime</b> is the best fixed 10-year window with at least 13 appearances; "
-    f"<b>Peak</b> is the best fixed 5-year window with at least 8; "
-    f"<b>Current skill</b> is the latest latent WHR skill estimate. All four use the same "
+    f"<b>Current skill</b> is the latest latent WHR skill estimate. All three use the same "
     f"base, binary-result whole-history model; they are alternatives, not stackable bonuses. "
     f"<b style='color:{THEME['text_2']}'>Show top</b>, "
     f"<b>Min UFC bouts</b>, <b>Weight class</b>, and <b>Roster</b> filter the rankings. "
@@ -1510,7 +1508,7 @@ CELLS = [
     md("""
 # Symon UFC Rank Engine — Interactive Dashboard
 
-The **Control Room** picks one ranking question — All-time, Prime, Peak, or
+The **Control Room** picks one ranking question — All-time, Prime, or
 Current skill — plus weight class and board depth. The opening board defaults
 to **All-time**, the engine's career-accomplishment view. An
 evidence section immediately below it reports held-out predictive scores and
@@ -1527,8 +1525,8 @@ paired intervals, including unresolved results.
 ## The Rankings
 
 The pound-for-pound board for the single **Ranking** selected above. **All-time**
-is career skill mass; **Prime** and **Peak** are fixed 10-year/13-appearance and
-5-year/8-appearance windows; **Current skill** is the latest base WHR estimate.
+is career skill mass; **Prime** is the fixed 10-year/13-appearance window;
+**Current skill** is the latest base WHR estimate.
 Division, last fight, and rated-bout count keep short or stale résumés visible.
 """),
     code(LEADERBOARD),

@@ -30,8 +30,8 @@ def test_refresh_writes_board_artifacts_immediately_after_ratings(
         assert min_rating_periods == 4
         assert scope == "majors,pre_unified"
         return {
-            "core_rating_col": "public_legacy_score",
-            "integrity_rating_col": "sustained_peak_mu_whr",
+            "core_rating_col": "symon_career_skill_mass",
+            "integrity_rating_col": "mu_whr",
             "ledger_rows": 1,
             "ranked_fighters": 2,
             "withheld_fighters": 0,

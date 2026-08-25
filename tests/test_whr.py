@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from ratings.whr import _build_appearances, _thomas, run_whr
+from ratings.whr import _build_appearances, _thomas, project_age_rating, run_whr
 
 
 def _chain_fights(n_events: int = 15) -> pd.DataFrame:
@@ -188,3 +188,27 @@ def test_age_drift_is_explicit_and_auditable():
     # The under-24 bin is the identifying baseline, never a youth bonus.
     young = history[history["age_years"] < 24]
     assert np.allclose(young["prior_drift_elo_per_year"], 0.0)
+    assert len(history.attrs["age_drift_elo_per_year"]) == 8
+
+
+def test_age_projection_drops_score_across_inactivity_and_crosses_bins():
+    rates = [0.0, -1.0, -2.0, -3.0, -4.0, -5.0, -6.0, -7.0]
+    projected = project_age_rating(
+        1800.0,
+        last_date="2020-01-01",
+        target_date="2024-01-01",
+        birth_date="1984-01-01",  # age 36 -> 40, crossing the age-39 boundary
+        drift_elo_per_year=rates,
+    )
+    assert projected < 1800.0
+    assert projected == pytest.approx(1779.0, abs=0.1)
+
+
+def test_age_projection_is_neutral_without_identified_dates():
+    assert project_age_rating(
+        1800.0,
+        last_date="2020-01-01",
+        target_date="2024-01-01",
+        birth_date=None,
+        drift_elo_per_year=[-10.0] * 8,
+    ) == pytest.approx(1800.0)

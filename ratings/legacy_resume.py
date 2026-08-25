@@ -22,6 +22,8 @@ LEGACY_SCORE_COLUMNS = [
     "public_legacy_skill_score",
     "public_legacy_exposure_factor",
     "public_legacy_title_score",
+    "public_legacy_title_quality",
+    "public_legacy_qualifying_title_wins",
     "public_legacy_schedule_score",
     "public_legacy_title_appearances",
     "public_legacy_title_wins",
@@ -34,15 +36,95 @@ LEGACY_SCORE_COLUMNS = [
     "public_legacy_unknown_org_bouts",
 ]
 
-# Point values are in the same display units as Career Skill Mass
-# (rating-point-years). They are deliberately small enough that the skill
-# trajectory still matters, but large enough that a decade-long title reign is
-# not ranked below a clean, lightly contextualized record.
-TITLE_APPEARANCE_POINTS = 20.0
-TITLE_WIN_POINTS = 45.0
-TITLE_DEFENSE_POINTS = 60.0
-MULTI_DIVISION_TITLE_POINTS = 600.0
+# Title resume is priced by the opponent actually beaten, in order, not by a
+# flat point per resume line.
+#
+# For each title-fight win, ``q`` is the probability that a contender-level
+# fighter would have LOST to that opponent, from the opponent's pre-fight rating
+# against the contender line **of that opponent's own division and year**. The
+# win contributes ``q ** TITLE_QUALITY_EXPONENT``.
+#
+# Two choices here were made by measurement, not taste (2026-08-25):
+#
+# * **A hinge at the bar was tried first and is WRONG.** ``(2q - 1)+`` reads
+#   well -- "nothing for beating a sub-contender" -- but a title challenger is
+#   by construction near contender level, so the modal title fight sits right on
+#   the hinge. It zeroed the title component for **38 fighters with three or
+#   more title wins**, including Valentina Shevchenko (11 title wins -> 0),
+#   Kamaru Usman (6 -> 0) and Chuck Liddell (5 -> 0), while a single upset over
+#   a very highly rated opponent scored huge: Matt Serra went to 50th all-time
+#   on a 7-7 record. A convex weight keeps the ordering the hinge was reaching
+#   for and zeroes nobody.
+# * **The bar must be division-scoped HERE**, unlike the career functional. The
+#   question a title fight asks is "was this opponent a contender in their own
+#   division", which is what a number-one contender is. Against a sport-wide bar
+#   the light divisions are priced against heavier ones -- women's strawweight
+#   p99 is 1812 against light heavyweight's 1986 -- and flyweight and women's
+#   champions score near zero for beating their own division's best.
+#
+# Three things this deliberately removes, all of which double-posted evidence
+# the opponent's rating already carries:
+#   * the flat 20/45/60 per appearance/win/defense -- a title fight against a
+#     1523-rated opponent and one against a 1950-rated opponent were the same
+#     number of points;
+#   * the 600-point multi-division bonus, which made one extra belt worth ten
+#     title defenses;
+#   * ``ORG_FACTOR_BY_CANONICAL`` on the title path. Measured 2026-08-25:
+#     P(a random Bellator title opponent rates above a random UFC one) = 0.477,
+#     and the Bradley-Terry transfer gap for Bellator is +4 [-4, +28] on 171
+#     crossovers, so a promotion-level discount is ruled out. The organisation
+#     is already inside the opponent's rating; pricing it again is a second
+#     posting of one fact.
+#
+# TITLE_QUALITY_SCALE is display only. The published score value-normalises each
+# component by its own maximum, so this constant cannot affect any ordering.
+TITLE_QUALITY_SCALE = 1000.0
+
+# Convexity of the per-win weight. Swept 2026-08-25 over {1, 2, 4, 6} against
+# four external references with skill and schedule held fixed; 4 maximised
+# Tapology (+0.697) and The 100 Greatest (+0.475) -- both the best of any
+# variant tried this session, including the shipped flat ledger -- while holding
+# ESPN at +0.915 against the flat ledger's +0.939. Above 4 the single-upset
+# artifact returns (at q**6 Matt Serra climbs back to 42nd).
+TITLE_QUALITY_EXPONENT = 4.0
+
+# Retained because the schedule ledger is a separate component and was not part
+# of the 2026-08-25 title repair. It is normalised away in the published score.
 RANK_CONTEXT_WIN_POINTS = 1200.0
+
+# Display scale for the value-normalised score. Three unit components sum to at
+# most 3, which reads badly on a board; multiplying by a constant cannot change
+# any ordering.
+PUBLIC_LEGACY_DISPLAY_SCALE = 1000.0
+
+QUALITY_LEDGER_COLUMNS = [
+    "fighter",
+    "public_legacy_title_quality",
+    "public_legacy_qualifying_title_wins",
+]
+
+
+def _unit(values: pd.Series) -> pd.Series:
+    """Scale to [0, 1] by the observed maximum; an all-zero column stays zero."""
+    v = pd.to_numeric(values, errors="coerce").fillna(0.0)
+    top = float(v.max())
+    return v / top if top > 0 else v * 0.0
+
+
+def _empty_quality_ledger() -> pd.DataFrame:
+    return pd.DataFrame(columns=QUALITY_LEDGER_COLUMNS)
+
+
+def _division_labels(current: pd.DataFrame) -> pd.Series | None:
+    """Fighter -> division label, women's classes kept separate from men's."""
+    if current is None or "career_division" not in current.columns:
+        return None
+    div = current["career_division"].astype(str)
+    gender = current.get("gender", pd.Series("", index=current.index)).astype(str)
+    female = gender.str.upper().str.startswith("F")
+    return pd.Series(
+        np.where(female, "W " + div, div), index=current["fighter"]
+    ).groupby(level=0).first()
 
 ORG_FACTOR_BY_CANONICAL = {
     "UFC": 1.0,
@@ -104,19 +186,18 @@ def _empty_exposure_ledger() -> pd.DataFrame:
     return pd.DataFrame(columns=EXPOSURE_LEDGER_COLUMNS)
 
 
-def _title_points(
-    appearances: pd.Series | np.ndarray | float,
-    wins: pd.Series | np.ndarray | float,
-    defenses: pd.Series | np.ndarray | float,
-    divisions: pd.Series | np.ndarray | float,
-) -> pd.Series | float:
-    extra_divisions = np.maximum(0, divisions - 1)
-    return (
-        TITLE_APPEARANCE_POINTS * appearances
-        + TITLE_WIN_POINTS * wins
-        + TITLE_DEFENSE_POINTS * defenses
-        + MULTI_DIVISION_TITLE_POINTS * extra_divisions
-    )
+def title_quality(opponent_mu: pd.Series, bar: pd.Series) -> pd.Series:
+    """Value of beating an opponent rated ``opponent_mu`` against ``bar``.
+
+    ``q`` is the logistic probability that a contender-level fighter loses to
+    that opponent; the weight is ``q ** TITLE_QUALITY_EXPONENT``. Strictly
+    positive everywhere -- beating a weak champion is worth little, never
+    nothing -- and strongly convex, so an elite opponent dominates a merely
+    contender-level one. See the note above :data:`TITLE_QUALITY_SCALE`.
+    """
+    gap = pd.to_numeric(opponent_mu, errors="coerce") - pd.to_numeric(bar, errors="coerce")
+    q = 1.0 / (1.0 + np.power(10.0, -gap / 400.0))
+    return q ** TITLE_QUALITY_EXPONENT
 
 
 def _organization_factor(canonical_organization: object, tier: object) -> float:
@@ -444,34 +525,11 @@ def source_title_resume_ledger(fights: pd.DataFrame) -> pd.DataFrame:
         .reset_index()
     )
     out = out.merge(divisions, on="fighter", how="left")
-    app["title_appearance_score"] = TITLE_APPEARANCE_POINTS * app["_title_factor"]
-    app["title_win_score"] = np.where(
-        app["title_win"], TITLE_WIN_POINTS * app["_title_factor"], 0.0
-    )
-    app["title_defense_score"] = np.where(
-        app["title_defense"], TITLE_DEFENSE_POINTS * app["_title_factor"], 0.0
-    )
-    components = grouped.agg(
-        _appearance_points=("title_appearance_score", "sum"),
-        _win_points=("title_win_score", "sum"),
-        _defense_points=("title_defense_score", "sum"),
-    ).reset_index()
-    out = out.merge(components, on="fighter", how="left")
-
-    multi = []
-    for fighter, group in app.loc[app["title_win"]].dropna(subset=["_division"]).groupby("fighter"):
-        factors = (
-            group.groupby("_division")["_title_factor"].max().sort_values(ascending=False).to_numpy()
-        )
-        bonus = MULTI_DIVISION_TITLE_POINTS * float(factors[1:].sum()) if len(factors) > 1 else 0.0
-        multi.append({"fighter": fighter, "_multi_division_points": bonus})
-    out = out.merge(pd.DataFrame(multi), on="fighter", how="left")
-    out["public_legacy_source_title_score"] = (
-        pd.to_numeric(out["_appearance_points"], errors="coerce").fillna(0.0)
-        + pd.to_numeric(out["_win_points"], errors="coerce").fillna(0.0)
-        + pd.to_numeric(out["_defense_points"], errors="coerce").fillna(0.0)
-        + pd.to_numeric(out["_multi_division_points"], errors="coerce").fillna(0.0)
-    )
+    # Flat per-line points and the organisation factor were removed
+    # 2026-08-25; the title score now comes from :func:`title_quality_ledger`,
+    # which prices each win by the opponent beaten. This ledger keeps the
+    # COUNTS, which remain the auditable display facts.
+    out["public_legacy_source_title_score"] = 0.0
 
     for col in TITLE_COUNT_COLUMNS:
         if col == "fighter":
@@ -497,12 +555,8 @@ def _combine_title_ledgers(
         source = pd.DataFrame(columns=TITLE_LEDGER_COLUMNS)
 
     if not app.empty:
-        app["public_legacy_appearance_title_score"] = _title_points(
-            pd.to_numeric(app["public_legacy_title_appearances"], errors="coerce").fillna(0),
-            pd.to_numeric(app["public_legacy_title_wins"], errors="coerce").fillna(0),
-            pd.to_numeric(app["public_legacy_title_defenses"], errors="coerce").fillna(0),
-            pd.to_numeric(app["public_legacy_title_win_divisions"], errors="coerce").fillna(0),
-        )
+        # Flat per-line points removed 2026-08-25 -- see TITLE_QUALITY_SCALE.
+        app["public_legacy_appearance_title_score"] = 0.0
     if "public_legacy_source_title_score" not in source.columns:
         source["public_legacy_source_title_score"] = 0.0
 
@@ -535,30 +589,173 @@ def _combine_title_ledgers(
     return out[COMBINED_TITLE_LEDGER_COLUMNS]
 
 
+# Minimum rated fighter-years before a division-year gets its own contender
+# line. Below this the quantile is noise and the sport-wide line is used.
+TITLE_DIVISION_MIN_YEARS = 5
+
+
+def title_quality_ledger(
+    fights: pd.DataFrame | None,
+    history: pd.DataFrame | None,
+    *,
+    reference: str | float | None = None,
+    divisions: pd.Series | None = None,
+) -> pd.DataFrame:
+    """Title resume priced by the opponent actually beaten, bout by bout.
+
+    Every title-fight win is looked up against the opponent's rating **as it
+    stood before that bout** -- ``merge_asof`` with ``allow_exact_matches=False``
+    so the bout's own result cannot price itself -- and scored by
+    :func:`title_quality` against that year's contender bar.
+
+    Returns one row per fighter with the summed quality and the count of wins
+    that cleared the contender line.
+    """
+    from ratings.symon_score import DEFAULT_CAREER_REFERENCE, year_reference
+
+    if (
+        fights is None or fights.empty
+        or history is None or history.empty
+        or "fighter_a" not in fights.columns
+    ):
+        return _empty_quality_ledger()
+
+    ref = DEFAULT_CAREER_REFERENCE if reference is None else reference
+    h = history[["fighter", "event_date", "mu_whr"]].copy()
+    h["event_date"] = pd.to_datetime(h["event_date"], errors="coerce")
+    h["mu_whr"] = pd.to_numeric(h["mu_whr"], errors="coerce")
+    h = h.dropna(subset=["fighter", "event_date", "mu_whr"])
+    if h.empty:
+        return _empty_quality_ledger()
+    annual = (
+        h.assign(year=h["event_date"].dt.year)
+        .groupby(["fighter", "year"])["mu_whr"]
+        .agg(annual_mean="mean")
+        .reset_index()
+    )
+    bar = year_reference(annual, ref)
+    # Contender line inside each division-year, used in preference to the
+    # sport-wide line -- see the note above TITLE_QUALITY_SCALE.
+    division_bar = None
+    if divisions is not None and len(divisions):
+        annual["_division"] = annual["fighter"].map(divisions)
+        counts = annual.groupby(["_division", "year"])["annual_mean"].transform("size")
+        eligible = annual[counts >= TITLE_DIVISION_MIN_YEARS]
+        if not eligible.empty:
+            division_bar = eligible.groupby(["_division", "year"])["annual_mean"].quantile(0.90)
+
+    f = fights.copy()
+    f["event_date"] = pd.to_datetime(f.get("event_date"), errors="coerce")
+    idx = f.index
+    keep = f.get("is_title_fight", pd.Series(False, index=idx)).fillna(False).astype(bool)
+    keep &= ~f.get("is_excluded", pd.Series(False, index=idx)).fillna(False).astype(bool)
+    keep &= ~f.get("is_draw", pd.Series(False, index=idx)).fillna(False).astype(bool)
+    keep &= ~f.get("is_nc", pd.Series(False, index=idx)).fillna(False).astype(bool)
+    f = f[keep & f["event_date"].notna()]
+    if f.empty:
+        return _empty_quality_ledger()
+
+    sides = pd.concat(
+        [
+            f.assign(fighter=f["fighter_a"], opponent=f["fighter_b"]),
+            f.assign(fighter=f["fighter_b"], opponent=f["fighter_a"]),
+        ],
+        ignore_index=True,
+        sort=False,
+    )[["fighter", "opponent", "event_date", "winner"]].dropna(
+        subset=["fighter", "opponent"]
+    )
+    wins = sides[sides["winner"].eq(sides["fighter"])].sort_values("event_date")
+    if wins.empty:
+        return _empty_quality_ledger()
+
+    priced = pd.merge_asof(
+        wins,
+        h.sort_values("event_date").rename(
+            columns={"fighter": "opponent", "mu_whr": "opponent_mu"}
+        ),
+        on="event_date",
+        by="opponent",
+        allow_exact_matches=False,
+    )
+    # A title bout can fall in a year with no rated appearances -- the bar has
+    # no entry for it. Dropping those rows would silently zero a real title win,
+    # so fall back to the nearest rated year, then to the whole-sample level.
+    years = pd.Index(sorted(bar.dropna().index))
+    fight_years = priced["event_date"].dt.year
+    if len(years):
+        nearest = years[
+            np.abs(years.to_numpy()[None, :] - fight_years.to_numpy()[:, None]).argmin(axis=1)
+        ]
+        priced["bar"] = pd.Series(bar.reindex(nearest).to_numpy(), index=priced.index)
+    else:
+        priced["bar"] = np.nan
+    priced["bar"] = priced["bar"].fillna(float(annual["annual_mean"].mean()))
+    priced = priced.dropna(subset=["opponent_mu", "bar"])
+    if priced.empty:
+        return _empty_quality_ledger()
+    if division_bar is not None:
+        keys = pd.MultiIndex.from_arrays([
+            priced["opponent"].map(divisions),
+            priced["event_date"].dt.year,
+        ])
+        local = pd.Series(division_bar.reindex(keys).to_numpy(), index=priced.index)
+        priced["bar"] = local.fillna(priced["bar"])
+    priced["weight"] = title_quality(priced["opponent_mu"], priced["bar"])
+    # Reported diagnostic, not a scoring term: title wins over an opponent at or
+    # above their division's contender line. The SCORE uses the convex weight,
+    # which never zeroes -- this count is what a reader wants to see beside it.
+    priced["qualifying"] = priced["opponent_mu"] >= priced["bar"]
+
+    out = priced.groupby("fighter", sort=False).agg(
+        public_legacy_title_quality=("weight", "sum"),
+        public_legacy_qualifying_title_wins=("qualifying", "sum"),
+    ).reset_index()
+    out["public_legacy_qualifying_title_wins"] = (
+        out["public_legacy_qualifying_title_wins"].astype(int)
+    )
+    return out[QUALITY_LEDGER_COLUMNS]
+
+
 def public_legacy_score_rows(
     current: pd.DataFrame,
     appearances: pd.DataFrame,
     *,
     skill_col: str = "symon_career_skill_mass",
     source_fights: pd.DataFrame | None = None,
+    history: pd.DataFrame | None = None,
+    reference: str | float | None = None,
 ) -> pd.DataFrame:
     """Return one public legacy score row per fighter.
 
-    The score is:
+    The score is the value-normalised sum of three components:
 
-    exposure-adjusted Career Skill Mass
-    + title resume points, using UFC lineage when available and source-title
-      rows discounted by evaluated organization context
-    + exposure-adjusted pre-fight rank/champion context on wins.
+    * exposure-adjusted Career Skill Mass;
+    * a title resume priced by the opponent actually beaten in each title bout
+      (:func:`title_quality_ledger`), which requires ``history``;
+    * exposure-adjusted pre-fight rank/champion context on wins.
 
-    The resume ledgers are intentionally auditable and additive. They repair the
-    product-label bug without mutating the latent rating model.
+    Each is divided by its own maximum before summing, so no exchange rate
+    between rating-point-years and resume points has to be invented.
+
+    ``history`` is the appearance-level WHR table. **Without it the title
+    component is zero for everyone**, which silently reduces the board to skill
+    plus schedule -- callers that want the published board must pass it.
+
+    The resume ledger is intentionally auditable. It repairs the product-label
+    bug without mutating the latent rating model.
     """
     if current is None or current.empty or skill_col not in current.columns:
         return _empty()
 
     out = current[["fighter", skill_col]].copy()
     out = out.rename(columns={skill_col: "public_legacy_skill_mass"})
+    quality_ledger = title_quality_ledger(
+        source_fights,
+        history,
+        reference=reference,
+        divisions=_division_labels(current),
+    )
     ledger = _combine_title_ledgers(
         championship_resume_ledger(appearances),
         source_title_resume_ledger(source_fights) if source_fights is not None else _empty_title_ledger(),
@@ -594,14 +791,25 @@ def public_legacy_score_rows(
     for col in ("public_legacy_appearance_title_score", "public_legacy_source_title_score"):
         out[col] = pd.to_numeric(out[col], errors="coerce").fillna(0.0)
 
-    extra_divisions = np.maximum(0, out["public_legacy_title_win_divisions"] - 1)
-    out["public_legacy_multi_division_bonus"] = (
-        MULTI_DIVISION_TITLE_POINTS * extra_divisions
+    # The multi-division bonus is retained as a REPORTED count only. It is no
+    # longer added to any score: one extra belt used to be worth ten title
+    # defenses, and the divisions a fighter won in are already inside the
+    # opponents he beat to win them.
+    out["public_legacy_multi_division_bonus"] = np.maximum(
+        0, out["public_legacy_title_win_divisions"] - 1
+    ).astype(float)
+
+    quality = quality_ledger if quality_ledger is not None else _empty_quality_ledger()
+    out = out.merge(quality, on="fighter", how="left")
+    for col in ("public_legacy_title_quality", "public_legacy_qualifying_title_wins"):
+        out[col] = pd.to_numeric(out.get(col), errors="coerce").fillna(0.0)
+    out["public_legacy_qualifying_title_wins"] = (
+        out["public_legacy_qualifying_title_wins"].astype(int)
     )
-    out["public_legacy_title_score"] = np.maximum(
-        out["public_legacy_appearance_title_score"],
-        out["public_legacy_source_title_score"],
+    out["public_legacy_title_score"] = (
+        TITLE_QUALITY_SCALE * out["public_legacy_title_quality"]
     )
+
     out["public_legacy_schedule_score"] = (
         RANK_CONTEXT_WIN_POINTS * out["public_legacy_rank_context_win_mass"]
         * out["public_legacy_exposure_factor"]
@@ -610,9 +818,13 @@ def public_legacy_score_rows(
         pd.to_numeric(out["public_legacy_skill_mass"], errors="coerce").fillna(0.0)
         * out["public_legacy_exposure_factor"]
     )
-    out["public_legacy_score"] = (
-        out["public_legacy_skill_score"]
-        + out["public_legacy_title_score"]
-        + out["public_legacy_schedule_score"]
+    # Value-normalised sum. Each component is divided by its own maximum, so the
+    # three are combined without an exchange rate anyone had to invent. Measured
+    # 2026-08-25: rule-derived normalisers (max, p99.9, top-100 mean, sd) all
+    # imply lam in [0.78, 1.15], so this is not a rescaling of a hidden choice.
+    out["public_legacy_score"] = PUBLIC_LEGACY_DISPLAY_SCALE * (
+        _unit(out["public_legacy_skill_score"])
+        + _unit(out["public_legacy_title_score"])
+        + _unit(out["public_legacy_schedule_score"])
     )
     return out[LEGACY_SCORE_COLUMNS]

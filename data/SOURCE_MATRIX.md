@@ -90,10 +90,11 @@ Priority: **Greco** (UFC granular) > **FightMatrix/Sherdog** (public cross-org r
 | fightmatrix_profiles_expanded | FightMatrix public profiles | Recursively fetched public profiles with independent HTTP, parse, record-reconciliation and modeling-completeness state. |
 | fightmatrix_bouts_expanded | FightMatrix public profiles | Per-profile public history rows retained before deterministic reciprocal reconciliation. |
 | fightmatrix_model_eligible_bouts | FightMatrix public profiles | Experimental canonical rows after UFC overlap removal and the declared completeness policy. |
+| combined_fights              | Derived from selected scope | One model-input table preserving the union of admitted source columns, with `bout_fingerprint`, `source_corpus`, `source_priority`, `rated_scope`, and `is_model_bout`. |
 | method_raw / method_class   | Sherdog    | Parsed from fighter history pages for cross-org bouts. |
 | end_round / end_time_seconds| Sherdog    | Parsed from fighter history pages for cross-org bouts. |
 | is_title_fight              | Sherdog (derived) | Derived from event-title patterns for cross-org bouts. |
-| org_weight                  | Sherdog + UFC ratings | Per-fight participant-caliber weight; UFC bouts remain 1.0. |
+| org_weight                  | Production unit / audit candidates | Production writes 1.0 for every admitted bout. `build_org_strength_audit.py` can overwrite it for explicit sensitivity models; old FightMatrix participant-caliber weights are research-only because they use eventual UFC-career information. |
 | datalab_bouts_all           | DataLab    | UFC-DataLab `stats_processed_all_bouts.csv`; staged in snapshot as parquet. |
 | datalab_merged_stats_scorecards | DataLab | UFC-DataLab merged stats + scorecards export; staged in snapshot as parquet. |
 | datalab_fighter_details     | DataLab    | UFC-DataLab fighter details export; staged in snapshot as parquet. |
@@ -216,7 +217,7 @@ plus one same-pass method research diagnostic:
 | `mu_whr` | retrospective skill smoother | Binary Whole-History Rating, one shared likelihood weight per bout, era-neutral. Prior mass is fixed per fighter (anchor + virtual games), so an undefeated record's rating rises with the evidence behind it. |
 | `mu_method` | research diagnostic | Fractional method score produced in the canonical pass; not public/core evidence. |
 | `symon_career_skill_mass` | public All-time functional | Annual field-relative WHR skill mass, one contribution per active year. |
-| `symon_prime_score` / `symon_peak_score` | fixed diagnostics | 10y/13-appearance and 5y/8-appearance EB-shrunk WHR means. |
+| `symon_prime_score` | public Prime view | Fixed 10y/13-appearance EB-shrunk WHR mean. `symon_peak_score` is no longer produced by the rating snapshot. |
 | `wins` / `losses` / `draws` | rated record | Counted from the rated fight table; the evidence behind a rating, not an input to it. |
 | `career_mass_uncertainty.parquet` | rank intervals | Career mass and rank re-estimated under Dirichlet-reweighted events; overlapping intervals are not a ranking. |
 

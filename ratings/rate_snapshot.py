@@ -9,9 +9,10 @@ scenario assumption that bout outcomes cannot identify.
 
 The skill career functional is Symon Career Skill Mass: the sum of positive
 annual WHR skill above that year's global contender line, with at most one
-contribution per active year. The public legacy board adds a separate,
-auditable championship resume ledger on top of that skill mass. Five- and
-ten-year Symon scores are separate peak diagnostics.
+contribution per active year -- a skill *diagnostic*, not the public board.
+The published all-time board is Public Legacy Score: exposure-adjusted career
+skill mass plus a separate, auditable championship resume ledger and schedule
+context. Prime is the fixed ten-year WHR window.
 """
 from __future__ import annotations
 
@@ -46,11 +47,10 @@ from ratings.symon_score import (
     DEFAULT_CAREER_REFERENCE,
     career_skill_mass,
     parse_reference,
-    symon_peak_score,
     symon_prime_score,
 )
 from ratings.legacy_resume import public_legacy_score_rows
-from ratings.whr import run_whr
+from ratings.whr import project_age_rating, run_whr
 from ratings.age import load_birth_dates
 from ratings.performance_adjustment import build_performance_appearances
 from ratings.performance_adjustment import _group_bounds, normalize_division_label
@@ -68,6 +68,11 @@ from ratings.scope import (  # noqa: F401
     UFC_ONLY,
     merge_scope,
     scope_guard,
+)
+from loaders.combined_fights import (
+    COMBINED_FIGHTS_ARTIFACT,
+    COMBINED_FIGHTS_SUMMARY_ARTIFACT,
+    build_combined_fights,
 )
 from loaders.ufcstats_loader import METHOD_SCORES
 
@@ -127,11 +132,7 @@ def _career_columns(table: pd.DataFrame) -> pd.DataFrame:
 
 
 def _source_fights_for_public_resume(snapshot_dir: Path, scope: str) -> pd.DataFrame:
-    fights = pd.read_parquet(snapshot_dir / "canonical_fights.parquet")
-    fights["org_weight"] = 1.0
-    if "source" not in fights.columns:
-        fights["source"] = "ufc"
-    fights = merge_scope(fights, snapshot_dir, scope=scope, label="resume")
+    fights, _ = build_combined_fights(snapshot_dir, scope=scope, label="resume")
     if "is_excluded" in fights.columns:
         fights = fights[~fights["is_excluded"].fillna(False).astype(bool)].copy()
     return fights
@@ -151,7 +152,11 @@ def refresh_career_columns(
     current = current.drop(
         columns=[
             c for c in current.columns
-            if c.startswith("symon_career_") or c.startswith("public_legacy_")
+            if (
+                c.startswith("symon_career_")
+                or c.startswith("symon_peak_")
+                or c.startswith("public_legacy_")
+            )
         ],
         errors="ignore",
     )
@@ -167,6 +172,8 @@ def refresh_career_columns(
             current,
             appearances,
             source_fights=_source_fights_for_public_resume(snapshot_dir, scope),
+            history=history,
+            reference=reference,
         ),
         on="fighter",
         how="left",
@@ -398,14 +405,15 @@ def run(
     career_reference: str | float = DEFAULT_CAREER_REFERENCE,
 ) -> dict:
     snapshot_dir = Path(snapshot_dir).resolve()
-    fights = pd.read_parquet(snapshot_dir / "canonical_fights.parquet")
     rounds = pd.read_parquet(snapshot_dir / "canonical_rounds.parquet")
-    fights["org_weight"] = 1.0
-    if "source" not in fights.columns:
-        fights["source"] = "ufc"
     if include_experimental_crossorg and scope == UFC_ONLY:
         scope = "fightmatrix"
-    fights = merge_scope(fights, snapshot_dir, scope=scope, label="rate")
+    fights, combined_summary = build_combined_fights(snapshot_dir, scope=scope, label="rate")
+    fights.to_parquet(snapshot_dir / COMBINED_FIGHTS_ARTIFACT, index=False)
+    (snapshot_dir / COMBINED_FIGHTS_SUMMARY_ARTIFACT).write_text(
+        json.dumps(combined_summary, indent=2) + "\n",
+        encoding="utf-8",
+    )
     fights["rules_era"] = label_rules_era(fights)
     # No organisation weight. ``compute_fight_weights`` prices a non-UFC bout by
     # both participants' UFC-anchored caliber percentiles, so a 2003 PRIDE bout
@@ -489,22 +497,37 @@ def run(
         birth_dates=birth_dates,
         age_drift=True,
     )
-    whr_history.to_parquet(snapshot_dir / "ratings_history_whr.parquet", index=False)
+    drift_profile = whr_history.attrs.get("age_drift_elo_per_year")
     whr_current = (
         whr_history.sort_values(["fighter", "event_date"])
-        .groupby("fighter")["mu_whr"]
-        .last()
-        .reset_index()
+        .groupby("fighter", sort=False)
+        .tail(1)[["fighter", "event_date", "mu_whr"]]
+        .rename(columns={"event_date": "whr_last_event_date"})
+        .reset_index(drop=True)
     )
+    snapshot_max_date = rated_fights["event_date"].max()
+    whr_current["mu_whr_age_activity_adjusted"] = [
+        project_age_rating(
+            float(row.mu_whr),
+            last_date=row.whr_last_event_date,
+            target_date=snapshot_max_date,
+            birth_date=birth_dates.get(str(row.fighter)),
+            drift_elo_per_year=drift_profile,
+        )
+        for row in whr_current.itertuples(index=False)
+    ]
+    whr_current["whr_age_inactivity_adjustment"] = (
+        whr_current["mu_whr_age_activity_adjusted"] - whr_current["mu_whr"]
+    )
+    whr_history.to_parquet(snapshot_dir / "ratings_history_whr.parquet", index=False)
     current = current.merge(whr_current, on="fighter", how="left")
 
-    # One all-time functional and two clearly separate period diagnostics. The
+    # One all-time functional and one clearly separate period diagnostic. The
     # score inputs are only latent WHR appearances; title labels, opponent rank,
     # streaks, activity bonuses and market prices are not counted again.
     symon_tables = (
         (career_skill_mass(whr_history, reference=career_reference), "symon_career"),
         (symon_prime_score(whr_history), "symon_prime"),
-        (symon_peak_score(whr_history), "symon_peak"),
     )
     for table, prefix in symon_tables:
         renamed = _career_columns(table) if prefix == "symon_career" else table.rename(
@@ -517,14 +540,20 @@ def run(
         current = current.merge(renamed, on="fighter", how="left")
 
     current = current.merge(
-        public_legacy_score_rows(current, perf_app, source_fights=rated_fights),
+        public_legacy_score_rows(
+            current,
+            perf_app,
+            source_fights=rated_fights,
+            history=whr_history,
+            reference=career_reference,
+        ),
         on="fighter",
         how="left",
     )
 
     current = _attach_record(current, rated_fights)
     current = _attach_recent_division_gender(current, rated_fights)
-    current = _attach_activity_adjusted_mu(current, rated_fights["event_date"].max())
+    current = _attach_activity_adjusted_mu(current, snapshot_max_date)
 
     # Opponent context per appearance. Division boards score a fighter inside
     # one weight class from it; the latent skill model does not read it.
@@ -635,8 +664,29 @@ def run(
 
     print(
         "headline = Public Legacy Score: exposure-adjusted Career Skill Mass "
-        "plus a transparent championship resume ledger; Prime and Peak are "
-        "separate diagnostics."
+        "plus a transparent championship resume ledger; raw Career Skill Mass "
+        "and Prime are separate diagnostics."
+    )
+    _print_top(
+        current,
+        rating_col="symon_career_skill_mass",
+        extra_cols=[
+            "symon_career_active_years",
+            "symon_career_contributing_years",
+            "symon_career_peak_year_excess",
+            "symon_prime_score",
+            "career_division",
+            "rating_periods",
+        ],
+        title="HEADLINE - Top 25 by Career Skill Mass",
+        n=25, min_fights=0,
+    )
+    _print_top(
+        current,
+        rating_col="symon_prime_score",
+        extra_cols=["symon_prime_raw_mean", "symon_prime_window_fights"],
+        title="HEADLINE - Top 25 ten-year Prime (minimum 13 appearances)",
+        n=25, min_fights=0,
     )
     _print_top(
         current,
@@ -654,21 +704,7 @@ def run(
             "career_division",
             "rating_periods",
         ],
-        title="HEADLINE - Top 25 by Public Legacy Score",
-        n=25, min_fights=0,
-    )
-    _print_top(
-        current,
-        rating_col="symon_prime_score",
-        extra_cols=["symon_prime_raw_mean", "symon_prime_window_fights", "symon_peak_score"],
-        title="DIAGNOSTIC — Top 25 ten-year Prime (minimum 13 appearances)",
-        n=25, min_fights=0,
-    )
-    _print_top(
-        current,
-        rating_col="symon_peak_score",
-        extra_cols=["symon_peak_raw_mean", "symon_peak_window_fights", "symon_prime_score"],
-        title="DIAGNOSTIC — Top 25 five-year Peak (minimum 8 appearances)",
+        title="SANITY CHECK - Top 25 by Public Legacy Score",
         n=25, min_fights=0,
     )
 
@@ -681,6 +717,7 @@ def run(
         "history_rows": int(len(history)),
         "current_fighters": int(len(current)),
         "events_processed": int(history["event_date"].nunique()),
+        "combined_fights": combined_summary,
         "ped_confirmed_fights": int(integrity["ped_confirmed"].fillna(False).sum()),
         "dq_fights": int(integrity["is_dq"].fillna(False).sum()),
         "missed_weight_fights": int(integrity["missed_weight"].fillna(False).sum()),

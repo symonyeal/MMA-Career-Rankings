@@ -452,6 +452,11 @@ def build(snapshot: Path, *, scope: str, out_dir: Path) -> dict[str, object]:
         "snapshot": snapshot.name,
         "scope": scope,
         "published_score": rating_col,
+        "diagnostic_score": (
+            "symon_career_skill_mass"
+            if "symon_career_skill_mass" in current.columns
+            else None
+        ),
         "ranked_fighters": int(len(published)),
         "top100_birth_date_coverage": round(float(top["birth_date_known"].mean()), 4),
         "top100_active_2024_plus": int(top["active_2024_plus"].sum()),

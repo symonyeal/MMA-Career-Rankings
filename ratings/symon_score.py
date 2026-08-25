@@ -6,10 +6,10 @@ Three functions, one input, no second scoring of the evidence:
   contributes at most once, and only the part of that year's mean rating that
   clears the year's bar. Measured in rating-point-years, which is not the same
   unit as a rating and must never be added to one.
-* ``symon_prime_score`` / ``symon_peak_score`` — the best fixed 10-year and
-  5-year window means, empirical-Bayes shrunk toward the cohort by the window's
-  own reliability. Fixed horizons, so the leaderboard cannot be rank-shopped by
-  sliding a window until a favourite wins.
+* ``symon_prime_score`` — the best fixed 10-year window mean, empirical-Bayes
+  shrunk toward the cohort by the window's own reliability. The fixed horizon
+  keeps the leaderboard from being rank-shopped by sliding a window until a
+  favourite wins.
 * ``career_mass_family`` — the same functional across a range of bars, because
   the bar is what decides whether the board rewards height or duration and that
   choice should be visible rather than buried in a default.
@@ -285,26 +285,6 @@ def symon_prime_score(
         history,
         window_days=3652,
         min_fights=13,
-        mu_col=mu_col,
-        fighter_col=fighter_col,
-        date_col=date_col,
-        event_col=event_col,
-    )
-
-
-def symon_peak_score(
-    history: pd.DataFrame,
-    *,
-    mu_col: str = "mu_whr",
-    fighter_col: str = "fighter",
-    date_col: str = "event_date",
-    event_col: str = "event_name",
-) -> pd.DataFrame:
-    """Five-year Symon period score; at least eight actual appearances."""
-    return symon_period_score(
-        history,
-        window_days=1826,
-        min_fights=8,
         mu_col=mu_col,
         fighter_col=fighter_col,
         date_col=date_col,

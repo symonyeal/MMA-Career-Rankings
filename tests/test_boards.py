@@ -226,3 +226,91 @@ def test_integrity_rank_change_is_zero_when_nothing_was_debited():
     assert (board["integrity_cost"] == 0).all()
     assert (board["rank_change"] == 0).all(), "no debit must cost nobody a place"
     assert sorted(board["rank"]) == [1, 2, 2]
+
+
+def _published_board() -> tuple[pd.DataFrame, pd.DataFrame]:
+    gated = pd.DataFrame(
+        {
+            "rank": [1.0, 2.0, 3.0],
+            "fighter": ["Alice", "Bob", "Carl"],
+            # 1000 + 500 + 1000, 500 + 1000 + 0, 100 + 0 + 200 (see below).
+            "public_legacy_score": [2500.0, 1500.0, 300.0],
+            "status": ["ranked", "ranked", "insufficient observed history"],
+            "rating_periods": [26, 20, 2],
+        }
+    )
+    current = pd.DataFrame(
+        {
+            "fighter": ["Alice", "Bob", "Carl"],
+            # Each component is normalised by its own maximum, so Alice takes
+            # 1000 on skill and Bob takes 1000 on title.
+            "public_legacy_skill_score": [40.0, 20.0, 4.0],
+            "public_legacy_title_score": [8.0, 16.0, 0.0],
+            "public_legacy_schedule_score": [50.0, 0.0, 10.0],
+        }
+    )
+    return gated, current
+
+
+def test_published_table_shows_components_that_add_back_to_the_score():
+    """The three printed columns are the receipt for the rank, so they must sum."""
+    gated, current = _published_board()
+    table = build_boards.top_board_markdown(
+        gated, current, rating_col="public_legacy_score", top=100
+    )
+    lines = table.splitlines()
+
+    assert lines[0] == "| # | Fighter | Score | Skill | Title | Schedule |"
+    # Carl is withheld by the completeness gate and must not be published.
+    assert len(lines) == 4
+    assert "Carl" not in table
+
+    alice = [cell.strip() for cell in lines[2].split("|")[1:-1]]
+    assert alice[:2] == ["1", "Alice"]
+    assert sum(float(cell) for cell in alice[3:]) == pytest.approx(float(alice[2]), abs=0.05)
+
+    bob = [cell.strip() for cell in lines[3].split("|")[1:-1]]
+    assert bob[4] == "1000.0", "the title component normalises on its own maximum"
+
+
+def test_published_table_honours_the_row_limit_and_needs_ranked_rows():
+    gated, current = _published_board()
+    table = build_boards.top_board_markdown(
+        gated, current, rating_col="public_legacy_score", top=1
+    )
+    assert len(table.splitlines()) == 3
+    assert "Bob" not in table
+
+    withheld = gated.assign(status="insufficient observed history")
+    with pytest.raises(ValueError, match="no ranked fighters"):
+        build_boards.top_board_markdown(
+            withheld, current, rating_col="public_legacy_score", top=100
+        )
+
+
+def test_readme_board_block_is_replaced_in_place(tmp_path: Path):
+    readme = tmp_path / "README.md"
+    readme.write_text(
+        "# Engine\n\n"
+        f"{build_boards.README_BOARD_BEGIN}\n\nstale table\n\n"
+        f"{build_boards.README_BOARD_END}\n\n## Next section\n",
+        encoding="utf-8",
+    )
+
+    build_boards.update_readme_board(readme, "| # |\n| ---: |\n| 1 |")
+    text = readme.read_text(encoding="utf-8")
+
+    assert "stale table" not in text
+    assert "| 1 |" in text
+    assert text.startswith("# Engine\n")
+    assert text.endswith("## Next section\n"), "content after the block must survive"
+    assert text.count(build_boards.README_BOARD_BEGIN) == 1
+
+
+def test_readme_board_block_refuses_a_file_without_markers(tmp_path: Path):
+    readme = tmp_path / "README.md"
+    readme.write_text("# Engine\n\nno markers here\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="no board block"):
+        build_boards.update_readme_board(readme, "| # |")
+    assert readme.read_text(encoding="utf-8") == "# Engine\n\nno markers here\n"

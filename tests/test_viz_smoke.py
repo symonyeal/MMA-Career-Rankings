@@ -196,23 +196,22 @@ def test_select_rating_column_resolves_canonical_current(snapshot):
 
 
 def test_period_views_resolve_to_the_published_period_scores():
-    """Both period aliases land on the Symon window scores, for any stream asked.
+    """Prime aliases land on the Symon window score, for any stream asked.
 
     The per-stream rolling peak columns were retired, so a period view is no
-    longer a function of the stream: there is one Prime and one Peak. A snapshot
-    built before they existed resolves to nothing rather than to a retired
-    column.
+    longer a function of the stream: there is one Prime window. A snapshot built
+    before it existed resolves to nothing rather than to a retired column.
     """
     modern = pd.DataFrame({
         "fighter": ["A"], "mu_canonical": [1500.0], "mu_whr": [1520.0],
-        "symon_prime_score": [1700.0], "symon_peak_score": [1750.0],
+        "symon_prime_score": [1700.0],
     })
     for stream in ("canonical", "whr"):
-        for alias in ("five_year_peak", "peak"):
-            assert select_rating_column(modern, stream, alias) == "symon_peak_score"
         for alias in ("sustained_peak", "prime"):
             assert select_rating_column(modern, stream, alias) == "symon_prime_score"
     assert select_rating_column(modern, "canonical", "current") == "mu_canonical"
+    with pytest.raises(ValueError):
+        select_rating_column(modern, "canonical", "peak")
 
     legacy = pd.DataFrame({
         "fighter": ["A"], "mu_canonical": [1500.0],
@@ -224,7 +223,7 @@ def test_period_views_resolve_to_the_published_period_scores():
 def test_select_rating_column_returns_none_when_missing():
     bare = pd.DataFrame({"fighter": ["A"], "mu_canonical": [1500.0]})
     assert select_rating_column(bare, "method_integrity", "current") is None
-    assert select_rating_column(bare, "method_performance", "five_year_peak") is None
+    assert select_rating_column(bare, "method_performance", "prime") is None
 
 
 def test_select_rating_column_rejects_unknown_peak(snapshot):
@@ -245,7 +244,7 @@ def test_rating_streams_and_peak_views_are_aligned():
     # winner and loser weights, which is not one joint likelihood.
     assert set(stream_keys) == {"canonical", "method"}
     # Period views are published scores now, not per-stream rolling columns.
-    assert set(peak_keys) == {"current", "prime", "peak"}
+    assert set(peak_keys) == {"current", "prime"}
 
 
 def test_compose_rating_stream_locks_canonical():
@@ -268,8 +267,8 @@ def test_public_ranking_views_resolve_new_columns_only():
     rc = pd.DataFrame({
         "symon_career_skill_mass": [10.0],
         "symon_prime_score": [1600.0],
-        "symon_peak_score": [1650.0],
         "mu_whr": [1550.0],
+        "mu_whr_age_activity_adjusted": [1535.0],
         # Retired columns must never win public resolution, even when present.
         "mu_method_integrity_performance": [9999.0],
         "mu_whr_integrity_performance": [9999.0],
@@ -277,12 +276,11 @@ def test_public_ranking_views_resolve_new_columns_only():
     expected = {
         "all_time": "symon_career_skill_mass",
         "prime": "symon_prime_score",
-        "peak": "symon_peak_score",
-        "current": "mu_whr",
+        "current": "mu_whr_age_activity_adjusted",
     }
     assert dict(PUBLIC_RANKING_VIEWS).keys() == {
         "All-time", "Prime · best 10 years / 13+ bouts",
-        "Peak · best 5 years / 8+ bouts", "Current skill",
+        "Current skill",
     }
     for view, column in expected.items():
         assert select_public_ranking_column(rc, view) == column
@@ -308,7 +306,6 @@ def test_public_ranking_views_fall_back_to_base_old_snapshot_columns():
     })
     assert select_public_ranking_column(old, "all_time") == "mu_whr"
     assert select_public_ranking_column(old, "prime") == "mu_whr"
-    assert select_public_ranking_column(old, "peak") == "mu_whr"
     assert select_public_ranking_column(old, "current") == "mu_whr"
     # Retired two-argument callers normalize onto the same base-only mapping.
     assert select_public_rating_column(old, "complete", "current") == "mu_whr"

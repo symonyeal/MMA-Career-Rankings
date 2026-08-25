@@ -12,7 +12,6 @@ from ratings.symon_score import (
     career_mass_family,
     career_skill_mass,
     year_reference,
-    symon_peak_score,
     symon_period_score,
     symon_prime_score,
 )
@@ -85,8 +84,8 @@ def test_only_latent_rating_is_evidence_no_hidden_bonus():
         activity_bonus=1_000_000.0,
     )
 
-    a = symon_peak_score(plain)
-    b = symon_peak_score(decorated)
+    a = symon_period_score(plain, window_days=1826, min_fights=8)
+    b = symon_period_score(decorated, window_days=1826, min_fights=8)
     pd.testing.assert_frame_equal(a, b)
     assert a.iloc[0]["score"] == pytest.approx(1700.0)
 
@@ -172,7 +171,7 @@ def test_window_ties_prefer_more_fights_then_earlier_start_deterministically():
     assert _row(expected, "Earlier")["window_start"] == pd.Timestamp("2020-01-01")
 
 
-def test_configurable_input_names_and_fixed_wrapper_windows():
+def test_configurable_input_names_and_fixed_prime_wrapper_window():
     dates = pd.date_range("2010-01-01", periods=13, freq="260D")
     h = pd.DataFrame({
         "name": "A",
@@ -183,11 +182,17 @@ def test_configurable_input_names_and_fixed_wrapper_windows():
     prime = symon_prime_score(
         h, mu_col="latent", fighter_col="name", date_col="date", event_col="card"
     )
-    peak = symon_peak_score(
-        h, mu_col="latent", fighter_col="name", date_col="date", event_col="card"
+    generic_period = symon_period_score(
+        h,
+        window_days=1826,
+        min_fights=8,
+        mu_col="latent",
+        fighter_col="name",
+        date_col="date",
+        event_col="card",
     )
     assert _row(prime, "A")["window_fights"] == 13
-    assert _row(peak, "A")["window_fights"] == 8
+    assert _row(generic_period, "A")["window_fights"] == 8
 
 
 def test_career_skill_mass_is_one_field_relative_contribution_per_year():

@@ -38,6 +38,7 @@ def test_default_variants_are_the_lean_coherent_set() -> None:
     whr = variants[1]
     assert whr.engine == "whr"
     assert whr.use_age_drift is True
+    assert whr.project_age_inactivity is True
     assert whr.weight is None
     assert whr.use_quality_score is False
     assert whr.use_dominance is False
@@ -48,6 +49,7 @@ def test_default_variants_are_the_lean_coherent_set() -> None:
     assert research.use_quality_score is False
     assert research.use_dominance is True
     assert research.use_age_drift is True
+    assert research.project_age_inactivity is True
 
 
 def test_ablation_pairs_contain_no_retired_sleeves_or_market_arm() -> None:
@@ -159,6 +161,62 @@ def test_fractional_whr_score_is_passed_only_when_explicit(
 
     assert "winner_score_col" not in seen_kwargs[0]
     assert seen_kwargs[1]["winner_score_col"] == "quality_score_winner"
+
+
+def test_age_aware_forecast_projects_last_rating_across_inactivity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fights = pd.DataFrame(
+        [
+            _fight("ufc/1", "ufc", "2020-01-01"),
+            _fight("ufc/2", "ufc", "2024-01-01"),
+        ]
+    )
+    fights["fighter_a"] = "Alice"
+    fights["fighter_b"] = "Bob"
+    fights["winner"] = "Alice"
+    fights["org_weight"] = 1.0
+    inputs = pq.Inputs(
+        snapshot_dir=Path("snapshot"),
+        fights=fights,
+        history=pd.DataFrame(),
+        birth_dates={"Alice": pd.Timestamp("1984-01-01")},
+    )
+    events = pd.DataFrame(
+        {
+            "event_date": [pd.Timestamp("2024-01-01")],
+            "event_name": ["Event ufc/2"],
+        }
+    )
+
+    def fake_run_whr(_train: pd.DataFrame, **_kwargs) -> pd.DataFrame:
+        history = pd.DataFrame(
+            {
+                "fighter": ["Alice", "Bob"],
+                "event_date": [pd.Timestamp("2020-01-01")] * 2,
+                "event_name": ["Event ufc/1"] * 2,
+                "mu_whr": [1600.0, 1500.0],
+            }
+        )
+        history.attrs["age_drift_elo_per_year"] = [-10.0] * 8
+        return history
+
+    monkeypatch.setattr(pq, "run_whr", fake_run_whr)
+    unprojected = pq.whr_predictions(
+        inputs, pq.Variant("age", engine="whr", use_age_drift=True), events
+    )
+    projected = pq.whr_predictions(
+        inputs,
+        pq.Variant(
+            "age_projected",
+            engine="whr",
+            use_age_drift=True,
+            project_age_inactivity=True,
+        ),
+        events,
+    )
+
+    assert projected.loc[0, "p_a"] < unprojected.loc[0, "p_a"]
 
 
 def test_crossorg_scope_refuses_to_be_a_silent_no_op(tmp_path: Path) -> None:

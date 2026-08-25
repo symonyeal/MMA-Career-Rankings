@@ -195,7 +195,6 @@ def _metric_label(column: str) -> str:
         "mu_whr_integrity_performance": "Legacy complete rating",
         "symon_career_skill_mass": "All-time career skill mass",
         "symon_prime_score": "Prime score",
-        "symon_peak_score": "Peak score",
     }
     if column in labels:
         return labels[column]
@@ -238,6 +237,7 @@ def _apply_chart_layout(fig: go.Figure, *, height: int | None = None) -> go.Figu
 
 TABLE_KEY_MAP = [
     ("canonical_fights", "fights"),
+    ("combined_fights", "combined_fights"),
     ("crossorg_fights", "crossorg_fights"),
     ("canonical_rounds", "rounds"),
     ("canonical_fighters", "fighters"),
@@ -852,7 +852,7 @@ def top_n_table(
     df["phi_canonical"] = df["phi_canonical"].round(1)
     df["mu_method"] = df["mu_method"].round(1)
     for col in [
-        "symon_career_skill_mass", "symon_prime_score", "symon_peak_score", "mu_whr",
+        "symon_career_skill_mass", "symon_prime_score", "mu_whr",
     ]:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce").round(1)
@@ -861,7 +861,7 @@ def top_n_table(
     display_cols = [
         "rank", "fighter", "mu_canonical", "phi_canonical",
         "gender", "career_division", "current_division", "recent_division",
-        "symon_career_skill_mass", "symon_prime_score", "symon_peak_score", "mu_whr",
+        "symon_career_skill_mass", "symon_prime_score", "mu_whr",
         "mu_method", "rating_periods", "last_event_date",
         "height_inches", "weight_lb", "reach_inches", "stance",
     ]
@@ -909,7 +909,6 @@ def fighter_detail(
             "ci95_upper":                  round(float(row["mu_canonical"]) + 1.96 * float(row["phi_canonical"]), 1),
             "career_skill_mass":           _opt_round(row.get("symon_career_skill_mass")),
             "prime_score":                 _opt_round(row.get("symon_prime_score")),
-            "peak_score":                  _opt_round(row.get("symon_peak_score")),
             "whr_rating":                  _opt_round(row.get("mu_whr")),
             "rating_periods":              int(row["rating_periods"]),
             "last_event_date":             row.get("last_event_date"),
@@ -1999,7 +1998,7 @@ def period_leaderboard_chart(
     peak_col = next(
         (
             col
-            for col in ("symon_prime_score", "symon_peak_score", "mu_whr")
+            for col in ("symon_prime_score", "mu_whr")
             if col in df.columns
         ),
         "mu_whr",
@@ -2008,28 +2007,18 @@ def period_leaderboard_chart(
     df = df.sort_values(peak_col, ascending=False).head(n)
     if df.empty:
         return _empty_figure("no sustained peak data", title="Sustained peak leaderboard")
-    five_col = next(
-        (
-            col
-            for col in ("symon_peak_score", "symon_prime_score", "mu_whr")
-            if col in df.columns
-        ),
-        "mu_whr",
-    )
     fig = go.Figure(go.Bar(
         x=df[peak_col],
         y=df["fighter"],
         orientation="h",
         marker_color=STREAM_PALETTE["method"] if "method_performance" in peak_col else STREAM_PALETTE["canonical"],
         customdata=np.stack([
-            df[five_col].round(1).astype("string"),
             df["rating_periods"].astype("Int64").astype("string"),
         ], axis=-1),
         hovertemplate=(
             "<b>%{y}</b><br>"
             f"{SUSTAINED_PEAK_WINDOW_LABEL}=%{{x:.1f}}<br>"
-            f"{FIVE_YEAR_PEAK_WINDOW_LABEL}=%{{customdata[0]}}<br>"
-            "fights rated=%{customdata[1]}<extra></extra>"
+            "fights rated=%{customdata[0]}<extra></extra>"
         ),
     ))
     _apply_chart_layout(fig, height=max(520, 24 * len(df)))
@@ -2628,8 +2617,8 @@ def datalab_scorecard_insight_chart(scorecards: pd.DataFrame) -> go.Figure:
 #
 # ``canonical`` is the Glicko-2 filter and ``method`` is the method-scored
 # research diagnostic; the weighted sleeves that used to appear here are
-# retired. Period views no longer depend on the stream — there is one Prime and
-# one Peak, both fixed windows over the WHR trajectory.
+# retired. Period views no longer depend on the stream: there is one Prime
+# window over the WHR trajectory.
 
 RATING_STREAMS: tuple[tuple[str, str], ...] = (
     ("Wins", "canonical"),
@@ -2638,7 +2627,6 @@ RATING_STREAMS: tuple[tuple[str, str], ...] = (
 
 PEAK_VIEWS: tuple[tuple[str, str], ...] = (
     ("Prime", "prime"),
-    ("Peak", "peak"),
     ("Now", "current"),
 )
 
@@ -2650,7 +2638,6 @@ SCORING_METHODS: tuple[tuple[str, str], ...] = (
 PUBLIC_RANKING_VIEWS: tuple[tuple[str, str], ...] = (
     ("All-time", "all_time"),
     ("Prime · best 10 years / 13+ bouts", "prime"),
-    ("Peak · best 5 years / 8+ bouts", "peak"),
     ("Current skill", "current"),
 )
 
@@ -2663,7 +2650,6 @@ PUBLIC_TIME_VIEWS: tuple[tuple[str, str], ...] = ()
 _PUBLIC_VIEW_LABELS = {
     "all_time": "All-time",
     "prime": "Prime · 10 years / 13+ bouts",
-    "peak": "Peak · 5 years / 8+ bouts",
     "current": "Current skill",
 }
 
@@ -2671,14 +2657,25 @@ _PUBLIC_VIEW_LABELS = {
 # back only to unsleeved WHR, then canonical, so a stale weighted artifact can
 # never silently re-enter the public board.
 _PUBLIC_VIEW_COLUMN_CANDIDATES = {
+    # Must lead with the same column ``build_boards.CORE_RATING_CANDIDATES``
+    # leads with. The notebook previously showed raw Career Skill Mass while the
+    # published board ranked on Public Legacy Score, so the dashboard and the
+    # board disagreed about who was first -- a visible internal conflict, not a
+    # presentation choice. Career Skill Mass stays available as a diagnostic.
     "all_time": (
+        "public_legacy_score",
         "symon_career_skill_mass",
         "mu_whr",
         "mu_canonical",
     ),
     "prime": ("symon_prime_score", "mu_whr", "mu_canonical"),
-    "peak": ("symon_peak_score", "mu_whr", "mu_canonical"),
-    "current": ("mu_whr", "mu_canonical"),
+    "current": (
+        "mu_whr_age_activity_adjusted",
+        "mu_whr_activity_adjusted",
+        "mu_whr",
+        "mu_canonical_activity_adjusted",
+        "mu_canonical",
+    ),
 }
 
 
@@ -2689,7 +2686,6 @@ def _normalize_public_view(view: str, time_view: str | None = None) -> str:
     if time_view is not None:
         old_time = {
             "sustained_peak": "prime",
-            "five_year_peak": "peak",
             "current": "current",
         }.get(time_view)
         if old_time is not None:
@@ -2825,8 +2821,6 @@ def select_rating_column(
         col = f"mu_{stream}"
     elif peak in ("sustained_peak", "prime"):
         col = "symon_prime_score"
-    elif peak in ("five_year_peak", "peak"):
-        col = "symon_peak_score"
     else:
         raise ValueError(f"unknown peak view: {peak!r}")
     return col if col in ratings_current.columns else None
@@ -3699,7 +3693,6 @@ def fighter_profile_chart(
     metrics = [
         ("Current rating", r.get("mu_canonical")),
         ("Prime (10 yr)", r.get("symon_prime_score")),
-        ("Peak (5 yr)", r.get("symon_peak_score")),
     ]
     plot = pd.DataFrame(metrics, columns=["metric", "value"]).dropna()
     if plot.empty:

@@ -174,7 +174,7 @@ def test_ranking_view_reacts(nb_ns):
     assert "Current skill" in nb_ns["lb_html"].value
 
 
-def test_fixed_prime_and_peak_views_render(nb_ns):
+def test_fixed_prime_view_renders_and_peak_is_retired(nb_ns):
     nb_ns["g_rank_view"].value = "prime"
     assert nb_ns["selected_rating_col"]() in {
         "symon_prime_score", "sustained_peak_headline_mu_whr",
@@ -182,8 +182,7 @@ def test_fixed_prime_and_peak_views_render(nb_ns):
         "sustained_peak_mu_canonical", "mu_whr", "mu_canonical",
     }
     assert "Prime" in nb_ns["lb_html"].value
-    nb_ns["g_rank_view"].value = "peak"
-    assert "Peak" in nb_ns["lb_html"].value
+    assert "peak" not in nb_ns["g_rank_view"]._options_values
     assert _n_traces(nb_ns["plc_scatter"]) > 0
 
 

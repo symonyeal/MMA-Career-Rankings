@@ -54,12 +54,12 @@ from ratings.glicko2_engine import DEFAULT_TAU, predict_win_prob_from_ratings
 from ratings.integrity_adjustment import build_integrity_appearances
 from ratings.performance_adjustment import build_performance_appearances, normalize_division_label
 from ratings.rules_era import label_rules_era
-from ratings.scope import merge_scope
-from ratings.whr import _ELO_PER_NAT, run_whr
+from ratings.whr import _ELO_PER_NAT, project_age_rating, run_whr
 from ratings.age import load_birth_dates
 from ratings import rate_snapshot as RS
 from ratings import research_variants as RV
 from loaders.integrity_flags import INTEGRITY_COLUMNS, build_integrity_flags
+from loaders.combined_fights import build_combined_fights
 from loaders.odds_loader import has_odds_artifact, load_odds_lines
 from loaders.ufcstats_loader import METHOD_SCORES
 
@@ -76,7 +76,7 @@ EPS = 1e-6
 #       shared bout-level WHR weights, and UFC-only default scope
 #   4 - fixed-mass WHR prior (2026-08-20): virtual games plus per-fighter (not
 #       per-appearance) anchor mass, so every WHR rating moved
-CACHE_SCHEMA_VERSION = 5
+CACHE_SCHEMA_VERSION = 6
 
 
 # ---------------------------------------------------------------------------
@@ -108,6 +108,9 @@ class Variant:
     use_dominance: bool = False  # shared bout-level WHR likelihood precision
     use_quality_score: bool = False  # explicit fractional winner score research
     use_age_drift: bool = False  # estimated age-dependent Wiener prior mean
+    # A forecast has no appearance node at its cutoff. Project the last fitted
+    # WHR mean through that inactive gap under the learned age curve.
+    project_age_inactivity: bool = False
     virtual_games: float | None = None  # WHR prior mass; None = engine default
 
     def key(self) -> str:
@@ -118,12 +121,18 @@ def default_variants() -> list[Variant]:
     """The two coherent core estimators plus one labelled research arm."""
     return [
         Variant("canonical", engine="glicko", stream="canonical"),
-        Variant("whr", engine="whr", use_age_drift=True),
+        Variant(
+            "whr",
+            engine="whr",
+            use_age_drift=True,
+            project_age_inactivity=True,
+        ),
         Variant(
             "whr_symmetric_dominance_research",
             engine="whr",
             use_dominance=True,
             use_age_drift=True,
+            project_age_inactivity=True,
         ),
     ]
 
@@ -162,11 +171,7 @@ def load_fight_table(
     if scope is None:
         scope = "fightmatrix" if with_crossorg else RS.UFC_ONLY
     snapshot_dir = Path(snapshot_dir)
-    fights = pd.read_parquet(snapshot_dir / "canonical_fights.parquet")
-    fights["org_weight"] = 1.0
-    if "source" not in fights.columns:
-        fights["source"] = "ufc"
-    fights = merge_scope(fights, snapshot_dir, scope=scope, label="prequential")
+    fights, _ = build_combined_fights(snapshot_dir, scope=scope, label="prequential")
     fights["rules_era"] = label_rules_era(fights)
 
     fights["event_date"] = pd.to_datetime(fights["event_date"])
@@ -408,7 +413,31 @@ def whr_predictions(
         hist = run_whr(train, **kwargs)
         if hist.empty:
             continue
-        last = hist.sort_values(["fighter", "event_date"]).groupby("fighter")["mu_whr"].last()
+        last_rows = (
+            hist.sort_values(["fighter", "event_date"])
+            .groupby("fighter", sort=False)
+            .tail(1)
+            .set_index("fighter")
+        )
+        last = last_rows["mu_whr"]
+        if variant.project_age_inactivity:
+            if not variant.use_age_drift:
+                raise ValueError("age-inactivity projection requires use_age_drift=True")
+            profile = hist.attrs.get("age_drift_elo_per_year")
+            if profile is None:
+                raise ValueError("age-aware WHR history is missing its learned drift profile")
+            last = pd.Series(
+                {
+                    fighter: project_age_rating(
+                        float(row["mu_whr"]),
+                        last_date=row["event_date"],
+                        target_date=cutoff,
+                        birth_date=inputs.birth_dates.get(str(fighter)),
+                        drift_elo_per_year=profile,
+                    )
+                    for fighter, row in last_rows.iterrows()
+                }
+            )
         prior_counts = appearances[appearances["event_date"] < cutoff].groupby("fighter").size()
         ev_bouts = decided_all[
             (decided_all["event_date"] == cutoff) & (decided_all["event_name"] == ev["event_name"])
@@ -417,6 +446,20 @@ def whr_predictions(
             a, c = b["fighter_a"], b["fighter_b"]
             mu_a = float(last.get(a, 1500.0))
             mu_b = float(last.get(c, 1500.0))
+            last_date_a = (
+                pd.to_datetime(last_rows.loc[a, "event_date"], errors="coerce")
+                if a in last_rows.index else pd.NaT
+            )
+            last_date_b = (
+                pd.to_datetime(last_rows.loc[c, "event_date"], errors="coerce")
+                if c in last_rows.index else pd.NaT
+            )
+            inactive_days_a = (
+                float((cutoff - last_date_a).days) if pd.notna(last_date_a) else np.nan
+            )
+            inactive_days_b = (
+                float((cutoff - last_date_b).days) if pd.notna(last_date_b) else np.nan
+            )
             gap = (mu_a - mu_b) / _ELO_PER_NAT
             dob_a = pd.to_datetime(inputs.birth_dates.get(str(a)), errors="coerce")
             dob_b = pd.to_datetime(inputs.birth_dates.get(str(c)), errors="coerce")
@@ -433,6 +476,8 @@ def whr_predictions(
                 "y_a": int(b["winner"] == a),
                 "prior_a": float(prior_counts.get(a, 0)),
                 "prior_b": float(prior_counts.get(c, 0)),
+                "inactive_days_a": inactive_days_a,
+                "inactive_days_b": inactive_days_b,
                 "age_a": age_a,
                 "age_b": age_b,
                 "involves_over_35": bool(
@@ -445,7 +490,7 @@ def whr_predictions(
     return pd.DataFrame(rows, columns=[
         "variant", "fight_url", "event_date", "event_name", "fighter_a", "fighter_b",
         "p_a", "y_a", "prior_a", "prior_b", "age_a", "age_b",
-        "involves_over_35"])
+        "inactive_days_a", "inactive_days_b", "involves_over_35"])
 
 
 # ---------------------------------------------------------------------------

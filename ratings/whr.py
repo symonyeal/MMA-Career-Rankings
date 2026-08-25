@@ -78,6 +78,58 @@ AGE_BIN_LABELS = ("<24", "24-27", "27-30", "30-33", "33-36", "36-39", "39-42", "
 _DAYS_PER_YEAR = 365.2425
 
 
+def project_age_rating(
+    mu: float,
+    *,
+    last_date: object,
+    target_date: object,
+    birth_date: object,
+    drift_elo_per_year: np.ndarray | list[float] | tuple[float, ...],
+) -> float:
+    """Project one last-observed rating through an inactive aging gap.
+
+    ``run_whr(age_drift=True)`` learns a piecewise-constant population drift
+    curve.  Its transition prior applies that curve between observed
+    appearances; a forecast has no target appearance node, so it must integrate
+    the same curve from the last observation to the forecast date explicitly.
+
+    Unknown dates, unknown birth date, ages outside the model's 14--65 support,
+    and backward projections are neutral.  Crossing an age-bin boundary is
+    integrated piecewise rather than charging the whole gap at the last bin.
+    """
+    start = pd.to_datetime(last_date, errors="coerce")
+    end = pd.to_datetime(target_date, errors="coerce")
+    birth = pd.to_datetime(birth_date, errors="coerce")
+    rates = np.asarray(drift_elo_per_year, dtype=float)
+    if (
+        pd.isna(start)
+        or pd.isna(end)
+        or pd.isna(birth)
+        or end <= start
+        or len(rates) != len(AGE_BIN_LABELS)
+        or not np.isfinite(rates).all()
+    ):
+        return float(mu)
+
+    start_age = (pd.Timestamp(start) - pd.Timestamp(birth)).days / _DAYS_PER_YEAR
+    end_age = (pd.Timestamp(end) - pd.Timestamp(birth)).days / _DAYS_PER_YEAR
+    if end_age <= start_age:
+        return float(mu)
+
+    projected = float(mu)
+    cursor = max(start_age, 14.0)
+    stop = min(end_age, 65.0)
+    while cursor < stop:
+        bucket = int(np.digitize(cursor, AGE_BIN_EDGES))
+        upper = AGE_BIN_EDGES[bucket] if bucket < len(AGE_BIN_EDGES) else 65.0
+        segment_end = min(stop, float(upper))
+        if segment_end <= cursor:
+            break
+        projected += float(rates[bucket]) * (segment_end - cursor)
+        cursor = segment_end
+    return projected
+
+
 def _thomas(diag: np.ndarray, off: np.ndarray, rhs: np.ndarray) -> np.ndarray:
     """Solve a symmetric tridiagonal system ``A x = rhs`` in O(n).
 
@@ -458,4 +510,9 @@ def run_whr(
         data[out_col.replace("mu_", "var_", 1)] = variances
 
     out = pd.DataFrame(data)
-    return out.sort_values(["fighter", "event_date", "event_name"]).reset_index(drop=True)
+    out = out.sort_values(["fighter", "event_date", "event_name"]).reset_index(drop=True)
+    if age_drift:
+        out.attrs["age_drift_elo_per_year"] = (
+            drift_per_day * _ELO_PER_NAT * _DAYS_PER_YEAR
+        ).tolist()
+    return out
