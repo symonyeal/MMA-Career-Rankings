@@ -33,6 +33,63 @@ title component for 38 fighters with 3+ title wins, because a title challenger
 is by construction near contender level, so the modal title fight sits on the
 hinge. Any weight must be strictly positive.
 
+#### The division bar was not actually running (fixed 2026-08-25)
+
+`title_quality_ledger` takes `divisions` as an **optional** argument and falls
+back to the sport-wide contender line when it is absent — silently, because
+nothing raises. `rate_snapshot.run()` scored the public resume about thirty
+lines before `career_division` was attached, so `_division_labels` returned
+`None` and every title win in every published board was priced against the
+sport-wide line. `refresh_career_columns()` reads a persisted snapshot that
+already has the division columns, so the two code paths disagreed on the same
+snapshot.
+
+The measured cost was exactly what the note above `TITLE_QUALITY_SCALE`
+predicted — the light divisions were priced against the heavy ones:
+
+| fighter | sport-wide (published) | own division | under-priced |
+|---|---:|---:|---:|
+| Zhang Weili | 0.060 | 0.491 | 8.2× |
+| Valentina Shevchenko | 0.149 | 0.636 | 4.3× |
+| Demetrious Johnson | 0.493 | 1.487 | 3.0× |
+| Georges St-Pierre | 0.517 | 1.233 | 2.4× |
+| Jon Jones | 1.039 | 2.113 | 2.0× |
+
+It also inverted comparisons between divisions: Matt Hughes scored 828.7 title
+points against Volkanovski's 418.2, and repricing each against their own
+division reverses it to 427.4 and 634.7. Volkanovski's three Holloway wins go
+from ~0.09 each to ~0.24–0.29.
+
+The fix is call ordering — the resume is now scored last, after
+`primary_division_rows`. `tests/test_title_division_bar.py` pins both the
+mechanism and the ordering; the integration test fails on the old order.
+
+#### “Opponent that night” remains an explicit unresolved design choice
+
+The title ledger uses the opponent's pre-bout row from the retrospective WHR
+smoother. `allow_exact_matches=False` prevents the bout from pricing itself, but
+future bouts still help locate the opponent's smoothed trajectory. For low-loss
+elite careers that trajectory can be nearly flat: Hughes's 2004 win over GSP is
+therefore priced close to career-GSP, and supplies 47.9% of Hughes's repaired
+title component.
+
+The no-future Glicko filter was measured as the direct alternative, with each
+ledger priced against a contender bar built from its own rating source. It is
+not a safe mechanical replacement:
+
+- Hughes rises from 427.4 to 444.7 title display points rather than falling,
+  because the causal filter already rates undefeated 2004 GSP very highly;
+- his largest-win share does fall from 47.9% to 24.2%;
+- across 245 commonly priced fighters, the two ledgers have Spearman 0.9149 and
+  median absolute movement of 20.7 display points;
+- the changes are large and mixed: GSP +295, Volkanovski +220, Aldo +238,
+  Amanda Nunes -242, and Demetrious Johnson -138.
+
+The division bug is fixed. The valuation semantics are not silently changed:
+switching to the causal filter would alter the whole board without solving the
+Hughes objection it was proposed to solve. Evidence is retained in
+`Claude Func Folder/py/ufc/out/title_opponent_valuation.csv` outside the repo.
+
 ### 3. Age decline is projected through inactivity
 
 `age_drift=True` applied the learned eight-bin age curve only *between* fitted

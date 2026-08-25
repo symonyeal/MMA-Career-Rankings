@@ -539,18 +539,6 @@ def run(
         )
         current = current.merge(renamed, on="fighter", how="left")
 
-    current = current.merge(
-        public_legacy_score_rows(
-            current,
-            perf_app,
-            source_fights=rated_fights,
-            history=whr_history,
-            reference=career_reference,
-        ),
-        on="fighter",
-        how="left",
-    )
-
     current = _attach_record(current, rated_fights)
     current = _attach_recent_division_gender(current, rated_fights)
     current = _attach_activity_adjusted_mu(current, snapshot_max_date)
@@ -573,6 +561,36 @@ def run(
         errors="ignore",
     )
     current = current.merge(primary_division_rows(division_resume), on="fighter", how="left")
+
+    # The public resume MUST be scored after career_division and gender exist.
+    #
+    # legacy_resume._division_labels returns None when career_division is absent,
+    # and title_quality_ledger then silently prices every title win against the
+    # sport-wide contender line instead of the division line. It does not raise:
+    # the divisions argument is optional, so the intended bar just never runs.
+    #
+    # This call used to sit ~30 lines above, before the division columns were
+    # attached, so the published board was built on the sport-wide bar the
+    # comment above TITLE_QUALITY_SCALE explicitly rejects. Measured on
+    # 2026-08-13 that under-priced exactly the divisions it was supposed to
+    # protect -- Zhang Weili 8.2x, Shevchenko 4.3x, Demetrious Johnson 3.0x --
+    # and it put Matt Hughes above Volkanovski on title resume, reversed once
+    # each is priced against their own division.
+    #
+    # refresh_career_columns() reads a persisted snapshot that already has the
+    # division columns, so it always used the division bar. The two paths
+    # therefore disagreed on the same snapshot. Keep this call last.
+    current = current.merge(
+        public_legacy_score_rows(
+            current,
+            perf_app,
+            source_fights=rated_fights,
+            history=whr_history,
+            reference=career_reference,
+        ),
+        on="fighter",
+        how="left",
+    )
 
     # ------------------------------------------------------------------
     # Integrity counts
