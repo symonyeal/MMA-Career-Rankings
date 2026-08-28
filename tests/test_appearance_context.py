@@ -46,3 +46,53 @@ def test_peak_opponent_quality_uses_actual_opponent_not_same_card_elite():
     assert x["opponent"] == "LowOpp"
     assert x["opponent_prefight_mu"] == pytest.approx(1500.0)
     assert x["opp_weight"] == pytest.approx(0.0)
+
+
+def test_peak_appearances_do_not_fan_out_same_event_tournament_rows():
+    prior_date = pd.Timestamp("2023-01-01")
+    event_date = pd.Timestamp("2024-01-01")
+    history = pd.DataFrame([
+        {"fighter": "A", "event_date": prior_date, "event_name": "Prior", "mu_canonical": 1700.0},
+        {"fighter": "B", "event_date": prior_date, "event_name": "Prior", "mu_canonical": 1500.0},
+        {"fighter": "C", "event_date": prior_date, "event_name": "Prior", "mu_canonical": 1600.0},
+        {"fighter": "A", "event_date": event_date, "event_name": "Tournament", "mu_canonical": 1720.0},
+        {"fighter": "B", "event_date": event_date, "event_name": "Tournament", "mu_canonical": 1480.0},
+        {"fighter": "A", "event_date": event_date, "event_name": "Tournament", "mu_canonical": 1740.0},
+        {"fighter": "C", "event_date": event_date, "event_name": "Tournament", "mu_canonical": 1580.0},
+    ])
+    fights = pd.DataFrame([
+        {
+            "fight_url": f"t/{number}", "event_date": event_date,
+            "event_name": "Tournament", "fighter_a": "A", "fighter_b": opponent,
+            "winner": "A", "is_draw": False,
+            "method_class": "Decision - Unanimous", "method_score_winner": 0.85,
+            "time_format": "3 Rnd (5-5-5)", "end_round": 3,
+            "end_time_seconds": 300, "details_text": "30-27 30-27 30-27",
+            "weight_class": "UFC Lightweight Bout", "is_title_fight": False,
+        }
+        for number, opponent in enumerate(["B", "C"], start=1)
+    ])
+
+    out = peak_appearance_quality(fights, history)
+
+    assert len(out) == 2 * len(fights)
+    assert not out.duplicated(["fight_url", "fighter"]).any()
+
+
+def test_peak_appearances_fail_loudly_on_duplicate_fight_fighter_output():
+    event_date = pd.Timestamp("2024-01-01")
+    fights = pd.DataFrame([{
+        "fight_url": "self/1", "event_date": event_date, "event_name": "Bad",
+        "fighter_a": "A", "fighter_b": "A", "winner": "A", "is_draw": False,
+        "method_class": "Decision - Unanimous", "method_score_winner": 0.85,
+        "time_format": "3 Rnd (5-5-5)", "end_round": 3,
+        "end_time_seconds": 300, "details_text": "30-27 30-27 30-27",
+        "weight_class": "UFC Lightweight Bout", "is_title_fight": False,
+    }])
+    history = pd.DataFrame([{
+        "fighter": "A", "event_date": event_date, "event_name": "Bad",
+        "mu_canonical": 1500.0,
+    }])
+
+    with pytest.raises(ValueError, match=r"unique per \(fight_url, fighter\)"):
+        peak_appearance_quality(fights, history)

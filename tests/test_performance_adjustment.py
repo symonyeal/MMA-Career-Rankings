@@ -21,6 +21,7 @@ from ratings.performance_adjustment import (
     decisiveness_score,
     is_championship_bout,
     is_interim_title_bout,
+    prefight_ratings,
     prefight_ranking_context,
     prefight_weight_class_context,
     parse_judge_scores,
@@ -238,6 +239,86 @@ def test_opponent_mu_quality_is_monotonic_across_elite_range():
 def test_performance_appearances_handles_empty_input():
     out = build_performance_appearances(pd.DataFrame(), _minimal_history(), odds_lines=None)
     assert out.empty
+
+
+def _tournament_fights_and_history() -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Three same-card bouts for A, the shape that caused merge fan-out."""
+    prior_date = pd.Timestamp("2023-01-01")
+    event_date = pd.Timestamp("2024-01-01")
+    fighters = ["A", "B", "C", "D"]
+    prior_mu = {"A": 1700.0, "B": 1500.0, "C": 1600.0, "D": 1800.0}
+    history = pd.DataFrame(
+        [
+            {
+                "fighter": fighter,
+                "event_date": prior_date,
+                "event_name": "Prior",
+                "mu_canonical": prior_mu[fighter],
+            }
+            for fighter in fighters
+        ]
+        + [
+            # Rating history has one row per bout. A therefore appears three
+            # times at this event while each opponent appears once.
+            {"fighter": "A", "event_date": event_date, "event_name": "Tournament", "mu_canonical": 1720.0},
+            {"fighter": "B", "event_date": event_date, "event_name": "Tournament", "mu_canonical": 1480.0},
+            {"fighter": "A", "event_date": event_date, "event_name": "Tournament", "mu_canonical": 1740.0},
+            {"fighter": "C", "event_date": event_date, "event_name": "Tournament", "mu_canonical": 1580.0},
+            {"fighter": "A", "event_date": event_date, "event_name": "Tournament", "mu_canonical": 1760.0},
+            {"fighter": "D", "event_date": event_date, "event_name": "Tournament", "mu_canonical": 1780.0},
+        ]
+    )
+    fights = pd.DataFrame(
+        [
+            {
+                "fight_url": f"t/{number}",
+                "event_date": event_date,
+                "event_name": "Tournament",
+                "fighter_a": "A",
+                "fighter_b": opponent,
+                "winner": "A",
+                "is_draw": False,
+                "method_class": "Decision - Unanimous",
+                "method_score_winner": 0.85,
+                "time_format": "3 Rnd (5-5-5)",
+                "end_round": 3,
+                "end_time_seconds": 300,
+                "details_text": "30-27 30-27 30-27",
+                "weight_class": "UFC Lightweight Bout",
+                "is_title_fight": False,
+            }
+            for number, opponent in enumerate(["B", "C", "D"], start=1)
+        ]
+    )
+    return fights, history
+
+
+def test_prefight_ratings_collapses_multiple_same_event_history_rows():
+    _, history = _tournament_fights_and_history()
+    prior = prefight_ratings(history)
+    event = prior[
+        prior["event_date"].eq(pd.Timestamp("2024-01-01"))
+        & prior["event_name"].eq("Tournament")
+    ]
+
+    assert not event.duplicated(["fighter", "event_date", "event_name"]).any()
+    assert len(event[event["fighter"].eq("A")]) == 1
+    assert event.set_index("fighter").loc["A", "prefight_mu"] == pytest.approx(1700.0)
+
+
+def test_performance_appearances_do_not_fan_out_same_event_tournament_rows():
+    fights, history = _tournament_fights_and_history()
+    out = build_performance_appearances(fights, history, odds_lines=None)
+
+    assert len(out) == 2 * len(fights)
+    assert not out.duplicated(["fight_url", "fighter"]).any()
+    assert set(out.loc[out["fighter"].eq("A"), "fight_url"]) == {"t/1", "t/2", "t/3"}
+
+
+def test_performance_appearances_fail_loudly_on_duplicate_fight_fighter_output():
+    fights = _minimal_fights().assign(fighter_b="Alice")
+    with pytest.raises(ValueError, match=r"unique per \(fight_url, fighter\)"):
+        build_performance_appearances(fights, _minimal_history(), odds_lines=None)
 
 
 def test_rank_championship_p4p_context_uses_prefight_state():

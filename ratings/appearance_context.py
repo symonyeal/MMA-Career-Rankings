@@ -43,6 +43,7 @@ from ratings.opponent_quality import (
 from ratings.performance_adjustment import (
     DIVISION_WEIGHT_LIMIT_LB,
     normalize_division_label,
+    prefight_ratings,
     prefight_ranking_context,
 )
 
@@ -71,13 +72,8 @@ PEAK_APPEARANCE_COLUMNS = [
 
 
 def _prefight_mu_table(canonical_history: pd.DataFrame) -> pd.DataFrame:
-    if canonical_history is None or canonical_history.empty:
-        return pd.DataFrame(columns=["fighter", "event_date", "event_name", "prefight_mu"])
-    h = canonical_history[["fighter", "event_date", "event_name", "mu_canonical"]].copy()
-    h["event_date"] = pd.to_datetime(h["event_date"], errors="coerce")
-    h = h.sort_values(["fighter", "event_date", "event_name"]).reset_index(drop=True)
-    h["prefight_mu"] = h.groupby("fighter")["mu_canonical"].shift(1).fillna(1500.0)
-    return h[["fighter", "event_date", "event_name", "prefight_mu"]]
+    """Share the event-grained, tournament-safe pre-fight lookup."""
+    return prefight_ratings(canonical_history)
 
 
 def peak_appearance_quality(
@@ -98,8 +94,18 @@ def peak_appearance_quality(
     prior = _prefight_mu_table(canonical_history)
     prior_a = prior.rename(columns={"fighter": "fighter_a", "prefight_mu": "prefight_mu_a"})
     prior_b = prior.rename(columns={"fighter": "fighter_b", "prefight_mu": "prefight_mu_b"})
-    f = f.merge(prior_a, on=["fighter_a", "event_date", "event_name"], how="left")
-    f = f.merge(prior_b, on=["fighter_b", "event_date", "event_name"], how="left")
+    f = f.merge(
+        prior_a,
+        on=["fighter_a", "event_date", "event_name"],
+        how="left",
+        validate="many_to_one",
+    )
+    f = f.merge(
+        prior_b,
+        on=["fighter_b", "event_date", "event_name"],
+        how="left",
+        validate="many_to_one",
+    )
     for col in ("prefight_mu_a", "prefight_mu_b"):
         f[col] = pd.to_numeric(f[col], errors="coerce").fillna(1500.0)
 
@@ -183,7 +189,15 @@ def peak_appearance_quality(
         [0.5, 1.0],
         default=0.0,
     )
-    return out[PEAK_APPEARANCE_COLUMNS].copy()
+    result = out[PEAK_APPEARANCE_COLUMNS].copy()
+    duplicate = result.duplicated(["fight_url", "fighter"], keep=False)
+    if duplicate.any():
+        sample = result.loc[duplicate, ["fight_url", "fighter"]].head(5)
+        raise ValueError(
+            "peak appearances must be unique per (fight_url, fighter); "
+            f"duplicate sample: {sample.to_dict(orient='records')}"
+        )
+    return result
 
 
 def _result_adjustment(actual_score: pd.Series) -> pd.Series:

@@ -597,9 +597,22 @@ def prefight_ratings(history: pd.DataFrame) -> pd.DataFrame:
         return pd.DataFrame(columns=["fighter", "event_date", "event_name", "prefight_mu"])
     h = history[["fighter", "event_date", "event_name", "mu_canonical"]].copy()
     h["event_date"] = pd.to_datetime(h["event_date"], errors="coerce")
-    h = h.sort_values(["fighter", "event_date", "event_name"])
+    # A tournament can put one fighter in several history rows on one event.
+    # The lookup joined below is event-grained, so returning all of those rows
+    # turns each fight into a many-to-many merge (three rows for one fighter and
+    # two for the opponent produce six copies of the appearance).  Preserve the
+    # engine's within-day order, take the state before the first row of the
+    # event, and expose exactly one lookup row per event.
+    h["_history_order"] = np.arange(len(h))
+    h = h.sort_values(
+        ["fighter", "event_date", "_history_order"], kind="stable"
+    )
     h["prefight_mu"] = h.groupby("fighter")["mu_canonical"].shift(1).fillna(1500.0)
-    return h[["fighter", "event_date", "event_name", "prefight_mu"]]
+    return (
+        h.drop_duplicates(["fighter", "event_date", "event_name"], keep="first")
+        [["fighter", "event_date", "event_name", "prefight_mu"]]
+        .reset_index(drop=True)
+    )
 
 
 def pre_fight_win_streaks(fights: pd.DataFrame) -> pd.DataFrame:
@@ -1226,8 +1239,18 @@ def build_performance_appearances(
     prior = prefight_ratings(ratings_history)
     prior_a = prior.rename(columns={"fighter": "fighter_a", "prefight_mu": "prefight_mu_a"})
     prior_b = prior.rename(columns={"fighter": "fighter_b", "prefight_mu": "prefight_mu_b"})
-    f = f.merge(prior_a, on=["fighter_a", "event_date", "event_name"], how="left")
-    f = f.merge(prior_b, on=["fighter_b", "event_date", "event_name"], how="left")
+    f = f.merge(
+        prior_a,
+        on=["fighter_a", "event_date", "event_name"],
+        how="left",
+        validate="many_to_one",
+    )
+    f = f.merge(
+        prior_b,
+        on=["fighter_b", "event_date", "event_name"],
+        how="left",
+        validate="many_to_one",
+    )
     for c in ("prefight_mu_a", "prefight_mu_b"):
         f[c] = pd.to_numeric(f[c], errors="coerce").fillna(1500.0)
 
@@ -1484,4 +1507,12 @@ def build_performance_appearances(
         lower=SLEEVE_FACTOR_MIN, upper=SLEEVE_FACTOR_MAX
     )
 
-    return out[list(PERFORMANCE_APPEARANCE_COLUMNS)].copy()
+    result = out[list(PERFORMANCE_APPEARANCE_COLUMNS)].copy()
+    duplicate = result.duplicated(["fight_url", "fighter"], keep=False)
+    if duplicate.any():
+        sample = result.loc[duplicate, ["fight_url", "fighter"]].head(5)
+        raise ValueError(
+            "performance appearances must be unique per (fight_url, fighter); "
+            f"duplicate sample: {sample.to_dict(orient='records')}"
+        )
+    return result
