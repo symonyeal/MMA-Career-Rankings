@@ -47,5 +47,24 @@ title ledger.
 deleted only so the earlier bar comparison remains recoverable; regenerate it
 instead if the comparison is wanted again.
 
-`generated-data/` is gitignored (`_archive/**/generated-data/`), so this file
-stays local and is not versioned.
+## `generated-data/career_mass_{uncertainty,tiers}-2026-08-24.*`
+
+**Original paths:** `data/snapshots/2026-08-13/career_mass_uncertainty.parquet`,
+`career_mass_uncertainty.json`, `career_mass_tiers.parquet`.
+
+Rank intervals and tiers written on 2026-08-24. They were stale in four separate
+ways at once — they predate the career-coverage repair, the refit WHR constants,
+the method-of-victory winner score and the pool-priced title ledger — and they
+were also **mixed-population**: men and women ranked against each other, which
+is an ordering claim no bout in the corpus supports.
+
+That combination is why they were moved rather than left in place. After the
+2026-08-28 gender split, `career_mass_uncertainty.parquet` is by name the
+**men's** artifact, so leaving a mixed 2026-08-24 file sitting at that path
+would have handed any reader a stale mixed board under the men's name.
+
+Regenerate with `python build_uncertainty.py <snapshot> --replicates N`, and
+`--gender F` for the women's intervals.
+
+`generated-data/` is gitignored (`_archive/**/generated-data/`), so these files
+stay local and are not versioned.

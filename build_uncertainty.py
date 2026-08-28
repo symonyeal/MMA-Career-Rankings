@@ -5,9 +5,16 @@ Reruns the whole smoother under Dirichlet-reweighted events (see
 the snapshot, so the notebook can show every rank with the interval it deserves
 instead of a bare integer.
 
+Intervals and tiers are ORDERING claims, so they are made inside ONE bout-graph
+component. ``--gender`` picks it and defaults to the published men's board;
+``--gender F`` writes the ``*_women`` artifacts beside it. A mixed run would be
+asking whether a woman is separated from a man, which no bout in the corpus can
+answer -- see ``ratings/gender.py``.
+
 Usage::
 
     python build_uncertainty.py data/snapshots/2026-08-13 --replicates 12
+    python build_uncertainty.py data/snapshots/2026-08-13 --replicates 12 --gender F
 """
 from __future__ import annotations
 
@@ -21,6 +28,13 @@ import pandas as pd
 from ratings import prequential as PQ
 from ratings.constants import SUSTAINED_PEAK_MIN_FIGHTS
 from ratings.scope import DEFAULT_PUBLISHED_SCOPE
+from ratings.gender import (
+    DEFAULT_GENDER,
+    GENDER_LABEL,
+    GENDER_SUFFIX,
+    GENDERS,
+    select_gender,
+)
 from ratings.legacy_resume import _division_labels
 from ratings.symon_score import (
     DEFAULT_CAREER_REFERENCE,
@@ -54,6 +68,16 @@ def main() -> None:
                     help="share of replicates a tier leader must win to open a new tier")
     ap.add_argument("--min-rating-periods", type=int, default=SUSTAINED_PEAK_MIN_FIGHTS,
                     help="same completeness gate used by the published board")
+    ap.add_argument(
+        "--gender",
+        choices=list(GENDERS),
+        default=DEFAULT_GENDER,
+        help=(
+            "Bout-graph component to make interval and tier claims inside. "
+            "Default M, the published board. Men and women never fight, so a "
+            "mixed interval would be read off the prior."
+        ),
+    )
     ap.add_argument("--out", type=Path, default=None,
                     help="defaults to <snapshot>/career_mass_uncertainty.parquet")
     args = ap.parse_args()
@@ -64,12 +88,19 @@ def main() -> None:
     # actually published rather than a UFC-only one that happens to share a name.
     fights = PQ.load_fight_table(args.snapshot_dir, scope=args.scope)
     current = pd.read_parquet(args.snapshot_dir / "ratings_current.parquet")
-    eligible = set(current.loc[
-        current["rating_periods"].fillna(0) >= args.min_rating_periods, "fighter"
+    # Rank intervals and tiers are ORDERING claims, so they are made inside one
+    # bout-graph component or not at all. A mixed bootstrap asks "is Zhang Weili
+    # separated from Jon Jones", which no bout in the corpus can answer -- the
+    # answer would be read off the prior. ``--gender`` selects the component;
+    # the default is the published men's board. See ratings/gender.py.
+    population = select_gender(current, args.gender)
+    eligible = set(population.loc[
+        population["rating_periods"].fillna(0) >= args.min_rating_periods, "fighter"
     ].astype(str))
 
-    print(f"[bootstrap] scope={args.scope} {len(fights):,} bouts, "
-          f"{args.replicates} replicates")
+    print(f"[bootstrap] scope={args.scope} gender={args.gender} "
+          f"({GENDER_LABEL[args.gender]}) {len(fights):,} bouts, "
+          f"{len(eligible):,} eligible fighters, {args.replicates} replicates")
     t0 = time.perf_counter()
     # The replicates must refit the SAME functional the board publishes --
     # method-scored WHR, and a bar struck inside each division-year under the
@@ -84,7 +115,7 @@ def main() -> None:
         },
         mass_kwargs={
             "reference": reference,
-            "divisions": _division_labels(current),
+            "divisions": _division_labels(population),
             "division_reference": DEFAULT_DIVISION_REFERENCE,
             "hinge_spread_fraction": DEFAULT_HINGE_SPREAD_FRACTION,
         },
@@ -95,14 +126,21 @@ def main() -> None:
     tiers = career_tiers(board, draws, confidence=args.tier_confidence)
     summary_tiers = tier_summary(tiers)
 
-    out_path = args.out or (args.snapshot_dir / "career_mass_uncertainty.parquet")
+    suffix = GENDER_SUFFIX[args.gender]
+    out_path = args.out or (
+        args.snapshot_dir / f"career_mass_uncertainty{suffix}.parquet"
+    )
     board.to_parquet(out_path, index=False)
-    tiers.to_parquet(out_path.with_name("career_mass_tiers.parquet"), index=False)
+    tiers.to_parquet(
+        out_path.with_name(f"career_mass_tiers{suffix}.parquet"), index=False
+    )
     ranked_tiers = tiers[tiers["tier"].notna()]
     summary = {
         "replicates": int(args.replicates),
         "seed": int(args.seed),
         "scope": args.scope,
+        "gender": args.gender,
+        "gender_label": GENDER_LABEL[args.gender],
         "interval": [lo, hi],
         "reference": str(reference),
         "age_drift": True,
@@ -118,7 +156,7 @@ def main() -> None:
             (board.head(50)["rank_hi"] - board.head(50)["rank_lo"]).median()
         ),
     }
-    (args.snapshot_dir / "career_mass_uncertainty.json").write_text(
+    (args.snapshot_dir / f"career_mass_uncertainty{suffix}.json").write_text(
         json.dumps(summary, indent=2), encoding="utf-8")
     print(f"[bootstrap] wrote {out_path} in {wall:.0f}s")
     print(json.dumps(summary, indent=2))

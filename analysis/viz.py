@@ -29,6 +29,7 @@ from ratings.constants import (
     rating_label,
     rename_rating_columns,
 )
+from ratings.gender import DEFAULT_GENDER, select_gender
 from ratings.glicko2_engine import predict_win_prob_from_ratings, matchup_quality_from_ratings
 
 # ---------------------------------------------------------------------------
@@ -845,9 +846,19 @@ def top_n_table(
     division: str | None = None,
     active_within_days: int | None = None,
     rating_col: str = "mu_canonical",
+    gender: str | None = DEFAULT_GENDER,
 ) -> pd.DataFrame:
-    """Return a sortable top-N table with derived columns for display."""
+    """Return a sortable top-N table with derived columns for display.
+
+    ``gender`` selects one bout-graph component and defaults to the published
+    men's board, because a mixed top-N orders two populations that never fight
+    and whose relative level is therefore set by the prior. Pass ``gender=None``
+    only for a deliberately mixed diagnostic view, and label it as one.
+    See :mod:`ratings.gender`.
+    """
     df = ratings_current.copy()
+    if gender is not None:
+        df = select_gender(df, gender)
     df = df[df["rating_periods"] >= min_fights]
 
     if active_within_days is not None and "last_event_date" in df.columns:

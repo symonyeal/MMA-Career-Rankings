@@ -461,6 +461,20 @@ moving the mixed board a great deal. Ranks inside each component are identified;
 one number across both is not. See
 [Women's all-time top 10](#womens-all-time-top-10).
 
+The rule lives in one module, `ratings/gender.py`, and **every** surface that
+orders fighters goes through it: the two published board artifacts, the
+snapshot's headline Career Skill Mass / Prime / Public Legacy prints, the
+bootstrap rank intervals and tiers (`build_uncertainty.py --gender`), the
+anchor audit, and the notebook leaderboard. `tests/test_gender_separated_boards.py`
+fails if any of them starts ranking across both again.
+
+Prime is where a mixed board did the most damage and where the split shows most,
+because Prime reads `mu_whr` directly with no exposure factor and no resume
+ledger, so nothing downstream damps the gauge. The women's Prime top five on
+this snapshot is Seika Izawa, Cristiane Justino, Kayla Harrison, Ronda Rousey,
+Amanda Nunes -- an ordering that is a measurement. Their positions on the old
+mixed list were not.
+
 ## What Is Not in the Core
 
 - **Titles, rankings, P4P labels, streaks, and odds** are descriptive or

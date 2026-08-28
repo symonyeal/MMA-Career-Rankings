@@ -31,6 +31,12 @@ from ratings.boards import (
     integrity_ledger,
 )
 from ratings.constants import SUSTAINED_PEAK_MIN_FIGHTS  # board eligibility floor
+from ratings.gender import (
+    GENDER_GAUGE_NOTE,
+    GENDER_LABEL,
+    GENDER_SUFFIX,
+    partition_by_gender,
+)
 from ratings.legacy_resume import PUBLIC_LEGACY_DISPLAY_SCALE
 from ratings.scope import DEFAULT_PUBLISHED_SCOPE
 
@@ -90,28 +96,12 @@ README_BOARD_END = "<!-- BOARD:TOP100:END -->"
 README_WOMEN_BEGIN = "<!-- BOARD:WOMEN10:BEGIN -->"
 README_WOMEN_END = "<!-- BOARD:WOMEN10:END -->"
 
-# The men's and women's boards are built and published SEPARATELY, and that is
-# an identification statement, not a presentation preference.
-#
-# Measured on the 2026-08-13 snapshot: of 80,697 rated bouts, **zero** join a
-# man to a woman and the two sides share **zero** opponents. They are disjoint
-# components of the bout graph, so adding any constant to every rating in the
-# women's component changes no modelled bout probability -- the offset between
-# the two levels is set by the prior, not by evidence. It is not a small effect
-# on the board: 2026-08-25 measured total female career mass running from 0 at
-# -200 Elo to 45,382 at +200, moving Zhang Weili from rank 30 with zero mass to
-# rank 13 with 886. One number therefore cannot rank a man against a woman, and
-# a mixed board publishes that unidentified gauge as if it were a result.
-#
-# Ranks *within* each component are identified and are what get published.
-BOARD_GENDER_SUFFIX = {"M": "", "F": "_women"}
-BOARD_GENDER_LABEL = {"M": "men's", "F": "women's"}
-GENDER_GAUGE_NOTE = (
-    "Men and women never fight, so no bout locates the two rating levels "
-    "against each other: their relative level is set by the prior, not by "
-    "evidence, and one number cannot rank them together. The boards are "
-    "therefore separate, and each one's ranks are identified within it."
-)
+# The men's and women's boards are built and published SEPARATELY. The rule and
+# the measurements behind it live in ``ratings/gender.py``, which every ranking
+# surface in the project shares -- these names are re-exported so this module's
+# existing callers keep working.
+BOARD_GENDER_SUFFIX = GENDER_SUFFIX
+BOARD_GENDER_LABEL = GENDER_LABEL
 
 
 def _select_rating_col(
@@ -165,24 +155,9 @@ def public_legacy_eligibility_override(current: pd.DataFrame) -> pd.Series:
     )
 
 
-def gender_partition(current: pd.DataFrame) -> dict[str, pd.DataFrame]:
-    """Split the rated population into the two disjoint bout-graph components.
-
-    A snapshot rated before gender inference existed has no ``gender`` column;
-    it gets one mixed board under the men's key rather than a silent claim to
-    have separated something. ``rate_snapshot._attach_recent_division_gender``
-    is what fills the column, and it propagates across the same components this
-    splits on.
-    """
-    if current is None or current.empty or "gender" not in current.columns:
-        return {"M": current}
-    label = current["gender"].astype(str).str.upper().str.strip()
-    female = label.str.startswith("F")
-    male = label.str.startswith("M")
-    # An unlabelled fighter never fought a gendered billing the inference could
-    # read. Keeping them on the default board is the same abstention the
-    # completeness gate makes: they are not evidence for a women's rank.
-    return {"M": current[~female].copy(), "F": current[female & ~male].copy()}
+# Kept as a module-level name because tests and build_top100_audit.py import it
+# from here; the implementation is the shared one.
+gender_partition = partition_by_gender
 
 
 def _requested_core_rating_col(current: pd.DataFrame, requested: str | None) -> str:

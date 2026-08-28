@@ -333,6 +333,7 @@ def main() -> None:
         # Through the scope loader, so the intervals describe the board that was
         # just rated. Reading canonical_fights directly here published UFC-only
         # intervals beside a joint board, and nothing in the artifacts said so.
+        from ratings.gender import DEFAULT_GENDER, select_gender
         from ratings.legacy_resume import _division_labels
         from ratings.symon_score import (
             DEFAULT_DIVISION_REFERENCE,
@@ -342,7 +343,11 @@ def main() -> None:
 
         bootstrap_fights = PQ.load_fight_table(snapshot_dir, scope=args.scope)
         bootstrap_current = pd.read_parquet(snapshot_dir / "ratings_current.parquet")
-        # Same functional as the published board -- see build_uncertainty.py.
+        # Same functional AND the same population as the published board: rank
+        # intervals are ordering claims, so they are made inside one bout-graph
+        # component. Men's is the default board; run build_uncertainty.py
+        # --gender F for the women's intervals. See ratings/gender.py.
+        bootstrap_current = select_gender(bootstrap_current, DEFAULT_GENDER)
         board, draws = career_mass_bootstrap(
             bootstrap_fights,
             replicates=args.bootstrap_replicates,

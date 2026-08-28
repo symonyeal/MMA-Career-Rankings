@@ -52,6 +52,7 @@ from ratings.symon_score import (
     parse_reference,
     symon_prime_score,
 )
+from ratings.gender import GENDER_GAUGE_NOTE, GENDER_LABEL, partition_by_gender
 from ratings.legacy_resume import _division_labels, public_legacy_score_rows
 from ratings.whr import production_score_kwargs, project_age_rating, run_whr
 from ratings.age import load_birth_dates
@@ -425,6 +426,26 @@ def _attach_recent_division_gender(current: pd.DataFrame, fights: pd.DataFrame) 
     return current.merge(recent, on="fighter", how="left")
 
 
+def _print_one_board(
+    population: pd.DataFrame,
+    *,
+    rating_col: str,
+    extra_cols: list[str],
+    title: str,
+    n: int,
+    min_fights: int,
+) -> None:
+    eligible = population[population["rating_periods"].fillna(0) >= min_fights].copy()
+    eligible = eligible.dropna(subset=[rating_col])
+    if eligible.empty:
+        return
+    cols = ["fighter", rating_col, *[c for c in extra_cols if c in eligible.columns]]
+    out = eligible.sort_values(rating_col, ascending=False).head(n)[cols]
+    out = rename_rating_columns(out)
+    print(f"\n=== {title} ===")
+    print(out.to_string(index=False))
+
+
 def _print_top(
     current: pd.DataFrame,
     *,
@@ -434,15 +455,29 @@ def _print_top(
     n: int = 20,
     min_fights: int = 3,
 ) -> None:
-    eligible = current[current["rating_periods"].fillna(0) >= min_fights].copy()
-    eligible = eligible.dropna(subset=[rating_col])
-    if eligible.empty:
-        return
-    cols = ["fighter", rating_col, *[c for c in extra_cols if c in eligible.columns]]
-    out = eligible.sort_values(rating_col, ascending=False).head(n)[cols]
-    out = rename_rating_columns(out)
-    print(f"\n=== {title} ===")
-    print(out.to_string(index=False))
+    """Print one headline board per bout-graph component, men's first.
+
+    Every board printed here used to be mixed, which published the unidentified
+    men/women gauge as a rank -- and it published it on **Prime** as well as on
+    the career and legacy boards. Prime is where it bites hardest, because Prime
+    reads ``mu_whr`` directly with no exposure factor and no resume ledger, so
+    nothing downstream damps the gauge. See :mod:`ratings.gender`.
+    """
+    partition = partition_by_gender(current)
+    for gender, population in partition.items():
+        if population is None or population.empty:
+            continue
+        suffix = "" if len(partition) == 1 else f" [{GENDER_LABEL[gender]}]"
+        _print_one_board(
+            population,
+            rating_col=rating_col,
+            extra_cols=extra_cols,
+            title=f"{title}{suffix}",
+            n=n,
+            min_fights=min_fights,
+        )
+    if "F" in partition and not partition["F"].empty:
+        print(f"\n  {GENDER_GAUGE_NOTE}")
 
 
 # ---------------------------------------------------------------------------

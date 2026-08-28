@@ -319,6 +319,16 @@ measured total female career mass running from 0 at -200 Elo to 45,382 at +200,
 moving Zhang Weili from rank 30 with zero mass to rank 13 with 886. A mixed board
 publishes that unidentified gauge as a rank.
 
+**The first attempt at this was incomplete, and that is worth recording.**
+Separating the two published *board artifacts* left every other ranking surface
+mixed: the snapshot's headline Career Skill Mass / **Prime** / Public Legacy
+prints, the bootstrap rank intervals and tiers, and the notebook's top-N helper
+all still ordered men against women. Prime was the worst of them, because Prime
+reads `mu_whr` directly with no exposure factor and no resume ledger, so nothing
+downstream damps the gauge -- it is exactly the board the handoff predicted would
+"move a lot". The rule now lives in **one** module, `ratings/gender.py`, and
+every surface goes through it.
+
 * `completeness_gated_board.parquet` is now the **men's** board, and "all-time"
   or "Prime" without a gender means men's.
 * `completeness_gated_board_women.parquet` is the women's board, ranked within
@@ -335,6 +345,18 @@ publishes that unidentified gauge as a rank.
   against three anchor lists that are men's lists. Its watch list now spans both
   boards and labels which one a name was found on, so a woman is never reported
   as missing from the men's board.
+
+* `build_uncertainty.py --gender` picks the component the intervals and tiers
+  are claimed inside, defaulting to men's, and writes `*_women` artifacts for
+  the other. A mixed bootstrap was asking whether Zhang Weili is separated from
+  Jon Jones, which no bout in the corpus can answer.
+* `ratings.rate_snapshot._print_top` prints one board per component with the
+  reason underneath, instead of one mixed table.
+* `analysis.viz.top_n_table` defaults to the published component; a mixed view
+  now has to be asked for explicitly by passing `gender=None`.
+* Three stale **mixed-population** interval artifacts from 2026-08-24 were
+  sitting at what are now the men's filenames. Archived, because leaving them
+  there would hand a reader a stale mixed board under the men's name.
 
 Published result: 3,481 men ranked and 271 women. The women's top ten is Nunes,
 Shevchenko, Zhang, Namajunas, Rousey, Justino, Andrade, Jedrzejczyk, Suarez,
