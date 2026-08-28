@@ -365,6 +365,65 @@ twelve men move up; nothing about either ranking's internal order changed.
 
 ---
 
+## 5b. The schedule component was measuring UFC tenure
+
+Found by asking why **Fedor Emelianenko sat 44th** on a board whose own ESPN
+anchor list has him 6th. The answer was not a judgement about Fedor. Two of the
+three components rated him correctly -- his **skill** score of 1023.7 was fourth
+among all heavyweights, behind only Jones, Cormier and Ngannou and ahead of
+Miocic (859) and Velasquez (644); his **title** score of 605 is a fair reading
+of five title wins. His **schedule** score was **75.5**, against Miocic 468,
+Couture 790, Velasquez 484, Werdum 428.
+
+**The mechanism.** "Wins over ranked opposition" needs a division to rank
+inside, and `performance_adjustment` derived that division from `weight_class`
+alone. That column is present on **100%** of UFC rows and **6%** of the Sherdog
+majors rows, so 94% of non-UFC bouts had no division and could not enter any
+ranked field. A pre-fight division rank was computable on 73.8% of UFC
+appearances against **2.2%** of majors ones. Every PRIDE-era name carries the
+same signature: Cro Cop 0.0, Kharitonov 0.0, Coleman 6.7, Nogueira 59.1,
+Fedor 75.5.
+
+The component was therefore reading **promotion, not schedule** -- exactly what
+the contract forbids -- and it is a third of the published score. Measured
+across the published top 150, it correlated **+0.53** with a fighter's UFC bout
+count, against **-0.25** for skill and **+0.01** for title.
+
+**The repair.** `fill_division_from_career` lets an unlabelled bout borrow the
+division of that fighter's **nearest labelled bout in time**. A bout keeps its
+own label wherever it has one. On a leave-one-out check over 20,640 labelled
+sides, nearest-in-time predicted the true division **83.0%** of the time against
+80.1% for the career-modal alternative. Bout-level coverage goes from 16.2% to
+**90.8%**; a fighter the corpus never weighed keeps no division and stays out of
+every ranked field, which is the honest answer.
+
+It is not free: about **17%** of the filled labels will be the wrong division
+for that particular bout -- a fighter moving weight, or a catchweight. Fedor
+resolves to Heavyweight on 44 of 47 bouts, Wanderlei Silva keeps a genuine
+33/14/2 light-heavy/middle/heavy split.
+
+**Blast radius is the ledger only.** `perf_factor_rank_context` is read by
+`legacy_resume` and the dashboard; the published WHR fit reads
+`_attach_org_only_weights(rated_fights)`, not the appearance table. Ratings,
+Prime and Career Skill Mass are unchanged.
+
+**Effect.** Fedor **44 -> 23**. Cro Cop 206 -> 59, Nogueira 103 -> 46, Barnett
+83 -> 39, Coleman 153 -> 81, Hunt 245 -> 181. The UFC-tenure correlation falls
+from +0.53 to **+0.48**.
+
+**And the residual is now located.** Decomposing it: the raw rank-context win
+mass correlates **+0.327** with UFC bout count, while the *exposure factor*
+correlates **+0.699**. The remaining bias is dominated by
+`ORG_FACTOR_BY_CANONICAL`, a hand-typed promotion table, whose mean runs 0.560
+for fighters with no UFC bouts against 0.877 for those with fifteen or more.
+
+Neutralising it was measured and **not adopted**: it cuts the correlation to
++0.345 but doubles zero-UFC fighters in the top 100 (5 -> 9) and returns
+Patricio Freire to 14th, undoing the pool-priced title work. Anchors in the top
+100 are 37 under all three arms, so the external check does not discriminate.
+The typed table therefore stays, unjustified but load-bearing, and its size is
+recorded here rather than left to be rediscovered.
+
 ## 6. What is still open
 
 * **`WHR_W2_PER_DAY` is still asserted.** It was measured and did not resolve.

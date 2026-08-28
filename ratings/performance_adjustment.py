@@ -205,6 +205,122 @@ def scheduled_rounds(time_format: object) -> int:
     return max(1, int(match.group(1))) if match else 3
 
 
+def fill_division_from_career(fights: pd.DataFrame) -> pd.Series:
+    """Fill a missing bout division from the same fighters' labelled bouts.
+
+    **This is a coverage repair, and the thing it repairs was a third of the
+    published score.** ``weight_class`` is present on 100% of UFC rows and
+    **6%** of the Sherdog majors rows, so mapping it straight to a division left
+    94% of non-UFC bouts with no division -- and a bout with no division cannot
+    enter its division's ranked field. Measured on the 2026-08-13 snapshot
+    before this function existed, a pre-fight division rank was computable on
+    73.8% of UFC appearances, 22.6% of pre-unified ones and **2.2%** of majors
+    ones, so the "wins over ranked opposition" component was reading UFC tenure
+    rather than schedule quality: it correlated **+0.53** with a fighter's UFC
+    bout count across the published top 150, against -0.25 for the skill
+    component and +0.01 for the title one. Fedor Emelianenko's entire PRIDE
+    prime -- Nogueira twice, Cro Cop, Coleman, Randleman, Herring, Schilt --
+    scored exactly nothing on it.
+
+    The rule: a bout keeps its own label wherever it has one, and only an
+    unlabelled bout borrows. It borrows from that fighter's **nearest labelled
+    bout in time**, which beat borrowing their career-modal division on a
+    leave-one-out check over 20,640 labelled sides -- 83.0% against 80.1%. A
+    fighter with no labelled bout anywhere keeps ``None`` and stays out of every
+    ranked field, which is the honest answer for a career the corpus never
+    weighed.
+
+    Coverage goes from 16.2% of bout-sides to 60.1%. The remaining 40% are
+    fighters the corpus never labelled at all, and 17% of what is filled will be
+    the wrong division for that particular bout -- a fighter moving weight, or a
+    catchweight. That error is not free, and it is the price of the component
+    measuring schedule instead of measuring promotion.
+    """
+    if fights is None or fights.empty:
+        return pd.Series(dtype="object")
+    division = fights.get("division")
+    if division is None:
+        division = pd.Series(pd.NA, index=fights.index, dtype="object")
+    if division.notna().all() or "event_date" not in fights.columns:
+        return division
+
+    sides = pd.concat(
+        [
+            pd.DataFrame({
+                "row": fights.index,
+                "fighter": fights.get("fighter_a"),
+                "division": division,
+                "event_date": fights["event_date"],
+            }),
+            pd.DataFrame({
+                "row": fights.index,
+                "fighter": fights.get("fighter_b"),
+                "division": division,
+                "event_date": fights["event_date"],
+            }),
+        ],
+        ignore_index=True,
+    ).dropna(subset=["fighter", "event_date"])
+    labelled = sides.dropna(subset=["division"])
+    if labelled.empty:
+        return division
+
+    # Nearest labelled bout in time, per fighter, via a two-sided as-of join.
+    known = (
+        labelled[["fighter", "event_date", "division"]]
+        .drop_duplicates(["fighter", "event_date"])
+        .sort_values("event_date")
+    )
+    # merge_asof consumes the right frame's key, so the matched date has to be
+    # carried as an ordinary column or every gap comes out as zero.
+    known["known_date"] = known["event_date"]
+    unknown = sides[sides["division"].isna()].sort_values("event_date")
+    if unknown.empty:
+        return division
+    backward = pd.merge_asof(
+        unknown, known, on="event_date", by="fighter",
+        direction="backward", suffixes=("", "_known"),
+    )
+    forward = pd.merge_asof(
+        unknown, known, on="event_date", by="fighter",
+        direction="forward", suffixes=("", "_known"),
+    )
+    far = pd.Timedelta.max
+    back_gap = (
+        unknown["event_date"].to_numpy() - backward["known_date"].to_numpy()
+    )
+    fwd_gap = (
+        forward["known_date"].to_numpy() - unknown["event_date"].to_numpy()
+    )
+    back_gap = pd.Series(back_gap).fillna(far)
+    fwd_gap = pd.Series(fwd_gap).fillna(far)
+    back_gap = back_gap.mask(backward["division_known"].isna().to_numpy(), far)
+    fwd_gap = fwd_gap.mask(forward["division_known"].isna().to_numpy(), far)
+    take_forward = (fwd_gap < back_gap).to_numpy()
+    filled = np.where(
+        take_forward,
+        forward["division_known"].to_numpy(),
+        backward["division_known"].to_numpy(),
+    )
+    gap = np.where(take_forward, fwd_gap.to_numpy(), back_gap.to_numpy())
+
+    # A bout has two sides and they can disagree -- one fighter's nearest
+    # labelled bout says heavyweight, the other's says middleweight. The
+    # CLOSER-IN-TIME inference wins, because it is the one the corpus supports
+    # better; taking whichever side happened to be listed first put two of
+    # Fedor's 47 bouts in the wrong division. Never overwrite a label the bout
+    # already carried.
+    resolved = pd.DataFrame(
+        {"row": unknown["row"].to_numpy(), "division": filled, "gap": gap}
+    ).dropna(subset=["division"])
+    resolved = (
+        resolved.sort_values("gap", kind="stable")
+        .drop_duplicates("row", keep="first")
+        .set_index("row")["division"]
+    )
+    return division.fillna(resolved)
+
+
 def normalize_division_label(weight_class: object) -> str | None:
     """Normalize UFCStats weight-class text to a stable division label."""
     if not isinstance(weight_class, str):
@@ -585,6 +701,7 @@ def prefight_ranking_context(canonical_fights: pd.DataFrame, ratings_history: pd
     f = canonical_fights.copy()
     f["event_date"] = pd.to_datetime(f["event_date"], errors="coerce")
     f["division"] = f.get("weight_class", pd.Series(index=f.index)).map(normalize_division_label)
+    f["division"] = fill_division_from_career(f)
     weight_class = f.get("weight_class", pd.Series(index=f.index))
     f["is_championship_bout"] = weight_class.map(is_real_ufc_title_bout)
     f["is_interim_title_bout"] = weight_class.map(is_interim_title_bout)

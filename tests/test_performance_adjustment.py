@@ -16,6 +16,8 @@ from ratings.constants import (
 from ratings.performance_adjustment import (
     build_performance_appearances,
     decision_quality_score,
+    fill_division_from_career,
+    normalize_division_label,
     decisiveness_score,
     is_championship_bout,
     is_interim_title_bout,
@@ -646,3 +648,79 @@ def test_draws_keep_unit_weight_on_both_sides():
     ])
     out = build_performance_appearances(fights, history, odds_lines=None)
     assert all(out["performance_weight"] == 1.0)
+
+
+# ---------------------------------------------------------------------------
+# Division fill (2026-08-28)
+#
+# `weight_class` is on 100% of UFC rows and 6% of the Sherdog majors rows, so
+# mapping it straight to a division left 94% of non-UFC bouts unable to enter
+# any ranked field. The "wins over ranked opposition" component was therefore
+# reading UFC tenure: +0.53 rank correlation with UFC bout count across the
+# published top 150, against -0.25 for skill and +0.01 for title.
+
+
+def _career_fights() -> pd.DataFrame:
+    return pd.DataFrame([
+        # Two labelled bouts bracket three unlabelled ones.
+        {"fight_url": "u/1", "event_date": "2003-01-01", "event_name": "E1",
+         "fighter_a": "Fedor", "fighter_b": "Nog", "weight_class": "Heavyweight"},
+        {"fight_url": "u/2", "event_date": "2004-01-01", "event_name": "E2",
+         "fighter_a": "Fedor", "fighter_b": "Cro Cop", "weight_class": None},
+        {"fight_url": "u/3", "event_date": "2005-01-01", "event_name": "E3",
+         "fighter_a": "Fedor", "fighter_b": "Coleman", "weight_class": None},
+        {"fight_url": "u/4", "event_date": "2009-01-01", "event_name": "E4",
+         "fighter_a": "Fedor", "fighter_b": "Arlovski", "weight_class": "Heavyweight"},
+        # A fighter the corpus never weighed stays unassigned.
+        {"fight_url": "u/5", "event_date": "2006-01-01", "event_name": "E5",
+         "fighter_a": "Ghost", "fighter_b": "Phantom", "weight_class": None},
+    ])
+
+
+def _with_division(frame: pd.DataFrame) -> pd.DataFrame:
+    out = frame.copy()
+    out["event_date"] = pd.to_datetime(out["event_date"])
+    out["division"] = out["weight_class"].map(normalize_division_label)
+    out["division"] = fill_division_from_career(out)
+    return out
+
+
+def test_unlabelled_bouts_borrow_from_the_fighters_own_labelled_bouts():
+    out = _with_division(_career_fights()).set_index("fight_url")
+    assert out.loc["u/2", "division"] == "Heavyweight"
+    assert out.loc["u/3", "division"] == "Heavyweight"
+
+
+def test_a_bout_never_loses_the_label_it_already_carried():
+    frame = _career_fights()
+    out = _with_division(frame)
+    original = frame["weight_class"].map(normalize_division_label)
+    keep = original.notna()
+    assert (out.loc[keep, "division"] == original[keep]).all()
+
+
+def test_a_fighter_the_corpus_never_weighed_stays_unassigned():
+    """Abstention, not a guess: they stay out of every ranked field."""
+    out = _with_division(_career_fights()).set_index("fight_url")
+    assert pd.isna(out.loc["u/5", "division"])
+
+
+def test_the_closer_labelled_bout_wins_when_the_two_sides_disagree():
+    frame = pd.DataFrame([
+        {"fight_url": "u/1", "event_date": "2000-01-01", "event_name": "A",
+         "fighter_a": "Big", "fighter_b": "X", "weight_class": "Heavyweight"},
+        {"fight_url": "u/2", "event_date": "2010-01-01", "event_name": "B",
+         "fighter_a": "Small", "fighter_b": "Y", "weight_class": "Flyweight"},
+        # Big's label is 11 years away; Small's is 1 year away, so Small wins.
+        {"fight_url": "u/3", "event_date": "2011-01-01", "event_name": "C",
+         "fighter_a": "Big", "fighter_b": "Small", "weight_class": None},
+    ])
+    out = _with_division(frame).set_index("fight_url")
+    assert out.loc["u/3", "division"] == "Flyweight"
+
+
+def test_fill_is_a_no_op_when_every_bout_is_already_labelled():
+    frame = _career_fights()
+    frame["weight_class"] = "Heavyweight"
+    out = _with_division(frame)
+    assert (out["division"] == "Heavyweight").all()

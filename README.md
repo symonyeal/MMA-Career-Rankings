@@ -45,7 +45,14 @@ hand-set:
   "Ranked" is the top fifth of that division's active field, not a fixed top
   fifteen: this corpus pools every promotion into one division, so the fields
   run from 37 to 119 active fighters and a fixed window meant 40% of women's
-  strawweight against 13% of featherweight.
+  strawweight against 13% of featherweight. Until 2026-08-28 this component was
+  reading **promotion rather than schedule**: a bout needs a division to be
+  ranked inside, `weight_class` is on 100% of UFC rows and 6% of the Sherdog
+  majors rows, and so 94% of non-UFC bouts could not enter any field. It
+  correlated +0.53 with a fighter's UFC bout count. Unlabelled bouts now borrow
+  the division of that fighter's nearest labelled bout (83.0% correct on a
+  leave-one-out check; coverage 16.2% -> 90.8%), which moved Fedor Emelianenko
+  from 44th to 23rd and Cro Cop from 206th to 59th.
 
 Three things this table does **not** claim:
 
@@ -155,106 +162,106 @@ fixed-hinge scale artifact.
 
 | # | Fighter | Score | Skill | Title | Schedule |
 | ---: | --- | ---: | ---: | ---: | ---: |
-| 1 | Jon Jones | 2940.8 | 1000.0 | 1000.0 | 940.8 |
-| 2 | Georges St-Pierre | 2207.8 | 637.1 | 570.7 | 1000.0 |
-| 3 | Daniel Cormier | 1659.5 | 477.8 | 553.3 | 628.4 |
-| 4 | Islam Makhachev | 1576.6 | 648.6 | 642.4 | 285.6 |
-| 5 | Jose Aldo | 1576.3 | 397.9 | 593.6 | 584.8 |
-| 6 | Demetrious Johnson | 1552.2 | 391.7 | 637.4 | 523.1 |
-| 7 | Alexander Volkanovski | 1404.0 | 262.7 | 587.6 | 553.6 |
-| 8 | Stipe Miocic | 1324.1 | 258.0 | 547.9 | 518.2 |
-| 9 | Anderson Silva | 1308.3 | 205.3 | 489.6 | 613.4 |
-| 10 | Max Holloway | 1285.8 | 80.6 | 310.8 | 894.5 |
-| 11 | Khabib Nurmagomedov | 1096.6 | 586.6 | 311.3 | 198.7 |
-| 12 | Randy Couture | 1094.0 | 22.7 | 196.7 | 874.6 |
-| 13 | Francis Ngannou | 1085.0 | 336.4 | 306.8 | 441.8 |
-| 14 | Aljamain Sterling | 1033.9 | 144.4 | 325.9 | 563.7 |
-| 15 | Ilia Topuria | 989.4 | 342.2 | 379.3 | 267.9 |
-| 16 | Cain Velasquez | 987.5 | 193.5 | 258.9 | 535.2 |
-| 17 | Dominick Cruz | 976.7 | 239.5 | 445.7 | 291.5 |
-| 18 | Israel Adesanya | 968.1 | 176.1 | 326.7 | 465.4 |
-| 19 | Matt Hughes | 940.2 | 165.1 | 410.5 | 364.6 |
-| 20 | Chuck Liddell | 905.0 | 247.9 | 100.4 | 556.7 |
-| 21 | Frankie Edgar | 897.6 | 95.5 | 80.9 | 721.3 |
-| 22 | Patricio Freire | 886.5 | 227.3 | 302.3 | 356.9 |
-| 23 | Merab Dvalishvili | 883.3 | 68.9 | 332.4 | 482.0 |
-| 24 | Justin Gaethje | 857.3 | 142.3 | 276.4 | 438.6 |
-| 25 | BJ Penn | 839.2 | 58.7 | 225.5 | 555.0 |
-| 26 | Charles Oliveira | 815.7 | 60.2 | 130.4 | 625.1 |
-| 27 | Henry Cejudo | 807.7 | 99.8 | 269.4 | 438.5 |
-| 28 | Kamaru Usman | 799.5 | 52.6 | 200.5 | 546.4 |
-| 29 | Alex Pereira | 785.5 | 60.0 | 262.8 | 462.7 |
-| 30 | Ryan Bader | 752.4 | 79.7 | 70.9 | 601.9 |
-| 31 | Lyoto Machida | 740.5 | 260.2 | 123.1 | 357.2 |
-| 32 | Tyron Woodley | 739.7 | 34.2 | 126.6 | 578.9 |
-| 33 | Chris Weidman | 736.5 | 83.4 | 183.8 | 469.2 |
-| 34 | Khamzat Chimaev | 704.0 | 360.6 | 108.6 | 234.8 |
-| 35 | Petr Yan | 700.0 | 115.8 | 202.2 | 381.9 |
-| 36 | Fabricio Werdum | 692.0 | 64.8 | 153.9 | 473.3 |
-| 37 | TJ Dillashaw | 679.6 | 37.3 | 103.8 | 538.5 |
-| 38 | Dricus Du Plessis | 679.3 | 189.7 | 138.3 | 351.2 |
-| 39 | Joseph Benavidez | 670.7 | 288.7 | 0.0 | 382.0 |
-| 40 | Benson Henderson | 667.2 | 75.2 | 250.8 | 341.2 |
-| 41 | Dan Henderson | 653.9 | 302.4 | 30.6 | 320.9 |
-| 42 | Vitor Belfort | 638.1 | 128.9 | 30.9 | 478.2 |
-| 43 | Junior Dos Santos | 615.5 | 112.8 | 165.6 | 337.1 |
-| 44 | Fedor Emelianenko | 607.2 | 307.4 | 216.2 | 83.6 |
-| 45 | Rashad Evans | 606.9 | 94.0 | 35.6 | 477.3 |
-| 46 | Deiveson Figueiredo | 593.3 | 127.5 | 66.8 | 399.0 |
-| 47 | Ciryl Gane | 574.0 | 303.9 | 77.5 | 192.5 |
-| 48 | Michael Chandler | 568.4 | 64.9 | 188.2 | 315.3 |
-| 49 | Luke Rockhold | 551.8 | 44.6 | 84.9 | 422.3 |
-| 50 | Conor McGregor | 551.3 | 21.0 | 264.0 | 266.3 |
-| 51 | Sean Strickland | 542.9 | 66.0 | 177.4 | 299.6 |
-| 52 | Vadim Nemkov | 534.1 | 169.8 | 172.3 | 192.1 |
-| 53 | Eddie Alvarez | 525.1 | 51.1 | 156.0 | 318.0 |
-| 54 | Yoel Romero | 524.0 | 44.3 | 0.0 | 479.7 |
-| 55 | Leon Edwards | 512.9 | 6.9 | 172.8 | 333.3 |
-| 56 | Brandon Moreno | 511.1 | 3.5 | 117.3 | 390.2 |
-| 57 | Dustin Poirier | 507.4 | 44.0 | 137.9 | 325.5 |
-| 58 | Movsar Evloev | 504.6 | 289.2 | 0.0 | 215.3 |
-| 59 | Rafael Dos Anjos | 503.4 | 1.5 | 77.6 | 424.2 |
-| 60 | Frank Mir | 500.9 | 1.1 | 130.6 | 369.2 |
-| 61 | Robbie Lawler | 497.4 | 10.0 | 92.6 | 394.7 |
-| 62 | Robert Whittaker | 490.1 | 32.3 | 66.6 | 391.3 |
-| 63 | Anthony Pettis | 485.7 | 15.3 | 199.1 | 271.2 |
-| 64 | Quinton Jackson | 481.4 | 62.7 | 92.6 | 326.1 |
-| 65 | Tim Sylvia | 462.6 | 16.3 | 115.3 | 331.0 |
-| 66 | Beneil Dariush | 459.2 | 7.1 | 0.0 | 452.0 |
-| 67 | Tito Ortiz | 457.6 | 162.4 | 75.4 | 219.8 |
-| 68 | Mauricio Rua | 456.7 | 88.6 | 130.8 | 237.3 |
-| 69 | Donald Cerrone | 433.8 | 35.7 | 0.0 | 398.2 |
-| 70 | Joshua Van | 427.9 | 78.4 | 152.0 | 197.5 |
-| 71 | Renan Barao | 420.3 | 44.2 | 149.2 | 227.0 |
-| 72 | Anthony Johnson | 418.5 | 41.6 | 0.0 | 376.9 |
-| 73 | Sean O'Malley | 413.1 | 80.3 | 107.3 | 225.6 |
-| 74 | Demian Maia | 401.4 | 121.1 | 0.0 | 280.2 |
-| 75 | Kyoji Horiguchi | 401.2 | 165.4 | 30.9 | 205.0 |
-| 76 | Rich Franklin | 396.3 | 173.5 | 35.0 | 187.8 |
-| 77 | Sean Sherk | 394.2 | 141.3 | 54.6 | 198.3 |
-| 78 | Phil Davis | 392.3 | 126.5 | 27.1 | 238.7 |
-| 79 | Shavkat Rakhmonov | 391.9 | 301.9 | 0.0 | 90.0 |
-| 80 | Urijah Faber | 390.3 | 130.3 | 6.9 | 253.1 |
-| 81 | Gegard Mousasi | 381.6 | 81.1 | 94.6 | 206.0 |
-| 82 | Wanderlei Silva | 374.6 | 249.7 | 67.5 | 57.3 |
-| 83 | Josh Barnett | 370.9 | 216.5 | 21.2 | 133.1 |
-| 84 | Michael Bisping | 363.2 | 34.0 | 55.0 | 274.2 |
-| 85 | Johnny Eblen | 356.5 | 173.9 | 71.0 | 111.6 |
-| 86 | Matt Serra | 335.8 | 20.7 | 218.2 | 96.8 |
-| 87 | Tom Aspinall | 332.3 | 28.9 | 127.8 | 175.6 |
-| 88 | Michael Morales | 331.3 | 214.8 | 0.0 | 116.5 |
-| 89 | Alexander Volkov | 330.3 | 42.6 | 2.7 | 285.0 |
-| 90 | Colby Covington | 314.5 | 3.2 | 28.0 | 283.3 |
-| 91 | Belal Muhammad | 312.6 | 10.5 | 35.8 | 266.2 |
-| 92 | Jacare Souza | 309.1 | 76.8 | 0.0 | 232.3 |
-| 93 | Alistair Overeem | 309.0 | 6.4 | 2.8 | 299.8 |
-| 94 | Sergio Pettis | 308.1 | 6.5 | 116.5 | 185.1 |
-| 95 | Usman Nurmagomedov | 308.0 | 223.5 | 66.9 | 17.6 |
-| 96 | Jussier Formiga | 298.4 | 66.4 | 0.0 | 232.0 |
-| 97 | Carlos Ulberg | 297.3 | 90.3 | 32.5 | 174.5 |
-| 98 | Chad Mendes | 291.0 | 139.8 | 0.0 | 151.3 |
-| 99 | Alexandre Pantoja | 290.7 | 62.4 | 75.3 | 153.0 |
-| 100 | Ben Askren | 289.2 | 127.5 | 90.9 | 70.8 |
+| 1 | Jon Jones | 2767.8 | 1000.0 | 1000.0 | 767.8 |
+| 2 | Georges St-Pierre | 2106.2 | 637.1 | 570.7 | 898.4 |
+| 3 | Demetrious Johnson | 1758.2 | 391.7 | 637.4 | 729.1 |
+| 4 | Islam Makhachev | 1547.6 | 648.6 | 642.4 | 256.5 |
+| 5 | Jose Aldo | 1546.4 | 397.9 | 593.6 | 554.8 |
+| 6 | Daniel Cormier | 1532.3 | 477.8 | 553.3 | 501.2 |
+| 7 | Matt Hughes | 1370.5 | 165.1 | 410.5 | 794.9 |
+| 8 | Dan Henderson | 1333.0 | 302.4 | 30.6 | 1000.0 |
+| 9 | Alexander Volkanovski | 1264.5 | 262.7 | 587.6 | 414.1 |
+| 10 | Anderson Silva | 1236.5 | 205.3 | 489.6 | 541.6 |
+| 11 | Stipe Miocic | 1169.2 | 258.0 | 547.9 | 363.3 |
+| 12 | Max Holloway | 1105.6 | 80.6 | 310.8 | 714.3 |
+| 13 | Khabib Nurmagomedov | 1103.2 | 586.6 | 311.3 | 205.3 |
+| 14 | Dominick Cruz | 1089.0 | 239.5 | 445.7 | 403.8 |
+| 15 | Randy Couture | 1011.7 | 22.7 | 196.7 | 792.3 |
+| 16 | Francis Ngannou | 957.3 | 336.4 | 306.8 | 314.1 |
+| 17 | Ilia Topuria | 930.8 | 342.2 | 379.3 | 209.3 |
+| 18 | Aljamain Sterling | 920.4 | 144.4 | 325.9 | 450.1 |
+| 19 | Lyoto Machida | 915.7 | 260.2 | 123.1 | 532.4 |
+| 20 | Chuck Liddell | 898.3 | 247.9 | 100.4 | 550.0 |
+| 21 | Cain Velasquez | 881.5 | 193.5 | 258.9 | 429.2 |
+| 22 | Israel Adesanya | 869.5 | 176.1 | 326.7 | 366.8 |
+| 23 | Fedor Emelianenko | 862.5 | 307.4 | 216.2 | 338.9 |
+| 24 | Patricio Freire | 839.2 | 227.3 | 302.3 | 309.6 |
+| 25 | Merab Dvalishvili | 781.3 | 68.9 | 332.4 | 380.1 |
+| 26 | BJ Penn | 771.9 | 58.7 | 225.5 | 487.7 |
+| 27 | Alex Pereira | 742.9 | 60.0 | 262.8 | 420.1 |
+| 28 | Justin Gaethje | 742.0 | 142.3 | 276.4 | 323.3 |
+| 29 | Henry Cejudo | 711.8 | 99.8 | 269.4 | 342.6 |
+| 30 | Joseph Benavidez | 707.2 | 288.7 | 0.0 | 418.4 |
+| 31 | Benson Henderson | 670.2 | 75.2 | 250.8 | 344.2 |
+| 32 | Quinton Jackson | 665.2 | 62.7 | 92.6 | 509.9 |
+| 33 | Vladimir Matyushenko | 660.2 | 167.8 | 0.0 | 492.3 |
+| 34 | Ryan Bader | 648.9 | 79.7 | 70.9 | 498.3 |
+| 35 | Petr Yan | 647.2 | 115.8 | 202.2 | 329.2 |
+| 36 | Khamzat Chimaev | 647.1 | 360.6 | 108.6 | 177.9 |
+| 37 | Frankie Edgar | 646.8 | 95.5 | 80.9 | 470.5 |
+| 38 | Junior Dos Santos | 637.8 | 112.8 | 165.6 | 359.4 |
+| 39 | Josh Barnett | 635.2 | 216.5 | 21.2 | 397.4 |
+| 40 | Renato Sobral | 633.1 | 103.4 | 0.0 | 529.8 |
+| 41 | Vitor Belfort | 630.8 | 128.9 | 30.9 | 471.0 |
+| 42 | Fabricio Werdum | 629.9 | 64.8 | 153.9 | 411.2 |
+| 43 | Kamaru Usman | 627.8 | 52.6 | 200.5 | 374.7 |
+| 44 | Chris Weidman | 620.9 | 83.4 | 183.8 | 353.7 |
+| 45 | Charles Oliveira | 608.0 | 60.2 | 130.4 | 417.4 |
+| 46 | Antonio Rodrigo Nogueira | 572.2 | 204.8 | 16.3 | 351.2 |
+| 47 | Tyron Woodley | 569.3 | 34.2 | 126.6 | 408.5 |
+| 48 | Dricus Du Plessis | 565.3 | 189.7 | 138.3 | 237.3 |
+| 49 | TJ Dillashaw | 555.4 | 37.3 | 103.8 | 414.3 |
+| 50 | Mauricio Rua | 553.1 | 88.6 | 130.8 | 333.7 |
+| 51 | Eddie Alvarez | 518.8 | 51.1 | 156.0 | 311.7 |
+| 52 | Deiveson Figueiredo | 503.1 | 127.5 | 66.8 | 308.8 |
+| 53 | Rashad Evans | 503.0 | 94.0 | 35.6 | 373.5 |
+| 54 | Conor McGregor | 497.7 | 21.0 | 264.0 | 212.6 |
+| 55 | Ciryl Gane | 486.1 | 303.9 | 77.5 | 104.6 |
+| 56 | Vadim Nemkov | 479.8 | 169.8 | 172.3 | 137.7 |
+| 57 | Wanderlei Silva | 469.9 | 249.7 | 67.5 | 152.6 |
+| 58 | Luke Rockhold | 469.4 | 44.6 | 84.9 | 339.9 |
+| 59 | Mirko Filipovic | 468.9 | 44.3 | 73.5 | 351.1 |
+| 60 | Tito Ortiz | 462.1 | 162.4 | 75.4 | 224.3 |
+| 61 | Robbie Lawler | 457.9 | 10.0 | 92.6 | 355.2 |
+| 62 | Michael Chandler | 452.5 | 64.9 | 188.2 | 199.3 |
+| 63 | Sean Strickland | 448.4 | 66.0 | 177.4 | 205.0 |
+| 64 | Movsar Evloev | 447.6 | 289.2 | 0.0 | 158.4 |
+| 65 | Rich Franklin | 445.7 | 173.5 | 35.0 | 237.2 |
+| 66 | Leon Edwards | 426.1 | 6.9 | 172.8 | 246.4 |
+| 67 | Dennis Hallman | 416.1 | 17.2 | 0.0 | 398.9 |
+| 68 | Frank Mir | 413.6 | 1.1 | 130.6 | 281.9 |
+| 69 | Yoel Romero | 412.6 | 44.3 | 0.0 | 368.3 |
+| 70 | Brandon Moreno | 411.3 | 3.5 | 117.3 | 290.5 |
+| 71 | Dustin Poirier | 410.7 | 44.0 | 137.9 | 228.7 |
+| 72 | Anthony Pettis | 402.1 | 15.3 | 199.1 | 187.7 |
+| 73 | Urijah Faber | 395.3 | 130.3 | 6.9 | 258.1 |
+| 74 | Rafael Dos Anjos | 392.6 | 1.5 | 77.6 | 313.4 |
+| 75 | Takanori Gomi | 387.2 | 135.6 | 0.0 | 251.5 |
+| 76 | Alistair Overeem | 385.5 | 6.4 | 2.8 | 376.3 |
+| 77 | Jussier Formiga | 374.1 | 66.4 | 0.0 | 307.7 |
+| 78 | Matt Serra | 367.8 | 20.7 | 218.2 | 128.8 |
+| 79 | Renan Barao | 363.2 | 44.2 | 149.2 | 169.8 |
+| 80 | Shavkat Rakhmonov | 361.1 | 301.9 | 0.0 | 59.2 |
+| 81 | Mark Coleman | 358.8 | 14.1 | 174.6 | 170.0 |
+| 82 | Kyoji Horiguchi | 358.6 | 165.4 | 30.9 | 162.3 |
+| 83 | Robert Whittaker | 357.6 | 32.3 | 66.6 | 258.7 |
+| 84 | Sean Sherk | 356.1 | 141.3 | 54.6 | 160.2 |
+| 85 | Joshua Van | 355.7 | 78.4 | 152.0 | 125.2 |
+| 86 | Gegard Mousasi | 353.0 | 81.1 | 94.6 | 177.4 |
+| 87 | Sean O'Malley | 343.4 | 80.3 | 107.3 | 155.8 |
+| 88 | Phil Davis | 340.6 | 126.5 | 27.1 | 187.0 |
+| 89 | Tim Sylvia | 335.4 | 16.3 | 115.3 | 203.8 |
+| 90 | Demian Maia | 333.4 | 121.1 | 0.0 | 212.3 |
+| 91 | Anthony Johnson | 328.9 | 41.6 | 0.0 | 287.2 |
+| 92 | Sergio Pettis | 326.2 | 6.5 | 116.5 | 203.2 |
+| 93 | Chael Sonnen | 325.6 | 18.4 | 0.0 | 307.2 |
+| 94 | Jake Shields | 307.7 | 23.5 | 46.1 | 238.1 |
+| 95 | Hayato Sakurai | 307.4 | 68.4 | 0.0 | 239.0 |
+| 96 | Ricardo Arona | 307.0 | 114.2 | 0.0 | 192.8 |
+| 97 | Johnny Eblen | 306.4 | 173.9 | 71.0 | 61.5 |
+| 98 | Donald Cerrone | 305.9 | 35.7 | 0.0 | 270.3 |
+| 99 | Usman Nurmagomedov | 301.7 | 223.5 | 66.9 | 11.2 |
+| 100 | Ben Askren | 301.3 | 127.5 | 90.9 | 82.9 |
 
 <!-- BOARD:TOP100:END -->
 
@@ -272,16 +279,16 @@ Men and women never fight, so no bout locates the two rating levels against each
 
 | # | Fighter | Score | Skill | Title | Schedule |
 | ---: | --- | ---: | ---: | ---: | ---: |
-| 1 | Amanda Nunes | 1681.0 | 475.5 | 587.5 | 618.0 |
-| 2 | Valentina Shevchenko | 1472.3 | 522.2 | 399.7 | 550.4 |
-| 3 | Zhang Weili | 1160.5 | 358.5 | 242.4 | 559.7 |
-| 4 | Rose Namajunas | 977.9 | 101.1 | 363.5 | 513.4 |
-| 5 | Ronda Rousey | 746.1 | 306.8 | 147.5 | 291.8 |
-| 6 | Cristiane Justino | 725.3 | 577.8 | 82.5 | 65.0 |
-| 7 | Jessica Andrade | 706.2 | 20.0 | 68.1 | 618.1 |
-| 8 | Joanna Jedrzejczyk | 611.6 | 148.9 | 104.3 | 358.4 |
-| 9 | Tatiana Suarez | 591.7 | 396.2 | 0.1 | 195.5 |
-| 10 | Seika Izawa | 450.0 | 234.7 | 0.0 | 215.3 |
+| 1 | Amanda Nunes | 1706.1 | 475.5 | 587.5 | 643.1 |
+| 2 | Valentina Shevchenko | 1599.3 | 522.2 | 399.7 | 677.3 |
+| 3 | Zhang Weili | 1163.9 | 358.5 | 242.4 | 563.0 |
+| 4 | Rose Namajunas | 945.8 | 101.1 | 363.5 | 481.2 |
+| 5 | Cristiane Justino | 921.1 | 577.8 | 82.5 | 260.8 |
+| 6 | Ronda Rousey | 832.6 | 306.8 | 147.5 | 378.3 |
+| 7 | Jessica Andrade | 678.8 | 20.0 | 68.1 | 590.7 |
+| 8 | Joanna Jedrzejczyk | 618.5 | 148.9 | 104.3 | 365.2 |
+| 9 | Tatiana Suarez | 596.4 | 396.2 | 0.1 | 200.2 |
+| 10 | Seika Izawa | 503.6 | 234.7 | 0.0 | 269.0 |
 
 <!-- BOARD:WOMEN10:END -->
 
