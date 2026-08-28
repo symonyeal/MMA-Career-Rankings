@@ -314,3 +314,119 @@ def test_readme_board_block_refuses_a_file_without_markers(tmp_path: Path):
     with pytest.raises(ValueError, match="no board block"):
         build_boards.update_readme_board(readme, "| # |")
     assert readme.read_text(encoding="utf-8") == "# Engine\n\nno markers here\n"
+
+
+# ---------------------------------------------------------------------------
+# Separate men's and women's boards (2026-08-28)
+#
+# Men and women are disjoint components of the bout graph -- 0 of 80,697 rated
+# bouts and 0 shared opponents join them -- so the offset between their rating
+# levels is set by the prior, not by evidence. A mixed board publishes that
+# unidentified gauge as a rank.
+
+
+def _gendered_current() -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "fighter": ["Ada", "Bea", "Cal", "Dan", "Eve"],
+            "gender": ["F", "F", "M", "M", None],
+            "rating_periods": [4, 4, 4, 4, 4],
+            "public_legacy_score": [90.0, 70.0, 80.0, 60.0, 50.0],
+            "mu_whr": [1700.0, 1650.0, 1680.0, 1600.0, 1590.0],
+        }
+    )
+
+
+def test_gender_partition_splits_the_two_components_and_keeps_the_unlabelled():
+    parts = build_boards.gender_partition(_gendered_current())
+    assert parts["F"]["fighter"].tolist() == ["Ada", "Bea"]
+    # An unlabelled fighter stays on the default board rather than being
+    # asserted into the women's one.
+    assert parts["M"]["fighter"].tolist() == ["Cal", "Dan", "Eve"]
+
+
+def test_gender_partition_falls_back_to_one_board_without_a_gender_column():
+    current = _gendered_current().drop(columns="gender")
+    parts = build_boards.gender_partition(current)
+    assert set(parts) == {"M"}
+    assert len(parts["M"]) == 5
+
+
+def test_boards_rank_within_gender_and_publish_two_artifacts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    snapshot = tmp_path / "snapshot"
+    output = tmp_path / "boards"
+    snapshot.mkdir()
+    _gendered_current().to_parquet(snapshot / "ratings_current.parquet", index=False)
+    pd.DataFrame(
+        {
+            "fight_url": ["u/1"],
+            "fighter": ["Ada"],
+            "integrity_factor_ped": [1.0],
+            "integrity_factor_dq": [1.0],
+            "integrity_factor_missed_weight": [1.0],
+            "integrity_weight": [1.0],
+        }
+    ).to_parquet(snapshot / "integrity_appearances.parquet", index=False)
+    monkeypatch.setattr(
+        build_boards.PQ,
+        "load_fight_table",
+        lambda _snapshot, *, scope: pd.DataFrame(
+            {
+                "fight_url": ["u/1"],
+                "event_date": [pd.Timestamp("2024-01-01")],
+                "event_name": ["E"],
+                "fighter_a": ["Ada"],
+                "fighter_b": ["Bea"],
+                "winner": ["Ada"],
+            }
+        ),
+    )
+
+    summary = build_boards.write_board_artifacts(
+        snapshot, min_rating_periods=2, out_dir=output
+    )
+    assert summary["genders"] == ["F", "M"]
+    assert summary["ranked_by_gender"] == {"F": 2, "M": 3}
+
+    men = pd.read_parquet(output / "completeness_gated_board.parquet")
+    women = pd.read_parquet(output / "completeness_gated_board_women.parquet")
+
+    # No woman appears on the published default board, and vice versa.
+    assert set(men["fighter"]) == {"Cal", "Dan", "Eve"}
+    assert set(women["fighter"]) == {"Ada", "Bea"}
+    # Each board's ranks start at 1: Ada outranks Bea among women even though
+    # Cal sits between them on the mixed score.
+    assert women.set_index("fighter").loc["Ada", "rank"] == 1
+    assert men.set_index("fighter").loc["Cal", "rank"] == 1
+
+
+def test_readme_blocks_are_replaced_independently(tmp_path: Path):
+    readme = tmp_path / "README.md"
+    readme.write_text(
+        "intro\n"
+        f"{build_boards.README_BOARD_BEGIN}\nold men\n{build_boards.README_BOARD_END}\n"
+        "middle\n"
+        f"{build_boards.README_WOMEN_BEGIN}\nold women\n{build_boards.README_WOMEN_END}\n"
+        "tail\n",
+        encoding="utf-8",
+    )
+    build_boards.update_readme_board(readme, "| # | Fighter |")
+    build_boards.update_readme_women_board(readme, "| # | Fighter W |")
+    text = readme.read_text(encoding="utf-8")
+
+    assert "old men" not in text and "old women" not in text
+    assert "| # | Fighter |" in text and "| # | Fighter W |" in text
+    # The reason must travel with the women's block so it cannot be published
+    # without the identification statement beside it.
+    assert build_boards.GENDER_GAUGE_NOTE in text
+    assert text.index("| # | Fighter |") < text.index("| # | Fighter W |")
+
+
+def test_updating_a_missing_block_raises_rather_than_appending(tmp_path: Path):
+    readme = tmp_path / "README.md"
+    readme.write_text("no markers here\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="no board block"):
+        build_boards.update_readme_women_board(readme, "table")

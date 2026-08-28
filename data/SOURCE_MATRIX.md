@@ -32,7 +32,7 @@ Priority: **Greco** (UFC granular) > **FightMatrix/Sherdog** (public cross-org r
 | is_draw, is_nc         | Greco (derived)|                                                 | |
 | method_raw             | Greco          | `METHOD` (e.g. `"KO/TKO "`, `"Decision - Split "`) | Whitespace-stripped. |
 | method_class           | Greco (bucketed)| one of `KO/TKO`, `Submission`, `Decision - Unanimous/Majority/Split`, `DQ`, `Could Not Continue`, `Overturned`, `Other` | v1 lumps KO with TKO and KO-by-sub with regular Submission. |
-| method_score_winner    | derived        | `{KO/TKO:1.00, Submission:1.00, Dec-U:0.985, Dec-M:0.98, Dec-S:0.975, DQ:0.95}` (see `METHOD_SCORES` in `loaders/ufcstats_loader.py`) | Used in μ_method only — NOT in μ_canonical. Finishes sit at the 1.0 cap; decisions are a hair below. |
+| method_score_winner    | derived        | `{KO/TKO:1.00, Submission:1.00, Dec-U:0.95, Dec-M:0.90, Dec-S:0.90, DQ:0.85}` (see `METHOD_SCORES` in `loaders/ufcstats_loader.py`) | **The published WHR winner score since 2026-08-28** (`ratings.constants.WHR_WINNER_SCORE_COL`), measured before it shipped; also the μ_method diagnostic. NOT in μ_canonical. The values listed here were stale until 2026-08-28 — read `ratings/constants.py`, not this cell, if they ever disagree again. |
 | end_round              | Greco          | `ROUND`                                         | |
 | end_time_seconds       | Greco          | `TIME` (parsed `mm:ss`)                         | |
 | time_format            | Greco          | `TIME FORMAT`                                   | e.g. `"3 Rnd (5-5-5)"`. |
@@ -80,9 +80,34 @@ Priority: **Greco** (UFC granular) > **FightMatrix/Sherdog** (public cross-org r
 
 ## 5. Career-wide / cross-organization (not covered by Greco)
 
+### Coverage is per fighter, and it has to be measured that way
+
+Completeness here has two axes and only one of them was ever checked. Per
+**promotion** the corpus is roster-complete inside the seven event-crawled
+promotions and `majors_coverage.json` reports it. Per **fighter** it was not:
+the whole-career expansion ran over the 4,501 fighters who had appeared on a
+PRIDE / WEC / Strikeforce / Affliction / Bellator / RIZIN card, and not over the
+UFCStats roster, so a fighter who reached the UFC through one of those
+promotions had their whole regional record in the model and a fighter who did
+not had almost none of it. Measured on 2026-08-13 over the 1,825 fighters with
+three or more UFC bouts: **547 (30.0%) had a whole-career page, with a median
+recorded pre-UFC record of 13 bouts against 1 for the other 1,278.**
+
+That is a modelling defect, not a reporting one. A low-loss Bradley–Terry record
+has no interior maximum, so the prior alone stops the climb and the equilibrium
+sits near `opponent_level + 173.72·ln(2k/v)` — where `k` is how many of the
+fighter's bouts the corpus happens to hold.
+
+`build_sherdog_careers.py` completes the coverage and
+`loaders/career_coverage.py` states it as a number that a build can assert on;
+the majors staging writes `career_coverage.parquet` and warns when the share
+falls below `MIN_CAREER_PAGE_SHARE`, and `rating_run.json` publishes it.
+**When a completeness figure is quoted here, name the axis it was measured on.**
+
 | Field                       | Source     | Notes |
 |-----------------------------|------------|-------|
-| crossorg_fights             | Sherdog    | `build_crossorg.py` stages PRIDE/Strikeforce/WEC bouts as canonical-shaped rows. |
+| majors_fights               | Sherdog    | `loaders/majors_scope.py` stages the preserved seven-promotion event crawl plus completed whole-career pages as canonical-shaped rows. A staged build input: every row is in `combined_fights`. |
+| career_coverage             | Derived    | Per UFC fighter: UFC bouts, corpus bouts, recorded pre-UFC bouts, Sherdog id, and whether their whole-career page was read. |
 | fightmatrix_profiles        | FightMatrix public profiles | Ranked-cohort biography, debut, career summary, and diagnostic metrics. |
 | fightmatrix_bouts           | FightMatrix public profiles | Deduplicated complete histories for the bounded current-ranked + all-time seed cohort. |
 | fightmatrix_crossorg_fights | FightMatrix public profiles | Post-2000-11-17, non-UFC, UFC-deduplicated canonical rows; public ranks are not model inputs. |
@@ -145,14 +170,16 @@ percentage, 540 metric, combat age, and pre-fight rank from the model schema.
 The committed organization rule table is time-aware and initially diagnostic;
 it does not add promotion prestige bonuses. Reliability weighting multiplies
 the existing participant-caliber fight weight by the geometric mean of the two
-profile completeness scores. The UFC-only default remains unchanged.
+profile completeness scores. FightMatrix remains a named diagnostic scope and
+is not part of the published `majors,pre_unified` default.
 
-Current Sherdog staging: `loaders/sherdog_loader.py` resolves fighter pages,
-caches HTML under `data/external/sherdog/`, parses non-UFC histories, and
-`build_crossorg.py` writes `crossorg_fights.parquet`. `ratings/rate_snapshot.py`
-quarantines that file by default. It is merged only under the explicit
-`--experimental-crossorg` research flag because current participant weights
-use future UFC-career information.
+Current Sherdog staging: `build_sherdog_majors.py` produced the roster-complete
+six-promotion event crawl, and the completed whole-career crawl is preserved as
+`data/external/sherdog/crossorg_bouts.parquet`. `loaders/majors_scope.py`
+resolves identities and writes snapshot-local `majors_fights.parquet`.
+`ratings/scope.py` admits it only through the named `majors` scope. The
+one-off whole-career ingest driver is preserved in
+`_archive/20260825-superseded-research-drivers/build_crossorg_careers.py`.
 
 `loaders/fightmatrix_loader.py` stages the ranking and all-time tables.
 `loaders/fightmatrix_profiles.py` then follows only the profile links in those
@@ -162,14 +189,16 @@ cross-org, and provenance-summary artifacts. The 2026-08-14 local run contains
 302 profiles, 6,644 unique public bouts and 4,023 model-ready cross-org bouts.
 FightMatrix ranks, points, quality percentages, 540 metrics and combat age are
 diagnostic only. Only result/method/round/event/date fields enter the optional
-rating input. The standard snapshot remains UFC-only; the explicit
+rating input. The standard snapshot uses `majors,pre_unified`; the explicit
 `2026-08-13-fightmatrix-public` snapshot preserves the bounded-cohort run.
 
 ## 7. Local SQLite database
 
 `build_database.py` builds `data/ufc_rank_engine.sqlite` from the snapshot
 bundle. It is an organized local database for audit and notebook support; it is
-not a separate source of truth. Tables include:
+not a separate source of truth. The obsolete 2026-08-14 export was archived on
+2026-08-26 and no current SQLite export is claimed until that optional command
+is run against the current snapshot. A current export may include:
 
 - Canonical UFC tables: `canonical_events`, `canonical_fights`,
   `canonical_rounds`, `canonical_fighters`.
@@ -199,14 +228,14 @@ source-specific fighter/division fields where those columns exist.
 
 ## Exclusion rules (rating engine drops these)
 
-- `event_date < 2000-11-17` → pre-unified-rules era (UFC 1–27). Dropped from the canonical fights table.
+- `event_date < 2000-11-17` → pre-unified-rules era (UFC 1–27). Dropped from the canonical table, then re-admitted only by the named `pre_unified` rating scope.
 - `method_class == "Overturned"` → drug-violation reversal or post-fight overturn.
 - `method_class == "Could Not Continue"` → treated as NC for rating purposes.
 - `is_nc` true → no contest.
 
 All excluded bouts are persisted to `_excluded_bouts.csv` for audit.
 
-## Rating and policy architecture (2026-08-20)
+## Rating and policy architecture (current through 2026-08-25)
 
 The production engine exposes two estimators of the same binary W/L/D evidence,
 plus one same-pass method research diagnostic:
@@ -215,9 +244,10 @@ plus one same-pass method research diagnostic:
 |---|---|---|
 | `mu_canonical` | causal skill filter | Strict W/L/D Glicko-2. |
 | `mu_whr` | retrospective skill smoother | Binary Whole-History Rating, one shared likelihood weight per bout, era-neutral. Prior mass is fixed per fighter (anchor + virtual games), so an undefeated record's rating rises with the evidence behind it. |
-| `mu_method` | research diagnostic | Fractional method score produced in the canonical pass; not public/core evidence. |
-| `symon_career_skill_mass` | public All-time functional | Annual field-relative WHR skill mass, one contribution per active year. |
-| `symon_prime_score` | public Prime view | Fixed 10y/13-appearance EB-shrunk WHR mean. `symon_peak_score` is no longer produced by the rating snapshot. |
+| `mu_method` | research diagnostic | Glicko-2 stream scored with `method_score_winner` in the canonical pass; not public/core evidence. The WHR smoother now reads the same column directly, so `mu_whr` is method-aware and this stream is no longer the only place method appears. |
+| `public_legacy_score` | public All-time board | Exposure-adjusted skill plus per-opponent title resume. Components are published separately and sum exactly to the score. |
+| `symon_career_skill_mass` | diagnostic career functional | Annual field-relative WHR skill mass. It is retained for audit and is not the public board. |
+| `symon_prime_score` | period diagnostic | Fixed 10y/13-appearance EB-shrunk WHR mean. `symon_peak_score` is no longer produced by the rating snapshot. |
 | `wins` / `losses` / `draws` | rated record | Counted from the rated fight table; the evidence behind a rating, not an input to it. |
 | `career_mass_uncertainty.parquet` | rank intervals | Career mass and rank re-estimated under Dirichlet-reweighted events; overlapping intervals are not a ranking. |
 

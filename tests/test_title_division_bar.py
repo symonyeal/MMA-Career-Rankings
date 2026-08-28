@@ -20,12 +20,18 @@ import pytest
 
 from ratings.legacy_resume import _division_labels, title_quality_ledger
 
-HEAVY = [f"Heavy {i}" for i in range(6)]
-FLY = [f"Fly {i}" for i in range(6)]
+# The contender line is struck per division-YEAR, and a division-year thinner
+# than symon_score.DEFAULT_DIVISION_MIN_POPULATION cannot describe its own line
+# -- it correctly falls back to the sport-wide bar, which would make every
+# assertion here vacuous. Thirty-two fighters active in each of two years is
+# the smallest fixture that clears the floor in both years. That guard itself
+# is pinned in test_symon_score.
+HEAVY = [f"Heavy {i}" for i in range(32)]
+FLY = [f"Fly {i}" for i in range(32)]
 # The two pools do not overlap in rating, so a flyweight title win is worth
 # almost nothing against a sport-wide bar and a real amount against its own.
-RATING = {name: 1900.0 + 20 * i for i, name in enumerate(HEAVY)}
-RATING.update({name: 1600.0 + 20 * i for i, name in enumerate(FLY)})
+RATING = {name: 1900.0 + 5 * i for i, name in enumerate(HEAVY)}
+RATING.update({name: 1600.0 + 5 * i for i, name in enumerate(FLY)})
 DIVISION = {name: "Heavyweight" for name in HEAVY} | {name: "Flyweight" for name in FLY}
 
 
@@ -39,11 +45,11 @@ def _history() -> pd.DataFrame:
 
 
 def _title_fight() -> pd.DataFrame:
-    """One flyweight title fight: Fly 0 beats Fly 5, the best flyweight."""
+    """One flyweight title fight: Fly 0 beats the best flyweight in the pool."""
     return pd.DataFrame([
         {
             "event_date": pd.Timestamp("2024-09-01"),
-            "fighter_a": "Fly 0", "fighter_b": "Fly 5",
+            "fighter_a": "Fly 0", "fighter_b": FLY[-1],
             "winner": "Fly 0", "is_title_fight": True,
             "is_excluded": False, "is_draw": False, "is_nc": False,
         }
@@ -70,8 +76,40 @@ def test_division_bar_prices_a_light_division_title_win_far_above_the_sport_wide
 
 
 def _synthetic_snapshot(snapshot_dir: Path) -> None:
-    """Two divisions, enough fighter-years for each to earn its own bar."""
+    """Two divisions, each thick enough to earn its own bar, and separated.
+
+    The separation has to be *earned*. Two pools that never meet have no
+    identified level difference -- that is the whole defect the division bar
+    exists to handle -- so a symmetric fixture makes the division line and the
+    sport-wide line agree, and the guard below would then pass vacuously in the
+    other direction. A handful of cross-division bouts the heavyweights win is
+    what puts the flyweight pool genuinely below the sport-wide contender line.
+    """
     rows = []
+
+    def _bout(a, b, winner, division, date, url, title=False):
+        loser = b if winner == a else a
+        return {
+            "fight_url": url, "event_url": f"e/{url}",
+            "event_name": f"Synthetic {url}", "event_date": date,
+            "event_location": "", "bout_string": f"{a} vs. {b}",
+            "fighter_a": a, "fighter_b": b,
+            "fighter_a_outcome": "W" if winner == a else "L",
+            "fighter_b_outcome": "W" if winner == b else "L",
+            "winner": winner, "loser": loser,
+            "is_draw": False, "is_nc": False,
+            "is_excluded": False, "exclusion_reason": None,
+            "weight_class": division, "is_title_fight": title,
+            "method_raw": "Decision - Unanimous",
+            "method_class": "Decision - Unanimous",
+            "method_score_winner": 0.85,
+            "end_round": 3, "end_time_seconds": 300,
+            "time_format": "3 Rnd (5-5-5)",
+            "referee": "", "details_text": "",
+            "ped_confirmed": False, "ped_flagged_fighter": None,
+            "ped_confirmation_source": None, "ped_confirmation_detail": None,
+        }
+
     for pool, division in ((HEAVY, "Heavyweight"), (FLY, "Flyweight")):
         for year in (2023, 2024):
             for i in range(len(pool)):
@@ -79,30 +117,25 @@ def _synthetic_snapshot(snapshot_dir: Path) -> None:
                 a, b = pool[i], pool[(i + 1) % len(pool)]
                 winner, loser = (a, b) if RATING[a] > RATING[b] else (b, a)
                 title = division == "Flyweight" and year == 2024 and i == 0
-                rows.append({
-                    "fight_url": f"u/{division}/{year}/{i}",
-                    "event_url": f"e/{division}/{year}/{i}",
-                    "event_name": f"Synthetic {division} {year} {i}",
-                    "event_date": pd.Timestamp(f"{year}-{1 + i:02d}-15"),
-                    "event_location": "",
-                    "bout_string": f"{a} vs. {b}",
-                    "fighter_a": a, "fighter_b": b,
-                    "fighter_a_outcome": "W" if winner == a else "L",
-                    "fighter_b_outcome": "W" if winner == b else "L",
-                    "winner": winner, "loser": loser,
-                    "is_draw": False, "is_nc": False,
-                    "is_excluded": False, "exclusion_reason": None,
-                    "weight_class": division,
-                    "is_title_fight": title,
-                    "method_raw": "Decision - Unanimous",
-                    "method_class": "Decision - Unanimous",
-                    "method_score_winner": 0.85,
-                    "end_round": 3, "end_time_seconds": 300,
-                    "time_format": "3 Rnd (5-5-5)",
-                    "referee": "", "details_text": "",
-                    "ped_confirmed": False, "ped_flagged_fighter": None,
-                    "ped_confirmation_source": None, "ped_confirmation_detail": None,
-                })
+                # Spread the card across the year; thirty-two bouts no longer
+                # fit one per month.
+                rows.append(_bout(
+                    a, b, winner, division,
+                    pd.Timestamp(f"{year}-01-05") + pd.Timedelta(days=10 * i),
+                    f"u/{division}/{year}/{i}", title=title,
+                ))
+
+    # Heavyweight-billed crossovers, won by the heavyweight, in both years.
+    # Enough to identify the offset between the pools and push the flyweights
+    # clearly below the sport-wide contender line; still a minority of every
+    # flyweight's record, so nobody's career_division moves off Flyweight.
+    for year in (2023, 2024):
+        for i in range(12):
+            rows.append(_bout(
+                HEAVY[i], FLY[i], HEAVY[i], "Heavyweight",
+                pd.Timestamp(f"{year}-12-01") + pd.Timedelta(days=i),
+                f"u/cross/{year}/{i}",
+            ))
     pd.DataFrame(rows).to_parquet(snapshot_dir / "canonical_fights.parquet", index=False)
     pd.DataFrame(columns=[
         "fight_url", "event_name", "event_date", "bout_string",

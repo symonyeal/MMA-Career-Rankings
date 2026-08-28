@@ -1,5 +1,4 @@
 """Tests for the WHR (Legacy) dominance likelihood-weight reward."""
-import numpy as np
 import pandas as pd
 import pytest
 

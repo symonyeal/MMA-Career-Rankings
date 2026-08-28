@@ -1,8 +1,42 @@
 # Snapshot Changelog
 
+## 2026-08-26 - Stale-surface cleanup; no data rebuild
+
+- Archived the obsolete local SQLite export, pre-schema-6 prequential exports
+  and folds, pre-projection age experiment, and fixed-name era-skew caches.
+  Raw/source caches and the current ranking snapshot were not moved or rebuilt.
+- Archived the closed top-100 era-skew notebook, helper modules, and its
+  investigation-only tests. The result remains historical evidence, but its
+  UFC-only initialization and fixed cache names are not safe against the
+  current whole-sport snapshot.
+- Prequential summaries now record their cache schema, and the dashboard fails
+  closed when the summary is absent or mismatched instead of displaying stale
+  held-out evidence.
+- Corrected `SOURCE_MATRIX.md`, FightMatrix historical notices, reclamation
+  paths, and post-reclamation manifests. Cleaned lint-only debris without
+  changing rating behavior.
+
+## 2026-08-19 through 2026-08-25 - Current scoring and scope contract
+
+- Fixed WHR prior mass per fighter, added Dirichlet event-bootstrap rank
+  intervals, and replaced the public peak family with one career functional.
+- Published the whole-sport `majors,pre_unified` scope with one deduplicated
+  `combined_fights.parquet`; production evidence weights remain 1.0.
+- Learned the age-drift prior and projected it through inactivity into Current
+  skill. The all-time score is not inactivity-decayed.
+- Reverted raw Career Skill Mass as the public board. Public All-time is
+  `public_legacy_score`: exposure-adjusted skill plus title resume priced by
+  each opponent against the contender line of that opponent's division/year.
+- Corrected division-scoped title pricing and published the Top 100 from the
+  board artifact. The drawn-title lineage defect noted in the 2026-08-18 entry
+  was also corrected in later vectorized lineage code.
+- Archived closed research drivers; current decisions are recorded in
+  `docs/BOARD_AND_IDENTIFICATION_2026-08-25.md` and the repository `README.md`.
+
 ## 2026-08-18 - Differentiator audit: prequential harness, 30-64x pipeline, market weighting deleted
 
-Full write-up in `docs/DIFFERENTIATOR_AUDIT_2026-08-18.md`.
+Full historical write-up in
+`_archive/20260826-stale-project-material/docs/DIFFERENTIATOR_AUDIT_2026-08-18.md`.
 
 **Performance, with bit-identical output.** Row-wise work was hoisted out of the
 per-window and per-event loops it did not belong in; the peak window scan became

@@ -2,11 +2,10 @@
 
 ``build_sherdog_majors.py`` crawls PRIDE, WEC, Strikeforce, Affliction,
 Bellator and RIZIN by *event* and writes ``majors_bouts.parquet`` under
-``data/external/sherdog/``. Until now nothing downstream read it: the only
-consumer was ``analysis/investigations/era_skew``, which rebuilt the joint
-table inside the investigation. That is why the corpus that actually moves the
-era skew had no production path while a different corpus -- the FightMatrix
-ranked-cohort crawl -- owned the ``--experimental-crossorg`` flag.
+``data/external/sherdog/``. The completed whole-career extension is preserved
+as ``crossorg_bouts.parquet`` in the same directory. This module is the live
+path that resolves those rows and stages ``majors_fights.parquet`` for the
+named rating scope; the original era-skew investigation is historical.
 
 The two are not interchangeable and must never be merged silently. Measured on
 the same functional and the same 0.9 bar, snapshot 2026-08-13:
@@ -51,6 +50,13 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from loaders.career_coverage import (
+    cached_page_ids,
+    coverage_rows,
+    coverage_summary,
+    describe,
+    is_coverage_symmetric,
+)
 from loaders.crossorg_identity import (
     apply_identity_map,
     build_identity_map,
@@ -63,11 +69,12 @@ from project_helpers import normalize_name_key
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_MAJORS_DIR = PROJECT_ROOT / "data" / "external" / "sherdog"
 MAJORS_BOUTS = "majors_bouts.parquet"
-# ``build_crossorg_careers.py`` writes the event cards and the whole-career
-# pages already merged into one table, so this SUPERSEDES ``majors_bouts`` --
-# it is not an extension to be concatenated alongside it.
+# The archived ``build_crossorg_careers.py`` wrote event cards and whole-career
+# pages already merged into one table. It SUPERSEDES ``majors_bouts`` -- it is
+# not an extension to concatenate alongside it.
 MAJORS_CAREERS = "crossorg_bouts.parquet"
 SNAPSHOT_ARTIFACT = "majors_fights.parquet"
+CAREER_COVERAGE_ARTIFACT = "career_coverage.parquet"
 SHERDOG_BIRTH_DATES_ARTIFACT = "sherdog_birth_dates.parquet"
 _BIRTH_DATE_RE = re.compile(
     r'itemprop=["\']birthDate["\'][^>]*>\s*([^<]+?)\s*</span>', re.IGNORECASE
@@ -108,8 +115,8 @@ def load_majors_bouts(majors_dir: Path = DEFAULT_MAJORS_DIR) -> pd.DataFrame:
     and Strikeforce years and loses RINGS -- the twelve bouts from May 2000
     where he was actually built.
 
-    ``build_crossorg_careers.py`` removes that boundary by reading one page per
-    fighter, and it writes the event rows and the career rows **already
+    The completed whole-career crawl removed that boundary by reading one page
+    per fighter, and its artifact holds event and career rows **already
     merged**. So this prefers that file outright rather than concatenating the
     two, which would double every bout the event crawl already had.
 
@@ -127,8 +134,8 @@ def load_majors_bouts(majors_dir: Path = DEFAULT_MAJORS_DIR) -> pd.DataFrame:
     if not path.exists():
         raise FileNotFoundError(
             f"{bouts_path} does not exist. Run build_sherdog_majors.py first "
-            "(cached pages are free), then build_crossorg_careers.py for the "
-            "whole-career extension."
+            "(cached pages are free). The optional completed whole-career "
+            "artifact is crossorg_bouts.parquet."
         )
     bouts = pd.read_parquet(path)
     bouts["event_date"] = pd.to_datetime(bouts["event_date"], errors="coerce")
@@ -310,10 +317,38 @@ def stage_majors_scope(
     canonical = pd.read_parquet(snapshot_dir / "canonical_fights.parquet")
     fights, report, identity = _build_majors_fights(canonical, majors_dir=majors_dir)
     fights.to_parquet(snapshot_dir / SNAPSHOT_ARTIFACT, index=False)
-    births = sherdog_birth_dates(identity, cache_dir=Path(majors_dir) / "fighters")
+    cache_dir = Path(majors_dir) / "fighters"
+    births = sherdog_birth_dates(identity, cache_dir=cache_dir)
     births.to_parquet(snapshot_dir / SHERDOG_BIRTH_DATES_ARTIFACT, index=False)
     report["birth_dates"] = int(len(births))
     report["artifact"] = str(snapshot_dir / SNAPSHOT_ARTIFACT)
+
+    # Whether the corpus applies one coverage rule to every fighter is a
+    # property of what was staged, so it is measured here, next to the staging,
+    # rather than inferred later from ratings that already contain the defect.
+    resolved = identity[identity["join_method"].ne("unjoined")]
+    coverage = coverage_rows(
+        canonical,
+        pd.concat([canonical, fights], ignore_index=True, sort=False),
+        sherdog_ids=(
+            resolved.assign(_id=resolved["sherdog_id"].astype(str))
+            .drop_duplicates("canonical_name")
+            .set_index("canonical_name")["_id"]
+        ),
+        read_ids=cached_page_ids(cache_dir),
+    )
+    coverage.to_parquet(snapshot_dir / CAREER_COVERAGE_ARTIFACT, index=False)
+    summary = coverage_summary(coverage)
+    report["career_coverage"] = summary
+    print(f"[majors] {describe(summary)}")
+    if not is_coverage_symmetric(summary):
+        print(
+            "[majors] WARNING: the corpus holds whole careers for some fighters and "
+            "only their crawled-promotion bouts for others. A low-loss record's "
+            "rating grows with the number of bouts the corpus happens to hold, so "
+            "this is a rating defect, not a reporting one. "
+            "Run build_sherdog_careers.py."
+        )
     return report
 
 

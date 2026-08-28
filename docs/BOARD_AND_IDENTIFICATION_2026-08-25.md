@@ -2,10 +2,41 @@
 
 **Snapshot:** `data/snapshots/2026-08-13` · **Scope:** `majors,pre_unified`
 
-This is the closing state of 2026-08-25. It supersedes the score-contract
-sections of `COHESIVE_ENGINE_PASS_2026-08-25.md` and the addendum in
-`NEXT_2026-08-25.md`. Three changes shipped; three candidate changes were
-measured and rejected; two limits now gate the next scoring change.
+> **Partly superseded on 2026-08-27** by
+> [Career coverage](CAREER_COVERAGE_2026-08-27.md), and again on **2026-08-28**
+> by [Rating layer and ledger](RATING_LAYER_AND_LEDGER_2026-08-28.md), which
+> decomposed the +110 Elo offset (it is **selection**: +274 Elo before a signee's
+> UFC debut, +54 after) and reinstated a *measured* organisation correction on
+> the title path only. The removal of `ORG_FACTOR_BY_CANONICAL` from that path
+> rested on two within-model statistics; a pool offset is exactly what a
+> within-model statistic cannot see. Three specifics:
+>
+> 1. **"The major external pools are *connected* to the tested core, so an
+>    organisation discount is not identified and must not be applied" is
+>    falsified.** That came from graph connectivity, not from prediction. Held
+>    out, the pools are calibrated internally and mis-located relative to each
+>    other by **+110 Elo [+76, +151]**. Connected is not the same as correctly
+>    located. The operative half of the conclusion survives for a different
+>    reason: the offset still must not be *applied* as a weight, because it is
+>    fitted on 486 crossing bouts and would assert the answer the joint fit
+>    exists to estimate.
+> 2. **Every count here predates the career-coverage repair.** The corpus was
+>    67,920 model bouts and 28,867 fighters; it is now 80,697 and 33,692. The
+>    identification half-widths in "What gates the next scoring change" were
+>    measured on the truncated corpus and have not been re-run.
+> 3. **A third gate joined the two below**: per-fighter career coverage, which
+>    was the actual cause of the top-100 anomalies this document was written to
+>    reason about.
+>
+> Everything else — per-opponent title pricing, the age-through-inactivity
+> projection, the rejected `phi`-as-mean-signal and unified-win-ledger
+> experiments, and the acceptance rule — still stands.
+
+This is the closing state of 2026-08-25. It supersedes the earlier score
+contracts and same-day reverted experiment now preserved in the
+[2026-08-26 documentation archive](../_archive/20260826-stale-project-material/README.md).
+Three changes shipped; three candidate changes were measured and rejected; two
+limits now gate the next scoring change.
 
 ## Shipped
 
@@ -16,9 +47,14 @@ that was reverted the same day. Career Skill Mass is a retrospective WHR
 functional: it backfills whole-career evidence into earlier years, so a clean
 low-loss record in a less-tested circuit accumulates above-bar years and lands
 beside title legends as though the public resume question had been answered.
-Top-25 unanchored names went from 7 under Career Skill Mass to **0** under
-Public Legacy. The standing comment is in `build_boards.CORE_RATING_CANDIDATES`,
-and `build_top100_audit.py` is the check that catches the regression.
+Before the division-bar correction below, top-25 unanchored names went from 7
+under Career Skill Mass to **0** under Public Legacy. The current,
+division-corrected board has **3**: Francis Ngannou, Aljamain Sterling, and Rose
+Namajunas. All three are established UFC champions omitted from the supplied
+anchor lists, not the lightly tested external-career profile that motivated the
+regression check; `top10_active_external_unanchored` remains empty. The standing
+comment is in `build_boards.CORE_RATING_CANDIDATES`, and
+`build_top100_audit.py` reports both diagnostics.
 
 ### 2. Title resume is priced per opponent
 
@@ -196,7 +232,7 @@ That asymmetry is why the two limits above are the gate instead.
 ```bash
 python -m ratings.rate_snapshot --snapshot-dir "data/snapshots/2026-08-13" --scope majors,pre_unified
 python build_boards.py "data/snapshots/2026-08-13" --scope majors,pre_unified --write-readme
-python build_top100_audit.py "data/snapshots/2026-08-13"   # read top25_unanchored_count
+python build_top100_audit.py "data/snapshots/2026-08-13"   # inspect anchor and external-career diagnostics
 ```
 
 The one-off probes behind the rejected candidates (`probe_q1_*`, `probe_q2_*`,

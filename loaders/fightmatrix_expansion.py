@@ -18,7 +18,6 @@ from loaders.fightmatrix_profiles import (
     BASE_URL,
     DEFAULT_PROFILE_CACHE_DIR,
     USER_AGENT,
-    _id_from_url,
     _profile_cache_path,
     parse_profile_html,
 )

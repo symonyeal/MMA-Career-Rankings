@@ -97,6 +97,84 @@ MASS_COLUMNS = [
 #    fixed-count failure (the 60th of only 65 fighters becoming 1994's bar).
 DEFAULT_CAREER_REFERENCE = "contender:60"
 
+# 5. **A bar struck sport-wide compares divisions whose levels are not mutually
+#    identified.** Points 1-4 fix the bar *within* a population; they say nothing
+#    about which population. Divisions barely fight each other, so the offset
+#    between two divisions' rating levels is set by the prior, not by evidence.
+#    Measured on the 2026-08-13 snapshot, 2015-2025, the 0.90 quantile of annual
+#    mean by division:
+#
+#        W Women's Strawweight  1659      Bantamweight        1715
+#        W Women's Flyweight    1679      Lightweight         1718
+#        Flyweight              1684      Middleweight        1723
+#        Featherweight          1689      Heavyweight         1733
+#        W Women's Bantamweight 1690      Light Heavyweight   1735
+#        Welterweight           1699
+#
+#    Nobody claims the 90th-percentile light heavyweight is 76 points better
+#    than the 90th-percentile women's strawweight. Against one sport-wide line
+#    that unidentified offset becomes a career score: 5.64% of light heavyweight
+#    fighter-years clear it against 0.65% of women's strawweight ones, an 8.7x
+#    gap, and eleven of the published top hundred -- Whittaker, Dillashaw, Dos
+#    Anjos, Moreno, Sergio Pettis and every woman on the board -- scored exactly
+#    zero. Passing ``divisions`` to :func:`career_skill_mass` strikes the line
+#    inside each division-year instead, which is what makes the comparison an
+#    identified one. The count then names the division's own contender line
+#    rather than the sport's, so it is a different number:
+DEFAULT_DIVISION_REFERENCE = "contender:5"
+
+# A division-year thinner than this cannot describe its own contender line and
+# falls back to the sport-wide bar rather than reading one off three fighters.
+DEFAULT_DIVISION_MIN_POPULATION = 30
+
+# Fixed-Elo compatibility softness of the year-excess hinge; 0.0 is the hard
+# ``clip(lower=0)``. Production no longer uses a fixed-Elo softness: see
+# ``DEFAULT_HINGE_SPREAD_FRACTION`` below.
+#
+# The hard clip is absorbing, and on this database it absorbs nearly everything:
+# **93,625 of 95,412 fighter-years would score exactly zero**, so 98.1% of the
+# evidence is discarded into one tie and the board cannot order the fighters
+# inside it. (79,101 of 80,881, the same 97.8%, on the smaller pre-2026-08-27
+# corpus -- the ratio is a property of the functional, not of the snapshot.)
+# The tie is not confined to club fighters. At the sport-wide bar Robert
+# Whittaker misses by 14 rating points in the year he won the UFC middleweight
+# title, and rank 337 is therefore shared by Whittaker, Namajunas, Zhang,
+# Andrade, Pena, Cerminara, Vieira, Dillashaw, Dos Anjos, Moreno **and Travis
+# Fulton**, whose 300-odd regional bouts are the reason a knife edge at the bar
+# is the wrong instrument.
+#
+# ``softplus(x) = s*log(1 + exp(x/s))`` replaces the hinge. It is smooth,
+# strictly positive, and within 1% of ``[x]_+`` by x = +115 at s = 25, so the
+# range that carries the signal is untouched and only the edge changes. A year
+# far below the bar contributes s*exp(x/s), which is 0.02 points at x = -200:
+# an ordering, not a floor.
+#
+# s = 25 was chosen against that internal criterion -- the smallest scale that
+# removes the tie while leaving the hinge's meaning intact over the ~400-point
+# spread the top of the board occupies -- and deliberately NOT against any
+# external top-100 list. Larger s buys longevity: spearman(mass, active_years)
+# runs 0.187 (hard clip), 0.312 (s=15), 0.348 (s=25), 0.407 (s=40), 0.486
+# (s=60), and past s = 40 a long career starts earning mass on its own.
+#
+# Keep this named constant so ``hinge_scale=DEFAULT_HINGE_SCALE`` reproduces
+# the 2026-08-27 fixed-Elo board exactly. It is a compatibility mode, not the
+# published default, because a constant 25 does not transform when the rating
+# scale is compressed or expanded.
+DEFAULT_HINGE_SCALE = 25.0
+
+# Published softness as a dimensionless fraction of each calendar year's
+# population standard deviation of ``annual_mean``. Standard deviation is
+# affine-equivariant, so under ``mu' = alpha + beta*mu`` (beta > 0) the bar,
+# excess and softness all multiply by beta. Career scores therefore multiply
+# by beta and their rank vector cannot change merely because the rating scale
+# changed.
+#
+# 0.175 reproduces the intent of the old 25-Elo setting on the repaired
+# 2026-08-13 published corpus: the median annual spread is 142.0 Elo, giving a
+# typical softness of 24.9 Elo. Unlike a stored 25, the fraction survives every
+# later refit on a different rating scale.
+DEFAULT_HINGE_SPREAD_FRACTION = 0.175
+
 
 def parse_reference(value: str | float) -> str | float:
     """Parse one CLI/config reference without rejecting named forms."""
@@ -362,6 +440,92 @@ def year_reference(annual: pd.DataFrame, reference: str | float) -> pd.Series:
     return by_year.quantile(q)
 
 
+def positive_part(
+    excess: pd.Series,
+    hinge_scale: float | pd.Series,
+) -> pd.Series:
+    """The year-excess hinge: ``[x]_+`` at scale 0, softplus above it.
+
+    See the note above :data:`DEFAULT_HINGE_SCALE` for why the hard clip is the
+    wrong instrument at the bar and why the scale is small.
+    """
+    x = pd.to_numeric(excess, errors="coerce").fillna(0.0)
+    if isinstance(hinge_scale, pd.Series):
+        scale = pd.to_numeric(hinge_scale.reindex(x.index), errors="coerce")
+    else:
+        scale = pd.Series(float(hinge_scale), index=x.index, dtype="float64")
+    if scale.isna().any() or not np.isfinite(scale.to_numpy(dtype="float64")).all():
+        raise ValueError("hinge_scale must be finite")
+    if (scale < 0.0).any():
+        raise ValueError("hinge_scale must not be negative")
+    if not (scale > 0.0).any():
+        return x.clip(lower=0.0)
+    # log1p(exp(z)) overflows for large z and underflows to 0 for very negative
+    # z; both tails are exact in closed form, so evaluate them there instead.
+    out = x.clip(lower=0.0).to_numpy(dtype="float64", copy=True)
+    soft = scale.to_numpy(dtype="float64") > 0.0
+    s = scale.to_numpy(dtype="float64")[soft]
+    z = x.to_numpy(dtype="float64")[soft] / s
+    transformed = np.empty_like(z)
+    hi = z > 30.0
+    lo = z < -30.0
+    mid = ~(hi | lo)
+    transformed[hi] = z[hi]
+    transformed[lo] = np.exp(z[lo])
+    transformed[mid] = np.log1p(np.exp(z[mid]))
+    out[soft] = s * transformed
+    return pd.Series(out, index=x.index)
+
+
+def year_rating_spread(annual: pd.DataFrame) -> pd.Series:
+    """Population spread of fighter-year means, indexed by calendar year.
+
+    This is deliberately a statistic of the same population to which the
+    year-specific bar is applied. ``ddof=0`` also gives a defined zero for a
+    one-fighter pioneer year; that year falls back to the hard hinge rather
+    than inventing a softness that the observed population cannot estimate.
+    """
+    required = {"year", "annual_mean"}
+    if annual is None or annual.empty or not required.issubset(annual.columns):
+        return pd.Series(dtype="float64")
+    values = annual.copy()
+    values["annual_mean"] = pd.to_numeric(values["annual_mean"], errors="coerce")
+    values = values.dropna(subset=["year", "annual_mean"])
+    if values.empty:
+        return pd.Series(dtype="float64")
+    return values.groupby("year", sort=False)["annual_mean"].std(ddof=0)
+
+
+def division_year_reference(
+    annual: pd.DataFrame,
+    reference: str | float,
+    *,
+    min_population: int = DEFAULT_DIVISION_MIN_POPULATION,
+) -> pd.Series:
+    """Return the bar inside each ``(division, year)``, indexed by that pair.
+
+    A division-year with fewer than ``min_population`` rated fighter-years is
+    omitted rather than described from too few fighters; :func:`career_skill_mass`
+    falls back to the sport-wide bar for those.
+    """
+    if annual is None or annual.empty or "division" not in annual.columns:
+        return pd.Series(dtype="float64")
+    eligible = annual.dropna(subset=["division"])
+    if eligible.empty:
+        return pd.Series(dtype="float64")
+    size = eligible.groupby(["division", "year"])["annual_mean"].transform("size")
+    eligible = eligible[size >= int(min_population)]
+    if eligible.empty:
+        return pd.Series(dtype="float64")
+    bars = {
+        key: float(year_reference(group, reference).iloc[0])
+        for key, group in eligible.groupby(["division", "year"], sort=False)
+    }
+    if not bars:
+        return pd.Series(dtype="float64")
+    return pd.Series(bars)
+
+
 def career_skill_mass(
     history: pd.DataFrame,
     *,
@@ -372,8 +536,29 @@ def career_skill_mass(
     min_appearances_per_year: int = 1,
     field_min_population: int = 5,
     reference: str | float = DEFAULT_CAREER_REFERENCE,
+    divisions: pd.Series | None = None,
+    division_reference: str | float = DEFAULT_DIVISION_REFERENCE,
+    division_min_population: int = DEFAULT_DIVISION_MIN_POPULATION,
+    hinge_scale: float = 0.0,
+    hinge_spread_fraction: float | None = None,
 ) -> pd.DataFrame:
-    """Sum positive fighter-year skill excess, one contribution per active year."""
+    """Sum positive fighter-year skill excess, one contribution per active year.
+
+    ``divisions`` is a fighter -> division label mapping. Given one, the bar is
+    struck inside each division-year at ``division_reference`` and only falls
+    back to the sport-wide ``reference`` where a division-year is too thin --
+    which is what makes the excess an identified quantity rather than a reading
+    of the unidentified offset between two divisions' rating levels. Omit it and
+    the sport-wide bar is used throughout, exactly as before.
+
+    ``hinge_scale`` is the fixed-Elo compatibility mode and defaults to the hard
+    clip so every existing caller keeps its numbers. ``hinge_spread_fraction``
+    instead sets each year's softness to that dimensionless fraction of its
+    fighter-year rating spread. The two modes are mutually exclusive. Published
+    callers use :data:`DEFAULT_HINGE_SPREAD_FRACTION`; callers that need the
+    2026-08-27 numbers can explicitly pass
+    ``hinge_scale=DEFAULT_HINGE_SCALE``.
+    """
     if (
         not isinstance(min_appearances_per_year, (int, np.integer))
         or min_appearances_per_year < 1
@@ -381,6 +566,17 @@ def career_skill_mass(
         raise ValueError("min_appearances_per_year must be a positive integer")
     if not isinstance(field_min_population, (int, np.integer)) or field_min_population < 1:
         raise ValueError("field_min_population must be a positive integer")
+    fixed_hinge_scale = float(hinge_scale)
+    if not np.isfinite(fixed_hinge_scale) or fixed_hinge_scale < 0.0:
+        raise ValueError("hinge_scale must be finite and not negative")
+    if hinge_spread_fraction is not None:
+        spread_fraction = float(hinge_spread_fraction)
+        if not np.isfinite(spread_fraction) or spread_fraction < 0.0:
+            raise ValueError("hinge_spread_fraction must be finite and not negative")
+        if fixed_hinge_scale != 0.0:
+            raise ValueError(
+                "hinge_scale and hinge_spread_fraction are mutually exclusive"
+            )
 
     h = _appearances(
         history,
@@ -402,6 +598,8 @@ def career_skill_mass(
     if annual.empty:
         return _empty(MASS_COLUMNS)
 
+    if divisions is not None and len(divisions):
+        annual["division"] = annual["fighter"].map(divisions)
     bar = year_reference(annual, reference)
     # A year too thin to describe its own field falls back to the whole-sample
     # bar, so a sparse early season cannot hand out cheap excess. If the entire
@@ -417,13 +615,37 @@ def career_skill_mass(
         (population < int(field_min_population)) | annual["field_mean"].isna(),
         "field_mean",
     ] = global_bar
-    annual["excess"] = (annual["annual_mean"] - annual["field_mean"]).clip(lower=0.0)
+    # The division line takes precedence wherever it is identified; the
+    # sport-wide value computed above remains the fallback for a thin
+    # division-year and for a fighter with no division label at all.
+    if "division" in annual.columns:
+        local = division_year_reference(
+            annual, division_reference, min_population=division_min_population
+        )
+        if len(local):
+            keys = pd.MultiIndex.from_arrays([annual["division"], annual["year"]])
+            annual["field_mean"] = pd.Series(
+                local.reindex(keys).to_numpy(), index=annual.index
+            ).fillna(annual["field_mean"])
+    resolved_hinge_scale: float | pd.Series = fixed_hinge_scale
+    if hinge_spread_fraction is not None:
+        resolved_hinge_scale = (
+            annual["year"].map(year_rating_spread(annual)).fillna(0.0)
+            * spread_fraction
+        )
+    annual["excess"] = positive_part(
+        annual["annual_mean"] - annual["field_mean"], resolved_hinge_scale
+    )
 
     grouped = annual.groupby("fighter", sort=False)["excess"]
     out = pd.DataFrame({
         "score": grouped.sum(),
         "active_years": grouped.size().astype(int),
-        "contributing_years": grouped.apply(lambda s: int((s > 0.0).sum())),
+        # Under a softened hinge every year is strictly positive, so "did this
+        # year clear the bar" has to be asked of the bar, not of the score.
+        "contributing_years": annual.assign(
+            _cleared=annual["annual_mean"] >= annual["field_mean"]
+        ).groupby("fighter", sort=False)["_cleared"].sum().astype(int),
         "peak_year_excess": grouped.max(),
         "mean_year_excess": grouped.mean(),
     })

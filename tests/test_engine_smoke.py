@@ -1,9 +1,7 @@
 """Smoke test: feed the engine 4 fictional events and verify it doesn't crash,
 that ratings move in plausible directions, and that excluded outcomes are
 respected by the caller (engine doesn't get them)."""
-from datetime import datetime
 import pandas as pd
-import pytest
 
 from ratings.glicko2_engine import RatingEngine
 
@@ -59,8 +57,6 @@ def test_lazy_phi_inflation():
         {"fighter_a": "Alice", "fighter_b": "Bob",
          "winner": "Alice", "is_draw": False, "method_score_winner": 0.80},
     ])
-    phi_after_e1 = eng.states["Alice"].canonical.phi
-
     # Long inactivity window.
     eng.process_event(pd.Timestamp("2025-01-01"), "E2", [
         {"fighter_a": "Alice", "fighter_b": "Dave",

@@ -10,7 +10,11 @@ from typing import Iterable
 import numpy as np
 import pandas as pd
 
-from build_boards import public_legacy_eligibility_override, select_core_rating_col
+from build_boards import (
+    gender_partition,
+    public_legacy_eligibility_override,
+    select_core_rating_col,
+)
 from ratings import prequential as PQ
 from ratings.age import load_birth_dates
 from ratings.connectivity import connectivity
@@ -391,9 +395,21 @@ def build(snapshot: Path, *, scope: str, out_dir: Path) -> dict[str, object]:
     anchors, canonical_names = _anchors_for_snapshot(snapshot)
     current = _current_with_legacy(snapshot, scope)
     rating_col = select_core_rating_col(current)
-    published = _ranked(current, rating_col)
+    # Audit the population that is actually PUBLISHED. Since 2026-08-28 the
+    # default board is the men's component, so auditing the mixed population
+    # here would score a board nobody ships -- and would keep counting women as
+    # "unanchored" against anchor lists that are men's lists.
+    partition = gender_partition(current)
+    audited = partition.get("M", current)
+    published = _ranked(audited, rating_col)
+    women = partition.get("F")
+    published_women = (
+        _ranked(women, rating_col)
+        if women is not None and not women.empty
+        else published.iloc[0:0]
+    )
     skill = (
-        _ranked(current, "symon_career_skill_mass")[["fighter", "model_rank", "score"]]
+        _ranked(audited, "symon_career_skill_mass")[["fighter", "model_rank", "score"]]
         if "symon_career_skill_mass" in current.columns
         else pd.DataFrame(columns=["fighter", "model_rank", "score"])
     )
@@ -440,12 +456,25 @@ def build(snapshot: Path, *, scope: str, out_dir: Path) -> dict[str, object]:
     top25 = top.head(25)
     top10 = top.head(10)
     below40 = []
-    rank_by_key = {_key(row.fighter): int(row.model_rank) for row in published.itertuples()}
+    # The watch list spans both boards. A woman is not "missing" from the
+    # published board -- she is ranked on the other one, and reporting her as
+    # absent would manufacture a defect out of the gender separation.
+    rank_by_key = {
+        _key(row.fighter): (int(row.model_rank), board)
+        for board, frame in (("men", published), ("women", published_women))
+        for row in frame.itertuples()
+    }
     for fighter in WATCH_BELOW_40:
-        rank = rank_by_key.get(_key(fighter))
+        found = rank_by_key.get(_key(fighter))
+        rank, board = found if found else (None, None)
         if rank is None or rank > 40:
             below40.append(
-                {"fighter": fighter, "model_rank": rank, "reason": _anchor_reason(fighter, anchors)}
+                {
+                    "fighter": fighter,
+                    "model_rank": rank,
+                    "board": board,
+                    "reason": _anchor_reason(fighter, anchors),
+                }
             )
 
     summary: dict[str, object] = {
@@ -457,7 +486,9 @@ def build(snapshot: Path, *, scope: str, out_dir: Path) -> dict[str, object]:
             if "symon_career_skill_mass" in current.columns
             else None
         ),
+        "board": "men (the published default)",
         "ranked_fighters": int(len(published)),
+        "ranked_fighters_women_board": int(len(published_women)),
         "top100_birth_date_coverage": round(float(top["birth_date_known"].mean()), 4),
         "top100_active_2024_plus": int(top["active_2024_plus"].sum()),
         "top100_external_only": int(top["external_only"].sum()),

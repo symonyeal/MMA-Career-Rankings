@@ -1,5 +1,4 @@
 """Unit tests for the WHR drift-prior backtest harness (no heavy snapshot fit)."""
-import numpy as np
 import pandas as pd
 import pytest
 
@@ -48,7 +47,6 @@ def test_decided_bouts_filters_and_labels():
 
 def _synthetic_history(n_events=12):
     """A clear favorite (Ace) beats everyone; underdogs trade among themselves."""
-    rng = np.random.default_rng(0)
     rows = []
     others = [f"U{i}" for i in range(6)]
     for e in range(n_events):

@@ -23,7 +23,7 @@ from build_top100_audit import (
     _has_public_anchor,
     _key,
 )
-from loaders.combined_fights import build_combined_fights
+from loaders.combined_fights import load_combined_fights
 from ratings.age import load_birth_dates
 from ratings.org_strength import (
     apply_org_weight_model,
@@ -97,7 +97,7 @@ def _top100_metrics(
 def build(snapshot_dir: Path, *, scope: str, reference: str | float, out_dir: Path) -> dict[str, object]:
     snapshot_dir = Path(snapshot_dir)
     out_dir = Path(out_dir)
-    fights, combined_summary = build_combined_fights(snapshot_dir, scope=scope, label="org-strength")
+    fights, combined_summary = load_combined_fights(snapshot_dir, scope=scope, label="org-strength")
     if "is_excluded" in fights.columns:
         fights = fights[~fights["is_excluded"].fillna(False).astype(bool)].copy()
     fights = fights.reset_index(drop=True)

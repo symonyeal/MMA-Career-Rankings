@@ -23,7 +23,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from loaders.ped_flags import PED_DETAIL_RE, annotate_ped_flags
+from loaders.ped_flags import annotate_ped_flags
 from project_helpers import normalize_name_key
 
 

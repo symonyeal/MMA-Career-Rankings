@@ -11,7 +11,9 @@ from ratings.legacy_resume import (
     source_title_resume_ledger,
     title_quality,
     title_quality_ledger,
+    ufc_debut_dates_from,
 )
+from ratings.legacy_resume import _pool_offset
 
 
 def _appearance(
@@ -464,3 +466,115 @@ def test_source_title_resume_ledger_infers_defenses_with_blank_org():
     ledger = source_title_resume_ledger(fights).set_index("fighter")
 
     assert ledger.loc["Champion", "public_legacy_title_defenses"] == 1
+
+
+# ---------------------------------------------------------------------------
+# Pool-priced title ledger (2026-08-28)
+#
+# The held-out probe measures the UFC-tested pool sitting +54 Elo [+10, +100]
+# above where the ratings place it relative to never-UFC opponents. Applying
+# that on the ledger path -- and ONLY there -- is what these pin.
+
+
+def _pool_history() -> pd.DataFrame:
+    """Two title challengers of identical rating, one UFC-tested, one not."""
+    rows = []
+    for fighter, mu in (
+        ("Tested Champ", 1900.0),
+        ("Regional Champ", 1900.0),
+        ("Filler A", 1700.0),
+        ("Filler B", 1650.0),
+        ("Filler C", 1600.0),
+        ("Beater X", 1800.0),
+        ("Beater Y", 1800.0),
+    ):
+        for year in (2018, 2019, 2020):
+            rows.append(
+                {
+                    "fighter": fighter,
+                    "event_date": pd.Timestamp(f"{year}-06-01"),
+                    "mu_whr": mu,
+                }
+            )
+    return pd.DataFrame(rows)
+
+
+def _pool_fights() -> pd.DataFrame:
+    def bout(url, date, a, b, winner, corpus, title=True):
+        return {
+            "fight_url": url,
+            "event_date": pd.Timestamp(date),
+            "event_name": url,
+            "fighter_a": a,
+            "fighter_b": b,
+            "winner": winner,
+            "is_draw": False,
+            "is_nc": False,
+            "is_excluded": False,
+            "is_title_fight": title,
+            "source_corpus": corpus,
+        }
+
+    return pd.DataFrame(
+        [
+            # The UFC-tested champion's qualifying bout, before both title wins.
+            bout("u/0", "2017-01-01", "Tested Champ", "Filler A", "Tested Champ",
+                 "ufc", title=False),
+            bout("u/1", "2020-01-01", "Beater X", "Tested Champ", "Beater X", "ufc"),
+            bout("u/2", "2020-01-01", "Beater Y", "Regional Champ", "Beater Y",
+                 "majors"),
+        ]
+    )
+
+
+def test_pool_offset_lifts_a_ufc_tested_title_opponent_and_not_a_regional_one():
+    fights, history = _pool_fights(), _pool_history()
+    off = title_quality_ledger(
+        fights, history, pool_offset_elo=0.0
+    ).set_index("fighter")["public_legacy_title_quality"]
+    on = title_quality_ledger(
+        fights,
+        history,
+        ufc_debut_dates=ufc_debut_dates_from(fights),
+        pool_offset_elo=54.0,
+    ).set_index("fighter")["public_legacy_title_quality"]
+
+    # Two champions with identical ratings price identically until the pool
+    # state is read: "Beater X" took the UFC-tested belt, "Beater Y" the
+    # regional one.
+    assert off["Beater X"] == pytest.approx(off["Beater Y"])
+    assert on["Beater X"] > on["Beater Y"]
+    # The contender LINE is corrected too, which is the whole point of applying
+    # the offset on both sides -- so beating an uncorrected regional champion is
+    # worth strictly less once the pool above him is placed correctly.
+    assert on["Beater Y"] < off["Beater Y"]
+
+
+def test_pool_offset_is_inert_without_debut_dates_or_at_zero():
+    fights, history = _pool_fights(), _pool_history()
+    base = title_quality_ledger(fights, history, pool_offset_elo=0.0)
+    no_dates = title_quality_ledger(fights, history, pool_offset_elo=54.0)
+    zero = title_quality_ledger(
+        fights,
+        history,
+        ufc_debut_dates=ufc_debut_dates_from(fights),
+        pool_offset_elo=0.0,
+    )
+    pd.testing.assert_frame_equal(base, no_dates)
+    pd.testing.assert_frame_equal(base, zero)
+
+
+def test_ufc_debut_dates_reads_the_whole_ufc_family_and_only_prior_bouts():
+    fights = _pool_fights()
+    debuts = ufc_debut_dates_from(fights)
+    assert debuts["Tested Champ"] == pd.Timestamp("2017-01-01")
+    assert "Regional Champ" not in debuts
+    # A bout on the debut date is not "prior experience": the state is strictly
+    # before, which is the rule the offset was measured under.
+    same_day = _pool_offset(
+        pd.Series(["Tested Champ"]),
+        pd.Series([pd.Timestamp("2017-01-01")]),
+        debuts,
+        54.0,
+    )
+    assert same_day.tolist() == [0.0]

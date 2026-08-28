@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from collections import defaultdict, deque
 from pathlib import Path
 
 import numpy as np
@@ -45,12 +46,14 @@ from ratings.integrity_adjustment import build_integrity_appearances
 from ratings.appearance_context import peak_appearance_quality
 from ratings.symon_score import (
     DEFAULT_CAREER_REFERENCE,
+    DEFAULT_DIVISION_REFERENCE,
+    DEFAULT_HINGE_SPREAD_FRACTION,
     career_skill_mass,
     parse_reference,
     symon_prime_score,
 )
-from ratings.legacy_resume import public_legacy_score_rows
-from ratings.whr import project_age_rating, run_whr
+from ratings.legacy_resume import _division_labels, public_legacy_score_rows
+from ratings.whr import production_score_kwargs, project_age_rating, run_whr
 from ratings.age import load_birth_dates
 from ratings.performance_adjustment import build_performance_appearances
 from ratings.performance_adjustment import _group_bounds, normalize_division_label
@@ -69,11 +72,12 @@ from ratings.scope import (  # noqa: F401
     merge_scope,
     scope_guard,
 )
+from loaders.career_coverage import coverage_summary, is_coverage_symmetric
 from loaders.combined_fights import (
-    COMBINED_FIGHTS_ARTIFACT,
-    COMBINED_FIGHTS_SUMMARY_ARTIFACT,
-    build_combined_fights,
+    load_combined_fights,
+    write_combined_fights,
 )
+from loaders.majors_scope import CAREER_COVERAGE_ARTIFACT
 from loaders.ufcstats_loader import METHOD_SCORES
 
 
@@ -131,8 +135,23 @@ def _career_columns(table: pd.DataFrame) -> pd.DataFrame:
     )
 
 
+def _career_coverage_summary(snapshot_dir: Path) -> dict:
+    """Read the coverage audit the majors staging wrote, if it is there.
+
+    Absent on a snapshot staged before the audit existed. Reported as such
+    rather than defaulted to "symmetric", because a silent pass is exactly how
+    the two-rule corpus survived four board repairs.
+    """
+    path = Path(snapshot_dir) / CAREER_COVERAGE_ARTIFACT
+    if not path.exists():
+        return {"status": "not measured; stage the majors scope to produce it"}
+    summary = coverage_summary(pd.read_parquet(path))
+    summary["symmetric"] = bool(is_coverage_symmetric(summary))
+    return summary
+
+
 def _source_fights_for_public_resume(snapshot_dir: Path, scope: str) -> pd.DataFrame:
-    fights, _ = build_combined_fights(snapshot_dir, scope=scope, label="resume")
+    fights, _ = load_combined_fights(snapshot_dir, scope=scope, label="resume")
     if "is_excluded" in fights.columns:
         fights = fights[~fights["is_excluded"].fillna(False).astype(bool)].copy()
     return fights
@@ -160,8 +179,18 @@ def refresh_career_columns(
         ],
         errors="ignore",
     )
+    # This path reads a persisted snapshot, so the division columns are already
+    # present and the division bar is available without any reordering.
     current = current.merge(
-        _career_columns(career_skill_mass(history, reference=reference)),
+        _career_columns(
+            career_skill_mass(
+                history,
+                reference=reference,
+                divisions=_division_labels(current),
+                division_reference=DEFAULT_DIVISION_REFERENCE,
+                hinge_spread_fraction=DEFAULT_HINGE_SPREAD_FRACTION,
+            )
+        ),
         on="fighter",
         how="left",
     )
@@ -255,43 +284,6 @@ def attach_bout_weights(
 _attach_org_only_weights = attach_bout_weights
 
 
-def _stream_current_columns(
-    engine_current: pd.DataFrame,
-    history: pd.DataFrame,
-    *,
-    suffix: str,
-) -> pd.DataFrame:
-    """Translate a weighted-engine's `current_table()` into per-stream columns."""
-    out = engine_current.rename(columns={
-        "mu": f"mu_{suffix}",
-        "phi": f"phi_{suffix}",
-        "sigma": f"sigma_{suffix}",
-    })
-    out = out.drop(columns=["last_event_date", "peak_mu"], errors="ignore")
-    return out[["fighter", f"mu_{suffix}", f"phi_{suffix}", f"sigma_{suffix}"]]
-
-
-def _attach_rank_and_delta(
-    current: pd.DataFrame,
-    *,
-    suffix: str,
-    baseline_col: str,
-    min_fights: int,
-) -> pd.DataFrame:
-    rating_col = f"mu_{suffix}"
-    if rating_col not in current.columns:
-        return current
-    eligible = current["rating_periods"].fillna(0) >= min_fights
-    current[f"delta_mu_{suffix}"] = current[rating_col] - current[baseline_col]
-    current[f"rank_{suffix}"] = pd.NA
-    current.loc[eligible, f"rank_{suffix}"] = (
-        current.loc[eligible, rating_col]
-        .rank(method="min", ascending=False)
-        .astype("Int64")
-    )
-    return current
-
-
 def _attach_activity_adjusted_mu(current: pd.DataFrame, snapshot_max_date: pd.Timestamp) -> pd.DataFrame:
     """Add current-view inactivity penalties without mutating rating history."""
     out = current.copy()
@@ -343,6 +335,73 @@ def _attach_record(current: pd.DataFrame, fights: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
+# Divisions whose bare label is used by men's promotions only. A women's bout
+# billed with one of these is a RIZIN openweight, of which this corpus holds
+# six; the men's component carries 7,768. The rule below is a majority, so that
+# margin decides it without a hand-maintained exception list.
+_MENS_ONLY_BILLING = frozenset({
+    "Light Heavyweight", "Heavyweight", "Middleweight", "Welterweight", "Lightweight",
+})
+
+
+def _female_by_bout_graph(appearances: pd.DataFrame) -> set[str]:
+    """Fighters the corpus shows to be women, from the shape of the bout graph.
+
+    Gender cannot be read off one bout's billing. Measured on the 2026-08-13
+    snapshot, only 247 of 1,752 women carry a "Women's ..." label on their most
+    recent bout: the Sherdog majors rows arrive with ``weight_class`` null on
+    2,606 of the 3,938 women's bouts, and unprefixed ("Flyweight",
+    "108lb Catchweight") on most of the rest. The last-bout rule therefore
+    called 1,503 women men, and a career UNION rule does not fix it -- it raises
+    the number of bouts the corpus believes were fought between a man and a
+    woman from 663 to 740, because it converts one side of a bout and not the
+    other.
+
+    What does fix it is that the two populations are **disjoint components of
+    the bout graph**: 0 of 80,697 bouts and 0 shared opponents join them. So a
+    component that fights women's bouts contains only women, and the label
+    propagates with certainty rather than by inference. The majority test on
+    gendered billings guards the one way this could go wrong -- a genuine
+    intergender bout in some later snapshot merging the two -- without
+    hard-coding names: on this snapshot the men's component is 0 women's-billed
+    against 7,768 men's-billed, and the women's is 929 against 6.
+    """
+    adjacency: dict[str, set[str]] = defaultdict(set)
+    for left, right in zip(appearances["fighter_a"], appearances["fighter_b"]):
+        if isinstance(left, str) and isinstance(right, str):
+            adjacency[left].add(right)
+            adjacency[right].add(left)
+
+    component: dict[str, int] = {}
+    total = 0
+    for start in adjacency:
+        if start in component:
+            continue
+        queue = deque([start])
+        component[start] = total
+        while queue:
+            node = queue.popleft()
+            for neighbour in adjacency[node]:
+                if neighbour not in component:
+                    component[neighbour] = total
+                    queue.append(neighbour)
+        total += 1
+
+    division = appearances["recent_division"].fillna("").astype(str)
+    womens = division.str.startswith("Women's")
+    mens = division.isin(_MENS_ONLY_BILLING)
+    tally: dict[int, list[int]] = defaultdict(lambda: [0, 0])
+    for side, is_w, is_m in zip(appearances["fighter_a"], womens, mens):
+        cid = component.get(side)
+        if cid is None:
+            continue
+        tally[cid][0] += int(is_w)
+        tally[cid][1] += int(is_m)
+
+    female_components = {cid for cid, (w, m) in tally.items() if w > m}
+    return {name for name, cid in component.items() if cid in female_components}
+
+
 def _attach_recent_division_gender(current: pd.DataFrame, fights: pd.DataFrame) -> pd.DataFrame:
     """Attach each fighter's most recent UFC division and inferred gender split."""
     if fights is None or fights.empty:
@@ -361,11 +420,8 @@ def _attach_recent_division_gender(current: pd.DataFrame, fights: pd.DataFrame) 
         .groupby("fighter", as_index=False)
         .last()[["fighter", "recent_division"]]
     )
-    recent["gender"] = np.where(
-        recent["recent_division"].fillna("").astype(str).str.startswith("Women's"),
-        "F",
-        "M",
-    )
+    female = _female_by_bout_graph(f)
+    recent["gender"] = np.where(recent["fighter"].isin(female), "F", "M")
     return current.merge(recent, on="fighter", how="left")
 
 
@@ -408,12 +464,13 @@ def run(
     rounds = pd.read_parquet(snapshot_dir / "canonical_rounds.parquet")
     if include_experimental_crossorg and scope == UFC_ONLY:
         scope = "fightmatrix"
-    fights, combined_summary = build_combined_fights(snapshot_dir, scope=scope, label="rate")
-    fights.to_parquet(snapshot_dir / COMBINED_FIGHTS_ARTIFACT, index=False)
-    (snapshot_dir / COMBINED_FIGHTS_SUMMARY_ARTIFACT).write_text(
-        json.dumps(combined_summary, indent=2) + "\n",
-        encoding="utf-8",
-    )
+    # One authoritative fight table, written at every corpus the snapshot
+    # staged, then filtered to the scope this run is allowed to rate. The
+    # artifact used to be written at the *run's* scope, so a UFC-only run
+    # overwrote the whole-sport table with a narrower one and the next reader
+    # inherited it without being told.
+    write_combined_fights(snapshot_dir, label="rate")
+    fights, combined_summary = load_combined_fights(snapshot_dir, scope=scope, label="rate")
     fights["rules_era"] = label_rules_era(fights)
     # No organisation weight. ``compute_fight_weights`` prices a non-UFC bout by
     # both participants' UFC-anchored caliber percentiles, so a 2003 PRIDE bout
@@ -492,10 +549,12 @@ def run(
     # implicit quality-score column. Era is neutral by default because a common
     # additive era term cancels from every within-era Bradley--Terry matchup.
     birth_dates = load_birth_dates(snapshot_dir)
+    whr_fights = _attach_org_only_weights(rated_fights)
     whr_history = run_whr(
-        _attach_org_only_weights(rated_fights),
+        whr_fights,
         birth_dates=birth_dates,
         age_drift=True,
+        **production_score_kwargs(whr_fights),
     )
     drift_profile = whr_history.attrs.get("age_drift_elo_per_year")
     whr_current = (
@@ -522,22 +581,21 @@ def run(
     whr_history.to_parquet(snapshot_dir / "ratings_history_whr.parquet", index=False)
     current = current.merge(whr_current, on="fighter", how="left")
 
-    # One all-time functional and one clearly separate period diagnostic. The
-    # score inputs are only latent WHR appearances; title labels, opponent rank,
-    # streaks, activity bonuses and market prices are not counted again.
-    symon_tables = (
-        (career_skill_mass(whr_history, reference=career_reference), "symon_career"),
-        (symon_prime_score(whr_history), "symon_prime"),
-    )
-    for table, prefix in symon_tables:
-        renamed = _career_columns(table) if prefix == "symon_career" else table.rename(
+    # The period diagnostic reads nothing but the WHR history, so it can be
+    # scored here. Career Skill Mass now needs the division labels and is
+    # therefore scored below, with the public resume.
+    prime = symon_prime_score(whr_history)
+    current = current.merge(
+        prime.rename(
             columns={
-                c: (f"{prefix}_score" if c == "score" else f"{prefix}_{c}")
-                for c in table.columns
+                c: ("symon_prime_score" if c == "score" else f"symon_prime_{c}")
+                for c in prime.columns
                 if c != "fighter"
             }
-        )
-        current = current.merge(renamed, on="fighter", how="left")
+        ),
+        on="fighter",
+        how="left",
+    )
 
     current = _attach_record(current, rated_fights)
     current = _attach_recent_division_gender(current, rated_fights)
@@ -561,6 +619,26 @@ def run(
         errors="ignore",
     )
     current = current.merge(primary_division_rows(division_resume), on="fighter", how="left")
+
+    # Career Skill Mass MUST be scored after career_division and gender exist,
+    # for the same reason the public resume must: without the labels the bar is
+    # struck sport-wide, across divisions whose levels are not mutually
+    # identified, and eleven of the top hundred score exactly zero. See the note
+    # above symon_score.DEFAULT_DIVISION_REFERENCE. This call used to sit ~35
+    # lines above, before the division columns were attached.
+    current = current.merge(
+        _career_columns(
+            career_skill_mass(
+                whr_history,
+                reference=career_reference,
+                divisions=_division_labels(current),
+                division_reference=DEFAULT_DIVISION_REFERENCE,
+                hinge_spread_fraction=DEFAULT_HINGE_SPREAD_FRACTION,
+            )
+        ),
+        on="fighter",
+        how="left",
+    )
 
     # The public resume MUST be scored after career_division and gender exist.
     #
@@ -736,6 +814,11 @@ def run(
         "current_fighters": int(len(current)),
         "events_processed": int(history["event_date"].nunique()),
         "combined_fights": combined_summary,
+        # Whether the corpus gave every fighter the same coverage rule. A
+        # low-loss Bradley-Terry record has no interior maximum, so its rating
+        # grows with how many of the fighter's bouts the corpus happens to
+        # hold; a run built on asymmetric coverage is reading that as skill.
+        "career_coverage": _career_coverage_summary(snapshot_dir),
         "ped_confirmed_fights": int(integrity["ped_confirmed"].fillna(False).sum()),
         "dq_fights": int(integrity["is_dq"].fillna(False).sum()),
         "missed_weight_fights": int(integrity["missed_weight"].fillna(False).sum()),

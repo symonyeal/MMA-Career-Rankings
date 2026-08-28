@@ -67,6 +67,7 @@ from ratings.constants import (
     WHR_STEP_CLIP,
     WHR_VIRTUAL_GAMES,
     WHR_W2_PER_DAY,
+    WHR_WINNER_SCORE_COL,
 )
 
 # Natural-scale rating -> Elo-like display scale.
@@ -282,6 +283,31 @@ def _build_appearances(
         by_fighter[app_fighter[node]].append(node)
 
     return app_fighter, app_event, app_day, app_score, app_opp, app_weight, by_fighter
+
+
+def production_score_kwargs(fights: pd.DataFrame | None) -> dict[str, str]:
+    """The winner-score argument every **published** WHR fit has to pass.
+
+    ``run_whr`` still defaults to binary scoring, because a column appearing in
+    a frame must never change the model on its own -- that is the guard the
+    explicit ``winner_score_col`` exists to provide. This helper is the single
+    place that names :data:`WHR_WINNER_SCORE_COL`, so the snapshot fit, the
+    prequential gate and the bootstrap refits cannot drift apart into three
+    different models.
+
+    Raises rather than falling back when the column is absent: a published fit
+    silently reverting to binary is exactly the failure this guards.
+    """
+    if WHR_WINNER_SCORE_COL is None:
+        return {}
+    columns = getattr(fights, "columns", ())
+    if WHR_WINNER_SCORE_COL not in columns:
+        raise ValueError(
+            "a published WHR fit needs the winner-score column "
+            f"{WHR_WINNER_SCORE_COL!r}; stage it, or set "
+            "ratings.constants.WHR_WINNER_SCORE_COL to None for a binary fit"
+        )
+    return {"winner_score_col": WHR_WINNER_SCORE_COL}
 
 
 def run_whr(

@@ -139,6 +139,7 @@ PERFORMANCE_APPEARANCE_COLUMNS = (
     "fighter_weight_class_change_fight",
     "fighter_prefight_division_rank",
     "opponent_prefight_division_rank",
+    "opponent_prefight_division_pool",
     "fighter_prefight_p4p_rank",
     "opponent_prefight_p4p_rank",
     "fighter_entered_as_champion",
@@ -220,6 +221,60 @@ def normalize_division_label(weight_class: object) -> str | None:
         if label.lower() in cleaned.lower():
             return label
     return cleaned or None
+
+
+# One women's division is billed three ways in this corpus -- "Women's
+# Flyweight" from UFCStats, a bare "Flyweight" from the Sherdog majors rows, and
+# "125lb Catchweight" -- and each spelling becomes its own contender pool.
+# Measured on the 2026-08-13 snapshot, the pool spelled "Flyweight" carried a
+# contender line 91 rating points BELOW the pool spelled "Women's Flyweight" for
+# the same division and the same eleven years, so a woman's career score
+# depended on which source billed her bouts. Folding the spellings is the
+# division half of that repair; the gender half is in
+# ``rate_snapshot._attach_recent_division_gender``.
+_WOMENS_LIMIT_LB = (
+    (105, "Women's Atomweight"),
+    (115, "Women's Strawweight"),
+    (125, "Women's Flyweight"),
+    (135, "Women's Bantamweight"),
+    (145, "Women's Featherweight"),
+)
+_WOMENS_BY_UNPREFIXED = {
+    "Atomweight": "Women's Atomweight",
+    "Strawweight": "Women's Strawweight",
+    "Flyweight": "Women's Flyweight",
+    "Bantamweight": "Women's Bantamweight",
+    "Featherweight": "Women's Featherweight",
+}
+_CATCHWEIGHT_LB = re.compile(r"(\d{2,3})\s*lb", re.IGNORECASE)
+
+
+def womens_division_label(division: object) -> str | None:
+    """Fold any billing a woman's bout carries onto one women's division.
+
+    Returns ``None`` for a label this cannot place, so the caller can keep its
+    own fallback rather than inventing a pool.
+    """
+    if not isinstance(division, str) or not division.strip():
+        return None
+    text = " ".join(division.split())
+    if text.startswith("Women's"):
+        return text
+    if text in _WOMENS_BY_UNPREFIXED:
+        return _WOMENS_BY_UNPREFIXED[text]
+    match = _CATCHWEIGHT_LB.search(text)
+    if match:
+        pounds = int(match.group(1))
+        for limit, label in _WOMENS_LIMIT_LB:
+            if pounds <= limit:
+                return label
+        return "Women's Openweight"
+    # RIZIN bills its women's openweight bouts as Heavyweight and Light
+    # Heavyweight; those are eight fighters on this snapshot, not a men's pool.
+    if text in {"Heavyweight", "Light Heavyweight", "Middleweight", "Welterweight",
+                "Lightweight", "Open Weight", "Openweight", "Catch Weight", "Catchweight"}:
+        return "Women's Openweight"
+    return None
 
 
 def is_real_ufc_title_bout(weight_class: object) -> bool:
@@ -504,6 +559,8 @@ def _empty_prefight_context() -> pd.DataFrame:
         "is_interim_title_bout",
         "fighter_a_prefight_division_rank",
         "fighter_b_prefight_division_rank",
+        "fighter_a_prefight_division_pool",
+        "fighter_b_prefight_division_pool",
         "fighter_a_prefight_p4p_rank",
         "fighter_b_prefight_p4p_rank",
         "fighter_a_entered_as_champion",
@@ -538,6 +595,8 @@ def prefight_ranking_context(canonical_fights: pd.DataFrame, ratings_history: pd
         for col in [
             "fighter_a_prefight_division_rank",
             "fighter_b_prefight_division_rank",
+            "fighter_a_prefight_division_pool",
+            "fighter_b_prefight_division_pool",
             "fighter_a_prefight_p4p_rank",
             "fighter_b_prefight_p4p_rank",
         ]:
@@ -600,6 +659,11 @@ def prefight_ranking_context(canonical_fights: pd.DataFrame, ratings_history: pd
     n = len(f)
     div_rank_a = np.full(n, np.nan)
     div_rank_b = np.full(n, np.nan)
+    # How many fighters the divisional rank was read off. A rank is a position
+    # in a field, and the fields differ by a factor of three across this corpus,
+    # so the position alone does not say the same thing in each of them.
+    div_pool_a = np.full(n, np.nan)
+    div_pool_b = np.full(n, np.nan)
     p4p_rank_a = np.full(n, np.nan)
     p4p_rank_b = np.full(n, np.nan)
     champ_a = np.zeros(n, dtype=bool)
@@ -625,11 +689,15 @@ def prefight_ranking_context(canonical_fights: pd.DataFrame, ratings_history: pd
             within = np.arange(grouped.size) - np.repeat(starts, sizes)
             div_rank = np.full(n_fighters, np.nan)
             div_rank[order[by_div]] = within + 1.0
+            div_pool = np.full(n_fighters, np.nan)
+            div_pool[order[by_div]] = np.repeat(sizes, sizes).astype(float)
             # A fighter whose recorded division is unknown is in no division board.
             div_rank[order[div_of_order < 0]] = np.nan
+            div_pool[order[div_of_order < 0]] = np.nan
         else:
             p4p = np.full(n_fighters, np.nan)
             div_rank = np.full(n_fighters, np.nan)
+            div_pool = np.full(n_fighters, np.nan)
 
         rows = slice(lo, hi)
         ra, rb = id_a[rows], id_b[rows]
@@ -641,6 +709,8 @@ def prefight_ranking_context(canonical_fights: pd.DataFrame, ratings_history: pd
         same_div_b = (rb >= 0) & (state_division[rb] == division_code[rows]) & (division_code[rows] >= 0)
         div_rank_a[rows] = np.where(same_div_a, div_rank[ra], np.nan)
         div_rank_b[rows] = np.where(same_div_b, div_rank[rb], np.nan)
+        div_pool_a[rows] = np.where(same_div_a, div_pool[ra], np.nan)
+        div_pool_b[rows] = np.where(same_div_b, div_pool[rb], np.nan)
 
         for k in range(lo, hi):
             d = division_code[k]
@@ -683,6 +753,8 @@ def prefight_ranking_context(canonical_fights: pd.DataFrame, ratings_history: pd
         "is_interim_title_bout": is_interim,
         "fighter_a_prefight_division_rank": div_rank_a,
         "fighter_b_prefight_division_rank": div_rank_b,
+        "fighter_a_prefight_division_pool": div_pool_a,
+        "fighter_b_prefight_division_pool": div_pool_b,
         "fighter_a_prefight_p4p_rank": p4p_rank_a,
         "fighter_b_prefight_p4p_rank": p4p_rank_b,
         "fighter_a_entered_as_champion": champ_a,
@@ -851,9 +923,16 @@ def _american_from_decimal(decimal_odds: object) -> float | None:
     return -100.0 / (dec - 1.0)
 
 
-def _rank_context_factor(opponent_rank: pd.Series, opponent_champion: pd.Series, opponent_interim: pd.Series) -> pd.Series:
+def _rank_context_factor(
+    opponent_rank: pd.Series,
+    opponent_champion: pd.Series,
+    opponent_interim: pd.Series,
+    opponent_pool: pd.Series | None = None,
+) -> pd.Series:
     """Bonus for beating a ranked opponent; unranked opponents are neutral."""
-    return rank_context_quality_factor(opponent_rank, opponent_champion, opponent_interim)
+    return rank_context_quality_factor(
+        opponent_rank, opponent_champion, opponent_interim, opponent_pool
+    )
 
 
 def _championship_factor(
@@ -1070,6 +1149,7 @@ def build_performance_appearances(
     a = f[common + [
         "prefight_mu_a", "prefight_mu_b", "streak_b",
         "fighter_a_prefight_division_rank", "fighter_b_prefight_division_rank",
+        "fighter_a_prefight_division_pool", "fighter_b_prefight_division_pool",
         "fighter_a_prefight_p4p_rank", "fighter_b_prefight_p4p_rank",
         "fighter_a_entered_as_champion", "fighter_b_entered_as_champion",
         "fighter_a_entered_as_interim_champion", "fighter_b_entered_as_interim_champion",
@@ -1084,6 +1164,8 @@ def build_performance_appearances(
         "streak_b": "opponent_streak",
         "fighter_a_prefight_division_rank": "fighter_prefight_division_rank",
         "fighter_b_prefight_division_rank": "opponent_prefight_division_rank",
+        "fighter_a_prefight_division_pool": "fighter_prefight_division_pool",
+        "fighter_b_prefight_division_pool": "opponent_prefight_division_pool",
         "fighter_a_prefight_p4p_rank": "fighter_prefight_p4p_rank",
         "fighter_b_prefight_p4p_rank": "opponent_prefight_p4p_rank",
         "fighter_a_entered_as_champion": "fighter_entered_as_champion",
@@ -1101,6 +1183,7 @@ def build_performance_appearances(
     b = f[common + [
         "prefight_mu_b", "prefight_mu_a", "streak_a",
         "fighter_b_prefight_division_rank", "fighter_a_prefight_division_rank",
+        "fighter_b_prefight_division_pool", "fighter_a_prefight_division_pool",
         "fighter_b_prefight_p4p_rank", "fighter_a_prefight_p4p_rank",
         "fighter_b_entered_as_champion", "fighter_a_entered_as_champion",
         "fighter_b_entered_as_interim_champion", "fighter_a_entered_as_interim_champion",
@@ -1115,6 +1198,8 @@ def build_performance_appearances(
         "streak_a": "opponent_streak",
         "fighter_b_prefight_division_rank": "fighter_prefight_division_rank",
         "fighter_a_prefight_division_rank": "opponent_prefight_division_rank",
+        "fighter_b_prefight_division_pool": "fighter_prefight_division_pool",
+        "fighter_a_prefight_division_pool": "opponent_prefight_division_pool",
         "fighter_b_prefight_p4p_rank": "fighter_prefight_p4p_rank",
         "fighter_a_prefight_p4p_rank": "opponent_prefight_p4p_rank",
         "fighter_b_entered_as_champion": "fighter_entered_as_champion",
@@ -1158,6 +1243,7 @@ def build_performance_appearances(
         out["opponent_prefight_division_rank"],
         out["opponent_entered_as_champion"],
         out["opponent_entered_as_interim_champion"],
+        out.get("opponent_prefight_division_pool"),
     ).clip(lower=SLEEVE_FACTOR_MIN, upper=SLEEVE_FACTOR_MAX)
     out["perf_factor_championship"] = _championship_factor(
         out["is_championship_bout"],

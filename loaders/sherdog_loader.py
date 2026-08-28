@@ -23,7 +23,6 @@ redistributed. bs4 + requests only (no lxml).
 """
 from __future__ import annotations
 
-import json
 import re
 import time
 from pathlib import Path
@@ -413,44 +412,6 @@ def to_canonical_fights(
 # counts 0.60 of a UFC bout. Always < 1 (UFC is the full field), differentiated
 # by org, and derived entirely from the common fighters, as requested.
 
-def compute_org_weights(
-    crossorg_fights: pd.DataFrame,
-    ufc_ratings_current: pd.DataFrame,
-    *,
-    floor: float = 0.5,
-    cap: float = 0.95,
-    min_fights: int = 3,
-) -> dict[str, float]:
-    """Return {org -> weight in [floor, cap]} from bridge-fighter UFC percentile."""
-    if crossorg_fights is None or crossorg_fights.empty:
-        return {}
-    ranked = ufc_ratings_current.copy()
-    ranked["rating_periods"] = pd.to_numeric(ranked.get("rating_periods"), errors="coerce").fillna(0)
-    ranked["mu_canonical"] = pd.to_numeric(ranked["mu_canonical"], errors="coerce")
-    estab = ranked[(ranked["rating_periods"] >= min_fights) & ranked["mu_canonical"].notna()]
-    established = {
-        normalize_name_key(n, compact=True): m
-        for n, m in zip(estab["fighter"], estab["mu_canonical"])
-    }
-    field = estab["mu_canonical"].to_numpy()
-    if field.size == 0:
-        return {org: floor for org in crossorg_fights["org"].dropna().unique()}
-
-    weights: dict[str, float] = {}
-    for org, g in crossorg_fights.groupby("org"):
-        participants = pd.unique(pd.concat([g["fighter_a"], g["fighter_b"]]).dropna())
-        cal = [established[normalize_name_key(p, compact=True)]
-               for p in participants
-               if normalize_name_key(p, compact=True) in established]
-        if not cal:
-            weights[org] = floor
-            continue
-        org_median = float(pd.Series(cal).median())
-        percentile = float((field < org_median).mean())  # empirical CDF at org median
-        weights[org] = float(min(cap, max(floor, percentile)))
-    return weights
-
-
 def _ufc_caliber_percentiles(
     ufc_ratings_current: pd.DataFrame, *, min_fights: int = 3,
 ) -> tuple[dict[str, float], "object"]:
@@ -460,7 +421,6 @@ def _ufc_caliber_percentiles(
     fighter's caliber is where their canonical rating sits in that field's CDF.
     Returns (name_key -> percentile, field_array).
     """
-    import numpy as np
 
     r = ufc_ratings_current.copy()
     r["rating_periods"] = pd.to_numeric(r.get("rating_periods"), errors="coerce").fillna(0)

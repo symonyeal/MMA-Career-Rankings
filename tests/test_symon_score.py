@@ -7,13 +7,19 @@ import pytest
 
 from ratings.symon_score import (
     DEFAULT_CAREER_REFERENCE,
+    DEFAULT_DIVISION_REFERENCE,
+    DEFAULT_HINGE_SCALE,
+    DEFAULT_HINGE_SPREAD_FRACTION,
     MASS_COLUMNS,
     PERIOD_COLUMNS,
     career_mass_family,
     career_skill_mass,
-    year_reference,
+    division_year_reference,
+    positive_part,
     symon_period_score,
     symon_prime_score,
+    year_rating_spread,
+    year_reference,
 )
 
 
@@ -423,3 +429,221 @@ def test_contender_reference_is_a_decile_then_a_count_cap():
     assert bars.loc[1994] == pytest.approx(58.0)
     # A mature field is capped at the 60th-best, not its 100th-best decile.
     assert bars.loc[2024] == pytest.approx(940.0)
+
+
+# ----------------------------------------------------------------------
+# The division bar and the softened hinge (2026-08-26)
+
+
+def _field(divisions: dict[str, int], years: list[int], base: dict[str, float]) -> pd.DataFrame:
+    """One history frame with `n` filler fighters per division, at a given level."""
+    frames = []
+    for division, n in divisions.items():
+        for i in range(n):
+            frames.append(
+                _history(
+                    f"{division}-{i:03d}",
+                    [f"{y}-06-01" for y in years],
+                    [base[division] + i] * len(years),
+                )
+            )
+    return pd.concat(frames, ignore_index=True)
+
+
+def test_hinge_scale_zero_is_the_hard_clip_and_softplus_is_ordered_above_it():
+    x = pd.Series([-400.0, -200.0, -60.0, -1.0, 0.0, 1.0, 60.0, 200.0, 400.0])
+
+    assert positive_part(x, 0.0).tolist() == x.clip(lower=0.0).tolist()
+
+    soft = positive_part(x, 25.0)
+    # Strictly positive everywhere -- that is the whole point, no absorbing tie.
+    assert (soft > 0.0).all()
+    # Order preserving, and never below the hinge it replaces.
+    assert soft.is_monotonic_increasing
+    assert (soft >= x.clip(lower=0.0) - 1e-9).all()
+    # Converges to the hinge where the signal lives, and decays to dust below.
+    assert soft.iloc[-1] == pytest.approx(400.0, abs=0.01)
+    assert soft.iloc[0] < 0.001
+
+
+def test_positive_part_survives_both_tails_without_overflow():
+    extreme = pd.Series([-1e6, -1e4, 0.0, 1e4, 1e6])
+    out = positive_part(extreme, 25.0)
+    assert np.isfinite(out).all()
+    assert (out >= 0.0).all()
+    assert out.iloc[-1] == pytest.approx(1e6, rel=1e-9)
+
+    with pytest.raises(ValueError):
+        positive_part(extreme, -1.0)
+
+
+def test_positive_part_accepts_a_scale_per_fighter_year():
+    excess = pd.Series([-200.0, -20.0, 0.0, 20.0, 200.0])
+    scale = pd.Series([25.0, 10.0, 0.0, 10.0, 25.0])
+
+    out = positive_part(excess, scale)
+
+    assert out.iloc[0] == pytest.approx(positive_part(excess.iloc[[0]], 25.0).iloc[0])
+    assert out.iloc[1] == pytest.approx(positive_part(excess.iloc[[1]], 10.0).iloc[0])
+    assert out.iloc[2] == 0.0
+    assert out.iloc[3] == pytest.approx(positive_part(excess.iloc[[3]], 10.0).iloc[0])
+    assert out.iloc[4] == pytest.approx(positive_part(excess.iloc[[4]], 25.0).iloc[0])
+
+
+def test_division_bar_makes_the_excess_invariant_to_the_division_level():
+    """The defect: two divisions sit at unidentified levels, and a sport-wide
+    bar reads that offset as skill. Both fighters below are exactly as far
+    above their own division's contender line, so they must score the same."""
+    years = [2020, 2021]
+    field = _field({"Heavy": 40, "Light": 40}, years, {"Heavy": 1800.0, "Light": 1600.0})
+    heavy = _history("HeavyChamp", [f"{y}-06-01" for y in years], [1900.0] * len(years))
+    light = _history("LightChamp", [f"{y}-06-01" for y in years], [1700.0] * len(years))
+    history = pd.concat([field, heavy, light], ignore_index=True)
+    divisions = pd.Series(
+        {f"Heavy-{i:03d}": "Heavy" for i in range(40)}
+        | {f"Light-{i:03d}": "Light" for i in range(40)}
+        | {"HeavyChamp": "Heavy", "LightChamp": "Light"}
+    )
+
+    sport_wide = career_skill_mass(history)
+    assert _row(sport_wide, "LightChamp")["score"] == 0.0
+    assert _row(sport_wide, "HeavyChamp")["score"] > 0.0
+
+    scoped = career_skill_mass(history, divisions=divisions)
+    assert _row(scoped, "LightChamp")["score"] == pytest.approx(
+        _row(scoped, "HeavyChamp")["score"]
+    )
+    assert _row(scoped, "LightChamp")["score"] > 0.0
+
+
+def test_thin_division_years_fall_back_to_the_sport_wide_bar():
+    years = [2020, 2021]
+    field = _field({"Heavy": 40, "Light": 4}, years, {"Heavy": 1800.0, "Light": 1600.0})
+    light = _history("LightChamp", [f"{y}-06-01" for y in years], [1700.0] * len(years))
+    history = pd.concat([field, light], ignore_index=True)
+    divisions = pd.Series(
+        {f"Heavy-{i:03d}": "Heavy" for i in range(40)}
+        | {f"Light-{i:03d}": "Light" for i in range(4)}
+        | {"LightChamp": "Light"}
+    )
+
+    bars = division_year_reference(
+        pd.DataFrame({
+            "fighter": ["a"] * 5,
+            "year": [2020] * 5,
+            "annual_mean": [1600.0] * 5,
+            "division": ["Light"] * 5,
+        }),
+        DEFAULT_DIVISION_REFERENCE,
+    )
+    assert bars.empty  # five fighter-years cannot describe a contender line
+
+    # "Light" never reaches the population floor, so its fighters are still
+    # measured against the sport-wide bar rather than a bar read off four names.
+    scoped = career_skill_mass(history, divisions=divisions)
+    assert _row(scoped, "LightChamp")["score"] == 0.0
+
+
+def test_contributing_years_counts_bar_clearing_not_positive_score():
+    """A softened hinge makes every year positive; the audit column must still
+    answer 'how many years did this fighter actually clear the bar'."""
+    years = [2020, 2021, 2022]
+    field = _field({"Heavy": 40}, years, {"Heavy": 1800.0})
+    # Below the contender line every year, so it clears in none of them.
+    below = _history("Below", [f"{y}-06-01" for y in years], [1700.0] * len(years))
+    history = pd.concat([field, below], ignore_index=True)
+
+    soft = career_skill_mass(history, hinge_scale=25.0)
+    row = _row(soft, "Below")
+    assert row["score"] > 0.0
+    assert int(row["contributing_years"]) == 0
+    assert int(row["active_years"]) == 3
+
+
+def test_shipped_defaults_are_unchanged_by_the_new_parameters():
+    years = [2019, 2020, 2021]
+    field = _field({"Heavy": 40}, years, {"Heavy": 1800.0})
+    star = _history("Star", [f"{y}-06-01" for y in years], [1900.0] * len(years))
+    history = pd.concat([field, star], ignore_index=True)
+
+    pd.testing.assert_frame_equal(
+        career_skill_mass(history),
+        career_skill_mass(history, divisions=None, hinge_scale=0.0),
+    )
+
+
+def test_fixed_hinge_compatibility_mode_reproduces_the_prior_published_call():
+    years = [2019, 2020, 2021]
+    history = pd.concat(
+        [
+            _field({"Heavy": 40}, years, {"Heavy": 1800.0}),
+            _history("Star", [f"{y}-06-01" for y in years], [1900.0] * len(years)),
+        ],
+        ignore_index=True,
+    )
+
+    expected = career_skill_mass(history, hinge_scale=25.0)
+    actual = career_skill_mass(history, hinge_scale=DEFAULT_HINGE_SCALE)
+    pd.testing.assert_frame_equal(actual, expected)
+
+
+def test_relative_hinge_is_scale_equivariant_for_the_full_rank_vector():
+    years = [2019, 2020, 2021, 2022]
+    history = _field(
+        {"Heavy": 40, "Light": 40},
+        years,
+        {"Heavy": 1800.0, "Light": 1600.0},
+    )
+    history = pd.concat(
+        [
+            history,
+            _history("HeavyStar", [f"{y}-06-01" for y in years], [1900, 1910, 1890, 1920]),
+            _history("LightStar", [f"{y}-06-01" for y in years], [1700, 1720, 1710, 1740]),
+            _history("LatePeak", [f"{y}-06-01" for y in years], [1610, 1640, 1760, 1810]),
+        ],
+        ignore_index=True,
+    )
+    divisions = pd.Series(
+        {f"Heavy-{i:03d}": "Heavy" for i in range(40)}
+        | {f"Light-{i:03d}": "Light" for i in range(40)}
+        | {"HeavyStar": "Heavy", "LightStar": "Light", "LatePeak": "Light"}
+    )
+    kwargs = {
+        "divisions": divisions,
+        "hinge_spread_fraction": DEFAULT_HINGE_SPREAD_FRACTION,
+    }
+    baseline = career_skill_mass(history, **kwargs).set_index("fighter")
+
+    for beta in (0.5, 0.7, 1.4, 2.0):
+        rescaled = history.copy()
+        rescaled["mu_whr"] = 1500.0 + beta * (rescaled["mu_whr"] - 1500.0)
+        board = career_skill_mass(rescaled, **kwargs).set_index("fighter")
+        pd.testing.assert_series_equal(
+            board["rank"].sort_index(),
+            baseline["rank"].sort_index(),
+        )
+        np.testing.assert_allclose(
+            board["score"].sort_index(),
+            beta * baseline["score"].sort_index(),
+            rtol=1e-12,
+            atol=1e-10,
+        )
+
+
+def test_relative_hinge_uses_the_same_year_population_spread_as_the_bar():
+    annual = pd.DataFrame(
+        {
+            "year": [2020, 2020, 2020, 2021, 2021, 2021],
+            "annual_mean": [1400.0, 1500.0, 1600.0, 1300.0, 1500.0, 1700.0],
+        }
+    )
+    spread = year_rating_spread(annual)
+
+    assert spread.loc[2020] == pytest.approx(np.std([1400.0, 1500.0, 1600.0]))
+    assert spread.loc[2021] == pytest.approx(np.std([1300.0, 1500.0, 1700.0]))
+
+
+def test_fixed_and_relative_hinge_modes_cannot_be_combined():
+    history = _history("A", ["2020-01-01"], [1500.0])
+    with pytest.raises(ValueError, match="mutually exclusive"):
+        career_skill_mass(history, hinge_scale=25.0, hinge_spread_fraction=0.175)

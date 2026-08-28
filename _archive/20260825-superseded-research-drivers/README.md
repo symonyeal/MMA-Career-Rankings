@@ -17,7 +17,7 @@ harness that produced it is here.
 | `build_crossorg.py` | Stage a cross-org snapshot | Superseded by `ratings/scope.py` + `loaders/combined_fights.py` |
 | `build_crossorg_careers.py` | Whole-career ingestion for cross-org fighters | Superseded by `build_sherdog_majors.py` + `loaders/majors_scope.py` |
 | `build_crossorg_weight_sweep.py` | Should a non-UFC bout carry a weight < 1? | **No.** Production is unit-weighted; the current form of this question is `build_org_strength_audit.py`; memory `ufc-crossorg-weight-and-scope` |
-| `build_field_depth.py` | Persist division-year field depth | One-off persister; `ratings/field_depth.py` is still live and imported |
+| `build_field_depth.py` | Persist division-year field depth | One-off persister. **Correction 2026-08-28:** the note that `ratings/field_depth.py` was "still live and imported" was wrong when written -- its only importer was this archived driver. The module is now in `_archive/20260828-orphaned-and-stale/` |
 | `build_fightmatrix_expanded.py` | Does a bounded recursive FightMatrix crawl help? | Crawl complete, **never promoted**; memory `ufc-fightmatrix-depth-one-expansion` |
 | `build_fightmatrix_public.py` | Build a local ranked-cohort FightMatrix copy | 36 lines; `loaders/fightmatrix_profiles.py` is still live via `refresh.py` |
 | `build_fightmatrix_validation.py` | Compare experimental scopes to the UFC baseline | Superseded by `build_scope_prequential_comparison.py`, which is **kept** |

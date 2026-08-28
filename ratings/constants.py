@@ -140,17 +140,6 @@ PERIOD_DRAW_BASE_WEIGHT: float = 0.25    # draw treated as a muted win
 PERIOD_WIN_BONUS: float = 10.0
 PERIOD_DRAW_PENALTY: float = 5.0
 PERIOD_LOSS_PENALTY: float = 55.0
-# Empirical-Bayes shrinkage of the final window score toward the pooled mean
-# of all qualifying fighters, by window sample size (James-Stein). Small-sample
-# windows regress to the centre; the shrink constant K is EB-estimated from the
-# data. No-op below PERIOD_SCORE_SHRINK_MIN_FIGHTERS qualifying fighters.
-# Raw fight-count activity bonus reduced (it rewarded padding and punished
-# efficient short careers like Khabib) but not removed. Resume depth is also
-# rewarded through PERIOD_ACTIVITY_BONUS_PER_OPP_WEIGHT (quality of schedule)
-# and the headline proven-resume bonus.
-PERIOD_ACTIVITY_BONUS_PER_FIGHT: float = 0.5
-PERIOD_ACTIVITY_BONUS_PER_OPP_WEIGHT: float = 1.0
-PERIOD_ACTIVITY_BONUS_CAP: float = 50.0
 PERIOD_TITLE_FIGHT_BONUS: float = 8.0
 PERIOD_TITLE_WIN_BONUS: float = 55.0
 PERIOD_INTERIM_TITLE_WIN_BONUS: float = 35.0
@@ -161,7 +150,6 @@ PERIOD_TOP10_WIN_BONUS: float = 15.0
 PERIOD_TOP15_WIN_BONUS: float = 8.0
 PERIOD_P4P_TOP5_WIN_BONUS: float = 25.0
 PERIOD_P4P_TOP15_WIN_BONUS: float = 10.0
-PERIOD_EXTRA_TITLE_DIVISION_BONUS: float = 30.0
 
 # Title-effective eligibility for all-time windows.
 #
@@ -365,6 +353,38 @@ PERF_TANH_SCALE: float = 0.10
 # contribute additively to ``S``; the per-fight signal uses the deduplicated
 # opponent-quality and rank-gated upset signals above.
 RANK_CONTEXT_TOP_N: int = 15
+
+# A rank is a position in a field, and this corpus pools every promotion into
+# one division, so the fields are not the same size. Median active fighters per
+# division, 2015-2025, against what a fixed top-15 window then means:
+#
+#     Women's Strawweight   37   top 15 = 40% of the field
+#     Light Heavyweight     51   top 15 = 30%
+#     Heavyweight           53   top 15 = 28%
+#     Flyweight             62   top 15 = 24%
+#     Middleweight          74   top 15 = 20%
+#     Welterweight          78   top 15 = 19%
+#     Bantamweight          85   top 15 = 18%
+#     Lightweight           94   top 15 = 16%
+#     Featherweight        119   top 15 = 13%
+#
+# Measured consequence on the schedule ledger: a win scored 0.0139 in women's
+# strawweight against 0.0034 in featherweight, a factor of **4.1** for the same
+# stated achievement, and 32.4% of strawweight wins counted as "ranked" against
+# 8.3% of featherweight ones. Per fighter that is Zhang Weili at 0.057 a win and
+# Katlyn Cerminara at 0.039 against Robert Whittaker's 0.018 and Sean
+# Strickland's 0.0099 -- which is most of why a fighter with no title and no
+# measured skill sat inside the published top 100 on schedule alone.
+#
+# The window is therefore a share of the field. 0.20 is the Middleweight value
+# above, i.e. the share the fixed fifteen already implied at the median
+# division, so the median division's numbers are left where they were and only
+# the small and large fields move.
+RANK_CONTEXT_TOP_SHARE: float = 0.20
+
+# Never fewer than this many ranked slots: a genuinely tiny field still has a
+# top few, and a share alone would round it to one or zero.
+RANK_CONTEXT_MIN_WINDOW: int = 5
 P4P_CONTEXT_TOP_N: int = 15
 RANK_CONTEXT_ACTIVE_DAYS: int = 1095  # rankings ignore fighters inactive 3+ years
 PERF_RANK_CONTEXT_AMPLITUDE: float = 0.08
@@ -423,14 +443,14 @@ HEADLINE_TITLE_DEFENSE_MASS: float = 2.5
 # patch). It runs as a sidecar stream alongside the Glicko-2 filter.
 #
 # * WHR_W2_PER_DAY — Wiener-process variance per day on the natural/logistic
-#   rating scale. Controls how fast latent skill is allowed to drift. Should
-#   ultimately be chosen by predictive backtest (Brier / log-loss); the default
-#   is a reasonable MMA prior (~70 Elo of drift std per year).
+#   rating scale. Controls how fast latent skill is allowed to drift. The
+#   repaired-corpus predictive fit retained 0.0004; 0.0002 was unresolved.
 # * WHR_PRIOR_VAR — weak Gaussian anchor prior variance; pins the global scale.
+#   The repaired-corpus joint predictive fit selected 8.0 (details below).
 # * WHR_ITERATIONS — coordinate-ascent passes over all fighters.
 # * WHR_STEP_CLIP — per-pass Newton step clamp (natural units) for stability.
 WHR_W2_PER_DAY: float = 0.0004
-WHR_PRIOR_VAR: float = 4.0
+WHR_PRIOR_VAR: float = 8.0
 WHR_ITERATIONS: int = 50
 WHR_STEP_CLIP: float = 1.5
 
@@ -450,19 +470,51 @@ WHR_STEP_CLIP: float = 1.5
 # Virtual games are Coulom's remedy in the WHR paper. They are prior evidence of
 # fixed size, so real bouts outweigh them as a career accumulates: a 20-0 record
 # now rates far above a 1-0 record, which is the behaviour a rating must have.
-# Value: 2.0. Selected 2026-08-20 on 60 held-out events / 406 decided bouts.
-# Point estimates favoured it (log loss 0.65192 vs 0.65496 at v=0, and the best
-# Brier of the five candidates), but **every paired event-level interval crossed
-# zero**, so held-out prediction does not resolve this parameter and no accuracy
-# claim is made for it. Tie broken by taking the smallest prior mass that wins
-# the point estimate: prior mass is an assumption, so the least of it that does
-# the job is preferred. Candidates measured: 0, 2, 4, 6, 10 (see
-# docs/PRIOR_MASS_AND_UNCERTAINTY_2026-08-20.md).
-WHR_VIRTUAL_GAMES: float = 2.0
+# The original value 2.0 was selected on a small UFC-only test and was
+# unresolved. Refit 2026-08-28 after whole-career corpus repair: 14 rolling
+# cutoffs, 8,435 paired bouts / 1,467 events, with temperature learned only on
+# earlier folds. The selected joint configuration (prior_var=8, virtual_games=1,
+# w2_per_day=0.0004) improved calibrated log loss by 0.00201 versus the former
+# 4/2/0.0004 base; paired event-bootstrap 95% CI [0.00060, 0.00349], and AUC
+# 0.7041 -> 0.7067. Virtual mass 0.5 was unresolved and prior_var=16 was worse,
+# bounding the selected grid. The incremental effect of prior_var=8 after
+# virtual_games=1 was unresolved, so do not describe each component as
+# independently identified.
+WHR_VIRTUAL_GAMES: float = 1.0
 
-# ---------------------------------------------------------------------------
-# Production/research stream catalogue.
-
-WHR_STREAM: str = "whr"
-# Canonical and WHR are the two production estimators of binary W/L/D evidence.
-# Method is a same-pass research diagnostic, not a public/core model.
+# * WHR_WINNER_SCORE_COL — the fractional winner score every published WHR fit
+#   uses. ``None`` restores the binary Bradley--Terry outcome.
+#
+# A finish is a less ambiguous observation of a skill gap than a split decision,
+# so the winner is credited 1.00 for a KO/TKO or submission, 0.95 for a
+# unanimous decision, 0.90 for a split or majority one and 0.85 for a DQ -- the
+# ``method_score_winner`` column as staged, with no free parameter fitted here.
+#
+# This REVERSES the "method stays out" line in the 2026-08-21 whole-sport plan
+# (§ "Explicit non-goal", and the ``Method / dominance`` row of its irredundancy
+# matrix), which rested on an earlier research arm that "found no resolved
+# benefit". Re-measured 2026-08-28 on the repaired corpus with a proper paired
+# gate -- 7 cutoffs, 120-day scoring windows, 2,039 calibrated held-out bouts
+# over 371 events, temperature learned only on earlier folds:
+#
+#   calibrated delta log loss  -0.00332, 95% event bootstrap [-0.00503, -0.00161]
+#   AUC                        0.6967 -> 0.7006
+#   monotone in the grading:   -0.00092 (quarter), -0.00179 (half), -0.00332
+#
+# The confound was tested and excluded. A CONSTANT winner score of 0.980 -- the
+# same mean, with the method grading removed -- scores +0.00018 [-0.00033,
+# +0.00065], i.e. nothing. The gain is method of victory, not uniform outcome
+# shrinkage.
+#
+# What is deliberately NOT taken: sharpening the grading further keeps helping
+# (-0.00456 at double spread, -0.00546 at quadruple, both resolved), and it is
+# not adopted. That parameter would be fitted on the same held-out set that has
+# to serve as the acceptance gate, whereas 1.00/0.95/0.90/0.85 is the staged
+# column's own design point and was not chosen here.
+#
+# Note the sibling arm that FAILED, because it is the reason this is a score and
+# not a precision: giving finishes a larger shared bout weight ``omega_b`` is
+# significantly worse on decisions at every weight tried (+0.0010 to +0.0049,
+# base favoured) while the score route is unresolved there. Method is partial
+# credit on the outcome, not extra evidence about the bout.
+WHR_WINNER_SCORE_COL: str | None = "method_score_winner"

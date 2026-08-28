@@ -222,11 +222,16 @@ def completeness_gated_board(
       place. It used to be a positional ``arange`` over a sort, which turned the
       sort's own tie-break into a rank difference.
     * ``unranked_at_or_below`` withholds a rank from fighters sitting on the
-      score's floor. Career Skill Mass has a hard floor at zero that means "no
-      calendar year cleared the bar" -- 2,366 of 2,554 fighters on the
-      2026-08-13 snapshot, 285 of them past the evidence gate. Spreading those
-      across 285 consecutive printed ranks read as a measurement and was not
-      one. Leave it ``None`` for scores with no such floor (base WHR mu).
+      score's floor. Career Skill Mass has a floor at zero that means "no
+      calendar year cleared the bar", and spreading the fighters sitting on it
+      across consecutive printed ranks read as a measurement and was not one.
+      Under the hard ``clip(lower=0)`` that motivated this, 2,366 of 2,554
+      fighters sat on the floor with 285 of them past the evidence gate; under
+      the softplus hinge shipped 2026-08-26 the floor is nearly empty -- 175 of
+      33,692 rated fighters, 21 past the gate -- so this now guards an edge case
+      rather than a third of the board. It still has to be here: the floor is a
+      property of the functional, not of one snapshot's hinge scale. Leave it
+      ``None`` for scores with no such floor (base WHR mu).
     """
     if current is None or current.empty or rating_col not in current.columns:
         return pd.DataFrame(columns=["rank", "fighter", rating_col, "status"])

@@ -4,9 +4,7 @@ Covers: per-minute exposure normalization, the finish floor, the decision
 scorecard "round win gap" component (U2), the data-driven monotone era premium
 curve (U3), and the WHR era-de-trend exemption flag (U1).
 """
-import numpy as np
 import pandas as pd
-import pytest
 
 from ratings.constants import DOMINANCE_FINISH_FLOOR_Z
 from ratings.dominance import per_fight_dominance

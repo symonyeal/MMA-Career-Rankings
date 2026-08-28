@@ -5,7 +5,12 @@ snapshot is finalized):
 
 * ``integrity_ledger.parquet`` — every discounted appearance, with the reason
 * ``integrity_discounted_board.parquet`` — the judgement board and its bill
-* ``completeness_gated_board.parquet`` — ranks who can be ranked, abstains otherwise
+* ``completeness_gated_board.parquet`` — the published men's board: ranks who
+  can be ranked, abstains otherwise
+* ``completeness_gated_board_women.parquet`` — the same board for the women's
+  component, which is a separate ranking because the two never fight
+
+"All-time" without a gender means the men's board. See ``GENDER_GAUGE_NOTE``.
 
 Usage::
 
@@ -38,10 +43,15 @@ from ratings.scope import DEFAULT_PUBLISHED_SCOPE
 # public resume question had been answered. It had not been. Selecting it as the
 # public board is what put Usman Nurmagomedov 6th, Yaroslav Amosov 7th and Josh
 # Barnett 8th all-time (2026-08-25 audit); under Public Legacy the same fighters
-# sit 60th, 51st and 27th and the top 25 has zero unanchored names.
+# sit 60th, 51st and 27th and the top 25 had zero unanchored names on that day's
+# corpus. On the 2026-08-28 board the count is 3 -- Ngannou, Sterling and
+# Dvalishvili, all UFC champions absent from the three supplied anchor lists
+# rather than regional outliers. The count is a smell test, not a target: the
+# anchor lists were authored in the same commit as the layer they score.
 #
 # This was diagnosed and repaired on 2026-08-24
-# (docs/PUBLIC_PERCEPTION_REPAIR_2026-08-24.md), reverted by the 2026-08-25
+# (_archive/20260826-stale-project-material/docs/PUBLIC_PERCEPTION_REPAIR_2026-08-24.md),
+# reverted by the 2026-08-25
 # cohesive pass, and restored here. **Career Skill Mass is a skill diagnostic,
 # not the public board.** Do not promote it again without re-running
 # build_top100_audit.py and reading the unanchored top-25 count.
@@ -77,6 +87,31 @@ PUBLIC_LEGACY_COMPONENTS = (
 
 README_BOARD_BEGIN = "<!-- BOARD:TOP100:BEGIN -->"
 README_BOARD_END = "<!-- BOARD:TOP100:END -->"
+README_WOMEN_BEGIN = "<!-- BOARD:WOMEN10:BEGIN -->"
+README_WOMEN_END = "<!-- BOARD:WOMEN10:END -->"
+
+# The men's and women's boards are built and published SEPARATELY, and that is
+# an identification statement, not a presentation preference.
+#
+# Measured on the 2026-08-13 snapshot: of 80,697 rated bouts, **zero** join a
+# man to a woman and the two sides share **zero** opponents. They are disjoint
+# components of the bout graph, so adding any constant to every rating in the
+# women's component changes no modelled bout probability -- the offset between
+# the two levels is set by the prior, not by evidence. It is not a small effect
+# on the board: 2026-08-25 measured total female career mass running from 0 at
+# -200 Elo to 45,382 at +200, moving Zhang Weili from rank 30 with zero mass to
+# rank 13 with 886. One number therefore cannot rank a man against a woman, and
+# a mixed board publishes that unidentified gauge as if it were a result.
+#
+# Ranks *within* each component are identified and are what get published.
+BOARD_GENDER_SUFFIX = {"M": "", "F": "_women"}
+BOARD_GENDER_LABEL = {"M": "men's", "F": "women's"}
+GENDER_GAUGE_NOTE = (
+    "Men and women never fight, so no bout locates the two rating levels "
+    "against each other: their relative level is set by the prior, not by "
+    "evidence, and one number cannot rank them together. The boards are "
+    "therefore separate, and each one's ranks are identified within it."
+)
 
 
 def _select_rating_col(
@@ -130,6 +165,26 @@ def public_legacy_eligibility_override(current: pd.DataFrame) -> pd.Series:
     )
 
 
+def gender_partition(current: pd.DataFrame) -> dict[str, pd.DataFrame]:
+    """Split the rated population into the two disjoint bout-graph components.
+
+    A snapshot rated before gender inference existed has no ``gender`` column;
+    it gets one mixed board under the men's key rather than a silent claim to
+    have separated something. ``rate_snapshot._attach_recent_division_gender``
+    is what fills the column, and it propagates across the same components this
+    splits on.
+    """
+    if current is None or current.empty or "gender" not in current.columns:
+        return {"M": current}
+    label = current["gender"].astype(str).str.upper().str.strip()
+    female = label.str.startswith("F")
+    male = label.str.startswith("M")
+    # An unlabelled fighter never fought a gendered billing the inference could
+    # read. Keeping them on the default board is the same abstention the
+    # completeness gate makes: they are not evidence for a women's rank.
+    return {"M": current[~female].copy(), "F": current[female & ~male].copy()}
+
+
 def _requested_core_rating_col(current: pd.DataFrame, requested: str | None) -> str:
     if requested is None:
         return select_core_rating_col(current)
@@ -178,18 +233,27 @@ def write_board_artifacts(
     integrity_col = _requested_integrity_rating_col(current, integrity_rating_col)
     ledger = integrity_ledger(appearances, fights)
     board = integrity_discounted_board(current, ledger, rating_col=integrity_col)
-    eligibility_override = (
-        public_legacy_eligibility_override(current)
-        if core_col == "public_legacy_score"
-        else None
-    )
-    gated = completeness_gated_board(
-        current,
-        rating_col=core_col,
-        min_rating_periods=min_rating_periods,
-        eligibility_override=eligibility_override,
-        unranked_at_or_below=RATING_FLOOR_IS_UNRANKED.get(core_col),
-    )
+    def _gated(population: pd.DataFrame) -> pd.DataFrame:
+        override = (
+            public_legacy_eligibility_override(population)
+            if core_col == "public_legacy_score"
+            else None
+        )
+        return completeness_gated_board(
+            population,
+            rating_col=core_col,
+            min_rating_periods=min_rating_periods,
+            eligibility_override=override,
+            unranked_at_or_below=RATING_FLOOR_IS_UNRANKED.get(core_col),
+        )
+
+    partition = gender_partition(current)
+    boards = {
+        gender: _gated(population)
+        for gender, population in partition.items()
+        if population is not None and not population.empty
+    }
+    gated = boards.get("M", _gated(current.iloc[0:0]))
 
     target = Path(out_dir) if out_dir is not None else (
         snap
@@ -199,7 +263,11 @@ def write_board_artifacts(
     target.mkdir(parents=True, exist_ok=True)
     ledger.to_parquet(target / "integrity_ledger.parquet", index=False)
     board.to_parquet(target / "integrity_discounted_board.parquet", index=False)
-    gated.to_parquet(target / "completeness_gated_board.parquet", index=False)
+    for gender, frame in boards.items():
+        suffix = BOARD_GENDER_SUFFIX[gender]
+        frame.to_parquet(
+            target / f"completeness_gated_board{suffix}.parquet", index=False
+        )
 
     return {
         "out_dir": target,
@@ -210,6 +278,7 @@ def write_board_artifacts(
         "ledger_fighters": ledger["fighter"].nunique() if len(ledger) else 0,
         "board_rows": len(board),
         "debited_fighters": int((board["integrity_cost"] > 0).sum()) if len(board) else 0,
+        "genders": sorted(boards),
         "ranked_fighters": int(gated["status"].eq("ranked").sum()) if len(gated) else 0,
         "withheld_fighters": int((~gated["status"].eq("ranked")).sum()) if len(gated) else 0,
         "unranked_at_floor": (
@@ -219,6 +288,10 @@ def write_board_artifacts(
             int(gated.get("eligibility_override", pd.Series(False, index=gated.index)).sum())
             if len(gated) else 0
         ),
+        "ranked_by_gender": {
+            gender: int(frame["status"].eq("ranked").sum())
+            for gender, frame in boards.items()
+        },
     }
 
 
@@ -269,20 +342,33 @@ def top_board_markdown(
     return "\n".join([header, align, *rows])
 
 
-def update_readme_board(readme_path: Path, table: str) -> None:
-    """Replace the marked board block in the README with a freshly built table."""
+def update_readme_block(readme_path: Path, body: str, *, begin: str, end: str) -> None:
+    """Replace one marked block in the README with freshly built content."""
     readme = Path(readme_path)
     text = readme.read_text(encoding="utf-8")
-    start = text.find(README_BOARD_BEGIN)
-    end = text.find(README_BOARD_END)
-    if start < 0 or end < 0:
-        raise ValueError(
-            f"{readme} has no board block: expected "
-            f"{README_BOARD_BEGIN} ... {README_BOARD_END}"
-        )
+    start = text.find(begin)
+    stop = text.find(end)
+    if start < 0 or stop < 0:
+        raise ValueError(f"{readme} has no board block: expected {begin} ... {end}")
     readme.write_text(
-        text[:start] + f"{README_BOARD_BEGIN}\n\n{table}\n\n" + text[end:],
-        encoding="utf-8",
+        text[:start] + f"{begin}\n\n{body}\n\n" + text[stop:], encoding="utf-8"
+    )
+
+
+def update_readme_board(readme_path: Path, table: str) -> None:
+    """Replace the marked board block in the README with a freshly built table."""
+    update_readme_block(
+        readme_path, table, begin=README_BOARD_BEGIN, end=README_BOARD_END
+    )
+
+
+def update_readme_women_board(readme_path: Path, table: str) -> None:
+    """Replace the women's block, which is published beside the men's table."""
+    update_readme_block(
+        readme_path,
+        f"{GENDER_GAUGE_NOTE}\n\n{table}",
+        begin=README_WOMEN_BEGIN,
+        end=README_WOMEN_END,
     )
 
 
@@ -313,6 +399,12 @@ def main() -> None:
         help="Also refresh the published board block in this README (default README.md).",
     )
     ap.add_argument("--readme-top", type=int, default=100)
+    ap.add_argument(
+        "--women-top",
+        type=int,
+        default=10,
+        help="Length of the separately published women's board (default 10).",
+    )
     args = ap.parse_args()
 
     summary = write_board_artifacts(
@@ -327,6 +419,8 @@ def main() -> None:
     ledger = pd.read_parquet(out / "integrity_ledger.parquet")
     board = pd.read_parquet(out / "integrity_discounted_board.parquet")
     gated = pd.read_parquet(out / "completeness_gated_board.parquet")
+    women_path = out / "completeness_gated_board_women.parquet"
+    women = pd.read_parquet(women_path) if women_path.exists() else None
     core_col = str(summary["core_rating_col"])
     debited = board[board["integrity_cost"] > 0]
     print(f"integrity ledger: {len(ledger):,} discounted appearances across "
@@ -340,10 +434,17 @@ def main() -> None:
               .sort_values("integrity_cost", ascending=False).round(1).to_string(index=False))
 
     ranked = gated[gated["status"].eq("ranked")]
-    print(f"\ncompleteness-gated board: {len(ranked):,} ranked, "
-          f"{len(gated) - len(ranked):,} withheld")
+    print(f"\ncompleteness-gated board (men's, the published default): "
+          f"{len(ranked):,} ranked, {len(gated) - len(ranked):,} withheld")
     print(gated.loc[~gated["status"].eq("ranked"), "status"].value_counts().to_string())
     print(ranked.head(args.top)[["rank", "fighter", core_col]].round(1).to_string(index=False))
+    if women is not None:
+        women_ranked = women[women["status"].eq("ranked")]
+        print(f"\ncompleteness-gated board (women's): {len(women_ranked):,} ranked, "
+              f"{len(women) - len(women_ranked):,} withheld")
+        print(women_ranked.head(args.women_top)[["rank", "fighter", core_col]]
+              .round(1).to_string(index=False))
+        print(f"\n{GENDER_GAUGE_NOTE}")
     print(f"\nwritten to {out}")
 
     if args.write_readme is not None:
@@ -352,7 +453,15 @@ def main() -> None:
             args.write_readme,
             top_board_markdown(gated, current, rating_col=core_col, top=args.readme_top),
         )
-        print(f"published top {args.readme_top} to {args.write_readme}")
+        print(f"published men's top {args.readme_top} to {args.write_readme}")
+        if women is not None:
+            update_readme_women_board(
+                args.write_readme,
+                top_board_markdown(
+                    women, current, rating_col=core_col, top=args.women_top
+                ),
+            )
+            print(f"published women's top {args.women_top} to {args.write_readme}")
 
 
 if __name__ == "__main__":

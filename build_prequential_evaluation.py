@@ -23,6 +23,7 @@ from pathlib import Path
 import pandas as pd
 
 from ratings import prequential as PQ
+from ratings.scope import DEFAULT_PUBLISHED_SCOPE
 
 # (baseline, challenger, what the comparison isolates)
 ABLATION_PAIRS = [
@@ -55,6 +56,15 @@ def main() -> None:
     ap.add_argument("--online-only", action="store_true", help="skip the WHR refit variants")
     ap.add_argument("--variants", default=None,
                     help="comma-separated variant names to score (default: all)")
+    # Without this the harness silently scored UFC-only while the board it is
+    # meant to certify runs on the joint scope. Returning UFC-only and calling
+    # it a joint fit is how "cross-org makes no difference" became a believed
+    # result; the scope is now named in the run and in the summary.
+    ap.add_argument(
+        "--scope",
+        default=DEFAULT_PUBLISHED_SCOPE,
+        help="named bout scope to evaluate (default: the published scope).",
+    )
     ap.add_argument("--out-dir", type=Path, default=Path("data/model_tuning/prequential"))
     ap.add_argument("--artifact-dir", type=Path, default=None,
                     help="where to write the four artifacts; defaults to the snapshot, "
@@ -64,7 +74,9 @@ def main() -> None:
 
     t_wall, t_cpu = time.perf_counter(), time.process_time()
     print(f"[inputs] {args.snapshot_dir}")
-    inputs = PQ.build_inputs(args.snapshot_dir, with_crossorg=args.with_crossorg)
+    inputs = PQ.build_inputs(
+        args.snapshot_dir, with_crossorg=args.with_crossorg, scope=args.scope
+    )
     build_cpu = time.process_time() - t_cpu
     print(f"[inputs] {len(inputs.fights):,} rated bouts, {build_cpu:.1f}s cpu")
 
@@ -144,6 +156,8 @@ def main() -> None:
     total_cpu = time.process_time() - t_cpu
     summary = {
         "snapshot": Path(args.snapshot_dir).name,
+        "scope": args.scope,
+        "cache_schema_version": PQ.CACHE_SCHEMA_VERSION,
         "rated_bouts": int(len(inputs.fights)),
         "eval_events": int(len(eval_events)),
         "calibration_events": int(len(calib_events)),
@@ -158,7 +172,9 @@ def main() -> None:
                         "total": round(total_cpu, 1)},
         "wall_seconds": round(time.perf_counter() - t_wall, 1),
     }
-    (snap / "prequential_summary.json").write_text(json.dumps(summary, indent=2))
+    (snap / "prequential_summary.json").write_text(
+        json.dumps(summary, indent=2) + "\n", encoding="utf-8"
+    )
 
     overall = scores[(scores.segment_type == "overall")].copy()
     for flag, label in ((False, "RAW"), (True, "TEMPERATURE-CALIBRATED")):

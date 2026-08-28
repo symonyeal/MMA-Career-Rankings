@@ -60,23 +60,6 @@ def _pair_key(row) -> str:
     return "::".join(sorted([_name_key(row.get("fighter")), _name_key(row.get("opponent"))]))
 
 
-def _event_key(row) -> str:
-    event_id = row.get("event_id")
-    if pd.notna(event_id) and str(event_id).strip():
-        return f"event:{str(event_id).strip()}"
-    date = pd.to_datetime(row.get("event_date"), errors="coerce")
-    return f"date:{date:%Y%m%d}" if pd.notna(date) else "date:unknown"
-
-
-def _winner_id(row) -> str:
-    result = str(row.get("result") or "").lower()
-    if result == "win":
-        return f"id:{row.get('fighter_profile_id')}"
-    if result == "loss":
-        return f"id:{row.get('opponent_profile_id')}"
-    return result
-
-
 NAME_ALIAS_PATH = (
     Path(__file__).resolve().parent.parent
     / "data" / "external" / "fightmatrix" / "name_aliases.csv"
@@ -706,6 +689,9 @@ def build_graph_artifacts(
     policy: PolicyConfig = PolicyConfig(),
 ) -> dict:
     """Build all audit/identity/reconciliation/model-input artifacts."""
+    # Entry point, called from a shell rather than from this package. It
+    # regenerates the diagnostics for the named `fightmatrix` scope, which is
+    # still selectable and still has TableSpecs in build_database.py.
     base_snapshot = Path(base_snapshot).resolve()
     expansion_dir = Path(expansion_dir).resolve()
     if (expansion_dir / "FIGHTMATRIX_SNAPSHOT_FINALIZED").exists():

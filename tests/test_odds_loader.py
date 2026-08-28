@@ -5,7 +5,6 @@ weight-assignment math is exercised in `test_odds_adjustment.py`.
 """
 from __future__ import annotations
 
-import math
 from pathlib import Path
 
 import pandas as pd

@@ -1,8 +1,12 @@
 # Whole-sport scope, evidence weighting, and era depth — design plan
 
 **Date:** 2026-08-21
-**Status:** plan. Nothing here is implemented. Every number below was measured on
-`data/snapshots/2026-08-13` on 2026-08-21 and is cited so it can be re-checked.
+**Status:** historical design plan. Parts were implemented after this was
+written, so statements about the engine's current scope or implementation state
+must not be treated as current. Use the repository `README.md` and
+`BOARD_AND_IDENTIFICATION_2026-08-25.md` for the live contract. Every number
+below was measured on `data/snapshots/2026-08-13` on 2026-08-21 and is retained
+so it can be re-checked.
 **Predecessors:** [Principled Core Evolution](PRINCIPLED_CORE_EVOLUTION_2026-08-20.md),
 [Prior Mass and Uncertainty](PRIOR_MASS_AND_UNCERTAINTY_2026-08-20.md).
 
@@ -333,6 +337,17 @@ decision and a knockout are the same evidence about who is better; the earlier
 research arm found no resolved benefit, and dominance already has a home as a
 published diagnostic.
 
+> **AMENDED 2026-08-28 — half right, and the half that is wrong is the
+> interesting half.** Method stays out of `ω_b`: measured, the finish-precision
+> arms are significantly *worse* on decisions at every weight. But method as
+> **partial credit on the outcome** -- the `winner_score_col` hook, not the
+> weight -- resolves in its favour: -0.00332 calibrated held-out log loss,
+> 95% event bootstrap [-0.00503, -0.00161], with a mean-matched constant score
+> as the control scoring nothing. It ships. The proposed `Championship bout`
+> precision term in the table above was tested at the same time and **failed**:
+> every title and five-round weight is the wrong sign. See
+> `RATING_LAYER_AND_LEDGER_2026-08-28.md` §4.
+
 **On "beating high-quality ranked opponents is valuable":** this is already
 exact in the model and needs no new term. The gradient of the likelihood is
 `ω_b(y_b − σ(θ_i − θ_j))`, so beating a higher-rated opponent produces a larger
@@ -584,11 +599,12 @@ choice**, and each row should acquire a test that fails if it moves.
 | Win / loss / draw | bout likelihood | anywhere else |
 | Opponent quality | opponent's latent `θ_j` | no rank bonus, no résumé bonus, no quality multiplier |
 | Scheduled rounds / duration | `ω_b` precision | not a score bonus |
-| Championship status | `ω_b` **only if it survives a held-out test**; otherwise ledger only | not a rating bonus, ever |
+| Championship status | ledger only -- it did **not** survive the held-out test (2026-08-28) | not `ω_b`, not a rating bonus, ever |
 | Official rankings | achievement ledger + external validation | never a rating input |
 | Promotion identity | `ω_b` **as documentation reliability only** | not a strength discount — strength comes from bridges |
 | Era / field depth | reporting, ledger context, and (pending E5) the reference bar | not an additive rating premium |
-| Method / dominance | published diagnostic | not `ω_b`, not the score |
+| Method | **the winner score** `y_b` (2026-08-28) | not `ω_b` -- the precision route was measured and failed |
+| Dominance | published diagnostic | not `ω_b`, not the score |
 | Activity / layoff | display-time attenuation, clearly labelled | not career mass |
 | Age | prior **drift** `mu(age)` in the skill layer; **aging residual** in the ledger | never a bonus or penalty applied to a finished score |
 | Integrity (PED/DQ) | ledger + explicit debit board | not propagated through the opponent graph |
@@ -784,4 +800,4 @@ but Tony lost to everybody and kept going down, assess best decision here.
 5. **Championship precision.** If a title indicator shows *no* resolved
    predictive effect, is ledger-only treatment acceptable — or do you want it in
    the rating on normative grounds, clearly labelled as such?
----sure. as long as whole thing is principally consistent. 
+---sure. as long as whole thing is principally consistent.

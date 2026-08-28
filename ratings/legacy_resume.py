@@ -12,7 +12,11 @@ import numpy as np
 import pandas as pd
 
 from loaders.fightmatrix_organizations import normalize_organization
-from ratings.performance_adjustment import is_real_ufc_title_bout, normalize_division_label
+from ratings.performance_adjustment import (
+    is_real_ufc_title_bout,
+    normalize_division_label,
+    womens_division_label,
+)
 
 
 LEGACY_SCORE_COLUMNS = [
@@ -88,6 +92,43 @@ TITLE_QUALITY_SCALE = 1000.0
 # artifact returns (at q**6 Matt Serra climbs back to 42nd).
 TITLE_QUALITY_EXPONENT = 4.0
 
+# Held-out level offset between the UFC-tested and never-UFC pools, in Elo.
+#
+# **This is a ledger term, not a rating term.** It never enters the bout
+# likelihood, so §2.4 of the operating contract -- no organisation weight in the
+# likelihood -- is untouched. What it corrects is the mis-location the code note
+# above ``title_quality_ledger`` already names as the reason the two contender
+# lines could not be unified: ``mu_whr`` over-rating lightly-tested careers, so
+# that welterweight's 2010 contender line is set by a 21-5 regional fighter.
+#
+# The 2026-08-25 removal of ``ORG_FACTOR_BY_CANONICAL`` from this path rested on
+# two statistics computed **from these same ratings** -- P(a random Bellator
+# title opponent rates above a random UFC one) = 0.477, and a Bradley-Terry
+# transfer gap of +4 [-4, +28]. A pool offset is exactly the quantity a
+# within-model statistic cannot see, because the smoother has no pool parameter
+# and free per-fighter thetas absorb it. Measured out of sample instead
+# (2026-08-28, seven cutoffs, 120-day scoring windows, event bootstrap):
+#
+#   ever-UFC vs never-UFC, all crossing bouts   +104 Elo [ +67, +148], n=486
+#     decomposed by state at the bout:
+#   future UFC signee, pre-debut                +274 Elo [+185, +389], n=156
+#   prior UFC experience, fighting outside       +54 Elo [ +10, +100], n=328
+#   UFC debutant vs incumbent                    +48 Elo [  -8,  +98], n=169
+#
+# The +274 pre-debut term is selection on a latent variable -- the UFC signs
+# fighters whose record the model has already priced too low -- and is NOT used
+# here: pricing an achievement by who was later signed is a look-ahead dressed
+# as a resume. The applied constant is the +54 term, the one that survives after
+# the crossing has happened and the only one that describes a standing
+# difference between the two pools.
+#
+# The transfer is stated, not measured: the offset was fitted on the prospective
+# filter state and is applied to the retrospective smoother. Both estimators
+# share one likelihood and one weak pool bridge, so the same identification
+# failure applies to both, but that the magnitude carries across is an
+# assumption. Set to 0.0 to reproduce the 2026-08-27 unadjusted ledger.
+UFC_POOL_OFFSET_ELO = 54.0
+
 # Retained because the schedule ledger is a separate component and was not part
 # of the 2026-08-25 title repair. It is normalised away in the published score.
 RANK_CONTEXT_WIN_POINTS = 1200.0
@@ -96,6 +137,12 @@ RANK_CONTEXT_WIN_POINTS = 1200.0
 # most 3, which reads badly on a board; multiplying by a constant cannot change
 # any ordering.
 PUBLIC_LEGACY_DISPLAY_SCALE = 1000.0
+
+# A division-year thinner than this cannot describe its own title bar. Kept
+# separate from symon_score.DEFAULT_DIVISION_MIN_POPULATION because the two
+# lines are, for now, deliberately different statistics -- see the note in
+# title_quality_ledger.
+TITLE_DIVISION_MIN_YEARS = 5
 
 QUALITY_LEDGER_COLUMNS = [
     "fighter",
@@ -116,14 +163,27 @@ def _empty_quality_ledger() -> pd.DataFrame:
 
 
 def _division_labels(current: pd.DataFrame) -> pd.Series | None:
-    """Fighter -> division label, women's classes kept separate from men's."""
+    """Fighter -> division label, women's classes kept separate from men's.
+
+    A woman's ``career_division`` is folded onto one canonical women's division
+    first. Without that fold the same division splits into as many pools as the
+    corpus has spellings for it -- "Women's Flyweight" from UFCStats and a bare
+    "Flyweight" from the Sherdog majors rows -- and each pool strikes its own
+    contender line. Measured on 2026-08-13 those two lines sat 91 rating points
+    apart over the same eleven years, so which one a career was scored against
+    was decided by its source, not by its division.
+
+    The ``"W " + div`` prefix is kept as the fallback for a label the fold
+    cannot place, so a fighter is never silently pooled with the men.
+    """
     if current is None or "career_division" not in current.columns:
         return None
     div = current["career_division"].astype(str)
     gender = current.get("gender", pd.Series("", index=current.index)).astype(str)
     female = gender.str.upper().str.startswith("F")
+    folded = div.map(womens_division_label)
     return pd.Series(
-        np.where(female, "W " + div, div), index=current["fighter"]
+        np.where(female, folded.fillna("W " + div), div), index=current["fighter"]
     ).groupby(level=0).first()
 
 ORG_FACTOR_BY_CANONICAL = {
@@ -198,6 +258,58 @@ def title_quality(opponent_mu: pd.Series, bar: pd.Series) -> pd.Series:
     gap = pd.to_numeric(opponent_mu, errors="coerce") - pd.to_numeric(bar, errors="coerce")
     q = 1.0 / (1.0 + np.power(10.0, -gap / 400.0))
     return q ** TITLE_QUALITY_EXPONENT
+
+
+def ufc_debut_dates_from(fights: pd.DataFrame | None) -> pd.Series:
+    """First UFC-family event date per fighter, the pool-state clock.
+
+    ``ufc`` and ``pre_unified`` are one promotion under two corpus labels, which
+    is the same rule the held-out pool probe used to fit
+    :data:`UFC_POOL_OFFSET_ELO`. Applying a different rule here than the one the
+    number was measured under would make the constant unfalsifiable.
+    """
+    empty = pd.Series(dtype="datetime64[ns]")
+    if fights is None or fights.empty or "source_corpus" not in fights.columns:
+        return empty
+    ufc = fights[fights["source_corpus"].isin(["ufc", "pre_unified"])]
+    if ufc.empty:
+        return empty
+    stacked = pd.concat(
+        [
+            ufc[["fighter_a", "event_date"]].rename(columns={"fighter_a": "fighter"}),
+            ufc[["fighter_b", "event_date"]].rename(columns={"fighter_b": "fighter"}),
+        ],
+        ignore_index=True,
+    )
+    stacked["event_date"] = pd.to_datetime(stacked["event_date"], errors="coerce")
+    stacked = stacked.dropna(subset=["fighter", "event_date"])
+    if stacked.empty:
+        return empty
+    return stacked.groupby("fighter")["event_date"].min()
+
+
+def _pool_offset(
+    fighters: pd.Series,
+    at: pd.Series,
+    debuts: pd.Series | None,
+    offset_elo: float,
+) -> pd.Series:
+    """``offset_elo`` where the fighter had already fought in the UFC, else 0.
+
+    ``at`` may be a date or a calendar year; a year is read as "any UFC bout in
+    or before this year", which is the coarsest statement the annual bar can
+    make about the same rule.
+    """
+    zero = pd.Series(0.0, index=fighters.index)
+    if debuts is None or not len(debuts) or not float(offset_elo):
+        return zero
+    first = fighters.map(debuts)
+    if pd.api.types.is_datetime64_any_dtype(at):
+        tested = first.notna() & first.lt(at)
+    else:
+        year = pd.to_numeric(at, errors="coerce")
+        tested = first.notna() & pd.to_datetime(first).dt.year.le(year)
+    return zero.mask(tested.fillna(False), float(offset_elo))
 
 
 def _organization_factor(canonical_organization: object, tier: object) -> float:
@@ -591,7 +703,6 @@ def _combine_title_ledgers(
 
 # Minimum rated fighter-years before a division-year gets its own contender
 # line. Below this the quantile is noise and the sport-wide line is used.
-TITLE_DIVISION_MIN_YEARS = 5
 
 
 def title_quality_ledger(
@@ -600,6 +711,8 @@ def title_quality_ledger(
     *,
     reference: str | float | None = None,
     divisions: pd.Series | None = None,
+    ufc_debut_dates: pd.Series | None = None,
+    pool_offset_elo: float = UFC_POOL_OFFSET_ELO,
 ) -> pd.DataFrame:
     """Title resume priced by the opponent actually beaten, bout by bout.
 
@@ -607,6 +720,13 @@ def title_quality_ledger(
     stood before that bout** -- ``merge_asof`` with ``allow_exact_matches=False``
     so the bout's own result cannot price itself -- and scored by
     :func:`title_quality` against that year's contender bar.
+
+    Given ``ufc_debut_dates``, :data:`UFC_POOL_OFFSET_ELO` is added to the rating
+    of any fighter who had already fought in the UFC, on **both** sides of the
+    comparison -- the opponent being priced and the annual means the contender
+    line is read from -- so the two stay on one scale. A division whose pool is
+    already UFC-tested therefore barely moves; a mixed one moves by however much
+    of it is not.
 
     Returns one row per fighter with the summed quality and the count of wins
     that cleared the contender line.
@@ -633,9 +753,44 @@ def title_quality_ledger(
         .agg(annual_mean="mean")
         .reset_index()
     )
+    # The pool correction is applied to the line as well as to the opponent, so
+    # ``q`` compares two numbers on one scale. See UFC_POOL_OFFSET_ELO.
+    annual["annual_mean"] = annual["annual_mean"] + _pool_offset(
+        annual["fighter"], annual["year"], ufc_debut_dates, pool_offset_elo
+    )
     bar = year_reference(annual, ref)
     # Contender line inside each division-year, used in preference to the
     # sport-wide line -- see the note above TITLE_QUALITY_SCALE.
+    #
+    # KNOWN INCOHERENCE, deliberately left in place 2026-08-26. This is a 0.90
+    # quantile; the career functional next door is measured against
+    # `contender:5` from `symon_score.division_year_reference`. One board with
+    # two different contender lines is wrong, and the quantile is the weaker of
+    # the two on its own terms -- it names a fixed *fraction* of whoever happens
+    # to be rated, which is the mistake the note above
+    # `symon_score.DEFAULT_CAREER_REFERENCE` rejects for the career bar.
+    # Measured over the 230 division-years both cover, it sits a mean 90.9
+    # rating points BELOW the contender line and the shortfall tracks field
+    # size: 5.7 points in women's strawweight against 139.9 in featherweight.
+    #
+    # Unifying the two was tried and REVERTED the same day, because the
+    # published output got worse, and the reason is worth recording. Against
+    # `contender:5` the deep men's divisions price a title win at nearly
+    # nothing while the women's divisions price one richly -- St-Pierre's title
+    # resume fell to 279 against Namajunas's 657, and Namajunas reached 9th
+    # all-time. That is not the bar statistic failing. It is `mu_whr`
+    # over-rating lightly-tested careers, surfacing in the line itself:
+    # welterweight's 2010 contender line comes out at 1838 and is set by Rick
+    # Hawn, a 21-5 regional fighter, with Ben Askren and Andrey Koreshkov above
+    # him, while women's strawweight in 2021 lands at 1627 because that pool is
+    # almost entirely UFC-tested. A higher bar simply reads that error more
+    # sensitively.
+    #
+    # So the quantile stays until the rating error is addressed. Raising
+    # `WHR_VIRTUAL_GAMES` is NOT the fix -- that was rebuilt across
+    # {2,4,6,10,16,24} on this scope and refuted (at v=24 Travis Fulton is
+    # first all-time). Fix the rating, then unify this line; do not unify it
+    # first.
     division_bar = None
     if divisions is not None and len(divisions):
         annual["_division"] = annual["fighter"].map(divisions)
@@ -677,6 +832,9 @@ def title_quality_ledger(
         on="event_date",
         by="opponent",
         allow_exact_matches=False,
+    )
+    priced["opponent_mu"] = priced["opponent_mu"] + _pool_offset(
+        priced["opponent"], priced["event_date"], ufc_debut_dates, pool_offset_elo
     )
     # A title bout can fall in a year with no rated appearances -- the bar has
     # no entry for it. Dropping those rows would silently zero a real title win,
@@ -725,6 +883,8 @@ def public_legacy_score_rows(
     source_fights: pd.DataFrame | None = None,
     history: pd.DataFrame | None = None,
     reference: str | float | None = None,
+    ufc_debut_dates: pd.Series | None = None,
+    pool_offset_elo: float = UFC_POOL_OFFSET_ELO,
 ) -> pd.DataFrame:
     """Return one public legacy score row per fighter.
 
@@ -750,11 +910,18 @@ def public_legacy_score_rows(
 
     out = current[["fighter", skill_col]].copy()
     out = out.rename(columns={skill_col: "public_legacy_skill_mass"})
+    debuts = (
+        ufc_debut_dates
+        if ufc_debut_dates is not None
+        else ufc_debut_dates_from(source_fights)
+    )
     quality_ledger = title_quality_ledger(
         source_fights,
         history,
         reference=reference,
         divisions=_division_labels(current),
+        ufc_debut_dates=debuts,
+        pool_offset_elo=pool_offset_elo,
     )
     ledger = _combine_title_ledgers(
         championship_resume_ledger(appearances),

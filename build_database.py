@@ -37,8 +37,11 @@ class TableSpec:
 TABLE_SPECS = [
     TableSpec("canonical_events", "canonical_events.parquet", "Greco", "canonical"),
     TableSpec("canonical_fights", "canonical_fights.parquet", "Greco", "canonical"),
-    TableSpec("majors_fights", "majors_fights.parquet", "Sherdog majors", "canonical_extension", required=False),
-    TableSpec("pre_unified_fights", "pre_unified_fights.parquet", "UFCStats", "canonical_extension", required=False),
+    # One authoritative fight table instead of one per corpus. The staged
+    # majors / pre-unified / FightMatrix parquets are build inputs to it, and
+    # exporting them alongside it published the same bout up to three times
+    # under three names.
+    TableSpec("combined_fights", "combined_fights.parquet", "Combined corpora", "canonical_extension", required=False),
     TableSpec("canonical_rounds", "canonical_rounds.parquet", "Greco", "canonical"),
     TableSpec("canonical_fighters", "canonical_fighters.parquet", "Greco", "canonical"),
     TableSpec("ratings_current", "ratings_current.parquet", "Rating engine", "ratings"),
@@ -81,6 +84,17 @@ TABLE_SPECS = [
     TableSpec(
         "completeness_gated_board",
         "completeness_gated_board.parquet",
+        "Board builder",
+        "judgement",
+        required=False,
+    ),
+    # The women's component is a separate ranking, not a subset of the one
+    # above: the two populations never fight, so one number cannot order them
+    # together. Exporting only the default board would drop 271 rated fighters
+    # out of the database entirely.
+    TableSpec(
+        "completeness_gated_board_women",
+        "completeness_gated_board_women.parquet",
         "Board builder",
         "judgement",
         required=False,
@@ -130,13 +144,6 @@ TABLE_SPECS = [
     TableSpec("fightmatrix_rank_movements", "fightmatrix_rank_movements.parquet", "Rating engine", "diagnostic", required=False),
     TableSpec("fightmatrix_anomaly_traces", "fightmatrix_anomaly_traces.parquet", "Rating engine", "diagnostic", required=False),
     TableSpec("fightmatrix_anomaly_summary", "fightmatrix_anomaly_summary.parquet", "Rating engine", "diagnostic", required=False),
-    TableSpec(
-        "fightmatrix_crossorg_fights",
-        "fightmatrix_crossorg_fights.parquet",
-        "FightMatrix",
-        "canonical_extension",
-        required=False,
-    ),
     TableSpec(
         "fightmatrix_scope_comparison",
         "fightmatrix_scope_comparison.parquet",
@@ -194,6 +201,7 @@ COMPOSITE_INDEXES = {
     "integrity_ledger": [("fight_url", "fighter"), ("fighter", "event_date")],
     "integrity_discounted_board": [("rank", "fighter"), ("undiscounted_rank", "fighter")],
     "completeness_gated_board": [("rank", "fighter"), ("status", "fighter")],
+    "completeness_gated_board_women": [("rank", "fighter"), ("status", "fighter")],
     "ratings_current": [("fighter",), ("last_event_date",)],
     "fight_dominance": [("fight_url",)],
     "fighter_dominance": [("fighter",)],
@@ -240,11 +248,12 @@ COMPOSITE_INDEXES = {
     "fightmatrix_rank_movements": [("scope", "fighter"), ("rank_delta_vs_ufc",), ("absolute_reference_rank_error",)],
     "fightmatrix_anomaly_traces": [("fighter", "event_date"), ("opponent",)],
     "fightmatrix_anomaly_summary": [("scope", "fighter"), ("diagnostic_cause",)],
-    "fightmatrix_crossorg_fights": [
+    "combined_fights": [
         ("event_date", "event_name"),
         ("fighter_a", "fighter_b"),
         ("fight_url",),
         ("org",),
+        ("source_corpus",),
     ],
     "fightmatrix_scope_comparison": [
         ("fighter",),
@@ -366,7 +375,7 @@ def _row_counts(con: sqlite3.Connection, table_names: Iterable[str]) -> pd.DataF
 
 def _source_gaps(missing_optional: list[TableSpec]) -> pd.DataFrame:
     missing_table_names = {spec.table_name for spec in missing_optional}
-    scope_tables = {"majors_fights", "pre_unified_fights", "fightmatrix_crossorg_fights"}
+    scope_tables = {"combined_fights"}
     loaded_scopes = sorted(scope_tables - missing_table_names)
     if not loaded_scopes:
         crossorg_row = {
@@ -383,8 +392,9 @@ def _source_gaps(missing_optional: list[TableSpec]) -> pd.DataFrame:
             "severity": "info",
             "status": "loaded",
             "notes": (
-                f"Named scope artifacts staged: {', '.join(loaded_scopes)}. The rating "
-                "run metadata decides which were admitted; no organization weight is used."
+                "The authoritative combined fight table is staged; its source_corpus "
+                "column names every corpus in it and the rating run metadata records "
+                "which scope was admitted. No organization weight is used."
             ),
         }
     if "fightmatrix_bouts" in missing_table_names:

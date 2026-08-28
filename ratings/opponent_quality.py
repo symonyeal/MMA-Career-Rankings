@@ -13,7 +13,9 @@ from ratings.constants import (
     PERF_OPPONENT_QUALITY_MU_SCALE,
     PERF_P4P_AMPLITUDE,
     PERF_RANK_CONTEXT_AMPLITUDE,
+    RANK_CONTEXT_MIN_WINDOW,
     RANK_CONTEXT_TOP_N,
+    RANK_CONTEXT_TOP_SHARE,
     SLEEVE_FACTOR_MAX,
     SLEEVE_FACTOR_MIN,
     SUSTAINED_PEAK_OPP_MAX_WEIGHT,
@@ -46,16 +48,31 @@ def rank_context_quality_level(
     opponent_rank: object,
     opponent_champion: object | None = None,
     opponent_interim: object | None = None,
+    opponent_pool: object | None = None,
 ) -> pd.Series:
-    """0..1 divisional-rank/champion quality level."""
+    """0..1 divisional-rank/champion quality level.
+
+    ``opponent_pool`` is the number of fighters that division's rank was read
+    off. Given it, the ranked window is :data:`RANK_CONTEXT_TOP_SHARE` of the
+    field rather than a fixed fifteen -- see the note above that constant.
+    Omit it and the fixed window is used, which is the pre-2026-08-26 behaviour.
+    """
     rank = _as_float_series(opponent_rank)
     index = rank.index
-    ranked = rank.between(1, RANK_CONTEXT_TOP_N)
+    if opponent_pool is None:
+        window = pd.Series(float(RANK_CONTEXT_TOP_N), index=index, dtype="float64")
+    else:
+        pool = _as_float_series(opponent_pool).reindex(index)
+        window = (RANK_CONTEXT_TOP_SHARE * pool).round()
+        # A field too small to have a meaningful top share still has a top few,
+        # and no window may exceed the fixed convention it replaces.
+        window = window.clip(lower=float(RANK_CONTEXT_MIN_WINDOW), upper=float(RANK_CONTEXT_TOP_N))
+        window = window.fillna(float(RANK_CONTEXT_TOP_N))
+    ranked = (rank >= 1) & (rank <= window)
     rank_signal = pd.Series(0.0, index=index, dtype="float64")
-    rank_signal.loc[ranked] = ((RANK_CONTEXT_TOP_N + 1 - rank.loc[ranked]) / RANK_CONTEXT_TOP_N).clip(
-        lower=0.0,
-        upper=1.0,
-    )
+    rank_signal.loc[ranked] = (
+        (window.loc[ranked] + 1 - rank.loc[ranked]) / window.loc[ranked]
+    ).clip(lower=0.0, upper=1.0)
     champ_signal = pd.Series(0.0, index=index, dtype="float64")
     if opponent_interim is not None:
         champ_signal.loc[_as_bool_series(opponent_interim, index)] = 0.85
@@ -142,11 +159,17 @@ def opponent_mu_quality_factor(opponent_mu: object) -> pd.Series:
     return factor.clip(lower=SLEEVE_FACTOR_MIN, upper=SLEEVE_FACTOR_MAX)
 
 
-def rank_context_quality_factor(opponent_rank: object, opponent_champion: object, opponent_interim: object) -> pd.Series:
+def rank_context_quality_factor(
+    opponent_rank: object,
+    opponent_champion: object,
+    opponent_interim: object,
+    opponent_pool: object | None = None,
+) -> pd.Series:
     return 1.0 + PERF_RANK_CONTEXT_AMPLITUDE * rank_context_quality_level(
         opponent_rank,
         opponent_champion,
         opponent_interim,
+        opponent_pool,
     )
 
 

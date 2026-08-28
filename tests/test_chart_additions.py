@@ -21,10 +21,12 @@ from analysis.viz import (
     legacy_vs_prime_scatter,
     load_snapshot,
     method_mix_timeline_chart,
+    prequential_summary_is_current,
     snapshot_movers_chart,
     striking_profile_chart,
     title_lineage_chart,
 )
+from ratings.prequential import CACHE_SCHEMA_VERSION
 
 SNAPSHOT_DIR = Path("data/snapshots/2026-05-13")
 
@@ -69,6 +71,20 @@ def test_prequential_artifacts_are_in_snapshot_loader_map():
     assert mapped["prequential_predictions"] == "prequential_predictions"
     assert mapped["prequential_scores"] == "prequential_scores"
     assert mapped["prequential_paired"] == "prequential_paired"
+
+
+def test_prequential_summary_must_match_snapshot_and_cache_schema():
+    current = {
+        "snapshot": "2026-08-13",
+        "cache_schema_version": CACHE_SCHEMA_VERSION,
+    }
+    assert prequential_summary_is_current(current, "2026-08-13")
+    assert not prequential_summary_is_current({}, "2026-08-13")
+    assert not prequential_summary_is_current(
+        {**current, "cache_schema_version": CACHE_SCHEMA_VERSION - 1},
+        "2026-08-13",
+    )
+    assert not prequential_summary_is_current(current, "2026-08-14")
 
 
 def test_heldout_scorecard_selects_calibrated_rows_and_shows_n():

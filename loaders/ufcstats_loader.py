@@ -18,6 +18,13 @@ from pathlib import Path
 
 import pandas as pd
 
+from ratings.constants import (
+    METHOD_SCORE_DQ,
+    METHOD_SCORE_FINISH,
+    METHOD_SCORE_NON_UNANIMOUS_DECISION,
+    METHOD_SCORE_UNANIMOUS,
+)
+
 try:
     from .ped_flags import annotate_ped_flags
 except ImportError:  # pragma: no cover - direct script execution
@@ -74,12 +81,6 @@ UFC_28_DATE = pd.Timestamp("2000-11-17")
 #   Decision - Majority  0.90  non-unanimous: one judge dissents
 #   Decision - Split     0.90  non-unanimous: one judge scored the other way
 #   DQ                   0.85  win by disqualification, before integrity
-from ratings.constants import (
-    METHOD_SCORE_DQ,
-    METHOD_SCORE_FINISH,
-    METHOD_SCORE_NON_UNANIMOUS_DECISION,
-    METHOD_SCORE_UNANIMOUS,
-)
 
 METHOD_SCORES = {
     "KO/TKO":               METHOD_SCORE_FINISH,
@@ -253,14 +254,18 @@ def build_canonical_fights(results: pd.DataFrame, events_parsed: pd.DataFrame) -
 
     def winner_of(row):
         a, b = row["fighter_a_outcome"], row["fighter_b_outcome"]
-        if a == "W" and b == "L": return row["fighter_a"]
-        if a == "L" and b == "W": return row["fighter_b"]
+        if a == "W" and b == "L":
+            return row["fighter_a"]
+        if a == "L" and b == "W":
+            return row["fighter_b"]
         return None
 
     def loser_of(row):
         a, b = row["fighter_a_outcome"], row["fighter_b_outcome"]
-        if a == "W" and b == "L": return row["fighter_b"]
-        if a == "L" and b == "W": return row["fighter_a"]
+        if a == "W" and b == "L":
+            return row["fighter_b"]
+        if a == "L" and b == "W":
+            return row["fighter_a"]
         return None
 
     f["winner"] = f.apply(winner_of, axis=1)
@@ -275,9 +280,12 @@ def build_canonical_fights(results: pd.DataFrame, events_parsed: pd.DataFrame) -
     )
 
     def exclusion_reason(row):
-        if row["method_class"] == "Overturned": return "method_overturned"
-        if row["method_class"] == "Could Not Continue": return "could_not_continue"
-        if row["is_nc"]: return "no_contest"
+        if row["method_class"] == "Overturned":
+            return "method_overturned"
+        if row["method_class"] == "Could Not Continue":
+            return "could_not_continue"
+        if row["is_nc"]:
+            return "no_contest"
         return None
 
     f["exclusion_reason"] = f.apply(exclusion_reason, axis=1)

@@ -1,5 +1,22 @@
 # Prior mass, retired period scores, and honest rank intervals — 2026-08-20
 
+> **Historical design record.** The prior-mass and bootstrap findings remain
+> relevant, but the field-mean bar, UFC-only scope, and board values below were
+> later replaced. The live career bar is `contender:60` sport-wide with a
+> `contender:5` division-year line in front of it; use the repository
+> `README.md` and
+> [Rating layer and ledger](RATING_LAYER_AND_LEDGER_2026-08-28.md) for the
+> current contract.
+>
+> **Superseded on 2026-08-28 in one specific:** the `WHR_VIRTUAL_GAMES`
+> selection recorded here as unresolved, shipped on a tie-break and chosen on
+> the **UFC-only** scope, has been refit on the repaired published corpus. The
+> live constants are `WHR_PRIOR_VAR = 8`, `WHR_VIRTUAL_GAMES = 1`,
+> `WHR_W2_PER_DAY = 0.0004` (that last one still unresolved). Virtual mass moved
+> **down**, not up. The bootstrap section still stands, but the replicates now
+> refit the published functional and the method-scored winner column, which they
+> did not before.
+
 Second pass over the core, continuing
 [Principled Core Evolution](PRINCIPLED_CORE_EVOLUTION_2026-08-20.md). That
 document reorganised the estimands. This one reports a defect found by
@@ -231,9 +248,9 @@ The choice is consequential: top-100 overlap against the production board is
 96/100 at the median, 63/100 at the 90th percentile, and 21/100 at a top-ten
 reference. Rather than assert one bar, `career_mass_family` recomputes the same
 functional across the range and the notebook plots the rank ladder, so a reader
-sees which fighters the choice decides. The production default remains the field
-mean; changing it is a product decision that should be made in daylight, and the
-evidence above is what it should be made from.
+sees which fighters the choice decides. The production default remained the
+field mean at this stage; later work replaced it with `contender:60` after a
+separate calibration pass.
 
 An early attempt to fix the thin-record problem *inside* the functional — an
 empirical-Bayes shrink of each fighter-year mean — was measured and discarded:
@@ -249,5 +266,5 @@ is handled by the prior and reported by the bootstrap.
 | --- | --- |
 | Virtual-game mass | Measured and **unresolved** — all paired intervals cross zero. Ships at $v=2$ by the stated tie-break, not by a demonstrated lift. A larger held-out sample, or an evaluation restricted to bouts involving a thin record (where the prior actually bites), is the way to resolve it. |
 | Cross-organization scope | Still quarantined. Its weights use eventual UFC careers, so no predictive claim is available until they are fold-local. |
-| Bar default | Field mean retained; the family and its sensitivity are published rather than a silent choice. |
+| Bar default | Field mean retained at this stage; later superseded by `contender:60`. |
 | Bootstrap cost | ~7.7 s per replicate, so 200 replicates is a ~25 minute offline build, not a notebook-time computation. |

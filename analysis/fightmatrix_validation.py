@@ -180,6 +180,7 @@ def build_anomaly_traces(
     snapshot: Path, output_dir: Path, *, scope_name: str = "expanded",
 ) -> pd.DataFrame:
     """Trace added-bout evidence and rating movement for required anomaly fighters."""
+    # Entry point, called from a shell. See build_graph_artifacts.
     snapshot = Path(snapshot)
     cross_path = snapshot / SCOPE_ARTIFACT["fightmatrix"]
     history_path = snapshot / "ratings_history_method_integrity_performance.parquet"
@@ -239,6 +240,7 @@ def build_anomaly_summary(
     output_dir: Path,
 ) -> pd.DataFrame:
     """Classify rank movement without treating reference proximity as proof."""
+    # Entry point, called from a shell. See build_graph_artifacts.
     base = panel[panel["scope"].eq("ufc_only")].set_index("fighter")
     rows = []
     for scope in [value for value in panel["scope"].unique() if value != "ufc_only"]:

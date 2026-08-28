@@ -28,7 +28,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from loaders.sherdog_org_loader import (
+from loaders.sherdog_org_loader import (  # noqa: E402
     DEFAULT_CACHE_DIR,
     MAJOR_ORGS,
     crawl,

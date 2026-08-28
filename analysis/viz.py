@@ -10,6 +10,7 @@ in VS Code's notebook host.
 """
 from __future__ import annotations
 
+import json
 import sqlite3
 from pathlib import Path
 
@@ -23,7 +24,6 @@ from ratings.constants import (
     FIVE_YEAR_PEAK_MIN_FIGHTS,
     FIVE_YEAR_PEAK_WINDOW_DAYS,
     FIVE_YEAR_PEAK_WINDOW_LABEL,
-    RATING_COLUMN_LABELS,
     SUSTAINED_PEAK_MIN_FIGHTS,
     SUSTAINED_PEAK_WINDOW_LABEL,
     rating_label,
@@ -238,7 +238,6 @@ def _apply_chart_layout(fig: go.Figure, *, height: int | None = None) -> go.Figu
 TABLE_KEY_MAP = [
     ("canonical_fights", "fights"),
     ("combined_fights", "combined_fights"),
-    ("crossorg_fights", "crossorg_fights"),
     ("canonical_rounds", "rounds"),
     ("canonical_fighters", "fighters"),
     ("canonical_events", "events"),
@@ -280,6 +279,33 @@ METADATA_TABLES = [
     "source_gaps",
 ]
 
+PREQUENTIAL_KEYS = frozenset({
+    "prequential_predictions", "prequential_scores", "prequential_paired",
+})
+
+
+def prequential_summary_is_current(summary: object, snapshot_name: str) -> bool:
+    """Whether dashboard evidence matches the current prequential contract."""
+    if not isinstance(summary, dict):
+        return False
+    from ratings.prequential import CACHE_SCHEMA_VERSION
+
+    return (
+        summary.get("snapshot") == snapshot_name
+        and summary.get("cache_schema_version") == CACHE_SCHEMA_VERSION
+    )
+
+
+def _prequential_artifacts_current(snapshot_dir: Path) -> bool:
+    summary_path = snapshot_dir / "prequential_summary.json"
+    if not summary_path.exists():
+        return False
+    try:
+        summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return False
+    return prequential_summary_is_current(summary, snapshot_dir.name)
+
 
 def load_snapshot(snapshot_dir: Path | str) -> dict[str, pd.DataFrame]:
     """Load every parquet in a snapshot directory into a dict of DataFrames.
@@ -291,7 +317,10 @@ def load_snapshot(snapshot_dir: Path | str) -> dict[str, pd.DataFrame]:
     if not snapshot_dir.exists():
         raise FileNotFoundError(f"snapshot not found: {snapshot_dir}")
     out = {}
+    prequential_current = _prequential_artifacts_current(snapshot_dir)
     for stem, key in TABLE_KEY_MAP:
+        if key in PREQUENTIAL_KEYS and not prequential_current:
+            continue
         path = snapshot_dir / f"{stem}.parquet"
         if path.exists():
             out[key] = pd.read_parquet(path)
@@ -2743,25 +2772,6 @@ def public_history_key(view: str | None = None) -> str:
     return "ratings_history_whr"
 
 
-def affine_match_scale(values, target):
-    """Affine-map ``values`` onto the (mean, std) of ``target``.
-
-    A display-only rescale so two rating streams that live on different internal
-    scales (e.g. the WHR smoother ~1600 vs the Glicko filter ~1900) read on one
-    axis. The mapping is monotonic, so within-stream ordering is preserved; only
-    the absolute numbers move. Returns a float Series aligned to ``values``.
-    """
-    v = pd.to_numeric(pd.Series(values).reset_index(drop=True), errors="coerce")
-    t = pd.to_numeric(pd.Series(target), errors="coerce")
-    vm, vs = v.mean(), v.std()
-    tm, ts = t.mean(), t.std()
-    if not np.isfinite(vs) or vs < 1e-9 or not np.isfinite(ts) or not np.isfinite(tm):
-        return v
-    out = (v - vm) / vs * ts + tm
-    out.index = pd.Series(values).index
-    return out
-
-
 def compose_rating_stream(
     scoring_method: str,
     *,
@@ -2780,30 +2790,6 @@ def compose_rating_stream(
     if use_performance:
         parts.append("performance")
     return "_".join(parts)
-
-
-def modular_rating_context(
-    scoring_method: str,
-    *,
-    use_performance: bool = False,
-) -> dict[str, str]:
-    """Human-readable labels + comparison baseline for a modular selection."""
-    stream = compose_rating_stream(scoring_method, use_performance=use_performance)
-    if scoring_method == "canonical":
-        scoring_label = "Wins"
-        baseline_col, baseline_label = "mu_canonical", "Wins"
-    else:
-        scoring_label = "Finishes"
-        baseline_col, baseline_label = "mu_method", "Finishes"
-    sleeve_label = "Strength" if use_performance else "No context"
-    display_label = "Complete" if use_performance else scoring_label
-    return {
-        "stream": stream,
-        "label": display_label,
-        "detail": f"{scoring_label} with {sleeve_label.lower()}",
-        "baseline_col": baseline_col,
-        "baseline_label": baseline_label,
-    }
 
 
 def select_rating_column(
@@ -2889,72 +2875,6 @@ def sleeve_ranking_table(
         key = normalize_name_key(query)
         out["query_match"] = out["fighter"].apply(lambda name: key in normalize_name_key(name))
     return out
-
-
-def style_sleeve_ranking_table(table: pd.DataFrame, query: str = ""):
-    """Return a pandas Styler for the notebook's sleeve ranking table."""
-    if table.empty:
-        return table
-
-    def delta_color(value):
-        try:
-            v = float(value)
-        except (TypeError, ValueError):
-            return ""
-        if v > 0:
-            return "color: #15803d; font-weight: 600"
-        if v < 0:
-            return "color: #b91c1c; font-weight: 600"
-        return "color: #475569"
-
-    def row_highlight(row):
-        if query and bool(row.get("query_match", False)):
-            return ["background-color: #fef3c7"] * len(row)
-        return [""] * len(row)
-
-    display_table = table.drop(columns=["query_match"], errors="ignore")
-    try:
-        return (
-            display_table.style
-            .format({"current_rating": "{:.1f}", "baseline_rating": "{:.1f}", "delta_vs_baseline": "{:+.1f}"})
-            .apply(lambda _row: row_highlight(table.loc[_row.name]), axis=1)
-            .map(delta_color, subset=["delta_vs_baseline"])
-            .set_properties(**{"text-align": "left"})
-            .set_table_styles([
-                {"selector": "th", "props": [("text-align", "left"), ("color", "#334155")]},
-                {"selector": "td", "props": [("padding", "6px 10px")]},
-            ])
-        )
-    except AttributeError:
-        # Fallback when pandas' Styler requires jinja2. Return simple HTML
-        # so the notebook can still render a readable table.
-        from IPython.display import HTML
-
-        fallback = display_table.copy()
-        # Format numeric columns as strings with desired precision
-        fallback["current_rating"] = fallback["current_rating"].apply(
-            lambda v: f"{v:.1f}" if pd.notnull(v) else ""
-        )
-        fallback["baseline_rating"] = fallback["baseline_rating"].apply(
-            lambda v: f"{v:.1f}" if pd.notnull(v) else ""
-        )
-        fallback["delta_vs_baseline"] = fallback["delta_vs_baseline"].apply(
-            lambda v: f"{v:+.1f}" if pd.notnull(v) else ""
-        )
-
-        # If a query match exists in the original table, highlight the fighter cell
-        if query and "query_match" in table.columns:
-            def maybe_highlight(row):
-                name = row["fighter"]
-                if row.get("query_match", False):
-                    return f"<span style=\"background-color: #fef3c7\">{name}</span>"
-                return name
-
-            highlighted = [maybe_highlight(r) for _, r in table.iterrows()]
-            fallback["fighter"] = highlighted
-
-        html = fallback.to_html(escape=False, index=False)
-        return HTML(html)
 
 
 # ---------------------------------------------------------------------------
@@ -3123,31 +3043,6 @@ def fighter_betting_line_chart(
         hovermode="closest",
     )
     return fig
-
-
-def _fighter_odds_profile(odds_lines: pd.DataFrame | None) -> pd.DataFrame:
-    if odds_lines is None or odds_lines.empty:
-        return pd.DataFrame(columns=["fighter", "odds_covered_fights", "median_market_prob"])
-    needed = {"fighter_a", "fighter_b", "implied_prob_a_no_vig", "implied_prob_b_no_vig", "odds_data_quality"}
-    if not needed.issubset(odds_lines.columns):
-        return pd.DataFrame(columns=["fighter", "odds_covered_fights", "median_market_prob"])
-    ok = odds_lines[odds_lines["odds_data_quality"] == "ok"].copy()
-    a = ok[["fighter_a", "implied_prob_a_no_vig"]].rename(
-        columns={"fighter_a": "fighter", "implied_prob_a_no_vig": "market_prob"}
-    )
-    b = ok[["fighter_b", "implied_prob_b_no_vig"]].rename(
-        columns={"fighter_b": "fighter", "implied_prob_b_no_vig": "market_prob"}
-    )
-    long = pd.concat([a, b], ignore_index=True).dropna(subset=["fighter", "market_prob"])
-    if long.empty:
-        return pd.DataFrame(columns=["fighter", "odds_covered_fights", "median_market_prob"])
-    return (
-        long.groupby("fighter", as_index=False)
-        .agg(
-            odds_covered_fights=("market_prob", "size"),
-            median_market_prob=("market_prob", "median"),
-        )
-    )
 
 
 def ranking_context_impact_table(performance_appearances: pd.DataFrame, n: int = 25) -> pd.DataFrame:
@@ -3447,6 +3342,9 @@ def calibration_residuals_chart(
     min_n: int = 40,
 ) -> go.Figure:
     """Predicted win probability vs empirical outcomes by segment."""
+    # Not called by build_notebook.py. Kept because rate_snapshot still writes
+    # calibration_residuals.parquet and build_database still exports it: the
+    # artifact is live and this is its reader, available from a notebook cell.
     if calibration_residuals is None or calibration_residuals.empty:
         return _empty_figure("calibration residuals unavailable", title="Calibration by segment")
     df = calibration_residuals[calibration_residuals["segment_type"].eq(segment_type)].copy()
@@ -3499,94 +3397,6 @@ def calibration_residuals_chart(
         legend=dict(orientation="h", y=1.15, x=0),
     )
     return fig
-
-
-def sleeve_attribution_waterfall(
-    sleeve_attribution: pd.DataFrame,
-    fighter: str,
-) -> go.Figure:
-    """Readable component chart for career rating movement by adjustment layer."""
-    if sleeve_attribution is None or sleeve_attribution.empty or not fighter:
-        return _empty_figure("sleeve attribution unavailable", title="Sleeve attribution")
-    key = normalize_name_key(fighter, compact=True)
-    df = sleeve_attribution[
-        sleeve_attribution["fighter"].apply(lambda name: key in normalize_name_key(name, compact=True))
-    ].copy()
-    if df.empty:
-        return _empty_figure(f"fighter not found: {fighter}", title="Sleeve attribution")
-    actual = df["fighter"].iloc[0]
-    components = [
-        ("Base", "base_method_delta"),
-        ("Strength", "performance_delta"),
-        ("Overlap", "interaction_delta"),
-    ]
-    rows = []
-    for label, col in components:
-        value = float(pd.to_numeric(df.get(col), errors="coerce").fillna(0.0).sum())
-        rows.append({"component": label, "rating_points": value})
-    plot = pd.DataFrame(rows)
-    plot["abs_points"] = plot["rating_points"].abs()
-    plot = plot.sort_values("abs_points", ascending=True)
-    colors = np.where(plot["rating_points"].ge(0), SIGN_COLORS["positive"], SIGN_COLORS["negative"])
-    total = float(plot["rating_points"].sum())
-    fig = go.Figure(go.Bar(
-        x=plot["rating_points"],
-        y=plot["component"],
-        orientation="h",
-        marker_color=colors,
-        text=plot["rating_points"].map(lambda v: f"{v:+.1f}"),
-        textposition="outside",
-        hovertemplate="<b>%{y}</b><br>%{x:+.1f} rating points<extra></extra>",
-    ))
-    fig.add_vline(x=0, line_color="#94a3b8", line_width=1)
-    fig.add_annotation(
-        text=f"Net: {total:+.1f} rating points",
-        x=1,
-        y=1.08,
-        xref="paper",
-        yref="paper",
-        showarrow=False,
-        align="right",
-        font=dict(size=13, color=THEME["text"]),
-    )
-    _apply_chart_layout(fig, height=460)
-    fig.update_layout(
-        title=f"{actual}: rating story",
-        xaxis_title="Rating points",
-        yaxis_title="",
-        showlegend=False,
-    )
-    return fig
-
-
-def sleeve_attribution_table(
-    sleeve_attribution: pd.DataFrame,
-    fighter: str,
-    *,
-    n: int = 25,
-) -> pd.DataFrame:
-    """Most recent exact per-event sleeve-attribution rows for a fighter."""
-    cols = [
-        "event_date", "event_name", "opponent", "base_method_delta",
-        "performance_delta", "interaction_delta",
-        "combined_delta", "performance_weight", "combined_weight",
-    ]
-    if sleeve_attribution is None or sleeve_attribution.empty or not fighter:
-        return pd.DataFrame(columns=cols)
-    key = normalize_name_key(fighter, compact=True)
-    df = sleeve_attribution[
-        sleeve_attribution["fighter"].apply(lambda name: key in normalize_name_key(name, compact=True))
-    ].copy()
-    if df.empty:
-        return pd.DataFrame(columns=cols)
-    df["event_date"] = pd.to_datetime(df["event_date"], errors="coerce")
-    df = df.sort_values("event_date", ascending=False).head(n)
-    out = df[[c for c in cols if c in df.columns]].copy()
-    out["event_date"] = out["event_date"].dt.date
-    for col in [c for c in cols if c.endswith("_delta") or c.endswith("_weight")]:
-        if col in out.columns:
-            out[col] = pd.to_numeric(out[col], errors="coerce").round(3)
-    return out.reset_index(drop=True)
 
 
 def division_entropy_chart(

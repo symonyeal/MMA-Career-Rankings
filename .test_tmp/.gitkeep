@@ -1,0 +1,1 @@
+# Pytest's nested project-local base directory requires this parent to exist.

@@ -1,5 +1,10 @@
 # FightMatrix public-data incorporation — 2026-08-14
 
+> **Historical experimental record.** This describes the bounded 302-profile
+> run as delivered on 2026-08-14. Its SQLite export was reclaimed on 2026-08-19
+> after the depth-one experiment superseded it; the snapshot and source cache
+> remain preserved. It is not the current published scope.
+
 ## Delivered local data
 
 - 302 public profiles linked from the persisted current-division and all-time
@@ -22,7 +27,7 @@
 | `crossorg_fights.fightmatrix-public.parquet` | Optional combined input in the standard snapshot. |
 | `fightmatrix_scope_comparison.parquet` | UFC-only vs bounded-cohort scores/ranks. |
 | `2026-08-13-fightmatrix-public/` | Completed combined rating snapshot. |
-| `ufc_rank_engine_fightmatrix_public.sqlite` | Queryable combined-scope database. |
+| `ufc_rank_engine_fightmatrix_public.sqlite` | Historical combined-scope database, reclaimed 2026-08-19; the snapshot remains. |
 
 ## Provenance boundary
 

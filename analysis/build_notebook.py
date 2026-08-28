@@ -49,7 +49,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
-from IPython.display import clear_output, display, Markdown
+from IPython.display import display, Markdown
 import ipywidgets as widgets
 
 pd.set_option("display.max_rows", 120)
@@ -68,14 +68,13 @@ def find_project_root(start: Path) -> Path:
 PROJECT_ROOT = find_project_root(Path.cwd())
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from analysis.viz import (
+from analysis.viz import (  # noqa: E402
     all_time_benchmark_chart,
     all_time_benchmark_table,
     DIV_SHORT,
     DIVISIONS,
     PUBLIC_RANKING_VIEWS,
     division_strength_timeline_chart,
-    division_year_snapshot_chart,
     division_year_top_fighters_chart,
     era_heatmap_chart,
     favorite_underdog_performance_table,
@@ -84,17 +83,13 @@ from analysis.viz import (
     fighter_detail,
     fighter_search,
     load_project_data,
-    performance_factor_audit_table,
     public_history_key,
     public_rating_label,
-    rank_movement_chart,
-    recent_division_by_fighter,
     select_public_ranking_column,
     streak_timeline_chart,
     top100_division_density_chart,
     top_fighter_placement_scatter,
     trajectory_chart,
-    weight_class_strength_chart,
     win_streaks,
     win_streaks_table,
     yearly_rating_delta_scatter,
@@ -118,6 +113,7 @@ from analysis.viz import (
     heldout_scorecard_chart,
     ablation_forest_chart,
 )
+from ratings.symon_score import career_mass_family as _career_mass_family  # noqa: E402
 
 SNAPSHOT_BASE = PROJECT_ROOT / "data" / "snapshots"
 SNAPSHOT_CANDIDATES = [
@@ -138,7 +134,6 @@ fights = SNAP["fights"]
 fighters = SNAP["fighters"]
 rc = SNAP["ratings_current"]
 previous_rc = PREV.get("ratings_current", pd.DataFrame())
-calibration_residuals = SNAP.get("calibration_residuals", pd.DataFrame())
 career_mass_uncertainty = SNAP.get("career_mass_uncertainty", pd.DataFrame())
 division_resume = SNAP.get("division_resume", pd.DataFrame())
 performance_appearances = SNAP.get("performance_appearances", pd.DataFrame())
@@ -159,7 +154,6 @@ ratings_histories = {
 }
 # The same career functional recomputed at five bars. Cheap: it re-reads the
 # fitted history, it does not refit the smoother.
-from ratings.symon_score import career_mass_family as _career_mass_family
 CAREER_MASS_FAMILY = _career_mass_family(ratings_history_whr)
 previous_fights = PREV.get("fights", pd.DataFrame())
 previous_ratings_history = PREV.get("ratings_history", pd.DataFrame())
@@ -168,14 +162,20 @@ previous_ratings_histories = {
     "ratings_history_whr": previous_ratings_history_whr,
 }
 fighter_dominance = SNAP.get("fighter_dominance", pd.DataFrame())
-crossorg_fights = SNAP.get("crossorg_fights", pd.DataFrame())
-previous_crossorg_fights = PREV.get("crossorg_fights", pd.DataFrame())
-
-all_bouts = pd.concat([fights, crossorg_fights], ignore_index=True, sort=False) if not crossorg_fights.empty else fights
-previous_all_bouts = (
-    pd.concat([previous_fights, previous_crossorg_fights], ignore_index=True, sort=False)
-    if not previous_crossorg_fights.empty
-    else previous_fights
+# The rated corpus is the authoritative combined table, not a re-concatenation
+# of the UFC rows with whichever cross-org artifact happens to be staged. Those
+# are different corpora: combined_fights is what the ratings on this page were
+# actually fitted on, while the old concatenation pulled in the FightMatrix
+# diagnostic scope even when the board was fitted on the Sherdog majors.
+all_bouts = SNAP.get("combined_fights", pd.DataFrame())
+if all_bouts.empty:
+    all_bouts = fights
+previous_all_bouts = PREV.get("combined_fights", pd.DataFrame())
+if previous_all_bouts.empty:
+    previous_all_bouts = previous_fights
+non_ufc_bouts = (
+    int((all_bouts["source_corpus"] != "ufc").sum())
+    if "source_corpus" in all_bouts.columns else 0
 )
 
 display(Markdown(
@@ -183,7 +183,7 @@ display(Markdown(
     f"font-family:-apple-system,BlinkMacSystemFont,\"Segoe UI\",system-ui,sans-serif'>"
     f"<b style='color:#f1f5f9'>Snapshot</b> <code>{SNAPSHOT_DIR.name}</code> &middot; "
     f"<b style='color:#f1f5f9'>{len(fights):,}</b> UFC bouts &middot; "
-    f"<b style='color:#f1f5f9'>{len(crossorg_fights):,}</b> cross-org bouts &middot; "
+    f"<b style='color:#f1f5f9'>{non_ufc_bouts:,}</b> non-UFC bouts &middot; "
     f"<b style='color:#f1f5f9'>{len(rc):,}</b> fighters"
     f"</div>"
 ))

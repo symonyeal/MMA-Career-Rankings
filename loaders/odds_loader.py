@@ -153,44 +153,6 @@ def remove_vig(p_a_raw: float | None, p_b_raw: float | None) -> tuple[float | No
 # ---------------------------------------------------------------------------
 # Pandas enrichment
 
-def _implied_for_side(american: float | None, decimal: float | None) -> float | None:
-    """Resolve which odds format to use for one fighter side.
-
-    Preference order: American moneyline first (the dominant US sportsbook
-    format for UFC), then decimal as fallback. If neither is present,
-    return None.
-    """
-    if american is not None and not _isnan(american):
-        return american_to_implied(american)
-    if decimal is not None and not _isnan(decimal):
-        return decimal_to_implied(decimal)
-    return None
-
-
-def _isnan(x) -> bool:
-    if x is None:
-        return True
-    try:
-        return math.isnan(float(x))
-    except (TypeError, ValueError):
-        return True
-
-
-def _quality_flag(p_a_raw: float | None, p_b_raw: float | None) -> str:
-    a_missing = p_a_raw is None or _isnan(p_a_raw)
-    b_missing = p_b_raw is None or _isnan(p_b_raw)
-    if a_missing and b_missing:
-        return "missing"
-    if a_missing or b_missing:
-        return "one_side_missing"
-    s = p_a_raw + p_b_raw
-    if s < _RAW_SUM_MIN:
-        return "negative_vig"
-    if s > _RAW_SUM_MAX:
-        return "implausible"
-    return "ok"
-
-
 def compute_implied_probs(df: pd.DataFrame) -> pd.DataFrame:
     """Add implied / no-vig / favorite-underdog columns to a raw odds frame.
 

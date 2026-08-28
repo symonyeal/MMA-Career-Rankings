@@ -32,6 +32,19 @@ from ratings.scope import DEFAULT_PUBLISHED_SCOPE  # noqa: E402
 from ratings.symon_score import DEFAULT_CAREER_REFERENCE  # noqa: E402
 
 
+def _coverage_line(summary: dict) -> str:
+    """The per-fighter career-coverage figure, or why there isn't one."""
+    if not summary or not summary.get("eligible"):
+        return str(summary.get("status", "not measured"))
+    return (
+        f"{summary['career_page_read']:,}/{summary['eligible']:,} eligible fighters "
+        f"({summary['career_page_share']:.1%}) have a whole-career page; median recorded "
+        f"pre-UFC bouts {summary['median_pre_ufc_bouts_read']:.0f} read vs "
+        f"{summary['median_pre_ufc_bouts_unread']:.0f} unread. Run "
+        f"build_sherdog_careers.py if the share is low."
+    )
+
+
 def stage_scopes(snapshot_dir: Path) -> dict[str, object]:
     """Write every non-UFC scope artifact the inputs support.
 
@@ -153,6 +166,11 @@ def append_changelog(project_root: Path, snapshot_date: str, counts: dict[str, i
         f"- Canonical snapshot rebuilt from Greco CSVs: events={counts['events_kept']}, fights={counts['fights_kept']}, rounds={counts['rounds_kept']}, excluded={counts['excluded_bouts']}.",
         f"- Combined model fight table written for scope {ratings_summary.get('scope', 'unknown')}: rows={ratings_summary.get('combined_fights', {}).get('rows', 'unknown')}, model_bouts={ratings_summary.get('combined_fights', {}).get('model_bouts', 'unknown')}.",
         f"- Ratings and dominance produced: fighters_rated={ratings_summary['current_fighters']}, fighter_event_rows={ratings_summary['history_rows']}, events_processed={ratings_summary['events_processed']}.",
+        # Per-fighter coverage, not per-promotion. A low-loss Bradley-Terry
+        # record has no interior maximum, so its rating grows with how many of
+        # the fighter's bouts the corpus holds; a run built on two coverage
+        # rules reads the crawl's shape as skill.
+        f"- Career coverage: {_coverage_line(ratings_summary.get('career_coverage', {}))}",
         "- Streams: canonical Glicko-2 filter + WHR smoother over the same binary W/L/D evidence, "
         "plus a method-scored research diagnostic.",
         "- Public scores: Public Legacy Score (the core board) and fixed 10-year Prime. "
@@ -315,13 +333,31 @@ def main() -> None:
         # Through the scope loader, so the intervals describe the board that was
         # just rated. Reading canonical_fights directly here published UFC-only
         # intervals beside a joint board, and nothing in the artifacts said so.
+        from ratings.legacy_resume import _division_labels
+        from ratings.symon_score import (
+            DEFAULT_DIVISION_REFERENCE,
+            DEFAULT_HINGE_SPREAD_FRACTION,
+        )
+        from ratings.whr import production_score_kwargs
+
         bootstrap_fights = PQ.load_fight_table(snapshot_dir, scope=args.scope)
+        bootstrap_current = pd.read_parquet(snapshot_dir / "ratings_current.parquet")
+        # Same functional as the published board -- see build_uncertainty.py.
         board, draws = career_mass_bootstrap(
             bootstrap_fights,
             replicates=args.bootstrap_replicates,
-            whr_kwargs={"birth_dates": load_birth_dates(snapshot_dir), "age_drift": True},
+            whr_kwargs={
+                "birth_dates": load_birth_dates(snapshot_dir),
+                "age_drift": True,
+                **production_score_kwargs(bootstrap_fights),
+            },
+            mass_kwargs={
+                "divisions": _division_labels(bootstrap_current),
+                "division_reference": DEFAULT_DIVISION_REFERENCE,
+                "hinge_spread_fraction": DEFAULT_HINGE_SPREAD_FRACTION,
+            },
             eligible_fighters=set(
-                pd.read_parquet(snapshot_dir / "ratings_current.parquet").loc[
+                bootstrap_current.loc[
                     lambda x: x["rating_periods"].fillna(0) >= args.min_fights,
                     "fighter",
                 ].astype(str)

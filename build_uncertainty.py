@@ -21,7 +21,14 @@ import pandas as pd
 from ratings import prequential as PQ
 from ratings.constants import SUSTAINED_PEAK_MIN_FIGHTS
 from ratings.scope import DEFAULT_PUBLISHED_SCOPE
-from ratings.symon_score import DEFAULT_CAREER_REFERENCE, parse_reference
+from ratings.legacy_resume import _division_labels
+from ratings.symon_score import (
+    DEFAULT_CAREER_REFERENCE,
+    DEFAULT_DIVISION_REFERENCE,
+    DEFAULT_HINGE_SPREAD_FRACTION,
+    parse_reference,
+)
+from ratings.whr import production_score_kwargs
 from ratings.uncertainty import career_mass_bootstrap, career_tiers, tier_summary
 from ratings.age import load_birth_dates
 
@@ -64,10 +71,24 @@ def main() -> None:
     print(f"[bootstrap] scope={args.scope} {len(fights):,} bouts, "
           f"{args.replicates} replicates")
     t0 = time.perf_counter()
+    # The replicates must refit the SAME functional the board publishes --
+    # method-scored WHR, and a bar struck inside each division-year under the
+    # spread-relative hinge. Passing only ``reference`` here left the intervals
+    # describing a sport-wide, hard-clipped functional that no board shows.
     board, draws = career_mass_bootstrap(
         fights, replicates=args.replicates, seed=args.seed, lo=lo, hi=hi,
-        whr_kwargs={"birth_dates": load_birth_dates(args.snapshot_dir), "age_drift": True},
-        mass_kwargs={"reference": reference}, eligible_fighters=eligible,
+        whr_kwargs={
+            "birth_dates": load_birth_dates(args.snapshot_dir),
+            "age_drift": True,
+            **production_score_kwargs(fights),
+        },
+        mass_kwargs={
+            "reference": reference,
+            "divisions": _division_labels(current),
+            "division_reference": DEFAULT_DIVISION_REFERENCE,
+            "hinge_spread_fraction": DEFAULT_HINGE_SPREAD_FRACTION,
+        },
+        eligible_fighters=eligible,
         return_draws=True, progress=True,
     )
     wall = time.perf_counter() - t0

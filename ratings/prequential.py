@@ -54,12 +54,12 @@ from ratings.glicko2_engine import DEFAULT_TAU, predict_win_prob_from_ratings
 from ratings.integrity_adjustment import build_integrity_appearances
 from ratings.performance_adjustment import build_performance_appearances, normalize_division_label
 from ratings.rules_era import label_rules_era
-from ratings.whr import _ELO_PER_NAT, project_age_rating, run_whr
+from ratings.whr import _ELO_PER_NAT, production_score_kwargs, project_age_rating, run_whr
 from ratings.age import load_birth_dates
 from ratings import rate_snapshot as RS
 from ratings import research_variants as RV
 from loaders.integrity_flags import INTEGRITY_COLUMNS, build_integrity_flags
-from loaders.combined_fights import build_combined_fights
+from loaders.combined_fights import load_combined_fights
 from loaders.odds_loader import has_odds_artifact, load_odds_lines
 from loaders.ufcstats_loader import METHOD_SCORES
 
@@ -76,7 +76,17 @@ EPS = 1e-6
 #       shared bout-level WHR weights, and UFC-only default scope
 #   4 - fixed-mass WHR prior (2026-08-20): virtual games plus per-fighter (not
 #       per-appearance) anchor mass, so every WHR rating moved
-CACHE_SCHEMA_VERSION = 6
+#   5,6 - age drift, then age decline projected through inactivity (2026-08-25)
+#   7 - career-coverage repair (2026-08-27): the corpus gave whole careers only
+#       to fighters who had appeared on a crawled promotion's card, so a
+#       UFC-only career was rated on a fraction of itself. Completing it moved
+#       the published scope from 67,920 to 80,697 model bouts and every rating
+#       with it, which no cache key would have noticed on its own.
+#   8 - method-of-victory winner score (2026-08-28): every published WHR fit now
+#       scores the winner by how the bout ended
+#       (``ratings.constants.WHR_WINNER_SCORE_COL``), so a cached schema-7
+#       prediction is a different model, not a stale copy of this one.
+CACHE_SCHEMA_VERSION = 8
 
 
 # ---------------------------------------------------------------------------
@@ -89,8 +99,12 @@ class Variant:
 
     ``engine`` picks the updater. ``weight`` is retained only for explicit
     weighted-Glicko research; WHR rejects side-specific appearance sleeves.
-    Outcome softening and dominance weighting are opt-in so a base WHR variant
-    cannot silently stop being a binary Bradley--Terry model.
+
+    Every scoring flag is opt-IN, including ``use_method_score``, so a variant
+    can only stop being a plain binary Bradley--Terry model by saying so. The
+    published variants in :func:`default_variants` set ``use_method_score`` and
+    are the ones the board is built from; leaving it off gives the binary model
+    for comparison.
     """
 
     name: str
@@ -107,6 +121,9 @@ class Variant:
     use_org_weight: bool = False  # cross-organization participant-caliber bridge
     use_dominance: bool = False  # shared bout-level WHR likelihood precision
     use_quality_score: bool = False  # explicit fractional winner score research
+    # Published method-of-victory partial credit. Opt-IN for the same reason
+    # as the others: a research arm must be able to score the binary model.
+    use_method_score: bool = False  # ratings.constants.WHR_WINNER_SCORE_COL
     use_age_drift: bool = False  # estimated age-dependent Wiener prior mean
     # A forecast has no appearance node at its cutoff. Project the last fitted
     # WHR mean through that inactive gap under the learned age curve.
@@ -126,6 +143,7 @@ def default_variants() -> list[Variant]:
             engine="whr",
             use_age_drift=True,
             project_age_inactivity=True,
+            use_method_score=True,
         ),
         Variant(
             "whr_symmetric_dominance_research",
@@ -133,6 +151,7 @@ def default_variants() -> list[Variant]:
             use_dominance=True,
             use_age_drift=True,
             project_age_inactivity=True,
+            use_method_score=True,
         ),
     ]
 
@@ -171,7 +190,7 @@ def load_fight_table(
     if scope is None:
         scope = "fightmatrix" if with_crossorg else RS.UFC_ONLY
     snapshot_dir = Path(snapshot_dir)
-    fights, _ = build_combined_fights(snapshot_dir, scope=scope, label="prequential")
+    fights, _ = load_combined_fights(snapshot_dir, scope=scope, label="prequential")
     fights["rules_era"] = label_rules_era(fights)
 
     fights["event_date"] = pd.to_datetime(fights["event_date"])
@@ -391,8 +410,15 @@ def whr_predictions(
         kwargs["iterations"] = iterations
     if w2_per_day is not None:
         kwargs["w2_per_day"] = w2_per_day
+    if variant.use_quality_score and variant.use_method_score:
+        raise ValueError(
+            "one winner-score column per fit: use_quality_score and "
+            "use_method_score are mutually exclusive"
+        )
     if variant.use_quality_score:
         kwargs["winner_score_col"] = "quality_score_winner"
+    if variant.use_method_score:
+        kwargs.update(production_score_kwargs(weighted))
     if variant.virtual_games is not None:
         kwargs["virtual_games"] = float(variant.virtual_games)
     if variant.use_age_drift:

@@ -2,6 +2,12 @@
 
 Report completed 2026-08-18 against the `2026-08-14` crawl.
 
+> **Historical experimental record.** The promotion decision below was correct
+> for 2026-08-18, but it predates the later Sherdog `majors,pre_unified`
+> published scope. The FightMatrix crawl remains unpromoted. Reproduction
+> drivers were closed and preserved under
+> `_archive/20260825-superseded-research-drivers/`.
+
 ## Summary
 
 The depth-one crawl completed: 4,337 of 4,337 fetch-eligible public profiles
@@ -548,7 +554,8 @@ incomplete opponents makes the model worse rather than better.
 
 Every command is in `README.md`. In order: the audit and crawl into the working
 directory; one `--stage-rating-snapshot --run-ratings` invocation per policy;
-`build_fightmatrix_validation.py` across all five scopes; and
+`_archive/20260825-superseded-research-drivers/build_fightmatrix_validation.py`
+across all five scopes; and
 `build_database.py` against the recommended snapshot with an explicit
 `--db-path`, which is what keeps the production database out of the experiment.
 

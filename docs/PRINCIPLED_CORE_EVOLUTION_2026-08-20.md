@@ -1,5 +1,22 @@
 # Principled core evolution — 2026-08-20
 
+> **Historical design record.** The decision and implementation table below
+> describe the 2026-08-20 state. Later work made the whole-sport scope and
+> Public Legacy Score the live defaults, and retired the public Peak output.
+> Use the repository `README.md` and
+> [Rating layer and ledger](RATING_LAYER_AND_LEDGER_2026-08-28.md) for the
+> current contract.
+>
+> **Amended 2026-08-28.** The line below that neither estimator "receives a
+> second credit for title labels, rankings, streaks, opponent quality, or the
+> same bout's method" is still true for the first four and is **no longer true
+> for method**. Method of victory is now the winner's score `y_b` itself, which
+> is not a second credit but a change to what the single posting says: it was
+> measured at -0.00332 calibrated held-out log loss [-0.00503, -0.00161], with a
+> mean-matched constant score as the control scoring nothing. The *precision*
+> route for method, and for title and five-round status, was measured at the
+> same time and failed.
+
 ## Decision
 
 The production engine is now one small skill model with two temporal views of
@@ -8,9 +25,9 @@ the same W/L/D evidence:
 - **Canonical** is the causal Glicko-2 filter used for a fighter's state before
   the next bout.
 - **WHR** is the retrospective smoother used to compare complete careers.
-- **Symon Career Skill Mass** is the public career functional over the
-  era-neutral WHR trajectory. Prime and Peak are fixed-window diagnostics, not
-  alternate all-time definitions.
+- **Symon Career Skill Mass** was the public career functional over the
+  era-neutral WHR trajectory at this stage. Prime was a fixed-window diagnostic;
+  the separate Peak output was later retired as redundant.
 
 Method, dominance, title status, opponent rank, market odds, integrity policy,
 and data completeness no longer accumulate inside the public skill number.

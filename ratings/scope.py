@@ -94,6 +94,35 @@ def scope_sources(scope: str) -> tuple[str, ...]:
     return tuple(sorted(sources, key=SCOPE_MERGE_ORDER.index))
 
 
+def staged_scope(snapshot_dir: Path) -> str:
+    """The widest scope spec this snapshot can actually satisfy.
+
+    ``all`` is a *request*, and a request for a corpus that was never staged
+    raises, which is correct when a caller named it. The combined-table writer
+    names nothing: it takes whatever corpora are present, so that the one
+    authoritative artifact is as wide as the snapshot allows without a missing
+    optional corpus turning a build into an error.
+    """
+    snapshot_dir = Path(snapshot_dir)
+    present = [
+        source for source in SCOPE_MERGE_ORDER
+        if (snapshot_dir / SCOPE_ARTIFACT[source]).exists()
+    ]
+    return ",".join(present) if present else UFC_ONLY
+
+
+def corpora_for_scope(scope: str) -> tuple[str, ...]:
+    """The ``source_corpus`` labels one scope spec admits.
+
+    :func:`scope_sources` names the non-UFC corpora a spec merges. The UFC table
+    is the base of every scope and is never staged as an extension, so it does
+    not appear there -- but it does appear in ``source_corpus``, which is what a
+    row filter has to match. This is the bridge between the two: given a scope
+    name, the exact set of corpus labels a row may carry.
+    """
+    return (UFC_ONLY, *scope_sources(scope))
+
+
 def _missing_artifact_error(snapshot_dir: Path, source: str, path: Path) -> Exception:
     near = sorted(
         p.name for p in snapshot_dir.glob("*.parquet")

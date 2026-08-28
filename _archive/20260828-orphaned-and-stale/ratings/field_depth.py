@@ -173,20 +173,3 @@ def opponent_quality_timeline(
     return pd.DataFrame(rows).sort_values(["fighter", "event_date"]).reset_index(drop=True)
 
 
-def opponent_quality_by_period(
-    timeline: pd.DataFrame,
-    fighter: str,
-    periods: list[tuple[int, int]],
-) -> pd.DataFrame:
-    """Mean opponent quality over stated year ranges, raw and scale-free."""
-    t = timeline[timeline["fighter"] == fighter]
-    rows = []
-    for lo, hi in periods:
-        seg = t[(t["year"] >= lo) & (t["year"] <= hi)]
-        rows.append({
-            "period": f"{lo}-{hi}",
-            "bouts": int(len(seg)),
-            "mean_opponent_mu": float(seg["opponent_mu"].mean()) if len(seg) else np.nan,
-            "mean_opponent_field_pct": float(seg["opponent_field_pct"].mean()) if len(seg) else np.nan,
-        })
-    return pd.DataFrame(rows)

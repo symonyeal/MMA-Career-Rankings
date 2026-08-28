@@ -4,7 +4,8 @@ __pycache__/
 analysis/notebook_with_output.ipynb
 analysis/investigations/*_with_output.ipynb
 .pytest_cache/
-.test_tmp/
+.test_tmp/*
+!.test_tmp/.gitkeep
 pytest-tmp/
 probe700/
 *.egg-info/
@@ -20,6 +21,9 @@ data/external/fightmatrix/profiles/
 data/ufc_rank_engine.sqlite
 data/ufc_rank_engine_fightmatrix_public.sqlite
 data/ufc_rank_engine_fightmatrix_depth_one.sqlite
+
+# Archived generated binaries/caches remain local and recoverable, not versioned.
+_archive/**/generated-data/
 
 # Accidental pip install artifacts (e.g. pip install pkg ==version)
 =*
