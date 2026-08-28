@@ -13,6 +13,7 @@ below is a summary of something else:
 
 | Document | What it settled |
 |---|---|
+| [Next pass](docs/NEXT_2026-08-28.md) | **Open.** Three measured defects at the top of the board: the title ledger prices a win over a young fighter at their career peak (Hughes 7th), the schedule component counts ranked wins instead of pricing them and has no per-year cap (Henderson 8th), and the organisation factor is a typed table carrying +0.699 rank correlation with UFC tenure |
 | [Rating layer and ledger](docs/RATING_LAYER_AND_LEDGER_2026-08-28.md) | The current estimator contract: a scale-equivariant career functional, the refit WHR constants, method of victory in the winner score, why every bout-precision weight failed, the UFC pool offset decomposed into selection, and why the boards are split by gender |
 | [Career coverage](docs/CAREER_COVERAGE_2026-08-27.md) | That the top-100 anomalies were a per-fighter data-coverage asymmetry rather than a scoring choice, what completing the coverage fixed, and what it left behind |
 | [Board and identification](docs/BOARD_AND_IDENTIFICATION_2026-08-25.md) | The current score contract: per-opponent title pricing, age decline projected through inactivity, and the two limits that gate the next scoring change |
