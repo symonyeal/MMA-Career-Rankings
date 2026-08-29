@@ -424,6 +424,35 @@ Patricio Freire to 14th, undoing the pool-priced title work. Anchors in the top
 The typed table therefore stays, unjustified but load-bearing, and its size is
 recorded here rather than left to be rediscovered.
 
+## 5c. The held-out artifact exists again, on the published scope
+
+The snapshot carried no prequential artifact at handoff, so §2.8's acceptance
+rule had nothing to run against. It does now, and it runs on the **published**
+scope rather than the UFC-only one the harness silently defaulted to before the
+`--scope` flag was added (see the defect list above).
+
+24 held-out events, 40 calibration events, 218 scored bouts per variant, both
+fighters with at least three prior bouts. 9,569 CPU-seconds:
+
+| variant | log loss | Brier | accuracy | AUC | calibration error |
+|---|---:|---:|---:|---:|---:|
+| **whr** (published) | **0.6255** | 0.2180 | 0.6560 | **0.7032** | 0.0733 |
+| canonical Glicko | 0.6699 | 0.2389 | 0.5459 | 0.6169 | 0.0880 |
+| naive 50/50 | 0.6931 | 0.2500 | 0.5642 | 0.5000 | 0.0642 |
+| market benchmark | 0.5487 | 0.1846 | 0.7059 | 0.7917 | 0.1283 |
+
+Two things must be said about that table. **The market row is n=17** and is not a
+comparison anyone should draw a conclusion from; it is there because the harness
+reports it. And **218 bouts is small** — the run's own
+`min_n_for_conclusions` is 200, so the overall row barely clears it and several
+segments come back flagged `n_sufficient: False`. It is a standing regression
+check, not a fresh basis for selecting anything.
+
+What it does support: the retrospective smoother beats the causal filter and the
+naive baseline on the published corpus, and its AUC of 0.7032 sits where the
+constant refit put it independently (0.7067 on 7,641 paired bouts). Those are two
+different harnesses agreeing on the same model.
+
 ## 6. What is still open
 
 * **`WHR_W2_PER_DAY` is still asserted.** It was measured and did not resolve.
