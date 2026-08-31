@@ -1,13 +1,14 @@
 """Refresh the UFC ranking snapshot end to end.
 
 This script copies the current Greco CSV inputs into data/raw/<date>/, rebuilds
-the canonical parquet snapshot, runs ratings and dominance, then appends a short
-entry to data/CHANGELOG.md.
+the canonical parquet snapshot, runs ratings and dominance, then updates the
+dated release entry in data/CHANGELOG.md.
 """
 from __future__ import annotations
 
 import argparse
 import json
+import re
 import shutil
 import sys
 from datetime import date
@@ -19,7 +20,11 @@ PROJECT_ROOT = Path(__file__).resolve().parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from loaders.ufcstats_loader import GRECO_FILES, build_snapshot  # noqa: E402
+from loaders.ufcstats_loader import (  # noqa: E402
+    GRECO_FILES,
+    build_snapshot,
+    default_greco_dir,
+)
 from loaders.datalab_loader import DEFAULT_DATALAB_DIR, build_snapshot as build_datalab_snapshot  # noqa: E402
 from loaders.fightmatrix_loader import build_snapshot as build_fightmatrix_snapshot  # noqa: E402
 from loaders.fightmatrix_profiles import build_public_profile_snapshot  # noqa: E402
@@ -78,22 +83,6 @@ DEFAULT_MDABBERT_CSV = next(
     (path for path in _MDABBERT_CANDIDATES if path.exists()),
     _MDABBERT_CANDIDATES[0],
 )
-
-
-def has_greco_files(path: Path) -> bool:
-    return all((path / filename).exists() for filename in GRECO_FILES.values())
-
-
-def default_greco_dir(project_root: Path, snapshot_date: str) -> Path:
-    candidates = [
-        project_root / "data" / "raw" / snapshot_date,
-        project_root / "scrape_ufc_stats-main" / "scrape_ufc_stats-main",
-        project_root.parent / "scrape_ufc_stats-main" / "scrape_ufc_stats-main",
-    ]
-    for candidate in candidates:
-        if has_greco_files(candidate):
-            return candidate
-    return candidates[0]
 
 
 def copy_raw_inputs(greco_dir: Path, raw_dir: Path) -> None:
@@ -171,8 +160,8 @@ def append_changelog(project_root: Path, snapshot_date: str, counts: dict[str, i
         # the fighter's bouts the corpus holds; a run built on two coverage
         # rules reads the crawl's shape as skill.
         f"- Career coverage: {_coverage_line(ratings_summary.get('career_coverage', {}))}",
-        "- Streams: canonical Glicko-2 filter + WHR smoother over the same binary W/L/D evidence, "
-        "plus a method-scored research diagnostic.",
+        "- Streams: canonical binary Glicko-2 comparison + method-aware WHR smoother; "
+        "binary WHR remains a research comparison.",
         "- Public scores: Public Legacy Score (the core board) and fixed 10-year Prime. "
         "Career Skill Mass is the skill diagnostic underneath the board; FightMatrix and the "
         "public anchor lists are sanity checks for top-100 outliers, never tuning targets.",
@@ -180,7 +169,16 @@ def append_changelog(project_root: Path, snapshot_date: str, counts: dict[str, i
         f"- Top 10 by {headline_label}: {top_line}",
     ]
     lines.extend(mover_lines(current_path, previous_dir))
-    changelog.write_text(changelog.read_text(encoding="utf-8") + "\n".join(lines) + "\n", encoding="utf-8")
+    content = changelog.read_text(encoding="utf-8")
+    block = "\n".join(lines).strip() + "\n"
+    section = re.compile(
+        rf"(?ms)^## {re.escape(snapshot_date)} - Refresh run\n.*?(?=^## |\Z)"
+    )
+    if section.search(content):
+        content = section.sub(block, content)
+    else:
+        content = content.rstrip() + "\n\n" + block
+    changelog.write_text(content, encoding="utf-8")
 
 
 def rebuild_notebook(project_root: Path) -> Path:
@@ -227,7 +225,7 @@ def main() -> None:
         help="Disable FightMatrix TLS verification only on a managed interception network.",
     )
     parser.add_argument(
-        "--scope", default=DEFAULT_PUBLISHED_SCOPE,
+        "--scope", default=None,
         help=(
             "Which bouts the rating may see: ufc, majors, pre_unified, "
             "fightmatrix, all, or a comma-separated combination. Staging happens "
@@ -240,6 +238,13 @@ def main() -> None:
         help="Deprecated alias for --scope fightmatrix.",
     )
     args = parser.parse_args()
+    if args.experimental_crossorg and args.scope is not None:
+        parser.error("--experimental-crossorg cannot be combined with --scope")
+    args.scope = (
+        "fightmatrix"
+        if args.experimental_crossorg
+        else (args.scope or DEFAULT_PUBLISHED_SCOPE)
+    )
 
     project_root = Path(args.project_root).resolve()
     greco_dir = (
@@ -309,7 +314,6 @@ def main() -> None:
         tau=args.tau,
         min_fights=args.min_fights,
         mdabbert_csv=mdabbert_csv if mdabbert_csv and mdabbert_csv.exists() else None,
-        include_experimental_crossorg=args.experimental_crossorg,
         scope=args.scope,
     )
     board_summary = write_board_artifacts(
@@ -333,7 +337,12 @@ def main() -> None:
         # Through the scope loader, so the intervals describe the board that was
         # just rated. Reading canonical_fights directly here published UFC-only
         # intervals beside a joint board, and nothing in the artifacts said so.
-        from ratings.gender import DEFAULT_GENDER, select_gender
+        from ratings.gender import (
+            DEFAULT_GENDER,
+            GENDER_LABEL,
+            select_component_fights,
+            select_gender,
+        )
         from ratings.legacy_resume import _division_labels
         from ratings.symon_score import (
             DEFAULT_DIVISION_REFERENCE,
@@ -343,11 +352,13 @@ def main() -> None:
 
         bootstrap_fights = PQ.load_fight_table(snapshot_dir, scope=args.scope)
         bootstrap_current = pd.read_parquet(snapshot_dir / "ratings_current.parquet")
-        # Same functional AND the same population as the published board: rank
-        # intervals are ordering claims, so they are made inside one bout-graph
-        # component. Men's is the default board; run build_uncertainty.py
+        # Career Skill Mass diagnostic intervals are ordering claims, so they
+        # are made inside one bout-graph component. Men's is the default; run build_uncertainty.py
         # --gender F for the women's intervals. See ratings/gender.py.
         bootstrap_current = select_gender(bootstrap_current, DEFAULT_GENDER)
+        bootstrap_fights = select_component_fights(
+            bootstrap_fights, bootstrap_current
+        )
         board, draws = career_mass_bootstrap(
             bootstrap_fights,
             replicates=args.bootstrap_replicates,
@@ -378,6 +389,9 @@ def main() -> None:
             "replicates": int(args.bootstrap_replicates),
             "seed": 0,
             "scope": args.scope,
+            "score": "symon_career_skill_mass",
+            "gender": DEFAULT_GENDER,
+            "gender_label": GENDER_LABEL[DEFAULT_GENDER],
             "interval": [0.025, 0.975],
             "reference": str(DEFAULT_CAREER_REFERENCE),
             "age_drift": True,

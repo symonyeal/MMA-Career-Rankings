@@ -31,7 +31,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from project_helpers import bout_fingerprint
+from project_helpers import bout_fingerprint, normalize_name_key
 
 # scope name -> the snapshot artifact holding its non-UFC bouts
 SCOPE_ARTIFACT: dict[str, str] = {
@@ -144,6 +144,42 @@ def _missing_artifact_error(snapshot_dir: Path, source: str, path: Path) -> Exce
     )
 
 
+def _winner_key(winner: object) -> str | None:
+    """Winner identity in exactly the namespace used by bout fingerprints."""
+    if not isinstance(winner, str):
+        return None
+    return normalize_name_key(winner, compact=True) or None
+
+
+def bout_dedupe_key(
+    fights: pd.DataFrame,
+    fingerprint: pd.Series | None = None,
+) -> pd.Series:
+    """Prefer a declared canonical bout PK; otherwise use the cross-source key.
+
+    UFC's canonical schema declares ``fight_url`` to be its primary key. That
+    distinction matters for UFC Japan 1997: Sakuraba and Silveira fought twice
+    on the same card, so their pair-and-date fingerprints are necessarily the
+    same, while their two UFCStats fight URLs identify two real bouts. Other
+    corpora do not promise that property -- their differing URLs can be one
+    bout scraped from two perspectives -- and therefore stay on the conservative
+    pair-and-date key.
+    """
+    if fingerprint is None:
+        if fights.empty:
+            return pd.Series(index=fights.index, dtype=object)
+        fingerprint = bout_fingerprint(fights)
+    key = fingerprint.copy()
+    if not {"source", "fight_url"} <= set(fights.columns):
+        return key
+    source = fights["source"].fillna("").astype(str).str.strip().str.casefold()
+    url = (fights["fight_url"].fillna("").astype(str).str.strip()
+           .str.rstrip("/").str.casefold())
+    canonical_ufc = source.eq("ufc") & url.ne("")
+    key.loc[canonical_ufc] = "ufc::" + url.loc[canonical_ufc]
+    return key
+
+
 def scope_guard(
     extra: pd.DataFrame,
     ufc_fights: pd.DataFrame,
@@ -167,7 +203,8 @@ def scope_guard(
         the same bout arrives once per source perspective, and the perspectives
         do not always agree on who won. Keeping either row asserts a result the
         sources contradict; keeping both hands each fighter a win and a loss for
-        one fight. The bout is dropped.
+        one fight. The bout is dropped. Winner names are compared in the same
+        accent-, punctuation- and alias-normalized namespace as the bout key.
 
     This runs at the merge point every producer passes through, so a snapshot
     that was built before the producers were fixed is still safe to rate.
@@ -185,45 +222,41 @@ def scope_guard(
             out = out[~is_ufc]
 
     if not out.empty and {"fighter_a", "fighter_b", "event_date"} <= set(out.columns):
-        seen = set(bout_fingerprint(ufc_fights))
-        duplicate = bout_fingerprint(out).isin(seen)
+        seen = set() if ufc_fights.empty else set(bout_fingerprint(ufc_fights))
+        out = out.assign(_fp=bout_fingerprint(out))
+        duplicate = out["_fp"].isin(seen)
         if int(duplicate.sum()):
             dropped["already_in_ufc_table"] = int(duplicate.sum())
             out = out[~duplicate]
 
-        out = out.assign(_fp=bout_fingerprint(out))
-        repeated = out["_fp"].duplicated(keep=False)
+        out["_bout_key"] = bout_dedupe_key(out, out["_fp"])
+        out["_winner_key"] = out["winner"].map(_winner_key)
+        repeated = out["_bout_key"].duplicated(keep=False)
         if int(repeated.sum()):
             # Only a row that names a winner can contradict another. A draw, a
             # no-contest or an overturned result asserts nothing, so it is a
-            # redundant row, not a conflicting one -- Sakuraba beat Silveira at
-            # UFC Japan 1997 in a rematch held later on the same card, after
-            # their first bout that night was overturned, and both rows are
-            # real.
-            winners = out.loc[repeated].groupby("_fp")["winner"].nunique(dropna=True)
+            # redundant row, not a conflicting one. Genuine UFC same-day bouts
+            # have already been separated here by their canonical primary keys.
+            winners = (out.loc[repeated]
+                       .groupby("_bout_key")["_winner_key"].nunique(dropna=True))
             contradictory = set(winners[winners > 1].index)
             if contradictory:
-                mask = out["_fp"].isin(contradictory)
+                mask = out["_bout_key"].isin(contradictory)
                 dropped["contradictory_duplicate"] = int(mask.sum())
                 out = out[~mask]
             # Keep the row that carries the most information: a rateable,
             # decided result ahead of an excluded or undecided one.
-            #
-            # Limitation, stated rather than hidden: two genuine bouts between
-            # the same pair on the same day are indistinguishable from a
-            # duplicate at this key, so a same-night tournament rematch is
-            # collapsed to one row. That is rare and confined to 1990s cards.
             order = out.assign(
                 _decisive=out["winner"].notna().astype(int),
                 _rateable=(~out.get("is_excluded", pd.Series(False, index=out.index))
                            .fillna(False).astype(bool)).astype(int),
-            ).sort_values(["_fp", "_rateable", "_decisive"], ascending=[True, False, False],
-                          kind="mergesort")
-            redundant_ids = order.index[order["_fp"].duplicated(keep="first")]
+            ).sort_values(["_bout_key", "_rateable", "_decisive"],
+                          ascending=[True, False, False], kind="mergesort")
+            redundant_ids = order.index[order["_bout_key"].duplicated(keep="first")]
             if len(redundant_ids):
                 dropped["repeated_in_source_table"] = int(len(redundant_ids))
                 out = out.drop(index=redundant_ids)
-        out = out.drop(columns="_fp")
+        out = out.drop(columns=["_fp", "_bout_key", "_winner_key"])
 
     if out.empty and strict:
         raise ValueError(

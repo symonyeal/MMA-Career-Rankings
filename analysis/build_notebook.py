@@ -462,7 +462,7 @@ GLOBAL_WIDGETS = {
 def rating_label():
     label = public_rating_label(g_rank_view.value)
     primary = {
-        "all_time": "symon_career_skill_mass",
+        "all_time": "public_legacy_score",
         "prime": "symon_prime_score",
         "current": "mu_whr",
     }[g_rank_view.value]
@@ -520,10 +520,10 @@ display(Markdown(
     f"<div style='font-family:{THEME['font']};color:{THEME['text_caption']};"
     f"font-size:0.82em;line-height:1.6;margin-top:8px'>"
     f"<b style='color:{THEME['text_2']}'>Ranking</b> is one audited question: "
-    f"<b>All-time</b> adds positive annual skill above the field; "
+    f"<b>All-time</b> combines career skill, championship results, and schedule strength; "
     f"<b>Prime</b> is the best fixed 10-year window with at least 13 appearances; "
     f"<b>Current skill</b> is the latest latent WHR skill estimate. All three use the same "
-    f"base, binary-result whole-history model; they are alternatives, not stackable bonuses. "
+    f"base, method-aware whole-history model; they are alternatives, not stackable bonuses. "
     f"<b style='color:{THEME['text_2']}'>Show top</b>, "
     f"<b>Min UFC bouts</b>, <b>Weight class</b>, and <b>Roster</b> filter the rankings. "
     f"Affected tables and charts refresh instantly.</div>"
@@ -1288,7 +1288,8 @@ def draw_confidence():
 
 display(unc_fw)
 display(html_box(note(
-    "Each bar is where the same engine puts that fighter when the evidence is reweighted "
+    "This is a Career Skill Mass diagnostic, not a Public Legacy interval. Each bar is where "
+    "that diagnostic puts the fighter when the evidence is reweighted "
     "(Dirichlet-weighted events, refit end to end). Overlapping bars mean the gap between two "
     "fighters is not established — read those as a tie, not a ranking. If the chart is empty, "
     "run <code>python build_uncertainty.py data/snapshots/&lt;date&gt;</code>.")))
@@ -1335,8 +1336,8 @@ def draw_legacy_prime():
 
 
 display(lp_fw)
-display(html_box(note("Each dot is a fighter: across is their audited 10-year Prime score; up is All-time career "
-                     "skill mass. The units differ, so read distance from the dashed trend — not the diagonal. "
+display(html_box(note("Each dot is a fighter: across is their audited 10-year Prime score; up is Career Skill "
+                     "Mass. The units differ, so read distance from the dashed trend — not the diagonal. "
                      "Above-trend fighters accumulated more career mass than their Prime predicts; below-trend "
                      "fighters concentrated more of their case in one decade.")))
 draw_legacy_prime()
@@ -1525,8 +1526,9 @@ paired intervals, including unresolved results.
 ## The Rankings
 
 The pound-for-pound board for the single **Ranking** selected above. **All-time**
-is career skill mass; **Prime** is the fixed 10-year/13-appearance window;
-**Current skill** is the latest base WHR estimate.
+is Public Legacy Score (career skill, championship results, and schedule);
+**Prime** is the fixed 10-year/13-appearance window; **Current skill** is the
+latest base WHR estimate.
 Division, last fight, and rated-bout count keep short or stale résumés visible.
 """),
     code(LEADERBOARD),
@@ -1541,17 +1543,16 @@ favor the alternative remain visible rather than being tuned away here.
 """),
     code(EVIDENCE),
     md("""
-## How firm is this ranking?
+## Career Skill Mass stability (diagnostic)
 
-A rank printed as an integer invites you to believe #6 beats #14. Often the
-evidence does not say that. Every fighter here is re-ranked by the same engine
-refit under reweighted events, and the bar is where they land. Below it, the
-same career mass recomputed against a higher yearly bar, and the rating plotted
-against how many bouts produced it.
+These intervals apply to the Career Skill Mass diagnostic, not the published
+Public Legacy ranking. Every fighter is re-ranked after whole events are
+reweighted and the model is refit. The charts below show how sensitive that
+diagnostic is to the evidence, the yearly bar, and the number of bouts.
 """),
     code(CONFIDENCE),
     md("""
-## Where the score came from
+## Career skill diagnostic receipt
 
 Career skill mass is a sum of yearly excess over the field, so it decomposes
 exactly into how long a fighter stayed above the field and how far above it they
@@ -1577,7 +1578,7 @@ into one per-fight dominance score. Driven by **Show top** and **Min UFC bouts**
 """),
     code(DOMINANCE),
     md("""
-## All-time vs Prime
+## Career Skill Mass vs Prime
 
 Career skill mass and best-decade skill answer different questions. Fighters
 far from the trend line reveal longevity beyond their best decade, or a Prime

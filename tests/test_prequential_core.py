@@ -219,6 +219,49 @@ def test_age_aware_forecast_projects_last_rating_across_inactivity(
     assert projected.loc[0, "p_a"] < unprojected.loc[0, "p_a"]
 
 
+def test_segments_align_market_role_and_completeness_after_side_flip() -> None:
+    fight_url = "ufc/favorite-won"
+    predictions = pd.DataFrame({
+        "variant": ["canonical"],
+        "fight_url": [fight_url],
+        "event_date": [pd.Timestamp("2024-01-01")],
+        "event_name": ["Favorite won"],
+        "fighter_a": ["Favorite"],
+        "fighter_b": ["Underdog"],
+        "p_a": [0.75],
+        "y_a": [1],
+        "prior_a": [8],
+        "prior_b": [4],
+    })
+    fights = pd.DataFrame({
+        "fight_url": [fight_url],
+        "event_date": [pd.Timestamp("2024-01-01")],
+        "weight_class": ["Lightweight"],
+        "method_class": ["Decision"],
+        "source": ["ufc"],
+        "fighter_a_completeness": [0.9],
+        "fighter_b_completeness": [0.2],
+    })
+    odds = pd.DataFrame({
+        "fight_url": [fight_url],
+        "implied_prob_a_no_vig": [0.8],
+        "implied_prob_b_no_vig": [0.2],
+        "odds_data_quality": ["ok"],
+    })
+
+    flipped = pq.symmetrize_sides(predictions, seed=0)
+    assert bool(flipped.loc[0, "side_flipped"])
+
+    row = pq.attach_segments(flipped, fights, odds=odds).iloc[0]
+
+    assert row["fighter_a"] == "Underdog"
+    assert row["y_a"] == 0
+    assert row["implied_prob_a_no_vig"] == pytest.approx(0.2)
+    assert row["role"] == "favourite_won"
+    assert row["fighter_a_completeness"] == pytest.approx(0.2)
+    assert row["fighter_b_completeness"] == pytest.approx(0.9)
+
+
 def test_crossorg_scope_refuses_to_be_a_silent_no_op(tmp_path: Path) -> None:
     """Asking for cross-org without the artifact must raise, not rate UFC-only.
 

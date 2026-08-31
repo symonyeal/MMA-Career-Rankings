@@ -25,6 +25,7 @@ from ratings.gender import (
     GENDERS,
     female_mask,
     partition_by_gender,
+    select_component_fights,
     select_gender,
 )
 from ratings.rate_snapshot import _print_top
@@ -150,6 +151,22 @@ def test_bootstrap_entry_points_scope_the_population(module):
     """A mixed interval asks whether a woman is separated from a man."""
     source = inspect.getsource(module)
     assert "select_gender" in source
+    assert "select_component_fights" in source
+
+
+def test_bootstrap_component_filter_excludes_unrelated_cards():
+    population = pd.DataFrame({"fighter": ["Cal", "Dan"]})
+    fights = pd.DataFrame(
+        {
+            "fight_url": ["m/1", "w/1", "mixed/1"],
+            "fighter_a": ["Cal", "Ada", "Cal"],
+            "fighter_b": ["Dan", "Bea", "Ada"],
+        }
+    )
+
+    selected = select_component_fights(fights, population)
+
+    assert selected["fight_url"].tolist() == ["m/1"]
 
 
 def test_uncertainty_artifacts_are_named_per_component():

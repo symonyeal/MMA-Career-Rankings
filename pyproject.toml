@@ -2,3 +2,9 @@
 pythonpath = ["."]
 testpaths = ["tests"]
 addopts = "--basetemp=.test_tmp/pytest_ok -p no:cacheprovider"
+
+# Archived material is preserved as evidence of past work, not maintained as
+# live code, so it is excluded from linting. Without this, the verification
+# command documented in README.md fails on retired research files.
+[tool.ruff]
+extend-exclude = ["_archive"]

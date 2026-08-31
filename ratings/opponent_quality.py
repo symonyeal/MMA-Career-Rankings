@@ -216,3 +216,59 @@ def peak_opponent_weight_from_level(level: object) -> pd.Series:
     hi = _logistic(1.0)
     normalized = (_logistic(quality) - lo) / (hi - lo)
     return normalized.clip(lower=0.0, upper=1.0) * SUSTAINED_PEAK_OPP_MAX_WEIGHT
+
+
+# A "quality win" is over an opponent who was BOTH highly rated at the time and
+# had a tested record of their own. Both halves are load-bearing, and both were
+# measured before being adopted.
+#
+# Rating alone does not work: the top of the rating distribution is populated
+# partly by fighters whose own records were built on thin circuits, so screening
+# on it flatters exactly the careers it should catch (measured 2026-08-25 --
+# Bader and Freire outscored Silva and Aldo "against elite opposition").
+#
+# Opponent strength with results ignored does not work either: it measures
+# gatekeeping, not contention. A fighter who lost to ten elite opponents scores
+# the same as one who beat them, and at a 1900 schedule bar Roy Nelson (0-10)
+# outranked Khabib and St-Pierre while Jon Jones himself failed a 1950 bar.
+# Counting *wins* is what separates a contender from a durable opponent.
+MIN_OPPONENT_UFC_BOUTS = 8
+# The contender line and the number of wins over it are stated policy, set by
+# the project owner on 2026-08-31 after reading the qualifying names at several
+# candidate lines. They are not fitted, and no accuracy measure selected them.
+CONTENDER_LINE_MU = 1750.0
+MIN_QUALITY_WINS = 5
+QUALITY_WIN_COLUMNS = ["fighter", "quality_wins", "quality_bouts"]
+
+
+def quality_win_record(
+    appearances: pd.DataFrame,
+    *,
+    min_opponent_mu: float,
+) -> pd.DataFrame:
+    """Career record against opponents above ``min_opponent_mu``.
+
+    ``appearances`` must carry ``fighter``, ``is_winner`` and ``opponent_mu``,
+    the opponent's rating as at that bout, and must ALREADY be screened to
+    opponents with a tested record of their own -- see
+    :data:`MIN_OPPONENT_UFC_BOUTS`. The screen is the caller's because it needs
+    the corpus, not just the appearance rows.
+
+    Both columns are returned because they answer different questions:
+    ``quality_wins`` gates the board, and ``quality_bouts`` shows how many times
+    the fighter was in that company at all, so a 5-1 and a 5-9 are not printed
+    as the same claim.
+    """
+    if appearances is None or appearances.empty or "fighter" not in appearances.columns:
+        return pd.DataFrame(columns=QUALITY_WIN_COLUMNS)
+    rated = appearances.dropna(subset=["opponent_mu"])
+    rated = rated[pd.to_numeric(rated["opponent_mu"], errors="coerce") >= float(min_opponent_mu)]
+    if rated.empty:
+        return pd.DataFrame(columns=QUALITY_WIN_COLUMNS)
+    won = _as_bool_series(rated.get("is_winner", False), rated.index)
+    out = (
+        rated.assign(_won=won.astype(int))
+        .groupby("fighter", as_index=False)
+        .agg(quality_wins=("_won", "sum"), quality_bouts=("_won", "size"))
+    )
+    return out[QUALITY_WIN_COLUMNS].reset_index(drop=True)

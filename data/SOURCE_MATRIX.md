@@ -111,10 +111,10 @@ falls below `MIN_CAREER_PAGE_SHARE`, and `rating_run.json` publishes it.
 | fightmatrix_profiles        | FightMatrix public profiles | Ranked-cohort biography, debut, career summary, and diagnostic metrics. |
 | fightmatrix_bouts           | FightMatrix public profiles | Deduplicated complete histories for the bounded current-ranked + all-time seed cohort. |
 | fightmatrix_crossorg_fights | FightMatrix public profiles | Post-2000-11-17, non-UFC, UFC-deduplicated canonical rows; public ranks are not model inputs. |
-| fightmatrix_profile_queue | FightMatrix public profiles | Persistent profile-ID queue with depth, priority, fetch/parse state, retries and stop reason. |
-| fightmatrix_profiles_expanded | FightMatrix public profiles | Recursively fetched public profiles with independent HTTP, parse, record-reconciliation and modeling-completeness state. |
-| fightmatrix_bouts_expanded | FightMatrix public profiles | Per-profile public history rows retained before deterministic reciprocal reconciliation. |
-| fightmatrix_model_eligible_bouts | FightMatrix public profiles | Experimental canonical rows after UFC overlap removal and the declared completeness policy. |
+| fightmatrix_profile_queue | Archived experiment | Recursive-expansion crawl state. No live producer or consumer since 2026-08-31; present only in the finalized 2026-08-14 experimental snapshots. |
+| fightmatrix_profiles_expanded | Archived experiment | Recursively fetched public profiles with independent HTTP, parse, reconciliation and completeness state. Archived 2026-08-31. |
+| fightmatrix_bouts_expanded | Archived experiment | Per-profile public history rows before reciprocal reconciliation. Archived 2026-08-31. |
+| fightmatrix_model_eligible_bouts | Archived experiment | Experimental canonical rows after UFC overlap removal and the declared completeness policy. Archived 2026-08-31. |
 | combined_fights              | Derived from selected scope | One model-input table preserving the union of admitted source columns, with `bout_fingerprint`, `source_corpus`, `source_priority`, `rated_scope`, and `is_model_bout`. |
 | method_raw / method_class   | Sherdog    | Parsed from fighter history pages for cross-org bouts. |
 | end_round / end_time_seconds| Sherdog    | Parsed from fighter history pages for cross-org bouts. |
@@ -141,9 +141,9 @@ falls below `MIN_CAREER_PAGE_SHARE`, and `rating_run.json` publishes it.
 | association / debut / record | FightMatrix public profile | Queryable profile context. |
 | quality %, 540 metric, combat age | FightMatrix derived | Stored for comparison only; never enters rating input. |
 
-### Recursive public-profile boundary
+### Archived recursive profile experiment
 
-`loaders/fightmatrix_expansion.py` follows only public opponent links carrying a
+The archived recursive FightMatrix experiment followed public opponent links carrying a
 stable numeric profile ID. It does not use authenticated endpoints, CIRRS, or a
 proprietary database. The breadth-first queue is bounded by depth, total and
 per-run profile counts, request count, wall clock, minimum priority, earliest
@@ -165,13 +165,18 @@ number of shared event dates behind each pair. That file is project-owned and
 separate from the vendored `data/external/aliases/fighter_aliases.csv`, whose
 upstream attribution must stay intact.
 
-`analysis/fightmatrix_graph.py` blocks FightMatrix rank, points, quality
+That historical pipeline blocked FightMatrix rank, points, quality
 percentage, 540 metric, combat age, and pre-fight rank from the model schema.
 The committed organization rule table is time-aware and initially diagnostic;
 it does not add promotion prestige bonuses. Reliability weighting multiplies
 the existing participant-caliber fight weight by the geometric mean of the two
 profile completeness scores. FightMatrix remains a named diagnostic scope and
 is not part of the published `majors,pre_unified` default.
+
+That recursive expansion pipeline, its tests, and its design record were
+archived on 2026-08-31. The finalized experimental snapshots remain intact as
+immutable research evidence. The live pipeline uses the bounded ranked-cohort
+loader described below.
 
 Current Sherdog staging: `build_sherdog_majors.py` produced the roster-complete
 six-promotion event crawl, and the completed whole-career crawl is preserved as
@@ -197,25 +202,35 @@ rating input. The standard snapshot uses `majors,pre_unified`; the explicit
 `build_database.py` builds `data/ufc_rank_engine.sqlite` from the snapshot
 bundle. It is an organized local database for audit and notebook support; it is
 not a separate source of truth. The obsolete 2026-08-14 export was archived on
-2026-08-26 and no current SQLite export is claimed until that optional command
-is run against the current snapshot. A current export may include:
+2026-08-26. A local export was rebuilt on 2026-08-31 from the
+`data/snapshots/2026-08-13` bundle; it is gitignored, so any clone must run the
+builder itself. The database is assembled beside the target and promoted only
+after every required table and index succeeds, so a failed rebuild leaves the
+last known-good export in place.
+
+`TABLE_SPECS` in `build_database.py` is the authoritative list; the groups below
+name what it currently loads.
 
 - Canonical UFC tables: `canonical_events`, `canonical_fights`,
   `canonical_rounds`, `canonical_fighters`.
-- Canonical extension tables: `crossorg_fights` when present.
+- Authoritative fight table: `combined_fights`.
 - Rating and derived tables: `ratings_current`, `ratings_history`,
   `ratings_history_whr`, `integrity_appearances`, `performance_appearances`,
-  `fight_dominance`, `fighter_dominance`.
+  `fight_dominance`, `fighter_dominance`, `division_entropy`,
+  `division_resume`, `calibration_residuals`.
 - Policy/audit tables: `integrity_ledger`, `integrity_discounted_board`,
-  `completeness_gated_board`, `excluded_bouts`, `ped_confirmed_bouts`,
-  `missed_weight_bouts`.
+  `completeness_gated_board`, `completeness_gated_board_women`, `prime_board`,
+  `prime_board_women`, `prime_elite_board`, `prime_elite_board_women`,
+  `excluded_bouts`, `ped_confirmed_bouts`, `missed_weight_bouts`.
 - External staged tables: `datalab_bouts_all`,
   `datalab_merged_stats_scorecards`, `datalab_fighter_details`,
-  `datalab_scorecards`, `fightmatrix_rankings`, `fightmatrix_all_time`,
-  `fightmatrix_profiles`, `fightmatrix_bouts`,
-  `fightmatrix_crossorg_fights`, `fightmatrix_scope_comparison`.
+  `datalab_scorecards`, `odds_lines`, `fightmatrix_rankings`,
+  `fightmatrix_all_time`, `fightmatrix_profiles`, `fightmatrix_bouts`.
 - Metadata tables: `source_manifest`, `snapshot_manifest`,
   `table_row_counts`, `source_gaps`.
+
+The archived recursive-expansion tables were removed from `TABLE_SPECS` on
+2026-08-31, so a current export cannot contain them.
 
 SQLite indexes are created on fighter, event date, fight URL, event name, and
 source-specific fighter/division fields where those columns exist.
@@ -235,21 +250,21 @@ source-specific fighter/division fields where those columns exist.
 
 All excluded bouts are persisted to `_excluded_bouts.csv` for audit.
 
-## Rating and policy architecture (current through 2026-08-25)
+## Rating and policy architecture (current through 2026-08-31)
 
-The production engine exposes two estimators of the same binary W/L/D evidence,
-plus one same-pass method research diagnostic:
+The public rating uses method-aware WHR. Binary Glicko-2 and binary WHR remain
+comparison models:
 
 | Stream/score | Role | Notes |
 |---|---|---|
 | `mu_canonical` | causal skill filter | Strict W/L/D Glicko-2. |
-| `mu_whr` | retrospective skill smoother | Binary Whole-History Rating, one shared likelihood weight per bout, era-neutral. Prior mass is fixed per fighter (anchor + virtual games), so an undefeated record's rating rises with the evidence behind it. |
-| `mu_method` | research diagnostic | Glicko-2 stream scored with `method_score_winner` in the canonical pass; not public/core evidence. The WHR smoother now reads the same column directly, so `mu_whr` is method-aware and this stream is no longer the only place method appears. |
-| `public_legacy_score` | public All-time board | Exposure-adjusted skill plus per-opponent title resume. Components are published separately and sum exactly to the score. |
+| `mu_whr` | retrospective skill smoother | Method-aware Whole-History Rating, one shared likelihood weight per bout, era-neutral. `WHR_WINNER_SCORE_COL = None` restores the binary comparison. Prior mass is fixed per fighter, so an undefeated record's rating rises with the evidence behind it. |
+| `mu_method` | research diagnostic | Glicko-2 stream scored with `method_score_winner` in the canonical pass; not public/core evidence. |
+| `public_legacy_score` | public All-time board | Exposure-adjusted skill plus title and schedule résumé ledgers. Components are published separately and sum exactly to the score. |
 | `symon_career_skill_mass` | diagnostic career functional | Annual field-relative WHR skill mass. It is retained for audit and is not the public board. |
 | `symon_prime_score` | period diagnostic | Fixed 10y/13-appearance EB-shrunk WHR mean. `symon_peak_score` is no longer produced by the rating snapshot. |
 | `wins` / `losses` / `draws` | rated record | Counted from the rated fight table; the evidence behind a rating, not an input to it. |
-| `career_mass_uncertainty.parquet` | rank intervals | Career mass and rank re-estimated under Dirichlet-reweighted events; overlapping intervals are not a ranking. |
+| `career_mass_uncertainty.parquet` | diagnostic intervals | Career Skill Mass and its diagnostic rank re-estimated under gender-isolated, Dirichlet-reweighted events. These are not Public Legacy intervals. |
 
 Former `method_*_integrity`, `method_*_performance`, and
 `whr_integrity_performance` production histories are retired. In particular,
@@ -280,10 +295,13 @@ rating-point debit against base WHR. It never propagates a policy penalty
 through opponents and it does not subtract rating points from Career Skill
 Mass, whose unit is rating-point-years.
 
-### Retired performance-weight research table
+### Performance appearance audit table
 
 `performance_appearances.parquet` preserves the former proposed weighting
-features for audit and research; it is not consumed by a production rating.
+features for audit and research; it is not consumed by the rating likelihood.
+Its pre-fight rank context is consumed by the separate Public Legacy schedule
+ledger, so the artifact is live even though the retired performance weights are
+not.
 The
 2026-05-14 rewrite replaced the old multiplicative-product-and-clamp design
 with a tanh-smoothed additive log-signal `S`:

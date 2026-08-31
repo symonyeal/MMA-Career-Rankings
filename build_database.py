@@ -8,8 +8,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sqlite3
+from contextlib import ExitStack, closing
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -99,6 +101,34 @@ TABLE_SPECS = [
         "judgement",
         required=False,
     ),
+    TableSpec(
+        "prime_board",
+        "prime_board.parquet",
+        "Board builder",
+        "judgement",
+        required=False,
+    ),
+    TableSpec(
+        "prime_board_women",
+        "prime_board_women.parquet",
+        "Board builder",
+        "judgement",
+        required=False,
+    ),
+    TableSpec(
+        "prime_elite_board",
+        "prime_elite_board.parquet",
+        "Board builder",
+        "judgement",
+        required=False,
+    ),
+    TableSpec(
+        "prime_elite_board_women",
+        "prime_elite_board_women.parquet",
+        "Board builder",
+        "judgement",
+        required=False,
+    ),
     TableSpec("fight_dominance", "fight_dominance.parquet", "Dominance model", "derived"),
     TableSpec("fighter_dominance", "fighter_dominance.parquet", "Dominance model", "derived"),
     TableSpec("calibration_residuals", "calibration_residuals.parquet", "Rating diagnostics", "diagnostic", required=False),
@@ -121,36 +151,6 @@ TABLE_SPECS = [
     TableSpec("fightmatrix_all_time", "fightmatrix_all_time.parquet", "FightMatrix", "external", required=False),
     TableSpec("fightmatrix_profiles", "fightmatrix_profiles.parquet", "FightMatrix", "external", required=False),
     TableSpec("fightmatrix_bouts", "fightmatrix_bouts.parquet", "FightMatrix", "external", required=False),
-    TableSpec("fightmatrix_profile_queue", "fightmatrix_profile_queue.parquet", "FightMatrix expansion", "crawl_state", required=False),
-    TableSpec("fightmatrix_profiles_expanded", "fightmatrix_profiles_expanded.parquet", "FightMatrix expansion", "external", required=False),
-    TableSpec("fightmatrix_bouts_expanded", "fightmatrix_bouts_expanded.parquet", "FightMatrix expansion", "external", required=False),
-    TableSpec("fightmatrix_profile_provenance", "fightmatrix_profile_provenance.parquet", "FightMatrix expansion", "provenance", required=False),
-    TableSpec("fightmatrix_identity_map", "fightmatrix_identity_map.parquet", "FightMatrix expansion", "identity", required=False),
-    TableSpec("fightmatrix_identity_exceptions", "fightmatrix_identity_exceptions.parquet", "FightMatrix expansion", "audit", required=False),
-    TableSpec("fightmatrix_organization_map", "fightmatrix_organization_map.parquet", "FightMatrix expansion", "reference", required=False),
-    TableSpec("fightmatrix_bout_reconciliation", "fightmatrix_bout_reconciliation.parquet", "FightMatrix expansion", "audit", required=False),
-    TableSpec("fightmatrix_graph_metrics", "fightmatrix_graph_metrics.parquet", "FightMatrix expansion", "diagnostic", required=False),
-    TableSpec("fightmatrix_fighter_completeness", "fightmatrix_fighter_completeness.parquet", "FightMatrix expansion", "diagnostic", required=False),
-    TableSpec("fightmatrix_seed_opponent_coverage", "fightmatrix_seed_opponent_coverage.parquet", "FightMatrix expansion", "diagnostic", required=False),
-    TableSpec("fightmatrix_component_sizes", "fightmatrix_component_sizes.parquet", "FightMatrix expansion", "diagnostic", required=False),
-    TableSpec("fightmatrix_degree_distribution", "fightmatrix_degree_distribution.parquet", "FightMatrix expansion", "diagnostic", required=False),
-    TableSpec("fightmatrix_exclusions", "fightmatrix_exclusions.parquet", "FightMatrix expansion", "audit", required=False),
-    TableSpec("fightmatrix_model_eligible_bouts", "fightmatrix_model_eligible_bouts.parquet", "FightMatrix expansion", "canonical_extension", required=False),
-    TableSpec("fightmatrix_policy_comparison", "fightmatrix_policy_comparison.parquet", "FightMatrix expansion", "diagnostic", required=False),
-    TableSpec("fightmatrix_headline_eligibility", "fightmatrix_headline_eligibility.parquet", "FightMatrix expansion", "diagnostic", required=False),
-    TableSpec("fightmatrix_notebook_data", "fightmatrix_notebook_data.parquet", "FightMatrix expansion", "diagnostic", required=False),
-    TableSpec("fightmatrix_scope_validation", "fightmatrix_scope_validation.parquet", "Rating engine", "diagnostic", required=False),
-    TableSpec("fightmatrix_historical_panel", "fightmatrix_historical_panel.parquet", "Rating engine", "diagnostic", required=False),
-    TableSpec("fightmatrix_rank_movements", "fightmatrix_rank_movements.parquet", "Rating engine", "diagnostic", required=False),
-    TableSpec("fightmatrix_anomaly_traces", "fightmatrix_anomaly_traces.parquet", "Rating engine", "diagnostic", required=False),
-    TableSpec("fightmatrix_anomaly_summary", "fightmatrix_anomaly_summary.parquet", "Rating engine", "diagnostic", required=False),
-    TableSpec(
-        "fightmatrix_scope_comparison",
-        "fightmatrix_scope_comparison.parquet",
-        "Rating engine",
-        "diagnostic",
-        required=False,
-    ),
     TableSpec(
         "odds_lines",
         "odds_lines.parquet",
@@ -189,12 +189,8 @@ INDEX_CANDIDATES = [
 
 COMPOSITE_INDEXES = {
     "canonical_fights": [("event_date", "event_name"), ("fighter_a", "fighter_b"), ("fight_url",)],
-    "crossorg_fights": [("event_date", "event_name"), ("fighter_a", "fighter_b"), ("fight_url",), ("org",)],
     "canonical_rounds": [("fight_url", "fighter"), ("fighter", "event_date")],
     "ratings_history": [("fighter", "event_date")],
-    "ratings_history_method_integrity": [("fighter", "event_date")],
-    "ratings_history_method_performance": [("fighter", "event_date")],
-    "ratings_history_method_integrity_performance": [("fighter", "event_date")],
     "ratings_history_whr": [("fighter", "event_date")],
     "integrity_appearances": [("fight_url", "fighter")],
     "performance_appearances": [("fight_url", "fighter"), ("event_date", "fighter")],
@@ -202,11 +198,14 @@ COMPOSITE_INDEXES = {
     "integrity_discounted_board": [("rank", "fighter"), ("undiscounted_rank", "fighter")],
     "completeness_gated_board": [("rank", "fighter"), ("status", "fighter")],
     "completeness_gated_board_women": [("rank", "fighter"), ("status", "fighter")],
+    "prime_board": [("rank", "fighter"), ("status", "fighter")],
+    "prime_board_women": [("rank", "fighter"), ("status", "fighter")],
+    "prime_elite_board": [("rank", "fighter"), ("status", "fighter")],
+    "prime_elite_board_women": [("rank", "fighter"), ("status", "fighter")],
     "ratings_current": [("fighter",), ("last_event_date",)],
     "fight_dominance": [("fight_url",)],
     "fighter_dominance": [("fighter",)],
     "calibration_residuals": [("segment_type", "segment_value"), ("prob_bin",)],
-    "sleeve_attribution": [("fighter", "event_date"), ("fight_url", "fighter")],
     "division_entropy": [("division", "year")],
     "division_resume": [("division", "division_score_whr"), ("fighter", "division")],
     "excluded_bouts": [("fight_url",), ("event_date", "event_name")],
@@ -228,38 +227,12 @@ COMPOSITE_INDEXES = {
         ("fighter", "opponent"),
         ("org",),
     ],
-    "fightmatrix_profile_queue": [("profile_id",), ("discovery_depth", "priority_score"), ("fetch_status", "parse_status")],
-    "fightmatrix_profiles_expanded": [("profile_id",), ("fighter",), ("completeness_classification",)],
-    "fightmatrix_bouts_expanded": [("fight_key",), ("fighter_profile_id", "opponent_profile_id"), ("event_date", "event_name")],
-    "fightmatrix_profile_provenance": [("profile_id",), ("content_sha256",)],
-    "fightmatrix_identity_map": [("fightmatrix_profile_id",), ("normalized_name",), ("ufc_fighter",)],
-    "fightmatrix_identity_exceptions": [("exception_type",), ("normalized_name",)],
-    "fightmatrix_organization_map": [("canonical_organization",), ("raw_organization",)],
-    "fightmatrix_bout_reconciliation": [("deduplication_key",), ("deduplication_classification",)],
-    "fightmatrix_fighter_completeness": [("profile_id",), ("fighter",), ("component_size",)],
-    "fightmatrix_seed_opponent_coverage": [("profile_id",), ("fighter",)],
-    "fightmatrix_degree_distribution": [("degree",)],
-    "fightmatrix_exclusions": [("exclusion_stage",), ("deduplication_key",)],
-    "fightmatrix_model_eligible_bouts": [("fight_url",), ("event_date", "event_name"), ("fighter_a", "fighter_b")],
-    "fightmatrix_policy_comparison": [("policy",)],
-    "fightmatrix_headline_eligibility": [("profile_id",), ("fighter",), ("headline_suppression_reason",)],
-    "fightmatrix_scope_validation": [("scope",)],
-    "fightmatrix_historical_panel": [("scope", "fighter"), ("model_rank",)],
-    "fightmatrix_rank_movements": [("scope", "fighter"), ("rank_delta_vs_ufc",), ("absolute_reference_rank_error",)],
-    "fightmatrix_anomaly_traces": [("fighter", "event_date"), ("opponent",)],
-    "fightmatrix_anomaly_summary": [("scope", "fighter"), ("diagnostic_cause",)],
     "combined_fights": [
         ("event_date", "event_name"),
         ("fighter_a", "fighter_b"),
         ("fight_url",),
         ("org",),
         ("source_corpus",),
-    ],
-    "fightmatrix_scope_comparison": [
-        ("fighter",),
-        ("ufc_only_rank",),
-        ("fightmatrix_public_rank",),
-        ("fightmatrix_reference_rank",),
     ],
     "odds_lines": [
         ("fight_url",),
@@ -477,7 +450,12 @@ def build_database(
     db_path: Path = DEFAULT_DB_PATH,
     replace: bool = True,
 ) -> dict[str, int]:
-    """Build a SQLite database from `snapshot_dir` and return summary counts."""
+    """Build a SQLite database from ``snapshot_dir`` and return summary counts.
+
+    The database is assembled beside the requested target and promoted only
+    after every required source, table and index succeeds. A failed rebuild
+    therefore leaves the last known-good database untouched.
+    """
     snapshot_dir = Path(snapshot_dir).resolve()
     db_path = Path(db_path).resolve()
     if not snapshot_dir.exists():
@@ -485,15 +463,28 @@ def build_database(
     if db_path.exists() and not replace:
         raise FileExistsError(f"database already exists: {db_path}")
 
+    missing_required = [
+        snapshot_dir / spec.file_name
+        for spec in TABLE_SPECS
+        if spec.required and not (snapshot_dir / spec.file_name).exists()
+    ]
+    if missing_required:
+        raise FileNotFoundError(
+            f"required snapshot source missing: {missing_required[0]}"
+        )
+
     db_path.parent.mkdir(parents=True, exist_ok=True)
-    if db_path.exists():
-        db_path.unlink()
+    build_path = db_path.with_name(f"{db_path.name}.building")
+    if build_path.exists():
+        build_path.unlink()
 
     manifest_rows = []
     missing_optional: list[TableSpec] = []
     loaded_tables: list[str] = []
 
-    with sqlite3.connect(db_path) as con:
+    with ExitStack() as build_stack:
+        build_stack.callback(build_path.unlink, missing_ok=True)
+        con = build_stack.enter_context(closing(sqlite3.connect(build_path)))
         con.execute("PRAGMA journal_mode=DELETE")
         con.execute("PRAGMA foreign_keys=OFF")
 
@@ -585,6 +576,11 @@ def build_database(
             "sqlite_table_count": sqlite_table_count,
             "sqlite_index_count": sqlite_index_count,
         }
+        # Windows cannot replace an open SQLite file. Close it explicitly, then
+        # dismiss both the close and failure-cleanup callbacks before promotion.
+        con.close()
+        build_stack.pop_all()
+    os.replace(build_path, db_path)
     return {k: int(v) for k, v in key_counts.items()}
 
 

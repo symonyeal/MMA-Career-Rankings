@@ -3,7 +3,9 @@
 > **Historical (2026-06-23).** This is the plan the chart batch was built from, kept
 > because code comments cite it. It predates the 2026-08-20 core evolution: the
 > sleeve streams and the rolling peak columns it refers to no longer exist. For the
-> current design see `docs/PRIOR_MASS_AND_UNCERTAINTY_2026-08-20.md`.
+> retained historical design see
+> `_archive/20260831-repository-consolidation/docs/PRIOR_MASS_AND_UNCERTAINTY_2026-08-20.md`;
+> current design is in `docs/RATING_LAYER_AND_LEDGER_2026-08-28.md`.
 
 
 > **Update 2026-06-25 (dashboard cleanup):** three of the boards below were

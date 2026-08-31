@@ -3,8 +3,8 @@
 Why this exists
 ---------------
 The production comparison is deliberately small: a causal binary-result
-Glicko-2 filter versus a binary-result Whole-History Rating smoother. Both see
-the same UFC bouts and outcomes. A separately named research arm may scale a
+Glicko-2 filter versus the method-aware Whole-History Rating smoother used by
+the published board. Both see the same bouts and outcomes. A separately named research arm may scale a
 whole bout's WHR likelihood by dominance-derived precision, but the winner and
 loser always receive the same evidence weight.
 
@@ -768,14 +768,24 @@ def attach_segments(
     out["outcome_type"] = np.where(method.isin(["KO/TKO", "Submission"]), "finish", "decision")
     source = out.get("source", pd.Series("ufc", index=out.index)).fillna("ufc").astype(str)
     out["scope"] = np.where(source.eq("ufc"), "ufc_only", "cross_org")
+    side_flipped = out.get(
+        "side_flipped", pd.Series(False, index=out.index, dtype=bool)
+    ).fillna(False).astype(bool)
 
     # Participant-completeness band: the weaker of the two endpoints, which is
     # what the completeness policies actually gate on.
-    for side in ("a", "b"):
-        col = f"fighter_{side}_completeness"
-        if col in fights.columns:
-            comp = fights[["fight_url", col]].drop_duplicates("fight_url")
-            out = out.merge(comp, on="fight_url", how="left")
+    comp_cols = [
+        c for c in ("fighter_a_completeness", "fighter_b_completeness")
+        if c in fights.columns
+    ]
+    if comp_cols:
+        comp = fights[["fight_url", *comp_cols]].drop_duplicates("fight_url")
+        out = out.merge(comp, on="fight_url", how="left")
+    if len(comp_cols) == 2:
+        comp_a = out["fighter_a_completeness"].copy()
+        comp_b = out["fighter_b_completeness"].copy()
+        out["fighter_a_completeness"] = comp_a.where(~side_flipped, comp_b)
+        out["fighter_b_completeness"] = comp_b.where(~side_flipped, comp_a)
     comp_cols = [c for c in ("fighter_a_completeness", "fighter_b_completeness") if c in out.columns]
     if comp_cols:
         weakest = out[comp_cols].apply(pd.to_numeric, errors="coerce").min(axis=1)
@@ -788,11 +798,23 @@ def attach_segments(
 
     if odds is not None and not odds.empty and "implied_prob_a_no_vig" in odds.columns:
         ok = odds[odds.get("odds_data_quality", "ok").eq("ok")] if "odds_data_quality" in odds.columns else odds
+        odds_cols = ["fight_url", "implied_prob_a_no_vig"]
+        if "implied_prob_b_no_vig" in ok.columns:
+            odds_cols.append("implied_prob_b_no_vig")
+        market_meta = ok[odds_cols].drop_duplicates("fight_url").rename(columns={
+            "implied_prob_a_no_vig": "_market_prob_a",
+            "implied_prob_b_no_vig": "_market_prob_b",
+        })
         out = out.merge(
-            ok[["fight_url", "implied_prob_a_no_vig"]].drop_duplicates("fight_url"),
-            on="fight_url", how="left",
+            market_meta, on="fight_url", how="left",
         )
-        market = pd.to_numeric(out["implied_prob_a_no_vig"], errors="coerce")
+        market_a = pd.to_numeric(out.pop("_market_prob_a"), errors="coerce")
+        market_b = (
+            pd.to_numeric(out.pop("_market_prob_b"), errors="coerce")
+            if "_market_prob_b" in out.columns else 1.0 - market_a
+        )
+        market = market_a.where(~side_flipped, market_b)
+        out["implied_prob_a_no_vig"] = market
         favoured_a = market >= 0.5
         out["role"] = np.where(
             market.isna(), "no_line",

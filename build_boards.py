@@ -1,6 +1,6 @@
-"""Generate the boards that survived the 2026-08-18 differentiator audit.
+"""Generate the published and audit boards for one rating snapshot.
 
-Writes three artifacts next to the snapshot (or to ``--out-dir`` when the
+Writes the standard artifacts next to the snapshot (or to ``--out-dir`` when the
 snapshot is finalized):
 
 * ``integrity_ledger.parquet`` — every discounted appearance, with the reason
@@ -9,6 +9,10 @@ snapshot is finalized):
   can be ranked, abstains otherwise
 * ``completeness_gated_board_women.parquet`` — the same board for the women's
   component, which is a separate ranking because the two never fight
+* ``prime_board.parquet`` and ``prime_board_women.parquet`` — the corresponding
+  best-ten-year boards when the snapshot contains the Prime score
+* ``prime_elite_board.parquet`` and ``prime_elite_board_women.parquet`` — the
+  same Prime score behind the elite-tested evidence floor
 
 "All-time" without a gender means the men's board. See ``GENDER_GAUGE_NOTE``.
 
@@ -19,6 +23,8 @@ Usage::
 from __future__ import annotations
 
 import argparse
+import json
+import os
 from pathlib import Path
 
 import pandas as pd
@@ -38,6 +44,12 @@ from ratings.gender import (
     partition_by_gender,
 )
 from ratings.legacy_resume import PUBLIC_LEGACY_DISPLAY_SCALE
+from ratings.opponent_quality import (
+    CONTENDER_LINE_MU,
+    MIN_OPPONENT_UFC_BOUTS,
+    MIN_QUALITY_WINS,
+    quality_win_record,
+)
 from ratings.scope import DEFAULT_PUBLISHED_SCOPE
 
 
@@ -95,6 +107,36 @@ README_BOARD_BEGIN = "<!-- BOARD:TOP100:BEGIN -->"
 README_BOARD_END = "<!-- BOARD:TOP100:END -->"
 README_WOMEN_BEGIN = "<!-- BOARD:WOMEN10:BEGIN -->"
 README_WOMEN_END = "<!-- BOARD:WOMEN10:END -->"
+README_PRIME_BEGIN = "<!-- BOARD:PRIME100:BEGIN -->"
+README_PRIME_END = "<!-- BOARD:PRIME100:END -->"
+README_PRIME_WOMEN_BEGIN = "<!-- BOARD:PRIMEWOMEN10:BEGIN -->"
+README_PRIME_WOMEN_END = "<!-- BOARD:PRIMEWOMEN10:END -->"
+README_ELITE_PRIME_BEGIN = "<!-- BOARD:ELITEPRIME50:BEGIN -->"
+README_ELITE_PRIME_END = "<!-- BOARD:ELITEPRIME50:END -->"
+README_ELITE_PRIME_WOMEN_BEGIN = "<!-- BOARD:ELITEPRIMEWOMEN10:BEGIN -->"
+README_ELITE_PRIME_WOMEN_END = "<!-- BOARD:ELITEPRIMEWOMEN10:END -->"
+README_RELEASE_BEGIN = "<!-- PUBLICATION:RELEASE:BEGIN -->"
+README_RELEASE_END = "<!-- PUBLICATION:RELEASE:END -->"
+
+# Prime answers a different question from the all-time board: not "what did this
+# career amount to" but "how good was this fighter at their best". It is a
+# rating level, so unlike the all-time score it has no zero floor meaning "no
+# evidence" -- it is simply absent for anyone short of the appearance minimum,
+# and must NOT be added to RATING_FLOOR_IS_UNRANKED.
+PRIME_RATING_COL = "symon_prime_score"
+
+# The elite-tested Prime board ranks the same Prime score behind a floor on
+# PROVEN record: at least MIN_QUALITY_WINS career wins over opponents who were
+# above the contender line at the time AND had a tested record of their own.
+#
+# Two simpler rules were built first and both failed on named fighters.
+# Counting ranked-or-title bouts measures longevity, not difficulty: it seated
+# Machida, Davis and Chandler on accumulated volume while withholding Makhachev
+# and Topuria. Averaging the ten toughest opponents measures gatekeeping: a
+# fighter who lost to ten elite opponents scored the same as one who beat them,
+# so Roy Nelson (0-10) outranked Khabib and St-Pierre, and a 1950 bar excluded
+# Jon Jones himself. Counting wins over a stated line does neither.
+ELITE_PRIME_TOP = 50
 
 # The men's and women's boards are built and published SEPARATELY. The rule and
 # the measurements behind it live in ``ratings/gender.py``, which every ranking
@@ -183,6 +225,48 @@ def _requested_integrity_rating_col(current: pd.DataFrame, requested: str | None
     return requested
 
 
+def _quality_win_map(snapshot_dir: Path) -> pd.Series | None:
+    """Fighter -> career wins over tested opponents above the contender line.
+
+    Opponent strength is read off the same published WHR trajectory the board
+    ranks, at the date of the bout, so the gate and the ranking are one estimate
+    of one set of fighters rather than two sources that can disagree.
+
+    Returns ``None`` rather than an empty map when an input is missing: a
+    snapshot that cannot support the gate publishes no elite board at all,
+    instead of one that withholds every fighter for lack of evidence.
+    """
+    snap = Path(snapshot_dir)
+    appearances_path = snap / "performance_appearances.parquet"
+    history_path = snap / "ratings_history_whr.parquet"
+    combined_path = snap / "combined_fights.parquet"
+    if not (appearances_path.exists() and history_path.exists() and combined_path.exists()):
+        return None
+
+    fights = pd.read_parquet(
+        combined_path,
+        columns=["fighter_a", "fighter_b", "source_corpus", "is_model_bout"],
+    )
+    ufc = fights[
+        fights["source_corpus"].isin(["ufc", "pre_unified"])
+        & fights["is_model_bout"].fillna(False).astype(bool)
+    ]
+    ufc_bouts = pd.concat([ufc["fighter_a"], ufc["fighter_b"]]).value_counts()
+
+    appearances = pd.read_parquet(
+        appearances_path, columns=["fighter", "opponent", "event_date", "is_winner"]
+    )
+    history = pd.read_parquet(
+        history_path, columns=["fighter", "event_date", "mu_whr"]
+    ).rename(columns={"fighter": "opponent", "mu_whr": "opponent_mu"})
+    rated = appearances.merge(history, on=["opponent", "event_date"], how="left")
+    tested = rated[rated["opponent"].map(ufc_bouts).fillna(0) >= MIN_OPPONENT_UFC_BOUTS]
+    record = quality_win_record(tested, min_opponent_mu=CONTENDER_LINE_MU)
+    if record.empty:
+        return None
+    return record.set_index("fighter")["quality_wins"]
+
+
 def write_board_artifacts(
     snapshot_dir: Path,
     *,
@@ -192,7 +276,7 @@ def write_board_artifacts(
     scope: str = DEFAULT_PUBLISHED_SCOPE,
     out_dir: Path | None = None,
 ) -> dict[str, object]:
-    """Build and persist the three standard board views for one snapshot.
+    """Build and persist the standard board views for one snapshot.
 
     ``rating_col`` controls the completeness-gated core view.  The integrity
     view deliberately has a separate selector because its debit is measured in
@@ -244,6 +328,35 @@ def write_board_artifacts(
             target / f"completeness_gated_board{suffix}.parquet", index=False
         )
 
+    prime_boards: dict[str, pd.DataFrame] = {}
+    elite_prime_boards: dict[str, pd.DataFrame] = {}
+    if PRIME_RATING_COL in current.columns:
+        quality_wins = _quality_win_map(snap)
+        for gender, population in partition.items():
+            if population is None or population.empty:
+                continue
+            suffix = BOARD_GENDER_SUFFIX[gender]
+            prime_boards[gender] = completeness_gated_board(
+                population,
+                rating_col=PRIME_RATING_COL,
+                min_rating_periods=min_rating_periods,
+            )
+            prime_boards[gender].to_parquet(
+                target / f"prime_board{suffix}.parquet", index=False
+            )
+            if quality_wins is None:
+                continue
+            elite_prime_boards[gender] = completeness_gated_board(
+                population,
+                rating_col=PRIME_RATING_COL,
+                min_rating_periods=min_rating_periods,
+                tested_wins=quality_wins,
+                min_tested_wins=MIN_QUALITY_WINS,
+            )
+            elite_prime_boards[gender].to_parquet(
+                target / f"prime_elite_board{suffix}.parquet", index=False
+            )
+
     return {
         "out_dir": target,
         "scope": scope,
@@ -266,6 +379,17 @@ def write_board_artifacts(
         "ranked_by_gender": {
             gender: int(frame["status"].eq("ranked").sum())
             for gender, frame in boards.items()
+        },
+        "prime_rating_col": PRIME_RATING_COL if prime_boards else None,
+        "prime_ranked_by_gender": {
+            gender: int(frame["status"].eq("ranked").sum())
+            for gender, frame in prime_boards.items()
+        },
+        "contender_line_mu": CONTENDER_LINE_MU if elite_prime_boards else None,
+        "min_quality_wins": MIN_QUALITY_WINS if elite_prime_boards else None,
+        "elite_prime_ranked_by_gender": {
+            gender: int(frame["status"].eq("ranked").sum())
+            for gender, frame in elite_prime_boards.items()
         },
     }
 
@@ -317,6 +441,37 @@ def top_board_markdown(
     return "\n".join([header, align, *rows])
 
 
+def publication_release_markdown(
+    snapshot_dir: Path,
+    summary: dict[str, object],
+    current: pd.DataFrame,
+) -> str:
+    """Business-facing release facts generated from the same snapshot."""
+    snapshot = Path(snapshot_dir)
+    rating_run_path = snapshot / "rating_run.json"
+    combined_path = snapshot / "combined_fights_summary.json"
+    rating_run = (
+        json.loads(rating_run_path.read_text(encoding="utf-8"))
+        if rating_run_path.exists()
+        else {}
+    )
+    combined = (
+        json.loads(combined_path.read_text(encoding="utf-8"))
+        if combined_path.exists()
+        else {}
+    )
+    values = (
+        ("Snapshot", snapshot.name),
+        ("Published scope", str(summary.get("scope", "not recorded"))),
+        ("Published score", str(summary.get("core_rating_col", "not recorded"))),
+        ("Rated bouts", f"{int(rating_run.get('rated_bouts', 0)):,}"),
+        ("Rated fighters", f"{len(current):,}"),
+        ("Maximum-coverage fight rows", f"{int(combined.get('rows', 0)):,}"),
+    )
+    rows = [f"| {label} | {value} |" for label, value in values]
+    return "\n".join(["| Release fact | Value |", "| --- | ---: |", *rows])
+
+
 def update_readme_block(readme_path: Path, body: str, *, begin: str, end: str) -> None:
     """Replace one marked block in the README with freshly built content."""
     readme = Path(readme_path)
@@ -330,10 +485,65 @@ def update_readme_block(readme_path: Path, body: str, *, begin: str, end: str) -
     )
 
 
+def update_readme_blocks(
+    readme_path: Path,
+    replacements: tuple[tuple[str, str, str], ...],
+) -> None:
+    """Validate and replace several marked blocks in one file write.
+
+    The publisher updates related tables together. Validating every marker
+    before changing the file prevents a missing later marker from leaving the
+    publication half refreshed.
+    """
+    readme = Path(readme_path)
+    text = readme.read_text(encoding="utf-8")
+    spans: list[tuple[int, int, str, str, str]] = []
+    for begin, end, body in replacements:
+        if text.count(begin) != 1 or text.count(end) != 1:
+            raise ValueError(
+                f"{readme} must contain exactly one board block: {begin} ... {end}"
+            )
+        start = text.index(begin)
+        stop = text.index(end, start + len(begin))
+        spans.append((start, stop + len(end), begin, end, body))
+
+    ordered = sorted(spans)
+    for previous, current in zip(ordered, ordered[1:]):
+        if previous[1] > current[0]:
+            raise ValueError(f"{readme} has overlapping board blocks")
+
+    updated = text
+    for start, stop, begin, end, body in reversed(ordered):
+        updated = updated[:start] + f"{begin}\n\n{body}\n\n{end}" + updated[stop:]
+    build_path = readme.with_name(f"{readme.name}.building")
+    try:
+        build_path.write_text(updated, encoding="utf-8")
+        os.replace(build_path, readme)
+    finally:
+        build_path.unlink(missing_ok=True)
+
+
 def update_readme_board(readme_path: Path, table: str) -> None:
     """Replace the marked board block in the README with a freshly built table."""
     update_readme_block(
         readme_path, table, begin=README_BOARD_BEGIN, end=README_BOARD_END
+    )
+
+
+def update_readme_prime_board(readme_path: Path, table: str) -> None:
+    """Replace the Prime block, published beside the all-time table."""
+    update_readme_block(
+        readme_path, table, begin=README_PRIME_BEGIN, end=README_PRIME_END
+    )
+
+
+def update_readme_prime_women_board(readme_path: Path, table: str) -> None:
+    """Replace the separately ranked women's Prime block."""
+    update_readme_block(
+        readme_path,
+        f"{GENDER_GAUGE_NOTE}\n\n{table}",
+        begin=README_PRIME_WOMEN_BEGIN,
+        end=README_PRIME_WOMEN_END,
     )
 
 
@@ -353,7 +563,7 @@ def main() -> None:
     ap.add_argument(
         "--rating-col",
         default=None,
-        help="Core completeness-board score; defaults to Career Skill Mass, then base WHR.",
+        help="Core board score; defaults to Public Legacy, then Career Skill Mass, then base WHR.",
     )
     ap.add_argument(
         "--integrity-rating-col",
@@ -369,9 +579,9 @@ def main() -> None:
         "--write-readme",
         type=Path,
         nargs="?",
-        const=Path("README.md"),
+        const=Path("RANKINGS.md"),
         default=None,
-        help="Also refresh the published board block in this README (default README.md).",
+        help="Also refresh the marked publication blocks (default RANKINGS.md).",
     )
     ap.add_argument("--readme-top", type=int, default=100)
     ap.add_argument(
@@ -413,6 +623,13 @@ def main() -> None:
           f"{len(ranked):,} ranked, {len(gated) - len(ranked):,} withheld")
     print(gated.loc[~gated["status"].eq("ranked"), "status"].value_counts().to_string())
     print(ranked.head(args.top)[["rank", "fighter", core_col]].round(1).to_string(index=False))
+    prime_path = out / "prime_board.parquet"
+    if prime_path.exists():
+        prime_ranked = pd.read_parquet(prime_path)
+        prime_ranked = prime_ranked[prime_ranked["status"].eq("ranked")]
+        print(f"\nprime board (men's): {len(prime_ranked):,} ranked")
+        print(prime_ranked.head(args.top)[["rank", "fighter", PRIME_RATING_COL]]
+              .round(1).to_string(index=False))
     if women is not None:
         women_ranked = women[women["status"].eq("ranked")]
         print(f"\ncompleteness-gated board (women's): {len(women_ranked):,} ranked, "
@@ -424,19 +641,91 @@ def main() -> None:
 
     if args.write_readme is not None:
         current = pd.read_parquet(Path(args.snapshot_dir) / "ratings_current.parquet")
-        update_readme_board(
-            args.write_readme,
-            top_board_markdown(gated, current, rating_col=core_col, top=args.readme_top),
-        )
-        print(f"published men's top {args.readme_top} to {args.write_readme}")
-        if women is not None:
-            update_readme_women_board(
-                args.write_readme,
+        replacements: list[tuple[str, str, str]] = [
+            (
+                README_RELEASE_BEGIN,
+                README_RELEASE_END,
+                publication_release_markdown(args.snapshot_dir, summary, current),
+            ),
+            (
+                README_BOARD_BEGIN,
+                README_BOARD_END,
                 top_board_markdown(
-                    women, current, rating_col=core_col, top=args.women_top
+                    gated, current, rating_col=core_col, top=args.readme_top
                 ),
             )
-            print(f"published women's top {args.women_top} to {args.write_readme}")
+        ]
+        prime_path = out / "prime_board.parquet"
+        prime = None
+        if prime_path.exists():
+            prime = pd.read_parquet(prime_path)
+            replacements.append(
+                (
+                    README_PRIME_BEGIN,
+                    README_PRIME_END,
+                    top_board_markdown(
+                        prime, current, rating_col=PRIME_RATING_COL, top=args.readme_top
+                    ),
+                ),
+            )
+        if women is not None:
+            replacements.append(
+                (
+                    README_WOMEN_BEGIN,
+                    README_WOMEN_END,
+                    f"{GENDER_GAUGE_NOTE}\n\n"
+                    + top_board_markdown(
+                        women, current, rating_col=core_col, top=args.women_top
+                    ),
+                ),
+            )
+        prime_women_path = out / "prime_board_women.parquet"
+        if prime_women_path.exists():
+            prime_women = pd.read_parquet(prime_women_path)
+            replacements.append(
+                (
+                    README_PRIME_WOMEN_BEGIN,
+                    README_PRIME_WOMEN_END,
+                    f"{GENDER_GAUGE_NOTE}\n\n"
+                    + top_board_markdown(
+                        prime_women,
+                        current,
+                        rating_col=PRIME_RATING_COL,
+                        top=args.women_top,
+                    ),
+                )
+            )
+        elite_path = out / "prime_elite_board.parquet"
+        if elite_path.exists():
+            replacements.append(
+                (
+                    README_ELITE_PRIME_BEGIN,
+                    README_ELITE_PRIME_END,
+                    top_board_markdown(
+                        pd.read_parquet(elite_path),
+                        current,
+                        rating_col=PRIME_RATING_COL,
+                        top=ELITE_PRIME_TOP,
+                    ),
+                )
+            )
+        elite_women_path = out / "prime_elite_board_women.parquet"
+        if elite_women_path.exists():
+            replacements.append(
+                (
+                    README_ELITE_PRIME_WOMEN_BEGIN,
+                    README_ELITE_PRIME_WOMEN_END,
+                    f"{GENDER_GAUGE_NOTE}\n\n"
+                    + top_board_markdown(
+                        pd.read_parquet(elite_women_path),
+                        current,
+                        rating_col=PRIME_RATING_COL,
+                        top=args.women_top,
+                    ),
+                )
+            )
+        update_readme_blocks(args.write_readme, tuple(replacements))
+        print(f"published {len(replacements)} ranking tables to {args.write_readme}")
 
 
 if __name__ == "__main__":

@@ -25,5 +25,10 @@ data/ufc_rank_engine_fightmatrix_depth_one.sqlite
 # Archived generated binaries/caches remain local and recoverable, not versioned.
 _archive/**/generated-data/
 
+# Half-built artifacts. Builders assemble beside the target and promote by
+# atomic replace; only an interrupted run can leave one behind. The glob is
+# open-ended because SQLite writes its rollback journal beside the file.
+*.building*
+
 # Accidental pip install artifacts (e.g. pip install pkg ==version)
 =*

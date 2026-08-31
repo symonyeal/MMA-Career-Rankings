@@ -1,5 +1,53 @@
 # Snapshot Changelog
 
+## 2026-08-31 - Repository consolidation and consistency repair
+
+- Replaced the research-log README with a business overview and moved all four
+  generated public tables into `RANKINGS.md`. Release facts and tables now
+  validate and publish together, preventing partial refreshes.
+- Preserved one preferred row per bout while recording every source membership.
+  Named scopes now retain shared bouts even when another corpus supplied the
+  preferred parse. Canonical same-night rematches remain distinct by fight URL.
+- Corrected accent/alias winner comparisons, prequential favorite/underdog
+  labels after side randomization, and gender-isolated bootstrap event weights.
+- Labelled Career Skill Mass intervals as diagnostic; they are not presented as
+  uncertainty for the Public Legacy board.
+- Made SQLite rebuilds promote only complete sibling builds, replaced the large
+  old-snapshot database test with a synthetic fixture, and added Prime board
+  tables and indexes.
+- Added the elite-tested Prime board: the same Prime score behind a floor on
+  proven record — at least 5 career wins over opponents rated 1750 or higher at
+  the time who also had 8 or more UFC bouts. Line and minimum are stated policy,
+  set after reading qualifying names at several candidate lines. 78 men and 2
+  women qualify; published as men's top 50 and women's top 10 in `RANKINGS.md`.
+  Two earlier rules were built and rejected on named fighters. Counting
+  ranked-or-title bouts measured longevity, seating Machida, Davis and Chandler
+  on volume while withholding Makhachev and Topuria. Averaging the ten toughest
+  opponents measured gatekeeping: Roy Nelson (0-10) outranked Khabib and
+  St-Pierre, and a 1950 bar excluded Jon Jones.
+- Re-ran the rating snapshot on the repaired corpus. `combined_fights` rows
+  81,308 -> 81,309 and `pre_unified` 252 -> 253 (the recovered UFC Japan 1997
+  same-night rematch, an overturned no-contest). Rated bouts stay 80,697 and
+  every published score is unchanged to machine precision across all 33,692
+  rated fighters; the release facts now carry `available_in_corpora`.
+- Excluded `_archive` from lint configuration so the documented
+  `ruff check .` verification command passes, and repaired stale source and
+  database table listings in `data/SOURCE_MATRIX.md`.
+- Archived the closed recursive FightMatrix expansion subsystem and historical
+  design records with restoration instructions. Finalized experimental
+  snapshots and intentionally retained research evidence were not removed.
+
+## 2026-08-27 through 2026-08-28 - Coverage, ledger, and release repair
+
+- Repaired whole-career major-promotion coverage and published one authoritative
+  maximum-coverage fight table with a named `majors,pre_unified` selection.
+- Split men's and women's boards, shipped method-aware production WHR, and
+  rebuilt the Public Legacy title and schedule ledgers.
+- Removed tournament appearance fan-out (9,580 duplicate rows), moving Matt
+  Hughes from 7th to 9th and Dan Henderson from 8th to 23rd on that release.
+- Rebuilt schema-8 held-out prequential evidence and recorded unresolved model
+  choices in `docs/NEXT_2026-08-28.md` so closed tuning options are not repeated.
+
 ## 2026-08-26 - Stale-surface cleanup; no data rebuild
 
 - Archived the obsolete local SQLite export, pre-schema-6 prequential exports
@@ -31,7 +79,8 @@
   board artifact. The drawn-title lineage defect noted in the 2026-08-18 entry
   was also corrected in later vectorized lineage code.
 - Archived closed research drivers; current decisions are recorded in
-  `docs/BOARD_AND_IDENTIFICATION_2026-08-25.md` and the repository `README.md`.
+  `_archive/20260831-repository-consolidation/docs/BOARD_AND_IDENTIFICATION_2026-08-25.md`
+  and the repository `README.md`.
 
 ## 2026-08-18 - Differentiator audit: prequential harness, 30-64x pipeline, market weighting deleted
 
@@ -48,7 +97,9 @@ sorted-name order (preserving the `(-mu, name)` tie-break exactly);
 - `rate_snapshot.run()`: UFC-only 878s -> 29.3s, complete-edge 2,925s -> 74.5s,
   reliability 2,922s -> 74.9s, raw 14,041s -> 636s. All 17 artifacts exact at
   every scope.
-- `analysis/fightmatrix_graph.reconcile_bouts`: ~720s -> 11.3s on 80,667
+- `analysis/fightmatrix_graph.reconcile_bouts` (archived 2026-08-31 to
+  `_archive/20260831-repository-consolidation/analysis/fightmatrix_graph.py`):
+  ~720s -> 11.3s on 80,667
   perspectives, all 80,667 decision rows identical.
 - `tests/test_pipeline_vectorization.py` pins each rewrite against a reference
   implementation written the slow way, since snapshots are gitignored.
@@ -96,7 +147,7 @@ instead of seating a fighter at the 1500 default. Driver: `build_boards.py`.
   the workbook; none of the four is imported by any module or test.
 - 607 MB of redundant local data removed — 185 MB of byte-identical staging
   copies duplicated across the depth-one scopes, and the two experimental
-  SQLite exports. See `data/RECLAIMED_2026-08-19.md`. Production database,
+  SQLite exports. See `_archive/20260831-repository-consolidation/data/RECLAIMED_2026-08-19.md`. Production database,
   snapshots and the crawl cache untouched.
 
 UFC-only rebuild is now 28.3 s (from 878 s), producing 5 Glicko streams and 2

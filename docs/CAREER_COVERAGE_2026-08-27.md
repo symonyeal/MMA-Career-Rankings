@@ -99,7 +99,7 @@ both-UFC-tested +0.006), so it is specifically the *relative level* of the two
 pools that is wrong, not either pool internally.
 
 It still falsifies the standing conclusion in
-[Board and identification](BOARD_AND_IDENTIFICATION_2026-08-25.md) that the pools
+[Board and identification](../_archive/20260831-repository-consolidation/docs/BOARD_AND_IDENTIFICATION_2026-08-25.md) that the pools
 are "connected to the tested core, so an organisation discount is not
 identified": connected is not the same as correctly located, and that conclusion
 was drawn from graph connectivity rather than from a held-out test. What it does
@@ -161,7 +161,7 @@ Two guards keep it from returning:
   regional record and one without.
 
 **The risk was named and measured on the wrong axis.**
-[Whole-sport engine](PLAN_WHOLE_SPORT_ENGINE_2026-08-21.md) §8 lists "*ragged
+[Whole-sport engine](../_archive/20260831-repository-consolidation/docs/PLAN_WHOLE_SPORT_ENGINE_2026-08-21.md) §8 lists "*ragged
 data masquerading as coverage… Mitigation: per-promotion completeness figures and
 abstention*". Per-promotion completeness was built and it passes —
 `majors_coverage.json` reports every promotion roster-complete inside its own

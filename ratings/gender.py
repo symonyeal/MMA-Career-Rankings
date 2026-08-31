@@ -90,3 +90,31 @@ def select_gender(frame: pd.DataFrame, gender: str | None) -> pd.DataFrame:
     if gender not in partition:
         return frame.iloc[0:0] if frame is not None else frame
     return partition[gender]
+
+
+def select_component_fights(
+    fights: pd.DataFrame,
+    population: pd.DataFrame,
+) -> pd.DataFrame:
+    """Keep only bouts wholly inside a selected fighter population.
+
+    Bootstrap event weights must be drawn inside the same disconnected bout
+    graph that is being ranked. Otherwise unrelated cards in another component
+    change the Dirichlet weights and therefore the reported interval even
+    though they cannot change the component's point estimate.
+    """
+    if fights is None or fights.empty:
+        return fights
+    if population is None or population.empty or "fighter" not in population.columns:
+        return fights.iloc[0:0].copy()
+    required = {"fighter_a", "fighter_b"}
+    if not required.issubset(fights.columns):
+        raise ValueError(
+            "cannot select a bout-graph component without fighter_a and fighter_b"
+        )
+    fighters = set(population["fighter"].dropna().astype(str))
+    inside = (
+        fights["fighter_a"].astype(str).isin(fighters)
+        & fights["fighter_b"].astype(str).isin(fighters)
+    )
+    return fights.loc[inside].copy().reset_index(drop=True)

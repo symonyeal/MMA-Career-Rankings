@@ -2,10 +2,10 @@
 
 What these constants do and do not touch, after the 2026-08-20 core evolution:
 
-* The **production rating** reads binary W/L/D evidence only. Its parameters are
-  the Glicko-2 ``DEFAULT_TAU`` and the four WHR terms (``WHR_W2_PER_DAY``,
-  ``WHR_PRIOR_VAR``, ``WHR_VIRTUAL_GAMES``, ``WHR_ITERATIONS``). Nothing else in
-  this file can move a production rating.
+* The **production WHR rating** uses the staged method score for decided bouts
+  and symmetric draw evidence. ``WHR_WINNER_SCORE_COL = None`` restores binary
+  W/L/D scoring. Its fit parameters are the WHR drift, prior-mass, and iteration
+  constants below; the Glicko stream remains a causal comparison model.
 * The **weighted-evidence factors** (``SLEEVE_*``, ``PERF_*``, ``INTEGRITY_*``)
   belong to audit layers and to the research variants in
   ``ratings.research_variants``. They are kept inside a symmetric [-10%, +10%]

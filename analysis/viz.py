@@ -194,6 +194,7 @@ def _metric_label(column: str) -> str:
         "mu_method_integrity_performance": "Complete rating",
         "mu_whr": "Legacy rating",
         "mu_whr_integrity_performance": "Legacy complete rating",
+        "public_legacy_score": "Public Legacy Score",
         "symon_career_skill_mass": "All-time career skill mass",
         "symon_prime_score": "Prime score",
     }
@@ -244,7 +245,6 @@ TABLE_KEY_MAP = [
     ("canonical_events", "events"),
     ("ratings_history", "ratings_history"),
     ("ratings_history_whr", "ratings_history_whr"),
-    ("ratings_history_method_performance", "ratings_history_method_performance"),
     ("ratings_current", "ratings_current"),
     ("performance_appearances", "performance_appearances"),
     ("integrity_appearances", "integrity_appearances"),
@@ -4693,13 +4693,13 @@ def career_rank_interval_chart(
     uncertainty: pd.DataFrame,
     *,
     n: int = 25,
-    title: str = "All-time rank, with the interval it actually supports",
+    title: str = "Career Skill Mass diagnostic rank intervals",
 ) -> go.Figure:
-    """Top-N career ranks drawn as bootstrap intervals rather than integers.
+    """Top-N Career Skill Mass ranks drawn as bootstrap intervals.
 
     Reads ``career_mass_uncertainty.parquet``. A wide bar means the placement
-    rests on little evidence: the same engine, refit under reweighted events,
-    puts that fighter anywhere in that range.
+    rests on little evidence. This diagnostic is not an interval for the
+    published Public Legacy Score.
     """
     if uncertainty is None or uncertainty.empty:
         return _empty_figure(

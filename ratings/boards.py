@@ -207,6 +207,8 @@ def completeness_gated_board(
     eligibility_override: pd.Series | None = None,
     completeness: pd.Series | None = None,
     min_completeness: float = 0.8,
+    tested_wins: pd.Series | None = None,
+    min_tested_wins: int | None = None,
     unranked_at_or_below: float | None = None,
     top: int | None = None,
 ) -> pd.DataFrame:
@@ -232,6 +234,27 @@ def completeness_gated_board(
       rather than a third of the board. It still has to be here: the floor is a
       property of the functional, not of one snapshot's hinge scale. Leave it
       ``None`` for scores with no such floor (base WHR mu).
+
+    ``min_tested_wins`` adds a second, independent floor on *proven* record: how
+    many of a fighter's toughest tested opponents they actually beat, per
+    :func:`ratings.opponent_quality.toughest_opponent_record`. Rating periods
+    count appearances and say nothing about their difficulty, so without this a
+    clean record against a soft field clears the same floor as one built against
+    champions.
+
+    Two failure modes make both halves necessary, and each was measured. Judging
+    a schedule by opponent strength alone promotes gatekeepers -- a fighter who
+    lost to ten elite opponents scores the same as one who beat them, and at a
+    1900 bar Roy Nelson (0-10) outranked Khabib and St-Pierre. Judging by wins
+    alone promotes unbeaten records built on a thin circuit. The caller answers
+    the first by counting wins and the second by admitting only opponents with a
+    tested record of their own.
+
+    It gates rather than scores. A fighter is on the board or not; where they
+    land is still the rating. Folding opposition quality into the score would
+    post it twice, since the rating is already estimated from those same
+    opponents. A fighter with no measured value is withheld -- absent evidence
+    is not a pass.
     """
     if current is None or current.empty or rating_col not in current.columns:
         return pd.DataFrame(columns=["rank", "fighter", rating_col, "status"])
@@ -257,6 +280,16 @@ def completeness_gated_board(
         thin = comp.notna() & (comp < min_completeness)
         status[thin & status.eq("ranked")] = (
             f"insufficient observed history to rank (completeness < {min_completeness:g})")
+    if min_tested_wins is not None:
+        wins = pd.to_numeric(
+            board["fighter"].map(tested_wins) if tested_wins is not None else pd.NA,
+            errors="coerce",
+        )
+        board["tested_opponent_wins"] = wins
+        unproven = wins.isna() | (wins < int(min_tested_wins))
+        status[unproven & status.eq("ranked")] = (
+            "insufficient proven record to rank "
+            f"(< {int(min_tested_wins)} wins over the toughest tested opponents)")
     if unranked_at_or_below is not None:
         at_floor = rated.notna() & (rated <= float(unranked_at_or_below))
         status[at_floor & status.eq("ranked")] = UNRANKED_AT_FLOOR_STATUS
@@ -270,5 +303,6 @@ def completeness_gated_board(
 
     out = pd.concat([ranked.head(top) if top else ranked, withheld], ignore_index=True, sort=False)
     cols = ["rank", "fighter", rating_col, "status"]
-    cols += [c for c in ("rating_periods", "observed_completeness") if c in out.columns]
+    cols += [c for c in ("rating_periods", "observed_completeness", "tested_opponent_wins")
+             if c in out.columns]
     return out[cols]

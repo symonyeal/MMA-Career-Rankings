@@ -332,6 +332,7 @@ def _gendered_current() -> pd.DataFrame:
             "gender": ["F", "F", "M", "M", None],
             "rating_periods": [4, 4, 4, 4, 4],
             "public_legacy_score": [90.0, 70.0, 80.0, 60.0, 50.0],
+            "symon_prime_score": [1900.0, 1800.0, 1850.0, 1750.0, 1700.0],
             "mu_whr": [1700.0, 1650.0, 1680.0, 1600.0, 1590.0],
         }
     )
@@ -352,7 +353,7 @@ def test_gender_partition_falls_back_to_one_board_without_a_gender_column():
     assert len(parts["M"]) == 5
 
 
-def test_boards_rank_within_gender_and_publish_two_artifacts(
+def test_boards_rank_within_gender_and_publish_all_time_and_prime_artifacts(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ):
@@ -393,6 +394,8 @@ def test_boards_rank_within_gender_and_publish_two_artifacts(
 
     men = pd.read_parquet(output / "completeness_gated_board.parquet")
     women = pd.read_parquet(output / "completeness_gated_board_women.parquet")
+    prime_men = pd.read_parquet(output / "prime_board.parquet")
+    prime_women = pd.read_parquet(output / "prime_board_women.parquet")
 
     # No woman appears on the published default board, and vice versa.
     assert set(men["fighter"]) == {"Cal", "Dan", "Eve"}
@@ -401,6 +404,9 @@ def test_boards_rank_within_gender_and_publish_two_artifacts(
     # Cal sits between them on the mixed score.
     assert women.set_index("fighter").loc["Ada", "rank"] == 1
     assert men.set_index("fighter").loc["Cal", "rank"] == 1
+    assert set(prime_men["fighter"]) == {"Cal", "Dan", "Eve"}
+    assert set(prime_women["fighter"]) == {"Ada", "Bea"}
+    assert summary["prime_ranked_by_gender"] == {"F": 2, "M": 3}
 
 
 def test_readme_blocks_are_replaced_independently(tmp_path: Path):
@@ -430,3 +436,59 @@ def test_updating_a_missing_block_raises_rather_than_appending(tmp_path: Path):
     readme.write_text("no markers here\n", encoding="utf-8")
     with pytest.raises(ValueError, match="no board block"):
         build_boards.update_readme_women_board(readme, "table")
+
+
+def test_multi_block_publication_validates_every_marker_before_writing(tmp_path: Path):
+    readme = tmp_path / "README.md"
+    original = (
+        f"{build_boards.README_BOARD_BEGIN}\nold men\n"
+        f"{build_boards.README_BOARD_END}\n"
+        "prime marker is deliberately absent\n"
+    )
+    readme.write_text(original, encoding="utf-8")
+
+    with pytest.raises(ValueError, match="exactly one board block"):
+        build_boards.update_readme_blocks(
+            readme,
+            (
+                (
+                    build_boards.README_BOARD_BEGIN,
+                    build_boards.README_BOARD_END,
+                    "new men",
+                ),
+                (
+                    build_boards.README_PRIME_BEGIN,
+                    build_boards.README_PRIME_END,
+                    "new prime",
+                ),
+            ),
+        )
+
+    assert readme.read_text(encoding="utf-8") == original
+
+
+def test_multi_block_publication_updates_all_four_boards_together(tmp_path: Path):
+    readme = tmp_path / "RANKINGS.md"
+    markers = (
+        (build_boards.README_BOARD_BEGIN, build_boards.README_BOARD_END, "men"),
+        (build_boards.README_WOMEN_BEGIN, build_boards.README_WOMEN_END, "women"),
+        (build_boards.README_PRIME_BEGIN, build_boards.README_PRIME_END, "prime men"),
+        (
+            build_boards.README_PRIME_WOMEN_BEGIN,
+            build_boards.README_PRIME_WOMEN_END,
+            "prime women",
+        ),
+    )
+    readme.write_text(
+        "\n".join(f"{begin}\nold\n{end}" for begin, end, _ in markers) + "\n",
+        encoding="utf-8",
+    )
+
+    build_boards.update_readme_blocks(readme, markers)
+    text = readme.read_text(encoding="utf-8")
+
+    assert "\nold\n" not in text
+    for begin, end, body in markers:
+        assert text.count(begin) == text.count(end) == 1
+        assert f"{begin}\n\n{body}\n\n{end}" in text
+    assert not readme.with_name(f"{readme.name}.building").exists()

@@ -1,12 +1,13 @@
-"""Bootstrap the public career board and persist its rank intervals.
+"""Bootstrap the Career Skill Mass diagnostic and persist its rank intervals.
 
 Reruns the whole smoother under Dirichlet-reweighted events (see
 ``ratings/uncertainty.py``) and writes ``career_mass_uncertainty.parquet`` into
 the snapshot, so the notebook can show every rank with the interval it deserves
 instead of a bare integer.
 
-Intervals and tiers are ORDERING claims, so they are made inside ONE bout-graph
-component. ``--gender`` picks it and defaults to the published men's board;
+These artifacts describe Career Skill Mass, not the published Public Legacy
+Score. Intervals and tiers are ORDERING claims, so they are made inside ONE
+bout-graph component. ``--gender`` picks it and defaults to the men's component;
 ``--gender F`` writes the ``*_women`` artifacts beside it. A mixed run would be
 asking whether a woman is separated from a man, which no bout in the corpus can
 answer -- see ``ratings/gender.py``.
@@ -33,6 +34,7 @@ from ratings.gender import (
     GENDER_LABEL,
     GENDER_SUFFIX,
     GENDERS,
+    select_component_fights,
     select_gender,
 )
 from ratings.legacy_resume import _division_labels
@@ -94,6 +96,7 @@ def main() -> None:
     # answer would be read off the prior. ``--gender`` selects the component;
     # the default is the published men's board. See ratings/gender.py.
     population = select_gender(current, args.gender)
+    fights = select_component_fights(fights, population)
     eligible = set(population.loc[
         population["rating_periods"].fillna(0) >= args.min_rating_periods, "fighter"
     ].astype(str))
@@ -139,6 +142,7 @@ def main() -> None:
         "replicates": int(args.replicates),
         "seed": int(args.seed),
         "scope": args.scope,
+        "score": "symon_career_skill_mass",
         "gender": args.gender,
         "gender_label": GENDER_LABEL[args.gender],
         "interval": [lo, hi],

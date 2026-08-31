@@ -78,6 +78,8 @@ def test_combined_fights_preserves_union_columns_and_writes_summary(tmp_path: Pa
     assert combined["bout_fingerprint"].is_unique
     assert combined.set_index("fight_url").loc["u/1", "source_corpus"] == "ufc"
     assert combined.set_index("fight_url").loc["s/1", "source_corpus"] == "majors"
+    assert combined.set_index("fight_url").loc["u/1", "available_in_corpora"] == "ufc"
+    assert combined.set_index("fight_url").loc["s/1", "available_in_corpora"] == "majors"
     assert summary["scope"] == "majors"
     assert summary["rows"] == 2
     assert summary["model_bouts"] == 2
@@ -90,13 +92,31 @@ def test_combined_fights_refuses_duplicate_canonical_bouts(tmp_path: Path):
     duplicated = pd.DataFrame(
         [
             _bout("u/1", "Alice", "Bob", "2024-01-01"),
-            _bout("u/2", "Bob", "Alice", "2024-01-01"),
+            _bout("u/1", "Bob", "Alice", "2024-01-01"),
         ]
     )
     duplicated.to_parquet(snapshot / "canonical_fights.parquet", index=False)
 
-    with pytest.raises(ValueError, match="duplicate bout fingerprints"):
+    with pytest.raises(ValueError, match="duplicate bout identities"):
         build_combined_fights(snapshot, scope="ufc")
+
+
+def test_combined_fights_preserves_distinct_canonical_same_day_rematches(tmp_path: Path):
+    snapshot = tmp_path / "snapshot"
+    snapshot.mkdir()
+    pd.DataFrame(
+        [
+            _bout("u/first", "Alice", "Bob", "2024-01-01"),
+            _bout("u/rematch", "Bob", "Alice", "2024-01-01"),
+        ]
+    ).to_parquet(snapshot / "canonical_fights.parquet", index=False)
+
+    combined, summary = build_combined_fights(snapshot, scope="ufc")
+
+    assert set(combined["fight_url"]) == {"u/first", "u/rematch"}
+    assert combined["bout_fingerprint"].duplicated().sum() == 1
+    assert summary["duplicate_fingerprints"] == 1
+    assert summary["duplicate_bout_keys"] == 0
 
 
 def _three_corpus_snapshot(snapshot: Path) -> None:
@@ -156,9 +176,11 @@ def test_max_coverage_resolves_a_shared_bout_to_the_higher_priority_source(tmp_p
     shared = wide[wide["fighter_a"].isin({"Carl", "Dana"}) & wide["fighter_b"].isin({"Carl", "Dana"})]
     assert len(shared) == 1
     assert shared.iloc[0]["source_corpus"] == "majors"
+    assert shared.iloc[0]["available_in_corpora"] == "fightmatrix,majors"
     # ... so selecting the fightmatrix scope returns that one row, not a copy.
     fm = select_scope(wide, "fightmatrix")
-    assert set(fm["fight_url"]) == {"u/1", "f/2"}
+    assert set(fm["fight_url"]) == {"u/1", "s/1", "f/2"}
+    assert fm["bout_fingerprint"].is_unique
 
 
 def test_written_artifact_defaults_to_maximum_coverage(tmp_path: Path):
@@ -185,6 +207,44 @@ def test_loading_a_scope_the_artifact_cannot_cover_rebuilds_rather_than_truncati
     loaded, summary = load_combined_fights(snapshot, scope="majors,pre_unified")
     assert set(loaded["source_corpus"]) == {"ufc", "majors", "pre_unified"}
     assert summary["scope"] == "majors,pre_unified"
+
+
+def test_loading_legacy_artifact_rebuilds_provenance_before_lower_priority_selection(
+    tmp_path: Path,
+):
+    snapshot = tmp_path / "snapshot"
+    snapshot.mkdir()
+    _three_corpus_snapshot(snapshot)
+
+    write_combined_fights(snapshot)
+    legacy = pd.read_parquet(snapshot / "combined_fights.parquet").drop(
+        columns="available_in_corpora"
+    )
+    legacy.to_parquet(snapshot / "combined_fights.parquet", index=False)
+
+    loaded, summary = load_combined_fights(snapshot, scope="fightmatrix")
+    assert set(loaded["fight_url"]) == {"u/1", "s/1", "f/2"}
+    assert loaded.set_index("fight_url").loc["s/1", "source_corpus"] == "majors"
+    assert loaded.set_index("fight_url").loc["s/1", "available_in_corpora"] == "fightmatrix,majors"
+    assert summary["scope"] == "fightmatrix"
+
+
+def test_loading_legacy_artifact_fails_closed_when_provenance_cannot_be_rebuilt(
+    tmp_path: Path,
+):
+    snapshot = tmp_path / "snapshot"
+    snapshot.mkdir()
+    _three_corpus_snapshot(snapshot)
+
+    write_combined_fights(snapshot)
+    legacy = pd.read_parquet(snapshot / "combined_fights.parquet").drop(
+        columns="available_in_corpora"
+    )
+    legacy.to_parquet(snapshot / "combined_fights.parquet", index=False)
+    (snapshot / SCOPE_ARTIFACT["majors"]).unlink()
+
+    with pytest.raises(ValueError, match="could lose shared bouts"):
+        load_combined_fights(snapshot, scope="fightmatrix")
 
 
 def test_writing_never_silently_drops_a_corpus_the_artifact_already_holds(tmp_path: Path):

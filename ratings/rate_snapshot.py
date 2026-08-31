@@ -1,8 +1,10 @@
 """Build the lean rating core and its explicitly separate audit layers.
 
-The production skill model has two views of one binary W/L/D evidence stream:
-causal Glicko-2 (``canonical``) and retrospective Whole-History Rating
-(``whr``). ``method`` is retained as a zero-extra-pass research diagnostic.
+The rating layer retains causal Glicko-2 (``canonical``) as a diagnostic and
+uses retrospective Whole-History Rating (``whr``) for the published skill
+trajectory. Production WHR grades a decided result by its staged method score;
+setting ``WHR_WINNER_SCORE_COL`` to ``None`` restores binary W/L/D scoring.
+``method`` is retained as a zero-extra-pass research diagnostic.
 Side-specific performance/integrity sleeves and the era premium are not
 production ratings: they either fail to define one paired likelihood or add a
 scenario assumption that bout outcomes cannot identify.
@@ -164,8 +166,18 @@ def refresh_career_columns(
     reference: str | float = DEFAULT_CAREER_REFERENCE,
     scope: str = DEFAULT_PUBLISHED_SCOPE,
 ) -> dict[str, object]:
-    """Recompute only the career functional from an existing WHR history."""
+    """Recompute career columns without changing what the persisted fit saw."""
     snapshot_dir = Path(snapshot_dir)
+    metadata_path = snapshot_dir / "rating_run.json"
+    metadata: dict[str, object] = {}
+    if metadata_path.exists():
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    fitted_scope = metadata.get("scope")
+    if fitted_scope and str(fitted_scope) != str(scope):
+        raise ValueError(
+            "career-only refresh scope does not match the persisted WHR fit: "
+            f"requested {scope!r}, fitted {fitted_scope!r}"
+        )
     history = pd.read_parquet(snapshot_dir / "ratings_history_whr.parquet")
     current_path = snapshot_dir / "ratings_current.parquet"
     current = pd.read_parquet(current_path)
@@ -197,11 +209,12 @@ def refresh_career_columns(
     )
     appearances_path = snapshot_dir / "performance_appearances.parquet"
     appearances = pd.read_parquet(appearances_path) if appearances_path.exists() else pd.DataFrame()
+    source_fights = _source_fights_for_public_resume(snapshot_dir, scope)
     current = current.merge(
         public_legacy_score_rows(
             current,
             appearances,
-            source_fights=_source_fights_for_public_resume(snapshot_dir, scope),
+            source_fights=source_fights,
             history=history,
             reference=reference,
         ),
@@ -213,16 +226,12 @@ def refresh_career_columns(
     ).reset_index(drop=True)
     current.to_parquet(current_path, index=False)
 
-    metadata_path = snapshot_dir / "rating_run.json"
-    metadata: dict[str, object] = {}
-    if metadata_path.exists():
-        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
     metadata.update(
         {
             "scope": scope,
             "career_reference": str(reference),
             "age_drift": True,
-            "rated_bouts": int(len(history) // 2),
+            "rated_bouts": int(metadata.get("rated_bouts", len(source_fights))),
             "birth_dates": int(len(load_birth_dates(snapshot_dir))),
             "history_rows": int(len(history)),
             "current_fighters": int(len(current)),
@@ -497,7 +506,12 @@ def run(
 ) -> dict:
     snapshot_dir = Path(snapshot_dir).resolve()
     rounds = pd.read_parquet(snapshot_dir / "canonical_rounds.parquet")
-    if include_experimental_crossorg and scope == UFC_ONLY:
+    if include_experimental_crossorg:
+        if scope != DEFAULT_PUBLISHED_SCOPE:
+            raise ValueError(
+                "include_experimental_crossorg is a deprecated alias for scope='fightmatrix'; "
+                "do not supply both"
+            )
         scope = "fightmatrix"
     # One authoritative fight table, written at every corpus the snapshot
     # staged, then filtered to the scope this run is allowed to rate. The
@@ -579,8 +593,8 @@ def run(
     perf_app.to_parquet(snapshot_dir / "performance_appearances.parquet", index=False)
 
     # ------------------------------------------------------------------
-    # WHR is the retrospective estimator of the same binary/draw evidence used
-    # by canonical Glicko. It receives one shared source weight per bout and no
+    # WHR is the retrospective estimator. Production scoring grades the winner
+    # by the staged method score and treats draws symmetrically. It receives one shared source weight per bout and no
     # implicit quality-score column. Era is neutral by default because a common
     # additive era term cancels from every within-era Bradley--Terry matchup.
     birth_dates = load_birth_dates(snapshot_dir)
@@ -809,7 +823,7 @@ def run(
             "career_division",
             "rating_periods",
         ],
-        title="HEADLINE - Top 25 by Career Skill Mass",
+        title="DIAGNOSTIC - Top 25 by Career Skill Mass",
         n=25, min_fights=0,
     )
     _print_top(
@@ -835,7 +849,7 @@ def run(
             "career_division",
             "rating_periods",
         ],
-        title="SANITY CHECK - Top 25 by Public Legacy Score",
+        title="HEADLINE - Top 25 by Public Legacy Score",
         n=25, min_fights=0,
     )
 
@@ -887,7 +901,7 @@ def main() -> None:
         help="Optional path to mdabbert ufc-master.csv for missed-weight cross-check.",
     )
     parser.add_argument(
-        "--scope", default=DEFAULT_PUBLISHED_SCOPE,
+        "--scope", default=None,
         help=(
             "Which bouts the rating may see. 'majors' is the roster-complete "
             "six-promotion Sherdog corpus; 'fightmatrix' is the bounded "
@@ -910,6 +924,13 @@ def main() -> None:
         ),
     )
     args = parser.parse_args()
+    if args.experimental_crossorg and args.scope is not None:
+        parser.error("--experimental-crossorg cannot be combined with --scope")
+    args.scope = (
+        "fightmatrix"
+        if args.experimental_crossorg
+        else (args.scope or DEFAULT_PUBLISHED_SCOPE)
+    )
     if args.career_only:
         print(
             refresh_career_columns(

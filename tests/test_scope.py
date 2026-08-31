@@ -14,19 +14,24 @@ from ratings.scope import (
 )
 
 
+_DEFAULT_WINNER = object()
+
+
 def _bout(url: str, a: str, b: str, date: str, *, org: str = "PRIDE",
-          winner: str | None = None, excluded: bool = False) -> dict:
+          winner=_DEFAULT_WINNER, excluded: bool = False, nc: bool = False,
+          source: str = "sherdog") -> dict:
     return {
         "fight_url": url,
         "event_date": pd.Timestamp(date),
         "event_name": f"Card {url}",
         "fighter_a": a,
         "fighter_b": b,
-        "winner": winner if winner is not None else a,
+        "winner": a if winner is _DEFAULT_WINNER else winner,
         "is_draw": False,
+        "is_nc": nc,
         "is_excluded": excluded,
         "org": org,
-        "source": "sherdog",
+        "source": source,
     }
 
 
@@ -104,24 +109,64 @@ def test_pre_unified_rows_survive_the_ufc_org_check(tmp_path):
         scope_guard(pre, ufc, source="majors")
 
 
-def test_a_no_contest_does_not_contradict_a_decided_rematch():
+def test_guard_accepts_an_empty_prior_table():
+    prior = pd.DataFrame(columns=["event_date", "fighter_a", "fighter_b"])
+    rows = pd.DataFrame([_bout("s/1", "Carl Cee", "Dan Dee", "2005-01-01")])
+
+    kept, dropped = scope_guard(rows, prior, source="majors")
+
+    assert kept["fight_url"].tolist() == ["s/1"]
+    assert dropped == {}
+
+
+def test_canonical_ufc_ids_preserve_a_no_contest_and_same_night_rematch():
     """Sakuraba beat Silveira at UFC Japan 1997 in a same-night rematch.
 
-    Their first bout that night was overturned. Same pair, same date, and the
-    overturned row names no winner -- so it is redundant at this key, not
-    contradictory, and the decided result is the one that must survive.
+    Their first bout that night was overturned. The pair and date are the same,
+    but UFC's canonical fight URLs are distinct primary keys, so both real bouts
+    survive while an actual repeated row still does not.
     """
     ufc = pd.DataFrame([_bout("ufc/1", "Alice Ace", "Bob Bee", "2024-01-01", org="UFC")])
     rows = pd.DataFrame([
-        _bout("u/nc", "Kazushi Sakuraba", "Marcus Silveira", "1997-12-21",
-              org="UFC", winner=None, excluded=True),
-        _bout("u/win", "Kazushi Sakuraba", "Marcus Silveira", "1997-12-21",
-              org="UFC", winner="Kazushi Sakuraba"),
+        _bout("http://ufcstats.com/fight-details/2750ac5854e8b28b",
+              "Kazushi Sakuraba", "Marcus Silveira", "1997-12-21",
+              org="UFC", winner=None, excluded=True, nc=True, source="ufc"),
+        _bout("http://ufcstats.com/fight-details/ec1bda9a4c2aab42",
+              "Kazushi Sakuraba", "Marcus Silveira", "1997-12-21",
+              org="UFC", winner="Kazushi Sakuraba", source="ufc"),
+        _bout("http://ufcstats.com/fight-details/ec1bda9a4c2aab42",
+              "Marcus Silveira", "Kazushi Sakuraba", "1997-12-21",
+              org="UFC", winner="Kazushi Sakuraba", source="ufc"),
     ])
 
     kept, dropped = scope_guard(rows, ufc, source="pre_unified")
 
-    assert kept["fight_url"].tolist() == ["u/win"]
+    assert kept["fight_url"].tolist() == [
+        "http://ufcstats.com/fight-details/2750ac5854e8b28b",
+        "http://ufcstats.com/fight-details/ec1bda9a4c2aab42",
+    ]
+    assert pd.isna(kept.iloc[0]["winner"])
+    assert dropped == {"repeated_in_source_table": 1}
+
+
+@pytest.mark.parametrize(
+    ("canonical", "variant"),
+    [
+        ("Jose Aldo", "José Aldo"),
+        ("Francisco Figueiredo", "Francisco Figueredo"),
+    ],
+    ids=["accent", "alias"],
+)
+def test_agreeing_winners_use_the_bout_fingerprint_identity(canonical, variant):
+    ufc = pd.DataFrame([_bout("ufc/1", "Alice Ace", "Bob Bee", "2024-01-01", org="UFC")])
+    rows = pd.DataFrame([
+        _bout("s/1", canonical, "Opponent One", "2019-08-24", winner=canonical),
+        _bout("s/2", "Opponent One", variant, "2019-08-24", winner=variant),
+    ])
+
+    kept, dropped = scope_guard(rows, ufc, source="majors")
+
+    assert kept["fight_url"].tolist() == ["s/1"]
     assert dropped == {"repeated_in_source_table": 1}
 
 

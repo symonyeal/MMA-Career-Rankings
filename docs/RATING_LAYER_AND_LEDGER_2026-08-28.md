@@ -195,7 +195,8 @@ acceptance gate. 1.00/0.95/0.90/0.85 is the column's own design point and was no
 chosen here. It is also the reading of "not too much, but enough that they
 accumulate".
 
-**This reverses a written non-goal.** `PLAN_WHOLE_SPORT_ENGINE_2026-08-21.md` put
+**This reverses a written non-goal.** The archived
+`../_archive/20260831-repository-consolidation/docs/PLAN_WHOLE_SPORT_ENGINE_2026-08-21.md` put
 method out of the model in its "Explicit non-goal" and in the `Method /
 dominance` row of the irredundancy matrix, on an earlier research arm that
 "found no resolved benefit". Re-measured properly, the benefit resolves. Note
@@ -333,9 +334,9 @@ every surface goes through it.
   or "Prime" without a gender means men's.
 * `completeness_gated_board_women.parquet` is the women's board, ranked within
   its own component.
-* Both README blocks are written by the same `build_boards.py --write-readme`
-  run, so they cannot drift, and `GENDER_GAUGE_NOTE` travels with the women's
-  block so the board cannot be published without the reason beside it.
+* All four tables in `RANKINGS.md` are written by the same
+  `build_boards.py --write-readme` run. Every marker is validated before one
+  file write, and `GENDER_GAUGE_NOTE` travels with each women's block.
 * A fighter the gender inference could not label stays on the default board
   rather than being asserted into the women's one. A snapshot with no `gender`
   column gets one mixed board rather than a false claim to have separated
@@ -346,10 +347,11 @@ every surface goes through it.
   boards and labels which one a name was found on, so a woman is never reported
   as missing from the men's board.
 
-* `build_uncertainty.py --gender` picks the component the intervals and tiers
-  are claimed inside, defaulting to men's, and writes `*_women` artifacts for
-  the other. A mixed bootstrap was asking whether Zhang Weili is separated from
-  Jon Jones, which no bout in the corpus can answer.
+* `build_uncertainty.py --gender` picks the component the Career Skill Mass
+  diagnostic intervals and tiers are claimed inside, defaulting to men's, and
+  filters both the population and the event-weight input. A mixed bootstrap was
+  asking whether Zhang Weili is separated from Jon Jones, which no bout in the
+  corpus can answer. These artifacts are not Public Legacy intervals.
 * `ratings.rate_snapshot._print_top` prints one board per component with the
   reason underneath, instead of one mixed table.
 * `analysis.viz.top_n_table` defaults to the published component; a mixed view
