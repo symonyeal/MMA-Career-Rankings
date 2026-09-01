@@ -323,22 +323,6 @@ def test_contender_line_reach_is_measured_over_established_fighters(tmp_path):
     assert reach == pytest.approx(0.5)
 
 
-def test_the_published_board_prints_the_peak_on_the_contender_scale():
-    """The score is a resume figure; the peak is what the line can be read against."""
-    gated = pd.DataFrame({
-        "rank": [1], "fighter": ["A"], "status": ["ranked"],
-        "symon_prime_score": [2000.0],
-    })
-    current = pd.DataFrame({"fighter": ["A"], "peak_mu_whr": [1900.4]})
-
-    table = build_boards.top_board_markdown(
-        gated, current, rating_col="symon_prime_score", top=1
-    )
-
-    assert "Peak" in table.splitlines()[0]
-    assert "1900" in table
-
-
 # --- The window must be chosen by wins, not by the quietest rating stretch ---
 
 def _wins(dates: list[str], fighter: str = "A") -> pd.DataFrame:

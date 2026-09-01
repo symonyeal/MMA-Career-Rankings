@@ -38,6 +38,29 @@
   design records with restoration instructions. Finalized experimental
   snapshots and intentionally retained research evidence were not removed.
 
+## 2026-09-01 - Trim the published columns and retire the second Prime board
+
+- Audited the all-time scoring path for the join defect found in the elite gate.
+  It is clean: the fight table, organisation context, appearances and all three
+  ledgers hold one row per key, and the printed components reconciled to the
+  published score to 4.5e-13. The 2026-08-28 tournament fan-out was the only
+  fault of that class.
+- Every board now prints the same two figures beside the rank: the fighter's
+  level across their best elite decade, on the same scale as the contender line,
+  and how many contenders they beat inside it. The three normalised component
+  columns on the all-time board were retired -- they restated the score they add
+  up to -- along with the separate career-peak column they duplicated.
+- The elite board no longer prints its own score. It is ordered by elite-win
+  mass, whose unit is rating points times wins, which reads against nothing; the
+  two figures it is built from are shown instead.
+- Retired the ungated Prime tables from the publication. The elite-tested board
+  answers the same question behind an evidence floor, so two Prime tables was
+  one too many. The `prime_board*.parquet` artifacts remain.
+- Rewrote the overview: the word "business" is gone throughout, the published
+  outputs are down from six to four, and stale prose was cut -- a Prime window
+  definition the board no longer uses, a Score column that is no longer printed,
+  and an uncertainty caveat describing artifacts the snapshot does not contain.
+
 ## 2026-09-01 - Choose the elite decade by wins, not by the quietest rating
 
 - The elite board read its win count from `symon_prime_score`'s window, which is

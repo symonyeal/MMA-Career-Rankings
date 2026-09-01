@@ -33,12 +33,10 @@ PUBLICATION_MARKERS = (
     "PUBLICATION:RELEASE",
     "BOARD:TOP100",
     "BOARD:WOMEN10",
-    "BOARD:PRIME100",
-    "BOARD:PRIMEWOMEN10",
     "BOARD:ELITEPRIME50",
     "BOARD:ELITEPRIMEWOMEN10",
 )
-# The business overview publishes the two headline boards beside the release
+# The overview publishes the two headline boards beside the release
 # facts they were built from. Every other table stays in the publication only.
 OVERVIEW_MARKERS = ("PUBLICATION:RELEASE", "BOARD:TOP100", "BOARD:ELITEPRIME50")
 
@@ -56,10 +54,10 @@ def test_generated_publication_carries_every_board():
         assert rankings.count(f"<!-- {marker}:END -->") == 1
 
 
-def test_business_overview_publishes_only_the_headline_boards():
+def test_overview_publishes_only_the_headline_boards():
     readme = (PROJECT_ROOT / "README.md").read_text(encoding="utf-8")
 
-    assert "## Business outputs" in readme
+    assert "## What is published" in readme
     for marker in OVERVIEW_MARKERS:
         assert readme.count(f"<!-- {marker}:BEGIN -->") == 1
         assert readme.count(f"<!-- {marker}:END -->") == 1

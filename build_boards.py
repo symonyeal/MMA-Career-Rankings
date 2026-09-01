@@ -9,8 +9,9 @@ snapshot is finalized):
   can be ranked, abstains otherwise
 * ``completeness_gated_board_women.parquet`` — the same board for the women's
   component, which is a separate ranking because the two never fight
-* ``prime_board.parquet`` and ``prime_board_women.parquet`` — the corresponding
-  best-ten-year boards when the snapshot contains the Prime score
+* ``prime_board.parquet`` and ``prime_board_women.parquet`` — the ungated
+  best-ten-year boards, kept as artifacts but no longer published: the
+  elite-tested board answers the same question behind an evidence floor
 * ``prime_elite_board.parquet`` and ``prime_elite_board_women.parquet`` — the
   same Prime score behind the elite-tested evidence floor
 
@@ -44,7 +45,6 @@ from ratings.gender import (
     GENDER_SUFFIX,
     partition_by_gender,
 )
-from ratings.legacy_resume import PUBLIC_LEGACY_DISPLAY_SCALE
 from ratings.opponent_quality import (
     CONTENDER_LINE_MU,
     MIN_OPPONENT_UFC_BOUTS,
@@ -96,23 +96,10 @@ RATING_FLOOR_IS_UNRANKED = {
     "symon_career_skill_mass": 0.0,
 }
 
-# The published score is a value-normalised sum: each component is divided by its
-# own observed maximum, so the three printed contributions add back to the total
-# exactly. Printing them is the receipt for a rank, not three more scores.
-PUBLIC_LEGACY_COMPONENTS = (
-    ("public_legacy_skill_score", "Skill"),
-    ("public_legacy_title_score", "Title"),
-    ("public_legacy_schedule_score", "Schedule"),
-)
-
 README_BOARD_BEGIN = "<!-- BOARD:TOP100:BEGIN -->"
 README_BOARD_END = "<!-- BOARD:TOP100:END -->"
 README_WOMEN_BEGIN = "<!-- BOARD:WOMEN10:BEGIN -->"
 README_WOMEN_END = "<!-- BOARD:WOMEN10:END -->"
-README_PRIME_BEGIN = "<!-- BOARD:PRIME100:BEGIN -->"
-README_PRIME_END = "<!-- BOARD:PRIME100:END -->"
-README_PRIME_WOMEN_BEGIN = "<!-- BOARD:PRIMEWOMEN10:BEGIN -->"
-README_PRIME_WOMEN_END = "<!-- BOARD:PRIMEWOMEN10:END -->"
 README_ELITE_PRIME_BEGIN = "<!-- BOARD:ELITEPRIME50:BEGIN -->"
 README_ELITE_PRIME_END = "<!-- BOARD:ELITEPRIME50:END -->"
 README_ELITE_PRIME_WOMEN_BEGIN = "<!-- BOARD:ELITEPRIMEWOMEN10:BEGIN -->"
@@ -510,18 +497,6 @@ def write_board_artifacts(
     }
 
 
-def _public_legacy_contributions(current: pd.DataFrame) -> pd.DataFrame:
-    """Per-fighter display points for each component of the published score."""
-    out = current[["fighter"]].copy()
-    for column, label in PUBLIC_LEGACY_COMPONENTS:
-        values = pd.to_numeric(current[column], errors="coerce").fillna(0.0)
-        ceiling = float(values.max())
-        out[label] = (
-            PUBLIC_LEGACY_DISPLAY_SCALE * values / ceiling if ceiling > 0 else values * 0.0
-        )
-    return out
-
-
 def top_board_markdown(
     gated: pd.DataFrame,
     current: pd.DataFrame,
@@ -534,40 +509,29 @@ def top_board_markdown(
     if ranked.empty:
         raise ValueError("the gated board has no ranked fighters to publish")
 
-    table = pd.DataFrame(
-        {
-            "#": ranked["rank"].astype(int).to_numpy(),
-            "Fighter": ranked["fighter"].str.replace("|", r"\|", regex=False).to_numpy(),
-            "Score": ranked[rating_col].round(1).to_numpy(),
-        }
-    )
-    if rating_col == "public_legacy_score":
-        merged = ranked[["fighter"]].merge(
-            _public_legacy_contributions(current), on="fighter", how="left"
-        )
-        for _, label in PUBLIC_LEGACY_COMPONENTS:
-            table[label] = merged[label].round(1).to_numpy()
-    if ELITE_LEVEL_COL in ranked.columns:
-        # On the elite board the level that drives the score is the mean rating
-        # inside the fighter's own elite decade, not their career peak.
-        table["Level"] = (
-            pd.to_numeric(ranked[ELITE_LEVEL_COL], errors="coerce")
-            .round(0).astype("Int64").to_numpy()
-        )
-    elif "peak_mu_whr" in current.columns:
-        peak = pd.to_numeric(
-            ranked["fighter"].map(current.set_index("fighter")["peak_mu_whr"]),
-            errors="coerce",
-        )
-        table["Peak"] = peak.round(0).astype("Int64").to_numpy()
-    if rating_col != PRIME_RATING_COL and PRIME_RATING_COL in ranked.columns:
-        table["Prime"] = ranked[PRIME_RATING_COL].round(1).to_numpy()
-    if "tested_opponent_wins" in ranked.columns:
-        table["Elite wins"] = (
-            pd.to_numeric(ranked["tested_opponent_wins"], errors="raise")
-            .astype(int)
-            .to_numpy()
-        )
+    columns: dict[str, object] = {
+        "#": ranked["rank"].astype(int).to_numpy(),
+        "Fighter": ranked["fighter"].str.replace("|", r"\\|", regex=False).to_numpy(),
+    }
+    # The elite board is ordered by elite-win mass, whose unit is rating points
+    # times wins. Printing that adds a number nothing can be read against; the
+    # two figures it is built from are printed instead.
+    if rating_col != ELITE_PRIME_RATING_COL:
+        columns["Score"] = ranked[rating_col].round(1).to_numpy()
+    lookup = current.set_index("fighter") if "fighter" in current.columns else current
+    for label, source in (("Prime", ELITE_LEVEL_COL), ("Elite wins", "elite_wins")):
+        values = None
+        if source in ranked.columns:
+            values = pd.to_numeric(ranked[source], errors="coerce")
+        elif source in getattr(lookup, "columns", []):
+            values = pd.to_numeric(ranked["fighter"].map(lookup[source]), errors="coerce")
+        if values is not None:
+            # Rendered as text: a fighter with no elite decade has no value, and
+            # letting pandas hold the gap turns the whole column into floats.
+            columns[label] = [
+                "" if pd.isna(value) else f"{value:.0f}" for value in values
+            ]
+    table = pd.DataFrame(columns)
 
     header = "| " + " | ".join(table.columns) + " |"
     align = "| ---: | --- |" + " ---: |" * (len(table.columns) - 2)
@@ -625,7 +589,7 @@ def publication_release_markdown(
     summary: dict[str, object],
     current: pd.DataFrame,
 ) -> str:
-    """Business-facing release facts generated from the same snapshot."""
+    """Release facts generated from the same snapshot as the tables."""
     snapshot = Path(snapshot_dir)
     rating_run_path = snapshot / "rating_run.json"
     combined_path = snapshot / "combined_fights_summary.json"
@@ -722,7 +686,7 @@ def update_publication_files(
 ) -> None:
     """Refresh every publication file, validating all of them before any write.
 
-    The business overview reproduces two of the publication's tables. Rendering
+    The overview reproduces two of the publication's tables. Rendering
     both documents before either is promoted stops a marker missing from the
     second file from leaving the first one published against a different
     release.
@@ -739,23 +703,6 @@ def update_readme_board(readme_path: Path, table: str) -> None:
     """Replace the marked board block in the README with a freshly built table."""
     update_readme_block(
         readme_path, table, begin=README_BOARD_BEGIN, end=README_BOARD_END
-    )
-
-
-def update_readme_prime_board(readme_path: Path, table: str) -> None:
-    """Replace the Prime block, published beside the all-time table."""
-    update_readme_block(
-        readme_path, table, begin=README_PRIME_BEGIN, end=README_PRIME_END
-    )
-
-
-def update_readme_prime_women_board(readme_path: Path, table: str) -> None:
-    """Replace the separately ranked women's Prime block."""
-    update_readme_block(
-        readme_path,
-        f"{GENDER_GAUGE_NOTE}\n\n{table}",
-        begin=README_PRIME_WOMEN_BEGIN,
-        end=README_PRIME_WOMEN_END,
     )
 
 
@@ -799,7 +746,7 @@ def main() -> None:
         "--overview-path",
         type=Path,
         default=Path("README.md"),
-        help="Business overview whose headline boards are refreshed in the same "
+        help="Overview whose headline boards are refreshed in the same "
              "run as --write-readme (default README.md).",
     )
     ap.add_argument("--readme-top", type=int, default=100)
@@ -842,13 +789,6 @@ def main() -> None:
           f"{len(ranked):,} ranked, {len(gated) - len(ranked):,} withheld")
     print(gated.loc[~gated["status"].eq("ranked"), "status"].value_counts().to_string())
     print(ranked.head(args.top)[["rank", "fighter", core_col]].round(1).to_string(index=False))
-    prime_path = out / "prime_board.parquet"
-    if prime_path.exists():
-        prime_ranked = pd.read_parquet(prime_path)
-        prime_ranked = prime_ranked[prime_ranked["status"].eq("ranked")]
-        print(f"\nprime board (men's): {len(prime_ranked):,} ranked")
-        print(prime_ranked.head(args.top)[["rank", "fighter", PRIME_RATING_COL]]
-              .round(1).to_string(index=False))
     if women is not None:
         women_ranked = women[women["status"].eq("ranked")]
         print(f"\ncompleteness-gated board (women's): {len(women_ranked):,} ranked, "
@@ -860,9 +800,15 @@ def main() -> None:
 
     if args.write_readme is not None:
         current = pd.read_parquet(Path(args.snapshot_dir) / "ratings_current.parquet")
-        # The published score is a resume figure on no familiar scale. The peak
-        # rating puts every row on the same scale as the contender line.
-        current["peak_mu_whr"] = current["fighter"].map(peak_levels(args.snapshot_dir))
+        # Every board prints the same two figures: the fighter's level across
+        # their best elite decade, on the same scale as the contender line, and
+        # how many contenders they beat inside it.
+        decade = _elite_decade_map(args.snapshot_dir)
+        if decade is not None:
+            current = current.merge(
+                decade[["fighter", ELITE_LEVEL_COL, "elite_wins"]],
+                on="fighter", how="left",
+            )
         release_table = publication_release_markdown(args.snapshot_dir, summary, current)
         top_table = top_board_markdown(
             gated, current, rating_col=core_col, top=args.readme_top
@@ -872,21 +818,7 @@ def main() -> None:
             (README_RELEASE_BEGIN, README_RELEASE_END, release_table),
             (README_BOARD_BEGIN, README_BOARD_END, top_table),
         ]
-        generated_prime = summary.get("prime_ranked_by_gender", {})
         generated_elite = summary.get("elite_prime_ranked_by_gender", {})
-        prime_path = out / "prime_board.parquet"
-        prime = None
-        if "M" in generated_prime:
-            prime = pd.read_parquet(prime_path)
-            replacements.append(
-                (
-                    README_PRIME_BEGIN,
-                    README_PRIME_END,
-                    top_board_markdown(
-                        prime, current, rating_col=PRIME_RATING_COL, top=args.readme_top
-                    ),
-                ),
-            )
         if women is not None:
             replacements.append(
                 (
@@ -897,22 +829,6 @@ def main() -> None:
                         women, current, rating_col=core_col, top=args.women_top
                     ),
                 ),
-            )
-        prime_women_path = out / "prime_board_women.parquet"
-        if "F" in generated_prime:
-            prime_women = pd.read_parquet(prime_women_path)
-            replacements.append(
-                (
-                    README_PRIME_WOMEN_BEGIN,
-                    README_PRIME_WOMEN_END,
-                    f"{GENDER_GAUGE_NOTE}\n\n"
-                    + top_board_markdown(
-                        prime_women,
-                        current,
-                        rating_col=PRIME_RATING_COL,
-                        top=args.women_top,
-                    ),
-                )
             )
         elite_path = out / "prime_elite_board.parquet"
         if "M" in generated_elite:

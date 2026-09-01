@@ -252,25 +252,44 @@ def _published_board() -> tuple[pd.DataFrame, pd.DataFrame]:
     return gated, current
 
 
-def test_published_table_shows_components_that_add_back_to_the_score():
-    """The three printed columns are the receipt for the rank, so they must sum."""
+def test_published_table_prints_the_level_and_the_evidence_not_components():
+    """Every board prints the same two figures beside the score.
+
+    The three normalised component columns were retired: they restated the
+    score they add up to, and said nothing a reader could check the contender
+    line against.
+    """
     gated, current = _published_board()
+    current = current.assign(elite_level=[2100.0, 1950.0, 1800.0][: len(current)],
+                             elite_wins=[9, 6, 4][: len(current)])
     table = build_boards.top_board_markdown(
         gated, current, rating_col="public_legacy_score", top=100
     )
     lines = table.splitlines()
 
-    assert lines[0] == "| # | Fighter | Score | Skill | Title | Schedule |"
+    assert lines[0] == "| # | Fighter | Score | Prime | Elite wins |"
+    for retired in ("Skill", "Title", "Schedule"):
+        assert f"| {retired} " not in lines[0]
     # Carl is withheld by the completeness gate and must not be published.
     assert len(lines) == 4
     assert "Carl" not in table
 
     alice = [cell.strip() for cell in lines[2].split("|")[1:-1]]
     assert alice[:2] == ["1", "Alice"]
-    assert sum(float(cell) for cell in alice[3:]) == pytest.approx(float(alice[2]), abs=0.05)
+    assert alice[3] == "2100"
+    assert alice[4] == "9"
 
-    bob = [cell.strip() for cell in lines[3].split("|")[1:-1]]
-    assert bob[4] == "1000.0", "the title component normalises on its own maximum"
+
+def test_a_fighter_with_no_elite_decade_prints_an_empty_cell():
+    """A gap must stay a gap, not become a zero or turn the column into floats."""
+    gated, current = _published_board()
+    current = current.assign(elite_level=float("nan"), elite_wins=float("nan"))
+
+    table = build_boards.top_board_markdown(
+        gated, current, rating_col="public_legacy_score", top=100
+    )
+
+    assert "|  |  |" in table.splitlines()[2]
 
 
 def test_published_table_honours_the_row_limit_and_needs_ranked_rows():
@@ -293,21 +312,24 @@ def test_elite_prime_table_publishes_the_evidence_count():
         {
             "rank": [1],
             "fighter": ["Proven Fighter"],
-            "symon_prime_score": [2050.0],
+            "elite_prime_score": [1234.0],
             "status": ["ranked"],
-            "tested_opponent_wins": [6],
+            "elite_level": [2050.0],
+            "elite_wins": [6],
         }
     )
 
     table = build_boards.top_board_markdown(
         gated,
         pd.DataFrame({"fighter": ["Proven Fighter"]}),
-        rating_col="symon_prime_score",
+        rating_col=build_boards.ELITE_PRIME_RATING_COL,
         top=50,
     )
 
-    assert table.splitlines()[0] == "| # | Fighter | Score | Elite wins |"
-    assert "| 1 | Proven Fighter | 2050.0 | 6 |" in table
+    # The mass the board is ordered by is not printed: its unit is rating points
+    # times wins, which reads against nothing.
+    assert table.splitlines()[0] == "| # | Fighter | Prime | Elite wins |"
+    assert "| 1 | Proven Fighter | 2050 | 6 |" in table
 
 
 def test_readme_board_block_is_replaced_in_place(tmp_path: Path):
@@ -479,8 +501,8 @@ def test_multi_block_publication_validates_every_marker_before_writing(tmp_path:
                     "new men",
                 ),
                 (
-                    build_boards.README_PRIME_BEGIN,
-                    build_boards.README_PRIME_END,
+                    build_boards.README_ELITE_PRIME_BEGIN,
+                    build_boards.README_ELITE_PRIME_END,
                     "new prime",
                 ),
             ),
@@ -494,10 +516,10 @@ def test_multi_block_publication_updates_all_four_boards_together(tmp_path: Path
     markers = (
         (build_boards.README_BOARD_BEGIN, build_boards.README_BOARD_END, "men"),
         (build_boards.README_WOMEN_BEGIN, build_boards.README_WOMEN_END, "women"),
-        (build_boards.README_PRIME_BEGIN, build_boards.README_PRIME_END, "prime men"),
+        (build_boards.README_ELITE_PRIME_BEGIN, build_boards.README_ELITE_PRIME_END, "elite men"),
         (
-            build_boards.README_PRIME_WOMEN_BEGIN,
-            build_boards.README_PRIME_WOMEN_END,
+            build_boards.README_ELITE_PRIME_WOMEN_BEGIN,
+            build_boards.README_ELITE_PRIME_WOMEN_END,
             "prime women",
         ),
     )
