@@ -36,10 +36,10 @@ GENDER_SUFFIX = {"M": "", "F": "_women"}
 DEFAULT_GENDER = "M"
 
 GENDER_GAUGE_NOTE = (
-    "Men and women never fight, so no bout locates the two rating levels "
-    "against each other: their relative level is set by the prior, not by "
-    "evidence, and one number cannot rank them together. The boards are "
-    "therefore separate, and each one's ranks are identified within it."
+    "Men and women never fight each other, so no result places the two "
+    "groups on one scale. Ranking them in a single list would be guesswork. "
+    "The boards are kept separate, and a rank means something only within "
+    "its own board."
 )
 
 

@@ -37,6 +37,7 @@ from ratings.scope import (
     SCOPE_ARTIFACT,
     SCOPE_MERGE_ORDER,
     bout_dedupe_key,
+    canonical_date_drift_matches,
     corpora_for_scope,
     merge_scope,
     scope_guard,
@@ -172,6 +173,15 @@ def _tag_availability(
             key = str(fingerprint)
             if key in memberships:
                 memberships[key].add(corpus)
+
+        # A shared UFC bout can differ by one calendar day between UFCStats
+        # and a Sherdog fighter page. The merge guard correctly keeps the UFC
+        # parse; carry the lower corpus's membership onto that same survivor
+        # instead of making the dedupe erase its provenance.
+        drift_matches = canonical_date_drift_matches(eligible, combined)
+        for prior_index in drift_matches["prior_index"]:
+            key = str(combined.loc[prior_index, "bout_fingerprint"])
+            memberships[key].add(corpus)
 
     out = combined.copy()
     out[AVAILABLE_IN_CORPORA] = [

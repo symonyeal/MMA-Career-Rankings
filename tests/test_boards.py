@@ -242,11 +242,9 @@ def _published_board() -> tuple[pd.DataFrame, pd.DataFrame]:
     current = pd.DataFrame(
         {
             "fighter": ["Alice", "Bob", "Carl"],
-            # Each component is normalised by its own maximum, so Alice takes
-            # 1000 on skill and Bob takes 1000 on title.
             "public_legacy_skill_score": [40.0, 20.0, 4.0],
             "public_legacy_title_score": [8.0, 16.0, 0.0],
-            "public_legacy_schedule_score": [50.0, 0.0, 10.0],
+            "public_legacy_resume_score": [50.0, 0.0, 10.0],
         }
     )
     return gated, current
@@ -305,6 +303,52 @@ def test_published_table_honours_the_row_limit_and_needs_ranked_rows():
         build_boards.top_board_markdown(
             withheld, current, rating_col="public_legacy_score", top=100
         )
+
+
+def test_all_time_table_prints_the_prime_board_position():
+    """The all-time board carries where each fighter sits on the Prime board.
+
+    The position comes from the published elite-tested board, so it is not
+    monotone in the Prime level printed beside it: that board orders elite-win
+    mass, and the level is a rate.
+    """
+    gated, current = _published_board()
+    current = current.assign(
+        elite_level=[2100.0, 1950.0, 1800.0][: len(current)],
+        elite_wins=[9, 6, 4][: len(current)],
+    )
+    table = build_boards.top_board_markdown(
+        gated,
+        current,
+        rating_col="public_legacy_score",
+        top=100,
+        # Bob cleared the all-time gate but not the elite-tested evidence floor.
+        prime_ranks=pd.Series({"Alice": 7}),
+    )
+    lines = table.splitlines()
+
+    assert lines[0] == "| # | Fighter | Score | Prime | Prime rank | Elite wins |"
+    alice = [cell.strip() for cell in lines[2].split("|")[1:-1]]
+    bob = [cell.strip() for cell in lines[3].split("|")[1:-1]]
+    assert alice[3:] == ["2100", "7", "9"]
+    # Withheld from the Prime board is an abstention, not rank zero or last.
+    assert bob[4] == ""
+
+
+def test_board_rank_map_reads_only_ranked_rows(tmp_path: Path):
+    path = tmp_path / "prime_elite_board.parquet"
+    pd.DataFrame(
+        {
+            "fighter": ["Ranked", "Withheld"],
+            "rank": [3, pd.NA],
+            "status": ["ranked", "insufficient observed history"],
+        }
+    ).to_parquet(path, index=False)
+
+    positions = build_boards.board_rank_map(path)
+
+    assert positions.to_dict() == {"Ranked": 3}
+    assert build_boards.board_rank_map(tmp_path / "absent.parquet").empty
 
 
 def test_elite_prime_table_publishes_the_evidence_count():

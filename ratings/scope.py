@@ -44,6 +44,7 @@ SCOPE_ARTIFACT: dict[str, str] = {
 UFC_ONLY = "ufc"
 ALL_SCOPES = "all"
 DEFAULT_PUBLISHED_SCOPE = "majors,pre_unified"
+CANONICAL_DATE_DRIFT_DAYS = 1
 
 # Merge order is by **source authority**, not alphabetical, because the dedupe
 # guard keeps whichever copy of a bout arrives first.
@@ -151,6 +152,115 @@ def _winner_key(winner: object) -> str | None:
     return normalize_name_key(winner, compact=True) or None
 
 
+def _pair_key(fights: pd.DataFrame) -> pd.Series:
+    """Order-independent fighter identity without the date component."""
+    if fights.empty:
+        return pd.Series(index=fights.index, dtype=object)
+    return pd.Series(
+        [
+            "::".join(
+                sorted(
+                    [
+                        normalize_name_key(a, compact=True),
+                        normalize_name_key(b, compact=True),
+                    ]
+                )
+            )
+            for a, b in zip(fights["fighter_a"], fights["fighter_b"])
+        ],
+        index=fights.index,
+        dtype=object,
+    )
+
+
+def _result_key(fights: pd.DataFrame) -> pd.Series:
+    """Comparable decided result, including draws and no-contests."""
+    winner = fights.get("winner", pd.Series(pd.NA, index=fights.index)).map(_winner_key)
+    result = winner.map(lambda value: f"winner::{value}" if value else pd.NA)
+    draws = fights.get("is_draw", pd.Series(False, index=fights.index)).fillna(False).astype(bool)
+    no_contests = fights.get("is_nc", pd.Series(False, index=fights.index)).fillna(False).astype(bool)
+    result.loc[draws] = "draw"
+    result.loc[no_contests] = "no_contest"
+    return result
+
+
+def canonical_date_drift_matches(
+    extra: pd.DataFrame,
+    prior: pd.DataFrame,
+    *,
+    day_slack: int = CANONICAL_DATE_DRIFT_DAYS,
+) -> pd.DataFrame:
+    """Match a lower-source copy whose UFC date crossed midnight.
+
+    The completed Sherdog career crawl carries UFC bouts from fighter pages.
+    Nine international UFC cards in the 2026-08-13 snapshot use the local date
+    there and the preceding date in UFCStats, leaving 99 physical bouts in the
+    likelihood twice. Pair and date proximity alone is unsafe: the same corpus
+    also holds real consecutive-day tournament rematches. A match therefore
+    requires the same normalized pair and result, a one-day difference, and
+    exactly one canonical UFC source row. Distinct non-UFC event sessions are
+    left alone even when the same fighter wins both bouts.
+
+    The returned indices are evidence pairs rather than only a drop mask so the
+    combined-table builder can preserve the losing corpus in
+    ``available_in_corpora`` on the surviving canonical row.
+    """
+    columns = ["extra_index", "prior_index"]
+    required = {"fighter_a", "fighter_b", "event_date", "source"}
+    if day_slack < 1 or extra.empty or prior.empty:
+        return pd.DataFrame(columns=columns)
+    if not required <= set(extra.columns) or not required <= set(prior.columns):
+        return pd.DataFrame(columns=columns)
+
+    left = pd.DataFrame(
+        {
+            "extra_index": extra.index,
+            "_pair": _pair_key(extra),
+            "_result": _result_key(extra),
+            "_extra_date": pd.to_datetime(extra["event_date"], errors="coerce"),
+            "_extra_source": extra["source"].fillna("").astype(str).str.strip().str.casefold(),
+        },
+        index=extra.index,
+    )
+    right = pd.DataFrame(
+        {
+            "prior_index": prior.index,
+            "_pair": _pair_key(prior),
+            "_result": _result_key(prior),
+            "_prior_date": pd.to_datetime(prior["event_date"], errors="coerce"),
+            "_prior_source": prior["source"].fillna("").astype(str).str.strip().str.casefold(),
+        },
+        index=prior.index,
+    )
+    left = left.dropna(subset=["_result", "_extra_date"])
+    right = right.dropna(subset=["_result", "_prior_date"])
+    if left.empty or right.empty:
+        return pd.DataFrame(columns=columns)
+
+    candidates = left.merge(right, on=["_pair", "_result"], how="inner")
+    gap = (candidates["_extra_date"] - candidates["_prior_date"]).abs().dt.days
+    one_canonical = candidates["_extra_source"].eq("ufc") ^ candidates[
+        "_prior_source"
+    ].eq("ufc")
+    matched = candidates[gap.between(1, day_slack, inclusive="both") & one_canonical]
+    # If either side could refer to two rows, proximity did not identify a
+    # one-to-one physical fight. Preserve the whole ambiguity for review.
+    matches_per_extra = matched.groupby("extra_index")["prior_index"].nunique()
+    matches_per_prior = matched.groupby("prior_index")["extra_index"].nunique()
+    unambiguous_extra = set(matches_per_extra[matches_per_extra.eq(1)].index)
+    unambiguous_prior = set(matches_per_prior[matches_per_prior.eq(1)].index)
+    matched = matched[
+        matched["extra_index"].isin(unambiguous_extra)
+        & matched["prior_index"].isin(unambiguous_prior)
+    ]
+    return (
+        matched[columns]
+        .drop_duplicates()
+        .sort_values(columns, kind="mergesort")
+        .reset_index(drop=True)
+    )
+
+
 def bout_dedupe_key(
     fights: pd.DataFrame,
     fingerprint: pd.Series | None = None,
@@ -199,6 +309,10 @@ def scope_guard(
         19 of those were the *same bout* as a canonical row -- same pair, same
         date -- so admitting the scope updated those ratings twice, once at
         weight 1.0 and once at an org weight.
+    ``canonical_date_drift``
+        A lower-source copy has the same pair and result as a canonical UFC
+        bout one day away. This is the observed international-date mismatch;
+        non-UFC consecutive-day tournament rematches are deliberately exempt.
     ``contradictory_duplicate``
         the same bout arrives once per source perspective, and the perspectives
         do not always agree on who won. Keeping either row asserts a result the
@@ -228,6 +342,12 @@ def scope_guard(
         if int(duplicate.sum()):
             dropped["already_in_ufc_table"] = int(duplicate.sum())
             out = out[~duplicate]
+
+        drift_matches = canonical_date_drift_matches(out, ufc_fights)
+        if not drift_matches.empty:
+            drifted = set(drift_matches["extra_index"])
+            dropped["canonical_date_drift"] = len(drifted)
+            out = out.drop(index=drifted)
 
         out["_bout_key"] = bout_dedupe_key(out, out["_fp"])
         out["_winner_key"] = out["winner"].map(_winner_key)

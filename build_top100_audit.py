@@ -294,7 +294,8 @@ def _model_reason(row: pd.Series, rating_col: str) -> str:
         f"skill mass {_fmt_num(row.get('symon_career_skill_mass'), 1)}; "
         f"evaluated skill {_fmt_num(row.get('public_legacy_skill_score'), 1)} "
         f"(exposure {_fmt_num(row.get('public_legacy_exposure_factor'), 2)}); "
-        f"schedule {_fmt_num(row.get('public_legacy_schedule_score'), 1)}; "
+        f"contender resume {_fmt_num(row.get('public_legacy_resume_score'), 1)} "
+        f"({int(row.get('public_legacy_contender_wins', 0) or 0)} wins); "
         f"title ledger {title_wins} wins/{defenses} defenses/{divisions} divisions; "
         f"{source}"
     )

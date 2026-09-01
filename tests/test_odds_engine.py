@@ -281,7 +281,7 @@ def test_rate_snapshot_produces_lean_core_without_odds(tmp_path: Path):
     assert "symon_career_skill_mass" in current.columns
     assert "public_legacy_score" in current.columns
     assert "public_legacy_title_score" in current.columns
-    assert "public_legacy_schedule_score" in current.columns
+    assert "public_legacy_resume_score" in current.columns
     assert "symon_prime_score" in current.columns
     assert "symon_peak_score" not in current.columns
     assert (snap / "combined_fights.parquet").exists()

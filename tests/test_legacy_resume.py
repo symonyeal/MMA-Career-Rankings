@@ -4,9 +4,13 @@ import pandas as pd
 import pytest
 
 from ratings.legacy_resume import (
+    LEGACY_ACHIEVEMENT_WEIGHT,
+    LEGACY_QUALITY_SKILL_SHARE,
     PUBLIC_LEGACY_DISPLAY_SCALE,
     RANK_CONTEXT_WIN_POINTS,
+    RESUME_QUALITY_SCALE,
     championship_resume_ledger,
+    contender_resume_ledger,
     public_legacy_score_rows,
     source_title_resume_ledger,
     title_quality,
@@ -250,13 +254,23 @@ def test_public_legacy_score_keeps_raw_skill_mass_as_auditable_component():
 
     assert scored["public_legacy_skill_mass"] == pytest.approx(123.0)
     assert scored["public_legacy_title_score"] == pytest.approx(0.0)
-    assert scored["public_legacy_schedule_score"] == pytest.approx(0.0)
-    # Value-normalised: the only fighter is his own maximum on the one live
-    # component, so the score is one unit of display scale.
-    assert scored["public_legacy_score"] == pytest.approx(PUBLIC_LEGACY_DISPLAY_SCALE)
+    assert scored["public_legacy_resume_score"] == pytest.approx(0.0)
+    # Skill is the only live component, so it is its own scale statistic; the
+    # score is the share the stated weights give it and nothing else.
+    assert scored["public_legacy_score"] == pytest.approx(
+        PUBLIC_LEGACY_DISPLAY_SCALE
+        * (1.0 - LEGACY_ACHIEVEMENT_WEIGHT)
+        * LEGACY_QUALITY_SKILL_SHARE
+    )
 
 
-def test_public_legacy_schedule_score_counts_rank_context_on_wins_only():
+def test_rank_context_win_mass_is_reported_but_no_longer_scored():
+    """The retired schedule component still reports; it must not reach the score.
+
+    It counted wins over an opponent inside the top ``min(0.20 * pool, 15)`` of
+    their division, a bar that agreed with neither the contender line nor
+    itself across divisions. The count survives as a display fact.
+    """
     current = pd.DataFrame(
         {"fighter": ["Schedule"], "symon_career_skill_mass": [100.0]}
     )
@@ -276,12 +290,151 @@ def test_public_legacy_schedule_score_counts_rank_context_on_wins_only():
     scored = public_legacy_score_rows(current, appearances).iloc[0]
 
     assert scored["public_legacy_rank_context_win_mass"] == pytest.approx(0.08)
-    assert scored["public_legacy_schedule_score"] == pytest.approx(
-        0.08 * RANK_CONTEXT_WIN_POINTS
-    )
-    # Two live components, each at its own maximum for a single-fighter frame.
+    assert "public_legacy_schedule_score" not in scored.index
+    # Skill is still the only live component: the rank-context mass buys nothing.
     assert scored["public_legacy_score"] == pytest.approx(
-        2 * PUBLIC_LEGACY_DISPLAY_SCALE
+        PUBLIC_LEGACY_DISPLAY_SCALE
+        * (1.0 - LEGACY_ACHIEVEMENT_WEIGHT)
+        * LEGACY_QUALITY_SKILL_SHARE
+    )
+    assert RANK_CONTEXT_WIN_POINTS > 0  # retained as a documented display scale
+
+
+def _contender_fixture() -> tuple[pd.DataFrame, pd.DataFrame]:
+    """One qualifying win, one win over an untested opponent, one over a nobody."""
+    fights = pd.DataFrame(
+        [
+            {
+                "fight_url": f"f{i}",
+                "event_date": date,
+                "fighter_a": "Climber",
+                "fighter_b": opponent,
+                "winner": "Climber",
+                "is_draw": False,
+                "source_corpus": "ufc",
+                "is_model_bout": True,
+            }
+            for i, (date, opponent) in enumerate(
+                [
+                    ("2020-06-01", "Contender"),
+                    ("2021-06-01", "Untested"),
+                    ("2022-06-01", "Journeyman"),
+                ]
+            )
+        ]
+    )
+    # Contender needs MIN_OPPONENT_UFC_BOUTS of his own; Untested does not get them.
+    padding = pd.DataFrame(
+        [
+            {
+                "fight_url": f"p{i}",
+                "event_date": "2015-01-01",
+                "fighter_a": "Contender",
+                "fighter_b": f"Filler{i}",
+                "winner": "Contender",
+                "is_draw": False,
+                "source_corpus": "ufc",
+                "is_model_bout": True,
+            }
+            for i in range(8)
+        ]
+    )
+    history = pd.DataFrame(
+        [
+            {"fighter": "Contender", "event_date": "2019-01-01", "mu_whr": 1900.0},
+            {"fighter": "Untested", "event_date": "2020-01-01", "mu_whr": 2100.0},
+            {"fighter": "Journeyman", "event_date": "2021-01-01", "mu_whr": 1500.0},
+        ]
+    )
+    return pd.concat([fights, padding], ignore_index=True), history
+
+
+def test_contender_resume_screens_on_rating_and_on_a_tested_opponent():
+    fights, history = _contender_fixture()
+
+    ledger = contender_resume_ledger(fights, history).set_index("fighter")
+
+    # Only the Contender win qualifies: Untested is rated higher still but has
+    # no tested record of its own, and Journeyman is below the line.
+    assert list(ledger.index) == ["Climber"]
+    assert int(ledger.loc["Climber", "public_legacy_contender_wins"]) == 1
+    assert 0.0 < float(ledger.loc["Climber", "public_legacy_resume_quality"]) < 1.0
+
+
+def test_contender_resume_prices_the_opponent_before_the_bout_not_after():
+    """A win may not be priced by a rating the win itself produced."""
+    fights, history = _contender_fixture()
+    # Move the Contender's only rated appearance to the day of the bout.
+    history.loc[history["fighter"].eq("Contender"), "event_date"] = "2020-06-01"
+
+    assert contender_resume_ledger(fights, history).empty
+
+
+def test_contender_resume_caps_a_year_at_one_contribution():
+    """Single Entry: a year is worth at most one maximal win, however many fell."""
+    rows = []
+    for i in range(6):
+        rows.append(
+            {
+                "fight_url": f"w{i}",
+                "event_date": "2020-06-01",
+                "fighter_a": "Busy",
+                "fighter_b": f"Contender{i}",
+                "winner": "Busy",
+                "is_draw": False,
+                "source_corpus": "ufc",
+                "is_model_bout": True,
+            }
+        )
+        rows += [
+            {
+                "fight_url": f"p{i}{j}",
+                "event_date": "2015-01-01",
+                "fighter_a": f"Contender{i}",
+                "fighter_b": f"Filler{i}{j}",
+                "winner": f"Contender{i}",
+                "is_draw": False,
+                "source_corpus": "ufc",
+                "is_model_bout": True,
+            }
+            for j in range(8)
+        ]
+    history = pd.DataFrame(
+        [
+            {"fighter": f"Contender{i}", "event_date": "2019-01-01", "mu_whr": 2400.0}
+            for i in range(6)
+        ]
+    )
+
+    ledger = contender_resume_ledger(pd.DataFrame(rows), history).set_index("fighter")
+
+    assert int(ledger.loc["Busy", "public_legacy_contender_wins"]) == 6
+    assert float(ledger.loc["Busy", "public_legacy_resume_quality"]) == pytest.approx(1.0)
+
+
+def test_public_legacy_score_weights_achievement_against_quality_as_stated():
+    """The exchange rate is the stated constants, not whoever tops a column."""
+    fights, history = _contender_fixture()
+    current = pd.DataFrame(
+        {"fighter": ["Climber"], "symon_career_skill_mass": [0.0]}
+    )
+
+    scored = public_legacy_score_rows(
+        current, pd.DataFrame(), source_fights=fights, history=history
+    ).iloc[0]
+
+    # Resume is the only live component and is its own scale statistic. It is
+    # still exposure-adjusted: these synthetic bouts carry no organisation, so
+    # the factor sits on its floor.
+    assert scored["public_legacy_resume_score"] == pytest.approx(
+        RESUME_QUALITY_SCALE
+        * scored["public_legacy_resume_quality"]
+        * scored["public_legacy_exposure_factor"]
+    )
+    assert scored["public_legacy_score"] == pytest.approx(
+        PUBLIC_LEGACY_DISPLAY_SCALE
+        * (1.0 - LEGACY_ACHIEVEMENT_WEIGHT)
+        * (1.0 - LEGACY_QUALITY_SKILL_SHARE)
     )
 
 

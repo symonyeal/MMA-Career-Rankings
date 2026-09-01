@@ -497,14 +497,38 @@ def write_board_artifacts(
     }
 
 
+def board_rank_map(path: Path) -> pd.Series:
+    """Fighter -> position on an already-written board, ranked rows only.
+
+    A withheld fighter has no rank and must stay absent rather than be given
+    one: the gate is an abstention, so mapping it to a number would publish a
+    position the board declined to assert.
+    """
+    path = Path(path)
+    if not path.exists():
+        return pd.Series(dtype="float64")
+    board = pd.read_parquet(path)
+    ranked = board[board["status"].eq("ranked")]
+    positions = ranked.set_index("fighter")["rank"]
+    if positions.index.has_duplicates:
+        raise ValueError(f"{path} ranks a fighter more than once")
+    return positions
+
+
 def top_board_markdown(
     gated: pd.DataFrame,
     current: pd.DataFrame,
     *,
     rating_col: str,
     top: int = 100,
+    prime_ranks: pd.Series | None = None,
 ) -> str:
-    """Render the ranked head of the published board as a Markdown table."""
+    """Render the ranked head of the published board as a Markdown table.
+
+    ``prime_ranks`` adds each fighter's position on the published elite-tested
+    Prime board of their own gender. It is passed only to the all-time boards;
+    on the Prime board itself the column would restate the rank beside it.
+    """
     ranked = gated[gated["status"].eq("ranked")].head(top).copy()
     if ranked.empty:
         raise ValueError("the gated board has no ranked fighters to publish")
@@ -530,6 +554,17 @@ def top_board_markdown(
             # letting pandas hold the gap turns the whole column into floats.
             columns[label] = [
                 "" if pd.isna(value) else f"{value:.0f}" for value in values
+            ]
+        # The two Prime columns sit together and are deliberately NOT monotone
+        # in each other: the level is a rate over the fighter's best elite
+        # decade, while the Prime board orders elite-win mass. An empty cell is
+        # a fighter the elite-tested board withheld, not a bad Prime.
+        if label == "Prime" and prime_ranks is not None:
+            positions = pd.to_numeric(
+                ranked["fighter"].map(prime_ranks), errors="coerce"
+            )
+            columns["Prime rank"] = [
+                "" if pd.isna(value) else f"{value:.0f}" for value in positions
             ]
     table = pd.DataFrame(columns)
 
@@ -810,15 +845,27 @@ def main() -> None:
                 on="fighter", how="left",
             )
         release_table = publication_release_markdown(args.snapshot_dir, summary, current)
+        # The Prime boards are read before the all-time tables are rendered, so
+        # each all-time board can print the Prime position of the same gender.
+        generated_elite = summary.get("elite_prime_ranked_by_gender", {})
+        elite_path = out / "prime_elite_board.parquet"
+        elite_women_path = out / "prime_elite_board_women.parquet"
+        prime_rank_men = board_rank_map(elite_path) if "M" in generated_elite else None
+        prime_rank_women = (
+            board_rank_map(elite_women_path) if "F" in generated_elite else None
+        )
         top_table = top_board_markdown(
-            gated, current, rating_col=core_col, top=args.readme_top
+            gated,
+            current,
+            rating_col=core_col,
+            top=args.readme_top,
+            prime_ranks=prime_rank_men,
         )
         elite_table: str | None = None
         replacements: list[tuple[str, str, str]] = [
             (README_RELEASE_BEGIN, README_RELEASE_END, release_table),
             (README_BOARD_BEGIN, README_BOARD_END, top_table),
         ]
-        generated_elite = summary.get("elite_prime_ranked_by_gender", {})
         if women is not None:
             replacements.append(
                 (
@@ -826,11 +873,14 @@ def main() -> None:
                     README_WOMEN_END,
                     f"{GENDER_GAUGE_NOTE}\n\n"
                     + top_board_markdown(
-                        women, current, rating_col=core_col, top=args.women_top
+                        women,
+                        current,
+                        rating_col=core_col,
+                        top=args.women_top,
+                        prime_ranks=prime_rank_women,
                     ),
                 ),
             )
-        elite_path = out / "prime_elite_board.parquet"
         if "M" in generated_elite:
             elite_table = top_board_markdown(
                 pd.read_parquet(elite_path),
@@ -841,7 +891,6 @@ def main() -> None:
             replacements.append(
                 (README_ELITE_PRIME_BEGIN, README_ELITE_PRIME_END, elite_table)
             )
-        elite_women_path = out / "prime_elite_board_women.parquet"
         if "F" in generated_elite:
             replacements.append(
                 (

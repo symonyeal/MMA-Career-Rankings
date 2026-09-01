@@ -119,6 +119,169 @@ def test_guard_accepts_an_empty_prior_table():
     assert dropped == {}
 
 
+def test_guard_collapses_a_canonical_ufc_copy_with_one_day_source_drift():
+    """The same international UFC card must update the rating only once."""
+    ufc = pd.DataFrame([
+        _bout(
+            "ufc/275",
+            "Jiri Prochazka",
+            "Glover Teixeira",
+            "2022-06-11",
+            org="UFC",
+            winner="Jiri Prochazka",
+            source="ufc",
+        )
+    ])
+    rows = pd.DataFrame([
+        _bout(
+            "sherdog/275",
+            "Glover Teixeira",
+            "Jiri Prochazka",
+            "2022-06-12",
+            org=None,
+            winner="Jiri Prochazka",
+            source="sherdog_majors",
+        ),
+        _bout("s/other", "Carl Cee", "Dan Dee", "2005-01-01"),
+    ])
+
+    kept, dropped = scope_guard(rows, ufc, source="majors")
+
+    assert kept["fight_url"].tolist() == ["s/other"]
+    assert dropped == {"canonical_date_drift": 1}
+
+
+def test_guard_collapses_a_one_day_draw_copy():
+    ufc_row = _bout(
+        "ufc/draw",
+        "Mark Hunt",
+        "Antonio Silva",
+        "2013-12-06",
+        org="UFC",
+        winner=None,
+        source="ufc",
+    )
+    ufc_row["is_draw"] = True
+    copied = _bout(
+        "sherdog/draw",
+        "Antonio Silva",
+        "Mark Hunt",
+        "2013-12-07",
+        winner=None,
+        source="sherdog_majors",
+    )
+    copied["is_draw"] = True
+    rows = pd.DataFrame([
+        copied,
+        _bout("s/other", "Carl Cee", "Dan Dee", "2005-01-01"),
+    ])
+
+    kept, dropped = scope_guard(
+        rows,
+        pd.DataFrame([ufc_row]),
+        source="majors",
+    )
+
+    assert kept["fight_url"].tolist() == ["s/other"]
+    assert dropped == {"canonical_date_drift": 1}
+
+
+def test_guard_does_not_expand_the_observed_drift_to_two_days():
+    ufc = pd.DataFrame([
+        _bout(
+            "ufc/1",
+            "Alice Ace",
+            "Bob Bee",
+            "2024-01-01",
+            org="UFC",
+            source="ufc",
+        )
+    ])
+    rows = pd.DataFrame([
+        _bout(
+            "s/1",
+            "Bob Bee",
+            "Alice Ace",
+            "2024-01-03",
+            source="sherdog_majors",
+        )
+    ])
+
+    kept, dropped = scope_guard(rows, ufc, source="majors")
+
+    assert kept["fight_url"].tolist() == ["s/1"]
+    assert dropped == {}
+
+
+def test_guard_preserves_an_ambiguous_one_day_match():
+    """Proximity alone cannot choose between two same-result canonical bouts."""
+    ufc = pd.DataFrame([
+        _bout(
+            "ufc/first",
+            "Alice Ace",
+            "Bob Bee",
+            "2024-01-01",
+            org="UFC",
+            source="ufc",
+        ),
+        _bout(
+            "ufc/second",
+            "Bob Bee",
+            "Alice Ace",
+            "2024-01-03",
+            org="UFC",
+            winner="Alice Ace",
+            source="ufc",
+        ),
+    ])
+    rows = pd.DataFrame([
+        _bout(
+            "s/ambiguous",
+            "Alice Ace",
+            "Bob Bee",
+            "2024-01-02",
+            org=None,
+            source="sherdog_majors",
+        )
+    ])
+
+    kept, dropped = scope_guard(rows, ufc, source="majors")
+
+    assert kept["fight_url"].tolist() == ["s/ambiguous"]
+    assert dropped == {}
+
+
+def test_guard_preserves_distinct_consecutive_day_tournament_rematches():
+    """Pair/date proximity cannot erase two sourced tournament sessions."""
+    prior = pd.DataFrame(columns=["event_date", "fighter_a", "fighter_b", "source"])
+    rows = pd.DataFrame([
+        _bout(
+            "sherdog-majors::827::4397::1061",
+            "Mike Whitehead",
+            "Tim Sylvia",
+            "2002-04-26",
+            winner="Tim Sylvia",
+            source="sherdog_majors",
+        ),
+        _bout(
+            "sherdog-majors::831::4397::1061",
+            "Mike Whitehead",
+            "Tim Sylvia",
+            "2002-04-27",
+            winner="Tim Sylvia",
+            source="sherdog_majors",
+        ),
+    ])
+
+    kept, dropped = scope_guard(rows, prior, source="majors")
+
+    assert kept["fight_url"].tolist() == [
+        "sherdog-majors::827::4397::1061",
+        "sherdog-majors::831::4397::1061",
+    ]
+    assert dropped == {}
+
+
 def test_canonical_ufc_ids_preserve_a_no_contest_and_same_night_rematch():
     """Sakuraba beat Silveira at UFC Japan 1997 in a same-night rematch.
 

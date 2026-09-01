@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 
 from loaders.fightmatrix_organizations import normalize_organization
+from ratings.opponent_quality import CONTENDER_LINE_MU, MIN_OPPONENT_UFC_BOUTS
 from ratings.performance_adjustment import (
     is_real_ufc_title_bout,
     normalize_division_label,
@@ -28,7 +29,9 @@ LEGACY_SCORE_COLUMNS = [
     "public_legacy_title_score",
     "public_legacy_title_quality",
     "public_legacy_qualifying_title_wins",
-    "public_legacy_schedule_score",
+    "public_legacy_resume_score",
+    "public_legacy_resume_quality",
+    "public_legacy_contender_wins",
     "public_legacy_title_appearances",
     "public_legacy_title_wins",
     "public_legacy_title_defenses",
@@ -129,13 +132,118 @@ TITLE_QUALITY_EXPONENT = 4.0
 # assumption. Set to 0.0 to reproduce the 2026-08-27 unadjusted ledger.
 UFC_POOL_OFFSET_ELO = 54.0
 
-# Retained because the schedule ledger is a separate component and was not part
-# of the 2026-08-25 title repair. It is normalised away in the published score.
+# Retained as a REPORTED diagnostic only. Until 2026-09-01 this priced the third
+# component; see the note above ``contender_resume_ledger`` for why it no longer
+# does. It is not added to any score.
 RANK_CONTEXT_WIN_POINTS = 1200.0
 
-# Display scale for the value-normalised score. Three unit components sum to at
-# most 3, which reads badly on a board; multiplying by a constant cannot change
-# any ordering.
+# Display scale for the résumé quality sum, mirroring TITLE_QUALITY_SCALE. Both
+# are display only: the published score normalises each component by its own
+# scale statistic, so neither constant can affect an ordering.
+RESUME_QUALITY_SCALE = 1000.0
+
+# One contribution per active year, the same Single-Entry rule Career Skill Mass
+# already applies. Each qualifying win is worth at most 1.0, so a year is capped
+# at the value of one maximal win however many contenders were beaten in it.
+#
+# Without this the résumé is unbounded in career length, which is the
+# Single-Entry violation ``docs/NEXT_2026-08-28.md`` §3.2 names against the
+# component this replaces: Career Skill Mass already posts one contribution per
+# active year, so an uncapped win ledger posts career length a second time. The
+# cap is a bound, not a mechanism: measured on the 2026-08-13 published scope it
+# binds on 1 of the 639 fighters with any qualifying win, costing Islam
+# Makhachev 0.023 of 2.964. What it buys is that the ledger is now bounded by
+# active years the way Career Skill Mass is, so career length cannot be posted a
+# second time however long a career runs. The uncapped count stays visible as
+# ``public_legacy_contender_wins``.
+RESUME_YEAR_CAP = 1.0
+
+# How the two questions the board answers are combined, as ONE stated exchange
+# rate rather than an emergent one.
+#
+# Until 2026-09-01 the three components were each divided by their own MAXIMUM
+# and summed, described in this file as combining them "without an exchange rate
+# anyone had to invent". That was not what it did. A maximum is a single order
+# statistic, so the exchange rate was invented -- by whichever career happened to
+# top each column, which on the 2026-08-13 snapshot was Jon Jones for two of the
+# three. And because the three have very different tail shapes (max/median of
+# 10.6 for skill, 8.3 for title, 2.9 for the third component), dividing by the
+# max gave the FLATTEST component the most weight. Measured over the published
+# top 100 on that snapshot:
+#
+#   component   share of score mass   variance share, ranks 1-25   ranks 26-100
+#   skill                    21.9%                         36.6%          12.2%
+#   title                    25.1%                         38.9%          29.1%
+#   schedule                 53.0%                         24.5%          58.7%
+#
+# So the board changed its own definition at about rank 25: title and skill above
+# it, schedule below. 52% of the top 100 sat below a tenth of skill's maximum and
+# 43% below a tenth of title's, against 3% for schedule -- the first two had
+# resolution only at the very top, the third had it everywhere.
+#
+# The weights are POLICY, not fits. Nothing in a bout outcome can score them:
+# the public legacy score never enters a win probability, so held-out log loss is
+# silent on it. They say what the board is for, and they are stated here so a
+# reader can disagree with the number rather than with an artifact.
+#
+# Set to 0.30 by the project owner on 2026-09-01 after reading the resulting
+# order. Swept with the skill share held at 0.25, correlations read over a FIXED
+# population (the incumbent published top 100, so the statistic does not change
+# with the board):
+#
+#   achievement  rho(elite wins)  rho(prime)  non-anchors@100  Matt Serra  zero-title@100
+#   0.30                   0.730       0.632                2          60              15
+#   0.40                   0.694       0.604                3          49              12
+#   0.50                   0.639       0.551                4          43               7
+#   0.60                   0.592       0.505                5          40               4
+#   (incumbent board:      0.519       0.418                6          77              14)
+#
+# The trade is legible in that table: weight achievement harder and the board
+# agrees more with the belts and less with the record, and the single-upset
+# artifact section 4 of the 2026-09-01 brief warns about -- Matt Serra high on
+# one win over St-Pierre -- climbs. 0.30 keeps the title ledger a real term while
+# leaving the ordering to the record.
+LEGACY_ACHIEVEMENT_WEIGHT = 0.30
+
+# Inside the quality half: how much is "how good were you" (Career Skill Mass)
+# against "who did you actually beat" (the contender resume).
+#
+# NOT equal, and the asymmetry is evidential rather than aesthetic. The resume is
+# screened twice -- the opponent was above the contender line at the time AND had
+# eight UFC bouts of their own -- while Career Skill Mass is screened not at all:
+# it accumulates positive excess above a bar against whoever was in front of the
+# fighter. That is exactly why the 2026-08-24 audit found it seating Usman
+# Nurmagomedov 6th and Yaroslav Amosov 7th all-time. Weighting an unscreened
+# quantity equally with a doubly-screened one is not the neutral choice.
+#
+# Swept 2026-09-01 with the achievement weight held at 0.5, reading the count of
+# names on ``build_top100_audit.PUBLIC_NON_ANCHORS`` inside the top 100 -- the
+# smell test ``build_boards`` already documents -- and the printed columns'
+# agreement over a FIXED population (the incumbent published top 100, so the
+# statistic does not change with the board):
+#
+#   skill share   non-anchors in top 100   rho(score, elite wins)   rho(score, prime)
+#   0.00                               1                    0.693               0.517
+#   0.25                               4                    0.639               0.551
+#   0.33                               6                    0.620               0.567
+#   0.50                               9                    0.567               0.598
+#   0.75                              10                    0.475               0.626
+#   (incumbent board, for reference:   6                    0.519               0.418)
+#
+# The untested-record promotion this project has fought twice is that first
+# column, and the skill share is the dial on it. 0.25 keeps Career Skill Mass a
+# real term, lands below the incumbent's own non-anchor count, and is the point
+# past which the count starts exceeding it. It is a policy number, not a fit: no
+# bout outcome scores it.
+LEGACY_QUALITY_SKILL_SHARE = 0.25
+
+# The scale statistic each component is divided by: the mean of its own top N
+# values. It is a location statistic over a hundred careers rather than a single
+# order statistic, so no one career sets an exchange rate, and it is computed per
+# component from that component alone -- never from the score -- so it cannot be
+# circular with the board it produces.
+LEGACY_NORMALISER_TOP_N = 100
+
 PUBLIC_LEGACY_DISPLAY_SCALE = 1000.0
 
 # A division-year thinner than this cannot describe its own title bar. Kept
@@ -151,11 +259,20 @@ QUALITY_LEDGER_COLUMNS = [
 ]
 
 
-def _unit(values: pd.Series) -> pd.Series:
-    """Scale to [0, 1] by the observed maximum; an all-zero column stays zero."""
+def _scale(values: pd.Series, *, top_n: int = LEGACY_NORMALISER_TOP_N) -> pd.Series:
+    """Divide by the mean of the column's own top ``top_n`` values.
+
+    Not a maximum: see the note above :data:`LEGACY_ACHIEVEMENT_WEIGHT`. A column
+    with fewer than ``top_n`` positive entries falls back to the mean of those it
+    has, so a small frame still normalises to something a single fighter does not
+    own. An all-zero column stays zero.
+    """
     v = pd.to_numeric(values, errors="coerce").fillna(0.0)
-    top = float(v.max())
-    return v / top if top > 0 else v * 0.0
+    positive = v[v > 0]
+    if positive.empty:
+        return v * 0.0
+    norm = float(positive.nlargest(min(top_n, len(positive))).mean())
+    return v / norm if norm > 0 else v * 0.0
 
 
 def _empty_quality_ledger() -> pd.DataFrame:
@@ -875,6 +992,182 @@ def title_quality_ledger(
     return out[QUALITY_LEDGER_COLUMNS]
 
 
+RESUME_LEDGER_COLUMNS = [
+    "fighter",
+    "public_legacy_resume_quality",
+    "public_legacy_contender_wins",
+]
+
+
+def _empty_resume_ledger() -> pd.DataFrame:
+    return pd.DataFrame(columns=RESUME_LEDGER_COLUMNS)
+
+
+def ufc_bout_counts(fights: pd.DataFrame | None) -> pd.Series:
+    """Model bouts each fighter had inside the UFC family, over the whole scope.
+
+    The same count ``build_boards._elite_decade_map`` screens on, so the score
+    and the printed Elite-wins column admit the same opponents.
+    """
+    empty = pd.Series(dtype="int64")
+    if fights is None or fights.empty or "source_corpus" not in fights.columns:
+        return empty
+    model = fights.get("is_model_bout", pd.Series(True, index=fights.index))
+    ufc = fights[
+        fights["source_corpus"].isin(["ufc", "pre_unified"])
+        & model.fillna(False).astype(bool)
+    ]
+    if ufc.empty:
+        return empty
+    return pd.concat([ufc["fighter_a"], ufc["fighter_b"]]).value_counts()
+
+
+def contender_resume_ledger(
+    fights: pd.DataFrame | None,
+    history: pd.DataFrame | None,
+    *,
+    contender_line: float = CONTENDER_LINE_MU,
+    min_opponent_ufc_bouts: int = MIN_OPPONENT_UFC_BOUTS,
+    year_cap: float = RESUME_YEAR_CAP,
+) -> pd.DataFrame:
+    """Contenders actually beaten, priced by how far above the line they stood.
+
+    **This replaces the rank-context schedule component** (2026-09-01). That
+    component credited a win over an opponent standing in the top
+    ``min(0.20 * pool, 15)`` of their division. Three things were wrong with it,
+    all measured on the 2026-08-13 published scope:
+
+    * **Its bar was a rank position in a pool the note defining it did not
+      describe.** ``RANK_CONTEXT_TOP_SHARE`` was adopted 2026-08-26 to replace a
+      fixed fifteen with a share of the field, against a table of median active
+      division fields of 37-85. On the published ``majors,pre_unified`` scope
+      those fields are 144-1435, so ``0.20 * pool > 15`` on **92.7%** of
+      appearances, the clip to ``RANK_CONTEXT_TOP_N`` binds, and the share rule
+      changes the window on 7.0% of them -- almost all catchweight rows. Top
+      fifteen is the top **1.05%** of lightweight against **2.88%** of light
+      heavyweight, a 2.7x difference inside the men's board alone.
+    * **It did not agree with the board's own contender line.** 42.9% of wins
+      over an opponent past this screen scored zero there, and 77.8% of the wins
+      it did credit were over opponents below the line. Neil Magny is the pure
+      case: six wins over contenders, and a rank-context win mass of 0.021.
+    * **It read exposure, not contention.** Across the published top 100 it
+      correlated **+0.360 with elite LOSSES** and **+0.013 with elite W-L**,
+      because a fighter repeatedly booked against the division's top fifteen
+      accumulates both. That is the gatekeeping failure this project already
+      rejected for the elite board -- "a fighter who lost to ten elite opponents
+      scores the same as one who beat them" -- sitting inside the majority of the
+      published score's mass. Sean Strickland (9-7 against the screen, three of
+      those wins as a betting underdog) and Michael Chandler (2-5, and 0-5 since
+      2021) scored 232.0 and 225.6 on it.
+
+    The screen here is the board's own: an opponent rated at or above
+    ``contender_line`` **as at that bout** who also has ``min_opponent_ufc_bouts``
+    UFC bouts of their own. Both halves are load-bearing and neither is new --
+    see :data:`ratings.opponent_quality.MIN_OPPONENT_UFC_BOUTS`.
+
+    Pricing reuses :func:`title_quality` against the contender line, so one
+    function prices both ledgers and a win just past the line is worth a
+    sixteenth of one 400 points above it. That answers the other half of the old
+    component's defect, recorded in ``docs/NEXT_2026-08-28.md`` section 3.2: it
+    counted ranked wins inside an 8% band rather than pricing them.
+
+    :data:`UFC_POOL_OFFSET_ELO` is deliberately NOT applied here. On the title
+    path the offset moves the opponent and the annual bar together, so ``q``
+    still compares two numbers on one scale. The contender line is an absolute
+    level on the published trajectory -- the one ``quality_win_record`` and the
+    printed Elite-wins column read -- and adding an offset to one side of an
+    absolute comparison would move the line rather than correct it.
+
+    Returns the year-capped quality sum and the uncapped count of qualifying
+    wins, which is the auditable display fact beside it.
+    """
+    if (
+        fights is None or fights.empty
+        or history is None or history.empty
+        or "fighter_a" not in fights.columns
+    ):
+        return _empty_resume_ledger()
+
+    h = history[["fighter", "event_date", "mu_whr"]].copy()
+    h["event_date"] = pd.to_datetime(h["event_date"], errors="coerce")
+    h["mu_whr"] = pd.to_numeric(h["mu_whr"], errors="coerce")
+    h = h.dropna(subset=["fighter", "event_date", "mu_whr"]).sort_values("event_date")
+    if h.empty:
+        return _empty_resume_ledger()
+
+    f = fights.copy()
+    f["event_date"] = pd.to_datetime(f.get("event_date"), errors="coerce")
+    idx = f.index
+    keep = f["event_date"].notna()
+    for flag in ("is_excluded", "is_draw", "is_nc"):
+        keep &= ~f.get(flag, pd.Series(False, index=idx)).fillna(False).astype(bool)
+    f = f[keep]
+    if f.empty:
+        return _empty_resume_ledger()
+
+    sides = pd.concat(
+        [
+            f.assign(fighter=f["fighter_a"], opponent=f["fighter_b"]),
+            f.assign(fighter=f["fighter_b"], opponent=f["fighter_a"]),
+        ],
+        ignore_index=True,
+        sort=False,
+    )[["fighter", "opponent", "event_date", "winner"]].dropna(
+        subset=["fighter", "opponent"]
+    )
+    wins = sides[sides["winner"].eq(sides["fighter"])].sort_values("event_date")
+    if wins.empty:
+        return _empty_resume_ledger()
+
+    # The opponent's rating BEFORE the bout: a win may not price itself.
+    priced = pd.merge_asof(
+        wins,
+        h.rename(columns={"fighter": "opponent", "mu_whr": "opponent_mu"}),
+        on="event_date",
+        by="opponent",
+        allow_exact_matches=False,
+    ).dropna(subset=["opponent_mu"])
+    if priced.empty:
+        return _empty_resume_ledger()
+
+    tested = ufc_bout_counts(fights)
+    priced = priced[
+        priced["opponent"].map(tested).fillna(0).ge(int(min_opponent_ufc_bouts))
+        & priced["opponent_mu"].ge(float(contender_line))
+    ]
+    if priced.empty:
+        return _empty_resume_ledger()
+
+    priced = priced.assign(
+        weight=title_quality(
+            priced["opponent_mu"], pd.Series(float(contender_line), index=priced.index)
+        ),
+        _year=priced["event_date"].dt.year,
+    )
+    per_year = (
+        priced.groupby(["fighter", "_year"])["weight"].sum().clip(upper=float(year_cap))
+    )
+    out = (
+        per_year.groupby("fighter")
+        .sum()
+        .rename("public_legacy_resume_quality")
+        .reset_index()
+    )
+    counts = (
+        priced.groupby("fighter")
+        .size()
+        .rename("public_legacy_contender_wins")
+        .reset_index()
+    )
+    out = out.merge(counts, on="fighter", how="left")
+    out["public_legacy_contender_wins"] = (
+        pd.to_numeric(out["public_legacy_contender_wins"], errors="coerce")
+        .fillna(0)
+        .astype(int)
+    )
+    return out[RESUME_LEDGER_COLUMNS]
+
+
 def public_legacy_score_rows(
     current: pd.DataFrame,
     appearances: pd.DataFrame,
@@ -888,19 +1181,23 @@ def public_legacy_score_rows(
 ) -> pd.DataFrame:
     """Return one public legacy score row per fighter.
 
-    The score is the value-normalised sum of three components:
+    The board answers two questions and says so. **Achievement** is what the
+    career won: the title resume, priced by the opponent actually beaten in each
+    title bout (:func:`title_quality_ledger`). **Quality of work** is how good
+    the fighter was and who they actually beat: exposure-adjusted Career Skill
+    Mass, and the contender resume (:func:`contender_resume_ledger`).
 
-    * exposure-adjusted Career Skill Mass;
-    * a title resume priced by the opponent actually beaten in each title bout
-      (:func:`title_quality_ledger`), which requires ``history``;
-    * exposure-adjusted pre-fight rank/champion context on wins.
+    The two halves are combined at :data:`LEGACY_ACHIEVEMENT_WEIGHT`, and the
+    quality half is split at :data:`LEGACY_QUALITY_SKILL_SHARE`. Both are stated
+    policy: no bout outcome can score them, because this score never enters a win
+    probability. Each component is first divided by :func:`_scale`, the mean of
+    its own top hundred values, so the weights mean what they say -- see the note
+    above :data:`LEGACY_ACHIEVEMENT_WEIGHT` for what the previous divide-by-max
+    silently did instead.
 
-    Each is divided by its own maximum before summing, so no exchange rate
-    between rating-point-years and resume points has to be invented.
-
-    ``history`` is the appearance-level WHR table. **Without it the title
-    component is zero for everyone**, which silently reduces the board to skill
-    plus schedule -- callers that want the published board must pass it.
+    ``history`` is the appearance-level WHR table. **Without it both the title
+    and the contender resume are zero for everyone**, which silently reduces the
+    board to skill alone -- callers that want the published board must pass it.
 
     The resume ledger is intentionally auditable. It repairs the product-label
     bug without mutating the latent rating model.
@@ -923,6 +1220,7 @@ def public_legacy_score_rows(
         ufc_debut_dates=debuts,
         pool_offset_elo=pool_offset_elo,
     )
+    resume_ledger = contender_resume_ledger(source_fights, history)
     ledger = _combine_title_ledgers(
         championship_resume_ledger(appearances),
         source_title_resume_ledger(source_fights) if source_fights is not None else _empty_title_ledger(),
@@ -977,21 +1275,39 @@ def public_legacy_score_rows(
         TITLE_QUALITY_SCALE * out["public_legacy_title_quality"]
     )
 
-    out["public_legacy_schedule_score"] = (
-        RANK_CONTEXT_WIN_POINTS * out["public_legacy_rank_context_win_mass"]
+    out = out.merge(
+        resume_ledger if resume_ledger is not None else _empty_resume_ledger(),
+        on="fighter",
+        how="left",
+    )
+    out["public_legacy_resume_quality"] = pd.to_numeric(
+        out.get("public_legacy_resume_quality"), errors="coerce"
+    ).fillna(0.0)
+    out["public_legacy_contender_wins"] = (
+        pd.to_numeric(out.get("public_legacy_contender_wins"), errors="coerce")
+        .fillna(0)
+        .astype(int)
+    )
+    # Exposure still multiplies both quality components. Neutralising it was
+    # measured on 2026-08-27 and refuted -- zero-UFC fighters in the top 100
+    # doubled -- so it stays until something measured replaces it, and it is the
+    # standing item in ``docs/NEXT_2026-08-28.md`` section 3.3.
+    out["public_legacy_resume_score"] = (
+        RESUME_QUALITY_SCALE * out["public_legacy_resume_quality"]
         * out["public_legacy_exposure_factor"]
     )
     out["public_legacy_skill_score"] = (
         pd.to_numeric(out["public_legacy_skill_mass"], errors="coerce").fillna(0.0)
         * out["public_legacy_exposure_factor"]
     )
-    # Value-normalised sum. Each component is divided by its own maximum, so the
-    # three are combined without an exchange rate anyone had to invent. Measured
-    # 2026-08-25: rule-derived normalisers (max, p99.9, top-100 mean, sd) all
-    # imply lam in [0.78, 1.15], so this is not a rescaling of a hidden choice.
+    # Achievement against quality of work, at one stated exchange rate.
+    achievement = _scale(out["public_legacy_title_score"])
+    quality = (
+        LEGACY_QUALITY_SKILL_SHARE * _scale(out["public_legacy_skill_score"])
+        + (1.0 - LEGACY_QUALITY_SKILL_SHARE) * _scale(out["public_legacy_resume_score"])
+    )
     out["public_legacy_score"] = PUBLIC_LEGACY_DISPLAY_SCALE * (
-        _unit(out["public_legacy_skill_score"])
-        + _unit(out["public_legacy_title_score"])
-        + _unit(out["public_legacy_schedule_score"])
+        LEGACY_ACHIEVEMENT_WEIGHT * achievement
+        + (1.0 - LEGACY_ACHIEVEMENT_WEIGHT) * quality
     )
     return out[LEGACY_SCORE_COLUMNS]

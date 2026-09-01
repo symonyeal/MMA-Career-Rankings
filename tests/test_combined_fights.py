@@ -119,6 +119,48 @@ def test_combined_fights_preserves_distinct_canonical_same_day_rematches(tmp_pat
     assert summary["duplicate_bout_keys"] == 0
 
 
+def test_combined_fights_collapses_date_drift_and_keeps_corpus_membership(tmp_path: Path):
+    snapshot = tmp_path / "snapshot"
+    snapshot.mkdir()
+    pd.DataFrame([
+        _bout(
+            "u/275",
+            "Jiri Prochazka",
+            "Glover Teixeira",
+            "2022-06-11",
+            winner="Jiri Prochazka",
+        )
+    ]).to_parquet(snapshot / "canonical_fights.parquet", index=False)
+    pd.DataFrame(
+        [
+            _bout(
+                "s/275",
+                "Glover Teixeira",
+                "Jiri Prochazka",
+                "2022-06-12",
+                org=None,
+                source="sherdog_majors",
+                winner="Jiri Prochazka",
+            ),
+            _bout(
+                "s/other",
+                "Carl Cee",
+                "Dan Dee",
+                "2005-01-01",
+                org="PRIDE",
+                source="sherdog_majors",
+            ),
+        ]
+    ).to_parquet(snapshot / SCOPE_ARTIFACT["majors"], index=False)
+
+    combined, summary = build_combined_fights(snapshot, scope="majors")
+
+    assert combined["fight_url"].tolist() == ["s/other", "u/275"]
+    assert combined.set_index("fight_url").loc["u/275", "available_in_corpora"] == "majors,ufc"
+    assert summary["rows"] == 2
+    assert summary["model_bouts"] == 2
+
+
 def _three_corpus_snapshot(snapshot: Path) -> None:
     """UFC base, a majors extension, and a FightMatrix row duplicating a majors bout."""
     pd.DataFrame([_bout("u/1", "Alice", "Bob", "2024-01-01")]).to_parquet(
