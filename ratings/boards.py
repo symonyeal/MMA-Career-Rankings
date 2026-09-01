@@ -236,11 +236,11 @@ def completeness_gated_board(
       ``None`` for scores with no such floor (base WHR mu).
 
     ``min_tested_wins`` adds a second, independent floor on *proven* record: how
-    many of a fighter's toughest tested opponents they actually beat, per
-    :func:`ratings.opponent_quality.toughest_opponent_record`. Rating periods
-    count appearances and say nothing about their difficulty, so without this a
-    clean record against a soft field clears the same floor as one built against
-    champions.
+    many tested opponents above a stated rating line the fighter actually beat,
+    per :func:`ratings.opponent_quality.quality_win_record`. Rating periods count
+    appearances and say nothing about their difficulty, so without this a clean
+    record against a soft field clears the same floor as one built against
+    contenders.
 
     Two failure modes make both halves necessary, and each was measured. Judging
     a schedule by opponent strength alone promotes gatekeepers -- a fighter who
@@ -289,7 +289,7 @@ def completeness_gated_board(
         unproven = wins.isna() | (wins < int(min_tested_wins))
         status[unproven & status.eq("ranked")] = (
             "insufficient proven record to rank "
-            f"(< {int(min_tested_wins)} wins over the toughest tested opponents)")
+            f"(< {int(min_tested_wins)} wins over tested contenders)")
     if unranked_at_or_below is not None:
         at_floor = rated.notna() & (rated <= float(unranked_at_or_below))
         status[at_floor & status.eq("ranked")] = UNRANKED_AT_FLOOR_STATUS

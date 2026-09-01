@@ -12,7 +12,11 @@ import pytest
 
 from ratings.legacy_resume import _division_labels
 from ratings.performance_adjustment import womens_division_label
-from ratings.rate_snapshot import _attach_recent_division_gender, _female_by_bout_graph
+from ratings.rate_snapshot import (
+    _attach_recent_division_gender,
+    _female_by_bout_graph,
+    _gender_isolated_prime_score,
+)
 
 
 def _bout(date: str, a: str, b: str, weight_class: object) -> dict:
@@ -142,3 +146,39 @@ def test_an_unplaceable_label_still_never_pools_a_woman_with_the_men():
     labels = _division_labels(current)
     assert labels["Someone"] == "W Super Welterweight"
     assert labels["Aman"] == "Super Welterweight"
+
+
+def test_womens_history_cannot_change_mens_prime_shrinkage():
+    dates = pd.date_range("2010-01-01", periods=13, freq="180D")
+
+    def history(fighter: str, values: list[float]) -> pd.DataFrame:
+        return pd.DataFrame(
+            {
+                "fighter": fighter,
+                "event_date": dates,
+                "event_name": [f"Event {number}" for number in range(13)],
+                "mu_whr": values,
+            }
+        )
+
+    men = pd.concat(
+        [
+            history("Man A", [1700.0 + number for number in range(13)]),
+            history("Man B", [1900.0 - 2 * number for number in range(13)]),
+        ],
+        ignore_index=True,
+    )
+    women_low = history("Woman", [1200.0 + number for number in range(13)])
+    women_high = history("Woman", [2400.0 + number for number in range(13)])
+    current = pd.DataFrame(
+        {"fighter": ["Man A", "Man B", "Woman"], "gender": ["M", "M", "F"]}
+    )
+
+    low = _gender_isolated_prime_score(pd.concat([men, women_low]), current)
+    high = _gender_isolated_prime_score(pd.concat([men, women_high]), current)
+
+    columns = ["fighter", "score", "shrinkage"]
+    pd.testing.assert_frame_equal(
+        low[low["fighter"].str.startswith("Man")][columns].reset_index(drop=True),
+        high[high["fighter"].str.startswith("Man")][columns].reset_index(drop=True),
+    )

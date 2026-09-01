@@ -288,6 +288,28 @@ def test_published_table_honours_the_row_limit_and_needs_ranked_rows():
         )
 
 
+def test_elite_prime_table_publishes_the_evidence_count():
+    gated = pd.DataFrame(
+        {
+            "rank": [1],
+            "fighter": ["Proven Fighter"],
+            "symon_prime_score": [2050.0],
+            "status": ["ranked"],
+            "tested_opponent_wins": [6],
+        }
+    )
+
+    table = build_boards.top_board_markdown(
+        gated,
+        pd.DataFrame({"fighter": ["Proven Fighter"]}),
+        rating_col="symon_prime_score",
+        top=50,
+    )
+
+    assert table.splitlines()[0] == "| # | Fighter | Score | Elite wins |"
+    assert "| 1 | Proven Fighter | 2050.0 | 6 |" in table
+
+
 def test_readme_board_block_is_replaced_in_place(tmp_path: Path):
     readme = tmp_path / "README.md"
     readme.write_text(

@@ -246,13 +246,18 @@ def quality_win_record(
     *,
     min_opponent_mu: float,
 ) -> pd.DataFrame:
-    """Career record against opponents above ``min_opponent_mu``.
+    """Record in the supplied appearances above ``min_opponent_mu``.
 
     ``appearances`` must carry ``fighter``, ``is_winner`` and ``opponent_mu``,
     the opponent's rating as at that bout, and must ALREADY be screened to
     opponents with a tested record of their own -- see
     :data:`MIN_OPPONENT_UFC_BOUTS`. The screen is the caller's because it needs
     the corpus, not just the appearance rows.
+
+    When ``fight_url`` is present, repeated ``(fighter, fight_url)`` rows are
+    collapsed defensively. Upstream joins must still be validated; this guard
+    prevents one physical bout from becoming several wins if a caller misses
+    that invariant.
 
     Both columns are returned because they answer different questions:
     ``quality_wins`` gates the board, and ``quality_bouts`` shows how many times
@@ -262,6 +267,8 @@ def quality_win_record(
     if appearances is None or appearances.empty or "fighter" not in appearances.columns:
         return pd.DataFrame(columns=QUALITY_WIN_COLUMNS)
     rated = appearances.dropna(subset=["opponent_mu"])
+    if "fight_url" in rated.columns:
+        rated = rated.drop_duplicates(["fighter", "fight_url"], keep="first")
     rated = rated[pd.to_numeric(rated["opponent_mu"], errors="coerce") >= float(min_opponent_mu)]
     if rated.empty:
         return pd.DataFrame(columns=QUALITY_WIN_COLUMNS)

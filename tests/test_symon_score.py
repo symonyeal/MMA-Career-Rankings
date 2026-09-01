@@ -177,6 +177,28 @@ def test_window_ties_prefer_more_fights_then_earlier_start_deterministically():
     assert _row(expected, "Earlier")["window_start"] == pd.Timestamp("2020-01-01")
 
 
+def test_period_window_cannot_stop_partway_through_a_same_day_tournament():
+    history = pd.DataFrame(
+        {
+            "fighter": ["A", "A", "A"],
+            "event_date": pd.to_datetime(["2020-01-01", "2020-01-02", "2020-01-02"]),
+            "event_name": ["Prior", "Tournament", "Tournament"],
+            "mu_whr": [100.0, 300.0, 0.0],
+        }
+    )
+
+    expected = symon_period_score(history, window_days=30, min_fights=2)
+    shuffled = symon_period_score(
+        history.sample(frac=1.0, random_state=9), window_days=30, min_fights=2
+    )
+
+    pd.testing.assert_frame_equal(expected, shuffled)
+    row = _row(expected, "A")
+    assert row["window_fights"] == 3
+    assert row["raw_mean"] == pytest.approx(400.0 / 3.0)
+    assert row["window_end"] == pd.Timestamp("2020-01-02")
+
+
 def test_configurable_input_names_and_fixed_prime_wrapper_window():
     dates = pd.date_range("2010-01-01", periods=13, freq="260D")
     h = pd.DataFrame({

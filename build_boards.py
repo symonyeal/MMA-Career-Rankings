@@ -50,7 +50,7 @@ from ratings.opponent_quality import (
     MIN_QUALITY_WINS,
     quality_win_record,
 )
-from ratings.scope import DEFAULT_PUBLISHED_SCOPE
+from ratings.scope import DEFAULT_PUBLISHED_SCOPE, scope_sources
 
 
 # The public/core board is Public Legacy Score, NOT raw Career Skill Mass.
@@ -126,8 +126,9 @@ README_RELEASE_END = "<!-- PUBLICATION:RELEASE:END -->"
 PRIME_RATING_COL = "symon_prime_score"
 
 # The elite-tested Prime board ranks the same Prime score behind a floor on
-# PROVEN record: at least MIN_QUALITY_WINS career wins over opponents who were
-# above the contender line at the time AND had a tested record of their own.
+# PROVEN record inside the selected Prime window: at least MIN_QUALITY_WINS wins
+# over opponents whose retrospective at-date rating clears the contender line
+# AND whose final snapshot record contains enough UFC bouts to be well tested.
 #
 # Two simpler rules were built first and both failed on named fighters.
 # Counting ranked-or-title bouts measures longevity, not difficulty: it seated
@@ -144,6 +145,38 @@ ELITE_PRIME_TOP = 50
 # existing callers keep working.
 BOARD_GENDER_SUFFIX = GENDER_SUFFIX
 BOARD_GENDER_LABEL = GENDER_LABEL
+
+
+def _normalized_scope(scope: str) -> str:
+    """Canonical text for comparing two equivalent scope specifications."""
+    sources = scope_sources(scope)
+    return ",".join(sources) if sources else "ufc"
+
+
+def _validate_rating_scope(
+    snapshot_dir: Path,
+    requested_scope: str,
+    *,
+    required: bool = False,
+) -> dict[str, object]:
+    """Reject a board label that does not match the persisted rating run."""
+    manifest_path = Path(snapshot_dir) / "rating_run.json"
+    if not manifest_path.exists():
+        if required:
+            raise FileNotFoundError(
+                f"cannot publish without the rating provenance manifest: {manifest_path}"
+            )
+        return {}
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    recorded_scope = manifest.get("scope")
+    if not recorded_scope:
+        raise ValueError(f"rating provenance manifest has no scope: {manifest_path}")
+    if _normalized_scope(str(recorded_scope)) != _normalized_scope(requested_scope):
+        raise ValueError(
+            "requested board scope does not match the persisted rating scores: "
+            f"requested {requested_scope!r}, rated {recorded_scope!r}"
+        )
+    return manifest
 
 
 def _select_rating_col(
@@ -225,23 +258,54 @@ def _requested_integrity_rating_col(current: pd.DataFrame, requested: str | None
     return requested
 
 
-def _quality_win_map(snapshot_dir: Path) -> pd.Series | None:
-    """Fighter -> career wins over tested opponents above the contender line.
+def _quality_win_map(
+    snapshot_dir: Path,
+    prime_windows: pd.DataFrame | None = None,
+) -> pd.Series | None:
+    """Fighter -> qualifying wins inside that fighter's selected Prime window.
 
-    Opponent strength is read off the same published WHR trajectory the board
-    ranks, at the date of the bout, so the gate and the ranking are one estimate
-    of one set of fighters rather than two sources that can disagree.
+    Opponent strength is read from the same retrospective WHR trajectory the
+    board ranks, at the date of the event. WHR has one row per appearance, so a
+    tournament can give an opponent several rows on one event. Those rows are
+    one latent state for this event-grained gate: average them before the merge
+    and validate the join, or one win can be counted several times.
+
+    A Prime score may select an early part of a career. Only bouts inside that
+    exact selected window can prove that peak; later wins cannot certify an
+    earlier, higher-scoring window while their lower rating rows are excluded.
 
     Returns ``None`` rather than an empty map when an input is missing: a
     snapshot that cannot support the gate publishes no elite board at all,
     instead of one that withholds every fighter for lack of evidence.
     """
     snap = Path(snapshot_dir)
+    current_path = snap / "ratings_current.parquet"
     appearances_path = snap / "performance_appearances.parquet"
     history_path = snap / "ratings_history_whr.parquet"
     combined_path = snap / "combined_fights.parquet"
-    if not (appearances_path.exists() and history_path.exists() and combined_path.exists()):
+    if not (
+        appearances_path.exists()
+        and history_path.exists()
+        and combined_path.exists()
+        and (prime_windows is not None or current_path.exists())
+    ):
         return None
+
+    if prime_windows is None:
+        prime_windows = pd.read_parquet(
+            current_path,
+            columns=["fighter", "symon_prime_window_start", "symon_prime_window_end"],
+        )
+    window_columns = {
+        "fighter",
+        "symon_prime_window_start",
+        "symon_prime_window_end",
+    }
+    if not window_columns.issubset(prime_windows.columns):
+        return None
+    windows = prime_windows[list(window_columns)].copy()
+    if windows["fighter"].duplicated().any():
+        raise ValueError("Prime windows must contain at most one row per fighter")
 
     fights = pd.read_parquet(
         combined_path,
@@ -254,12 +318,44 @@ def _quality_win_map(snapshot_dir: Path) -> pd.Series | None:
     ufc_bouts = pd.concat([ufc["fighter_a"], ufc["fighter_b"]]).value_counts()
 
     appearances = pd.read_parquet(
-        appearances_path, columns=["fighter", "opponent", "event_date", "is_winner"]
+        appearances_path,
+        columns=[
+            "fight_url",
+            "fighter",
+            "opponent",
+            "event_date",
+            "event_name",
+            "is_winner",
+        ],
     )
     history = pd.read_parquet(
-        history_path, columns=["fighter", "event_date", "mu_whr"]
+        history_path, columns=["fighter", "event_date", "event_name", "mu_whr"]
     ).rename(columns={"fighter": "opponent", "mu_whr": "opponent_mu"})
-    rated = appearances.merge(history, on=["opponent", "event_date"], how="left")
+    opponent_events = (
+        history.groupby(
+            ["opponent", "event_date", "event_name"],
+            as_index=False,
+            sort=False,
+            dropna=False,
+        )["opponent_mu"]
+        .mean()
+    )
+    rated = appearances.merge(
+        opponent_events,
+        on=["opponent", "event_date", "event_name"],
+        how="left",
+        validate="many_to_one",
+    )
+    if len(rated) != len(appearances) or rated.duplicated(["fight_url", "fighter"]).any():
+        raise ValueError("elite Prime evidence must contain one row per fight and fighter")
+    rated = rated.merge(windows, on="fighter", how="left", validate="many_to_one")
+    rated = rated[
+        rated["event_date"].between(
+            rated["symon_prime_window_start"],
+            rated["symon_prime_window_end"],
+            inclusive="both",
+        )
+    ]
     tested = rated[rated["opponent"].map(ufc_bouts).fillna(0) >= MIN_OPPONENT_UFC_BOUTS]
     record = quality_win_record(tested, min_opponent_mu=CONTENDER_LINE_MU)
     if record.empty:
@@ -284,6 +380,7 @@ def write_board_artifacts(
     Mass (rating-point-years).
     """
     snap = Path(snapshot_dir)
+    _validate_rating_scope(snap, scope)
     current = pd.read_parquet(snap / "ratings_current.parquet")
     appearances = pd.read_parquet(snap / "integrity_appearances.parquet")
     fights = PQ.load_fight_table(snap, scope=scope)
@@ -331,7 +428,7 @@ def write_board_artifacts(
     prime_boards: dict[str, pd.DataFrame] = {}
     elite_prime_boards: dict[str, pd.DataFrame] = {}
     if PRIME_RATING_COL in current.columns:
-        quality_wins = _quality_win_map(snap)
+        quality_wins = _quality_win_map(snap, current)
         for gender, population in partition.items():
             if population is None or population.empty:
                 continue
@@ -431,6 +528,12 @@ def top_board_markdown(
         )
         for _, label in PUBLIC_LEGACY_COMPONENTS:
             table[label] = merged[label].round(1).to_numpy()
+    if "tested_opponent_wins" in ranked.columns:
+        table["Elite wins"] = (
+            pd.to_numeric(ranked["tested_opponent_wins"], errors="raise")
+            .astype(int)
+            .to_numpy()
+        )
 
     header = "| " + " | ".join(table.columns) + " |"
     align = "| ---: | --- |" + " ---: |" * (len(table.columns) - 2)
@@ -689,9 +792,11 @@ def main() -> None:
             (README_RELEASE_BEGIN, README_RELEASE_END, release_table),
             (README_BOARD_BEGIN, README_BOARD_END, top_table),
         ]
+        generated_prime = summary.get("prime_ranked_by_gender", {})
+        generated_elite = summary.get("elite_prime_ranked_by_gender", {})
         prime_path = out / "prime_board.parquet"
         prime = None
-        if prime_path.exists():
+        if "M" in generated_prime:
             prime = pd.read_parquet(prime_path)
             replacements.append(
                 (
@@ -714,7 +819,7 @@ def main() -> None:
                 ),
             )
         prime_women_path = out / "prime_board_women.parquet"
-        if prime_women_path.exists():
+        if "F" in generated_prime:
             prime_women = pd.read_parquet(prime_women_path)
             replacements.append(
                 (
@@ -730,7 +835,7 @@ def main() -> None:
                 )
             )
         elite_path = out / "prime_elite_board.parquet"
-        if elite_path.exists():
+        if "M" in generated_elite:
             elite_table = top_board_markdown(
                 pd.read_parquet(elite_path),
                 current,
@@ -741,7 +846,7 @@ def main() -> None:
                 (README_ELITE_PRIME_BEGIN, README_ELITE_PRIME_END, elite_table)
             )
         elite_women_path = out / "prime_elite_board_women.parquet"
-        if elite_women_path.exists():
+        if "F" in generated_elite:
             replacements.append(
                 (
                     README_ELITE_PRIME_WOMEN_BEGIN,

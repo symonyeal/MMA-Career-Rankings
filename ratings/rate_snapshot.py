@@ -435,6 +435,31 @@ def _attach_recent_division_gender(current: pd.DataFrame, fights: pd.DataFrame) 
     return current.merge(recent, on="fighter", how="left")
 
 
+def _gender_isolated_prime_score(
+    whr_history: pd.DataFrame,
+    current: pd.DataFrame,
+) -> pd.DataFrame:
+    """Score Prime independently inside each disconnected bout component.
+
+    The empirical-Bayes step estimates a cohort mean and between-fighter
+    variance. Pooling the men's and women's components lets evidence from a
+    graph with no connecting bouts change the other graph's scores. The public
+    boards are separate for exactly this reason, so their shrinkage cohorts must
+    be separate too.
+    """
+    pieces: list[pd.DataFrame] = []
+    for population in partition_by_gender(current).values():
+        if population is None or population.empty:
+            continue
+        fighters = set(population["fighter"].dropna())
+        part = symon_prime_score(whr_history[whr_history["fighter"].isin(fighters)])
+        if not part.empty:
+            pieces.append(part)
+    if not pieces:
+        return symon_prime_score(whr_history.iloc[0:0])
+    return pd.concat(pieces, ignore_index=True, sort=False)
+
+
 def _print_one_board(
     population: pd.DataFrame,
     *,
@@ -630,10 +655,13 @@ def run(
     whr_history.to_parquet(snapshot_dir / "ratings_history_whr.parquet", index=False)
     current = current.merge(whr_current, on="fighter", how="left")
 
-    # The period diagnostic reads nothing but the WHR history, so it can be
-    # scored here. Career Skill Mass now needs the division labels and is
-    # therefore scored below, with the public resume.
-    prime = symon_prime_score(whr_history)
+    current = _attach_record(current, rated_fights)
+    current = _attach_recent_division_gender(current, rated_fights)
+
+    # Prime reads only WHR history, but its empirical-Bayes cohort must follow
+    # the same disconnected-component boundary as every published board. Score
+    # it after gender is attached so one component cannot move the other.
+    prime = _gender_isolated_prime_score(whr_history, current)
     current = current.merge(
         prime.rename(
             columns={
@@ -646,8 +674,6 @@ def run(
         how="left",
     )
 
-    current = _attach_record(current, rated_fights)
-    current = _attach_recent_division_gender(current, rated_fights)
     current = _attach_activity_adjusted_mu(current, snapshot_max_date)
 
     # Opponent context per appearance. Division boards score a fighter inside

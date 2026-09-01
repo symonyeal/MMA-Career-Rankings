@@ -17,10 +17,10 @@ cannot be separated from its source facts.
 | Output | Business question | Measure |
 | --- | --- | --- |
 | All-time | What did the fighter's completed body of work amount to? | Public Legacy Score: career skill, championship results, and schedule strength |
-| Prime | How strong was the fighter at their best? | Best fixed ten-year WHR window with at least 13 rated appearances |
-| Prime (elite-tested) | Which of those peaks were actually proven? | The Prime score, restricted to fighters with at least 5 career wins over rated contenders who were themselves UFC-tested |
-| Current skill | How strong is the fighter now? | Latest WHR skill estimate, with age and inactivity projection where used |
-| Integrity board | How would stated policy discounts change the order? | A separate debit ledger on base rating points |
+| Prime | How strong was the fighter at their best? | Their strongest ten-year stretch, which must contain at least 13 rated bouts |
+| Prime (elite-tested) | Which of those peaks were actually proven? | The Prime score, restricted to fighters who beat at least 5 rated contenders *during that same ten-year stretch* |
+| Current skill | How strong is the fighter now? | Their latest estimated level, adjusted for age and for time out of competition |
+| Integrity board | How would stated policy discounts change the order? | A separate, itemised deduction against a fighter's rating, shown with the reason for each |
 | Career Skill Mass | How much sustained skill sat above the field over time? | A diagnostic underneath the public score, not the public ranking |
 
 All-time, Prime, and Current are alternative views of the same fight history.
@@ -168,9 +168,11 @@ contributions to one score, not separate rankings.
 How strong was the fighter at their best, counting only peaks that were
 actually proven? Prime is the best fixed ten-year rating window with at least
 13 rated appearances. The elite-tested board adds one requirement about **who
-the fighter beat**: at least **5 career wins over contenders**, where a
-contender was rated **1750 or higher** at the time of the bout *and* had a
-tested record of its own — at least 8 UFC bouts.
+the fighter beat, and when**: at least **5 wins over contenders inside that
+same ten-year stretch**, where a contender was rated **1750 or higher** at the
+time of the bout *and* had a tested record of its own — at least 8 UFC bouts.
+Wins after the stretch ends do not count towards it; a later victory cannot
+prove an earlier peak.
 
 The line and the win minimum are stated policy, not fitted values. The
 threshold gates who appears; it never changes the order, which stays the
@@ -181,58 +183,42 @@ both halves of the opponent test.
 
 <!-- BOARD:ELITEPRIME50:BEGIN -->
 
-| # | Fighter | Score |
-| ---: | --- | ---: |
-| 1 | Jon Jones | 2207.8 |
-| 2 | Islam Makhachev | 2171.4 |
-| 3 | Daniel Cormier | 2131.6 |
-| 4 | Ilia Topuria | 2111.7 |
-| 5 | Khamzat Chimaev | 2104.4 |
-| 6 | Georges St-Pierre | 2073.3 |
-| 7 | Ciryl Gane | 2061.1 |
-| 8 | Fedor Emelianenko | 2050.3 |
-| 9 | Alexander Volkanovski | 2047.2 |
-| 10 | Francis Ngannou | 2041.5 |
-| 11 | Lyoto Machida | 2030.7 |
-| 12 | Vadim Nemkov | 2027.5 |
-| 13 | Israel Adesanya | 2019.3 |
-| 14 | Justin Gaethje | 2008.1 |
-| 15 | Stipe Miocic | 2003.4 |
-| 16 | Dricus Du Plessis | 2000.9 |
-| 17 | Phil Davis | 1996.6 |
-| 18 | Kamaru Usman | 1980.9 |
-| 19 | Jose Aldo | 1977.0 |
-| 20 | Demetrious Johnson | 1974.0 |
-| 21 | Junior Dos Santos | 1963.6 |
-| 22 | Max Holloway | 1961.7 |
-| 23 | Petr Yan | 1961.4 |
-| 24 | Alex Pereira | 1961.1 |
-| 25 | Frankie Edgar | 1957.1 |
-| 26 | Chris Weidman | 1957.0 |
-| 27 | Benson Henderson | 1950.3 |
-| 28 | Charles Oliveira | 1949.9 |
-| 29 | Dominick Cruz | 1949.5 |
-| 30 | Deiveson Figueiredo | 1946.2 |
-| 31 | Ryan Bader | 1945.9 |
-| 32 | Curtis Blaydes | 1944.1 |
-| 33 | Rashad Evans | 1943.1 |
-| 34 | Anthony Johnson | 1938.7 |
-| 35 | Dan Henderson | 1938.6 |
-| 36 | Aljamain Sterling | 1929.7 |
-| 37 | Dustin Poirier | 1927.5 |
-| 38 | Sean Sherk | 1926.5 |
-| 39 | Yoel Romero | 1925.4 |
-| 40 | Anderson Silva | 1925.1 |
-| 41 | Gegard Mousasi | 1923.6 |
-| 42 | Henry Cejudo | 1922.0 |
-| 43 | Mauricio Rua | 1920.7 |
-| 44 | Demian Maia | 1920.5 |
-| 45 | Sean Strickland | 1917.6 |
-| 46 | Glover Teixeira | 1911.7 |
-| 47 | Merab Dvalishvili | 1911.6 |
-| 48 | Chuck Liddell | 1911.6 |
-| 49 | Tyron Woodley | 1909.1 |
-| 50 | Mirko Filipovic | 1908.9 |
+| # | Fighter | Score | Elite wins |
+| ---: | --- | ---: | ---: |
+| 1 | Jon Jones | 2207.8 | 12 |
+| 2 | Islam Makhachev | 2171.4 | 9 |
+| 3 | Ilia Topuria | 2111.7 | 5 |
+| 4 | Georges St-Pierre | 2073.3 | 11 |
+| 5 | Alexander Volkanovski | 2047.2 | 9 |
+| 6 | Francis Ngannou | 2041.5 | 7 |
+| 7 | Vadim Nemkov | 2027.5 | 5 |
+| 8 | Stipe Miocic | 2003.4 | 6 |
+| 9 | Dricus Du Plessis | 2000.9 | 6 |
+| 10 | Kamaru Usman | 1980.9 | 6 |
+| 11 | Jose Aldo | 1977.0 | 7 |
+| 12 | Demetrious Johnson | 1974.0 | 6 |
+| 13 | Max Holloway | 1961.7 | 9 |
+| 14 | Alex Pereira | 1961.1 | 7 |
+| 15 | Chris Weidman | 1957.0 | 7 |
+| 16 | Charles Oliveira | 1949.9 | 7 |
+| 17 | Dominick Cruz | 1949.5 | 5 |
+| 18 | Anthony Johnson | 1938.7 | 6 |
+| 19 | Aljamain Sterling | 1929.7 | 7 |
+| 20 | Dustin Poirier | 1927.5 | 5 |
+| 21 | Yoel Romero | 1925.4 | 5 |
+| 22 | Anderson Silva | 1925.1 | 11 |
+| 23 | Sean Strickland | 1917.6 | 9 |
+| 24 | Merab Dvalishvili | 1911.6 | 8 |
+| 25 | Robert Whittaker | 1899.0 | 8 |
+| 26 | Alexander Volkov | 1897.6 | 7 |
+| 27 | Alexandre Pantoja | 1867.4 | 5 |
+| 28 | Nassourdine Imavov | 1846.5 | 6 |
+| 29 | Jake Shields | 1844.7 | 6 |
+| 30 | Quinton Jackson | 1830.8 | 5 |
+| 31 | Rafael Dos Anjos | 1801.7 | 6 |
+| 32 | Neil Magny | 1798.9 | 6 |
+| 33 | Jan Blachowicz | 1797.9 | 6 |
+| 34 | Thiago Santos | 1784.6 | 5 |
 
 <!-- BOARD:ELITEPRIME50:END -->
 
@@ -241,8 +227,11 @@ both halves of the opponent test.
 - One authoritative fight table supplies every model path. A bout may be
   available from several corpora, but it is rated once using the preferred
   parse while retaining its source membership.
-- The published skill trajectory uses method-aware Whole-History Rating (WHR).
-  A causal Glicko-2 stream and binary WHR remain comparison models.
+- A fighter's level over time is estimated from their entire record at once,
+  rather than updated fight by fight, and how a bout ended counts towards the
+  result rather than only who won. Two simpler models are kept alongside as
+  comparisons. The method is documented in
+  [Rating Layer and Public Ledger](docs/RATING_LAYER_AND_LEDGER_2026-08-28.md).
 - Public Legacy Score is the public All-time board. Career Skill Mass remains a
   skill diagnostic and must not be promoted as the public board without a new
   top-100 audit.
@@ -251,13 +240,8 @@ both halves of the opponent test.
   than observed competition.
 - Fighters below the evidence threshold are withheld. An abstention is not a
   low score and is never converted into an arbitrary rank.
-- The elite-tested Prime board applies a second threshold, on proven record
-  rather than volume: wins over opponents who were above the contender line and
-  had a tested record of their own. The line and the win minimum are stated
-  policy, not fitted values. The threshold gates who appears; it never changes
-  the order, which stays the rating.
-- Generated release facts and all four public tables are validated before the
-  publication file is changed, preventing half-refreshed releases.
+- Every published table and the release facts beside it are checked before
+  either document is rewritten, so a release is never left half-updated.
 
 ## Data coverage
 
@@ -266,11 +250,11 @@ pre-unified UFC bouts, and staged major-promotion history from Sherdog. The
 bounded FightMatrix profile cohort is retained as diagnostic evidence and can
 be selected explicitly; it is not silently merged into the published scope.
 
-`combined_fights.parquet` is the maximum-coverage evidence table. Its
-`source_corpus` field identifies the preferred parse and
-`available_in_corpora` records every corpus in which the bout was found. A
-named run scope selects by membership, which prevents a shared bout from
-disappearing merely because a higher-priority source supplied its final row.
+Every admitted bout is held once, in a single evidence table, together with a
+record of which sources supplied it. Where two sources describe the same bout
+the more authoritative one is used, but the other source's claim on it is kept.
+That is what lets a narrower release be selected without silently losing bouts a
+broader source also carried. Field-level detail is in the source matrix below.
 
 Source ownership, licensing notes, and known coverage gaps are maintained in
 [Source Matrix](data/SOURCE_MATRIX.md). Release history is maintained in

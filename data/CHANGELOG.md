@@ -16,8 +16,9 @@
   old-snapshot database test with a synthetic fixture, and added Prime board
   tables and indexes.
 - Added the elite-tested Prime board: the same Prime score behind a floor on
-  proven record — at least 5 career wins over opponents rated 1750 or higher at
-  the time who also had 8 or more UFC bouts. Line and minimum are stated policy,
+  proven record — at least 5 wins, inside the fighter's own selected Prime
+  window, over opponents rated 1750 or higher at the time who also had 8 or
+  more UFC bouts. Line and minimum are stated policy,
   set after reading qualifying names at several candidate lines. 78 men and 2
   women qualify; published as men's top 50 and women's top 10 in `RANKINGS.md`.
   Two earlier rules were built and rejected on named fighters. Counting
@@ -36,6 +37,27 @@
 - Archived the closed recursive FightMatrix expansion subsystem and historical
   design records with restoration instructions. Finalized experimental
   snapshots and intentionally retained research evidence were not removed.
+
+## 2026-09-01 - Elite Prime gate: same-day fan-out and temporal leakage
+
+- The opponent-rating join matched on `(opponent, event_date)` only. WHR writes
+  one row per appearance, so a same-day tournament gave an opponent several
+  rows and fanned 161,394 appearance rows out to 166,094. Three fighters
+  crossed the five-win line on duplicates alone: Mirko Filipovic and Wanderlei
+  Silva (5 -> 4) and Renato Sobral (6 -> 3). The join now averages an
+  opponent's rows per event, matches on event as well as date, and asserts one
+  row per fight and fighter.
+- Qualifying wins were counted over the whole career while the Prime score
+  describes one selected ten-year window, so later wins certified earlier
+  peaks. Khamzat Chimaev's window ends 2023-10-21 with three qualifying wins
+  inside it; the Whittaker (2024) and Du Plessis (2025) wins were being
+  counted. 41 fighters qualified only on post-window wins. Wins are now
+  restricted to the fighter's own window, and the men's board goes 78 -> 34.
+- Prime is now scored inside each gender component. The empirical-Bayes
+  shrinkage cohort previously pooled both, letting a disconnected bout graph
+  move the other graph's scores.
+- A Prime window can no longer end between two bouts on the same date, so row
+  order cannot decide whether a same-day loss falls inside the peak.
 
 ## 2026-08-27 through 2026-08-28 - Coverage, ledger, and release repair
 

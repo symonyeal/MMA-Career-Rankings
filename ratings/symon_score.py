@@ -252,6 +252,12 @@ def _best_window(
     best: tuple[float, int, np.datetime64, np.datetime64, int, int] | None = None
     i = 0
     for j in range(len(g)):
+        # A calendar window cannot stop between two bouts on the same date.
+        # Evaluating a partial tournament lets the row order decide whether a
+        # later same-day loss belongs to the peak. Start boundaries already move
+        # by date; make the end boundary date-atomic as well.
+        if j + 1 < len(g) and dates[j + 1] == dates[j]:
+            continue
         floor = dates[j] - span
         while dates[i] < floor:
             i += 1

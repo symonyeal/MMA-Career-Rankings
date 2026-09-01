@@ -295,9 +295,10 @@ Men and women never fight, so no bout locates the two rating levels against each
 ## Elite-tested Prime rankings
 
 Same Prime score, one further requirement about **who the fighter actually
-beat**: at least **5 career wins over contenders**, where a contender is an
-opponent who was rated **1750 or higher** at the time of the bout *and* had a
-tested record of their own — at least 8 UFC bouts.
+beat, and when**: at least **5 wins over contenders inside that same ten-year
+stretch**, where a contender is an opponent who was rated **1750 or higher** at
+the time of the bout *and* had a tested record of their own — at least 8 UFC
+bouts. A win after the stretch closes cannot certify the peak inside it.
 
 Both halves of that opponent test are needed, and each was checked against
 named fighters before being adopted:
@@ -326,58 +327,42 @@ rule. The same rule is applied to both boards rather than softening it for one.
 
 <!-- BOARD:ELITEPRIME50:BEGIN -->
 
-| # | Fighter | Score |
-| ---: | --- | ---: |
-| 1 | Jon Jones | 2207.8 |
-| 2 | Islam Makhachev | 2171.4 |
-| 3 | Daniel Cormier | 2131.6 |
-| 4 | Ilia Topuria | 2111.7 |
-| 5 | Khamzat Chimaev | 2104.4 |
-| 6 | Georges St-Pierre | 2073.3 |
-| 7 | Ciryl Gane | 2061.1 |
-| 8 | Fedor Emelianenko | 2050.3 |
-| 9 | Alexander Volkanovski | 2047.2 |
-| 10 | Francis Ngannou | 2041.5 |
-| 11 | Lyoto Machida | 2030.7 |
-| 12 | Vadim Nemkov | 2027.5 |
-| 13 | Israel Adesanya | 2019.3 |
-| 14 | Justin Gaethje | 2008.1 |
-| 15 | Stipe Miocic | 2003.4 |
-| 16 | Dricus Du Plessis | 2000.9 |
-| 17 | Phil Davis | 1996.6 |
-| 18 | Kamaru Usman | 1980.9 |
-| 19 | Jose Aldo | 1977.0 |
-| 20 | Demetrious Johnson | 1974.0 |
-| 21 | Junior Dos Santos | 1963.6 |
-| 22 | Max Holloway | 1961.7 |
-| 23 | Petr Yan | 1961.4 |
-| 24 | Alex Pereira | 1961.1 |
-| 25 | Frankie Edgar | 1957.1 |
-| 26 | Chris Weidman | 1957.0 |
-| 27 | Benson Henderson | 1950.3 |
-| 28 | Charles Oliveira | 1949.9 |
-| 29 | Dominick Cruz | 1949.5 |
-| 30 | Deiveson Figueiredo | 1946.2 |
-| 31 | Ryan Bader | 1945.9 |
-| 32 | Curtis Blaydes | 1944.1 |
-| 33 | Rashad Evans | 1943.1 |
-| 34 | Anthony Johnson | 1938.7 |
-| 35 | Dan Henderson | 1938.6 |
-| 36 | Aljamain Sterling | 1929.7 |
-| 37 | Dustin Poirier | 1927.5 |
-| 38 | Sean Sherk | 1926.5 |
-| 39 | Yoel Romero | 1925.4 |
-| 40 | Anderson Silva | 1925.1 |
-| 41 | Gegard Mousasi | 1923.6 |
-| 42 | Henry Cejudo | 1922.0 |
-| 43 | Mauricio Rua | 1920.7 |
-| 44 | Demian Maia | 1920.5 |
-| 45 | Sean Strickland | 1917.6 |
-| 46 | Glover Teixeira | 1911.7 |
-| 47 | Merab Dvalishvili | 1911.6 |
-| 48 | Chuck Liddell | 1911.6 |
-| 49 | Tyron Woodley | 1909.1 |
-| 50 | Mirko Filipovic | 1908.9 |
+| # | Fighter | Score | Elite wins |
+| ---: | --- | ---: | ---: |
+| 1 | Jon Jones | 2207.8 | 12 |
+| 2 | Islam Makhachev | 2171.4 | 9 |
+| 3 | Ilia Topuria | 2111.7 | 5 |
+| 4 | Georges St-Pierre | 2073.3 | 11 |
+| 5 | Alexander Volkanovski | 2047.2 | 9 |
+| 6 | Francis Ngannou | 2041.5 | 7 |
+| 7 | Vadim Nemkov | 2027.5 | 5 |
+| 8 | Stipe Miocic | 2003.4 | 6 |
+| 9 | Dricus Du Plessis | 2000.9 | 6 |
+| 10 | Kamaru Usman | 1980.9 | 6 |
+| 11 | Jose Aldo | 1977.0 | 7 |
+| 12 | Demetrious Johnson | 1974.0 | 6 |
+| 13 | Max Holloway | 1961.7 | 9 |
+| 14 | Alex Pereira | 1961.1 | 7 |
+| 15 | Chris Weidman | 1957.0 | 7 |
+| 16 | Charles Oliveira | 1949.9 | 7 |
+| 17 | Dominick Cruz | 1949.5 | 5 |
+| 18 | Anthony Johnson | 1938.7 | 6 |
+| 19 | Aljamain Sterling | 1929.7 | 7 |
+| 20 | Dustin Poirier | 1927.5 | 5 |
+| 21 | Yoel Romero | 1925.4 | 5 |
+| 22 | Anderson Silva | 1925.1 | 11 |
+| 23 | Sean Strickland | 1917.6 | 9 |
+| 24 | Merab Dvalishvili | 1911.6 | 8 |
+| 25 | Robert Whittaker | 1899.0 | 8 |
+| 26 | Alexander Volkov | 1897.6 | 7 |
+| 27 | Alexandre Pantoja | 1867.4 | 5 |
+| 28 | Nassourdine Imavov | 1846.5 | 6 |
+| 29 | Jake Shields | 1844.7 | 6 |
+| 30 | Quinton Jackson | 1830.8 | 5 |
+| 31 | Rafael Dos Anjos | 1801.7 | 6 |
+| 32 | Neil Magny | 1798.9 | 6 |
+| 33 | Jan Blachowicz | 1797.9 | 6 |
+| 34 | Thiago Santos | 1784.6 | 5 |
 
 <!-- BOARD:ELITEPRIME50:END -->
 
@@ -387,10 +372,10 @@ rule. The same rule is applied to both boards rather than softening it for one.
 
 Men and women never fight, so no bout locates the two rating levels against each other: their relative level is set by the prior, not by evidence, and one number cannot rank them together. The boards are therefore separate, and each one's ranks are identified within it.
 
-| # | Fighter | Score |
-| ---: | --- | ---: |
-| 1 | Amanda Nunes | 1947.0 |
-| 2 | Valentina Shevchenko | 1939.8 |
+| # | Fighter | Score | Elite wins |
+| ---: | --- | ---: | ---: |
+| 1 | Amanda Nunes | 1947.0 | 5 |
+| 2 | Valentina Shevchenko | 1939.8 | 7 |
 
 <!-- BOARD:ELITEPRIMEWOMEN10:END -->
 
