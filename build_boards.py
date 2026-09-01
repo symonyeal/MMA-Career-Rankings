@@ -574,6 +574,12 @@ def top_board_markdown(
         )
         for _, label in PUBLIC_LEGACY_COMPONENTS:
             table[label] = merged[label].round(1).to_numpy()
+    if "peak_mu_whr" in current.columns:
+        peak = pd.to_numeric(
+            ranked["fighter"].map(current.set_index("fighter")["peak_mu_whr"]),
+            errors="coerce",
+        )
+        table["Peak"] = peak.round(0).astype("Int64").to_numpy()
     if rating_col != PRIME_RATING_COL and PRIME_RATING_COL in ranked.columns:
         table["Prime"] = ranked[PRIME_RATING_COL].round(1).to_numpy()
     if "tested_opponent_wins" in ranked.columns:
@@ -590,6 +596,48 @@ def top_board_markdown(
         for row in table.itertuples(index=False)
     ]
     return "\n".join([header, align, *rows])
+
+
+def peak_levels(snapshot_dir: Path) -> pd.Series:
+    """Fighter -> highest rating they ever reached, on the published trajectory.
+
+    The board's own score is a resume figure on no familiar scale. Printing the
+    peak rating beside it puts every published fighter on the same scale as the
+    contender line, so a reader can see what the line is worth without leaving
+    the table.
+    """
+    path = Path(snapshot_dir) / "ratings_history_whr.parquet"
+    if not path.exists():
+        return pd.Series(dtype="float64")
+    history = pd.read_parquet(path, columns=["fighter", "mu_whr"])
+    return history.groupby("fighter")["mu_whr"].max()
+
+
+def contender_line_reach(snapshot_dir: Path, current: pd.DataFrame) -> float | None:
+    """Share of established fighters whose peak ever reached the contender line.
+
+    Generated rather than written down, because a hand-typed percentage in the
+    prose goes stale the first time the corpus is rebuilt.
+    """
+    peaks = peak_levels(snapshot_dir)
+    if peaks.empty or "rating_periods" not in current.columns:
+        return None
+    established = current[
+        pd.to_numeric(current["rating_periods"], errors="coerce").fillna(0)
+        >= SUSTAINED_PEAK_MIN_FIGHTS
+    ]
+    reached = pd.to_numeric(established["fighter"].map(peaks), errors="coerce").dropna()
+    if reached.empty:
+        return None
+    return float((reached >= CONTENDER_LINE_MU).mean())
+
+
+def _contender_line_label(snapshot_dir: Path, current: pd.DataFrame) -> str:
+    """The contender line, with the share of established fighters who reach it."""
+    reach = contender_line_reach(snapshot_dir, current)
+    if reach is None:
+        return f"{CONTENDER_LINE_MU:,.0f}"
+    return f"{CONTENDER_LINE_MU:,.0f} — reached by {reach:.1%} of established fighters"
 
 
 def publication_release_markdown(
@@ -618,6 +666,7 @@ def publication_release_markdown(
         ("Rated bouts", f"{int(rating_run.get('rated_bouts', 0)):,}"),
         ("Rated fighters", f"{len(current):,}"),
         ("Maximum-coverage fight rows", f"{int(combined.get('rows', 0)):,}"),
+        ("Contender line", _contender_line_label(snapshot, current)),
     )
     rows = [f"| {label} | {value} |" for label, value in values]
     return "\n".join(["| Release fact | Value |", "| --- | ---: |", *rows])
@@ -831,6 +880,9 @@ def main() -> None:
 
     if args.write_readme is not None:
         current = pd.read_parquet(Path(args.snapshot_dir) / "ratings_current.parquet")
+        # The published score is a resume figure on no familiar scale. The peak
+        # rating puts every row on the same scale as the contender line.
+        current["peak_mu_whr"] = current["fighter"].map(peak_levels(args.snapshot_dir))
         release_table = publication_release_markdown(args.snapshot_dir, summary, current)
         top_table = top_board_markdown(
             gated, current, rating_col=core_col, top=args.readme_top

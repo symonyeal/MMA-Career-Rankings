@@ -46,6 +46,7 @@ the publication or from the release facts they were built with.
 | Rated bouts | 80,697 |
 | Rated fighters | 33,692 |
 | Maximum-coverage fight rows | 82,171 |
+| Contender line | 1,750 — reached by 19.2% of established fighters |
 
 <!-- PUBLICATION:RELEASE:END -->
 
@@ -56,110 +57,120 @@ combines sustained career skill, championship results, and schedule strength.
 The component columns are the business explanation of the total: they are
 contributions to one score, not separate rankings.
 
+**Reading the ratings.** **Peak** is the highest rating a fighter ever reached,
+on the same scale as the contender line quoted above, so the line can be read
+against names rather than taken on trust. Be aware what it is worth: the release
+table reports the share of established fighters whose peak ever cleared it, and
+on this release that is roughly a fifth of them. Fighters peaking near the line
+are durable roster regulars rather than title challengers, so it is better read
+as "an opponent with a real record" than as "a contender". What does the heavy
+lifting on the elite board is the requirement to have beaten five of them inside
+one ten-year stretch, not the height of the line itself.
+
 <!-- BOARD:TOP100:BEGIN -->
 
-| # | Fighter | Score | Skill | Title | Schedule |
-| ---: | --- | ---: | ---: | ---: | ---: |
-| 1 | Jon Jones | 2854.6 | 1000.0 | 1000.0 | 854.6 |
-| 2 | Georges St-Pierre | 2207.8 | 637.1 | 570.7 | 1000.0 |
-| 3 | Demetrious Johnson | 1840.6 | 391.7 | 637.4 | 811.5 |
-| 4 | Jose Aldo | 1609.1 | 397.9 | 593.6 | 617.6 |
-| 5 | Daniel Cormier | 1589.0 | 477.8 | 553.3 | 557.8 |
-| 6 | Islam Makhachev | 1576.6 | 648.6 | 642.4 | 285.5 |
-| 7 | Alexander Volkanovski | 1311.3 | 262.7 | 587.6 | 460.9 |
-| 8 | Anderson Silva | 1297.7 | 205.3 | 489.6 | 602.8 |
-| 9 | Matt Hughes | 1237.9 | 165.1 | 410.5 | 662.3 |
-| 10 | Stipe Miocic | 1210.3 | 258.0 | 547.9 | 404.4 |
-| 11 | Max Holloway | 1186.3 | 80.6 | 310.8 | 795.0 |
-| 12 | Dominick Cruz | 1134.6 | 239.5 | 445.7 | 449.5 |
-| 13 | Khabib Nurmagomedov | 1126.4 | 586.6 | 311.3 | 228.5 |
-| 14 | Randy Couture | 1044.0 | 22.7 | 196.7 | 824.6 |
-| 15 | Francis Ngannou | 992.8 | 336.4 | 306.8 | 349.7 |
-| 16 | Lyoto Machida | 975.9 | 260.2 | 123.1 | 592.6 |
-| 17 | Aljamain Sterling | 971.3 | 144.4 | 325.9 | 501.0 |
-| 18 | Chuck Liddell | 960.4 | 247.9 | 100.4 | 612.2 |
-| 19 | Ilia Topuria | 954.4 | 342.2 | 379.3 | 232.9 |
-| 20 | Cain Velasquez | 930.0 | 193.5 | 258.9 | 477.7 |
-| 21 | Israel Adesanya | 911.0 | 176.1 | 326.7 | 408.2 |
-| 22 | Fedor Emelianenko | 900.8 | 307.4 | 216.2 | 377.2 |
-| 23 | Dan Henderson | 886.6 | 302.4 | 30.6 | 553.6 |
-| 24 | Patricio Freire | 874.2 | 227.3 | 302.3 | 344.6 |
-| 25 | BJ Penn | 827.0 | 58.7 | 225.5 | 542.9 |
-| 26 | Merab Dvalishvili | 824.2 | 68.9 | 332.4 | 423.0 |
-| 27 | Alex Pereira | 790.4 | 60.0 | 262.8 | 467.6 |
-| 28 | Justin Gaethje | 778.5 | 142.3 | 276.4 | 359.8 |
-| 29 | Joseph Benavidez | 754.5 | 288.7 | 0.0 | 465.7 |
-| 30 | Henry Cejudo | 750.5 | 99.8 | 269.4 | 381.4 |
-| 31 | Quinton Jackson | 722.8 | 62.7 | 92.6 | 567.6 |
-| 32 | Benson Henderson | 709.1 | 75.2 | 250.8 | 383.1 |
-| 33 | Ryan Bader | 705.2 | 79.7 | 70.9 | 554.7 |
-| 34 | Frankie Edgar | 700.0 | 95.5 | 80.9 | 523.7 |
-| 35 | Petr Yan | 684.5 | 115.8 | 202.2 | 366.4 |
-| 36 | Vitor Belfort | 684.1 | 128.9 | 30.9 | 524.2 |
-| 37 | Josh Barnett | 680.1 | 216.5 | 21.2 | 442.4 |
-| 38 | Junior Dos Santos | 678.5 | 112.8 | 165.6 | 400.1 |
-| 39 | Fabricio Werdum | 676.4 | 64.8 | 153.9 | 457.7 |
-| 40 | Kamaru Usman | 670.2 | 52.6 | 200.5 | 417.1 |
-| 41 | Khamzat Chimaev | 667.2 | 360.6 | 108.6 | 198.0 |
-| 42 | Chris Weidman | 660.9 | 83.4 | 183.8 | 393.6 |
-| 43 | Charles Oliveira | 655.2 | 60.2 | 130.4 | 464.6 |
-| 44 | Tyron Woodley | 615.5 | 34.2 | 126.6 | 454.7 |
-| 45 | Antonio Rodrigo Nogueira | 611.9 | 204.8 | 16.3 | 390.9 |
-| 46 | TJ Dillashaw | 602.2 | 37.3 | 103.8 | 461.1 |
-| 47 | Dricus Du Plessis | 592.2 | 189.7 | 138.3 | 264.2 |
-| 48 | Mauricio Rua | 590.9 | 88.6 | 130.8 | 371.5 |
-| 49 | Eddie Alvarez | 554.0 | 51.1 | 156.0 | 346.9 |
-| 50 | Rashad Evans | 545.3 | 94.0 | 35.6 | 415.7 |
-| 51 | Deiveson Figueiredo | 538.0 | 127.5 | 66.8 | 343.7 |
-| 52 | Conor McGregor | 521.7 | 21.0 | 264.0 | 236.7 |
-| 53 | Mirko Filipovic | 508.6 | 44.3 | 73.5 | 390.8 |
-| 54 | Luke Rockhold | 507.8 | 44.6 | 84.9 | 378.3 |
-| 55 | Robbie Lawler | 498.0 | 10.0 | 92.6 | 395.4 |
-| 56 | Ciryl Gane | 497.9 | 303.9 | 77.5 | 116.5 |
-| 57 | Vadim Nemkov | 495.4 | 169.8 | 172.3 | 153.3 |
-| 58 | Tito Ortiz | 487.5 | 162.4 | 75.4 | 249.6 |
-| 59 | Wanderlei Silva | 487.1 | 249.7 | 67.5 | 169.9 |
-| 60 | Michael Chandler | 475.0 | 64.9 | 188.2 | 221.9 |
-| 61 | Rich Franklin | 472.5 | 173.5 | 35.0 | 264.0 |
-| 62 | Sean Strickland | 471.6 | 66.0 | 177.4 | 228.2 |
-| 63 | Movsar Evloev | 465.5 | 289.2 | 0.0 | 176.3 |
-| 64 | Yoel Romero | 454.2 | 44.3 | 0.0 | 410.0 |
-| 65 | Leon Edwards | 453.9 | 6.9 | 172.8 | 274.3 |
-| 66 | Frank Mir | 445.5 | 1.1 | 130.6 | 313.8 |
-| 67 | Brandon Moreno | 444.2 | 3.5 | 117.3 | 323.4 |
-| 68 | Dustin Poirier | 436.5 | 44.0 | 137.9 | 254.5 |
-| 69 | Alistair Overeem | 428.1 | 6.4 | 2.8 | 418.8 |
-| 70 | Rafael Dos Anjos | 428.1 | 1.5 | 77.6 | 348.9 |
-| 71 | Urijah Faber | 424.5 | 130.3 | 6.9 | 287.3 |
-| 72 | Anthony Pettis | 423.4 | 15.3 | 199.1 | 208.9 |
-| 73 | Takanori Gomi | 415.6 | 135.6 | 0.0 | 280.0 |
-| 74 | Jussier Formiga | 408.8 | 66.4 | 0.0 | 342.4 |
-| 75 | Robert Whittaker | 386.9 | 32.3 | 66.6 | 288.0 |
-| 76 | Renan Barao | 382.4 | 44.2 | 149.2 | 189.0 |
-| 77 | Matt Serra | 382.3 | 20.7 | 218.2 | 143.4 |
-| 78 | Mark Coleman | 378.0 | 14.1 | 174.6 | 189.3 |
-| 79 | Kyoji Horiguchi | 376.9 | 165.4 | 30.9 | 180.6 |
-| 80 | Sean Sherk | 374.2 | 141.3 | 54.6 | 178.3 |
-| 81 | Gegard Mousasi | 373.1 | 81.1 | 94.6 | 197.5 |
-| 82 | Joshua Van | 369.8 | 78.4 | 152.0 | 139.4 |
-| 83 | Shavkat Rakhmonov | 367.8 | 301.9 | 0.0 | 65.9 |
-| 84 | Phil Davis | 361.7 | 126.5 | 27.1 | 208.1 |
-| 85 | Anthony Johnson | 361.4 | 41.6 | 0.0 | 319.7 |
-| 86 | Sean O'Malley | 361.0 | 80.3 | 107.3 | 173.4 |
-| 87 | Chael Sonnen | 360.3 | 18.4 | 0.0 | 341.9 |
-| 88 | Tim Sylvia | 358.5 | 16.3 | 115.3 | 226.8 |
-| 89 | Demian Maia | 357.4 | 121.1 | 0.0 | 236.3 |
-| 90 | Sergio Pettis | 349.2 | 6.5 | 116.5 | 226.2 |
-| 91 | Donald Cerrone | 336.5 | 35.7 | 0.0 | 300.8 |
-| 92 | Hayato Sakurai | 334.4 | 68.4 | 0.0 | 266.0 |
-| 93 | Beneil Dariush | 327.4 | 7.1 | 0.0 | 320.3 |
-| 94 | Ricardo Arona | 318.6 | 114.2 | 0.0 | 204.4 |
-| 95 | Jacare Souza | 318.6 | 76.8 | 0.0 | 241.7 |
-| 96 | Johnny Eblen | 313.3 | 173.9 | 71.0 | 68.4 |
-| 97 | Michael Bisping | 313.1 | 34.0 | 55.0 | 224.1 |
-| 98 | Jake Shields | 311.9 | 23.5 | 46.1 | 242.3 |
-| 99 | Ben Askren | 310.6 | 127.5 | 90.9 | 92.2 |
-| 100 | Jiri Prochazka | 310.1 | 49.2 | 22.0 | 239.0 |
+| # | Fighter | Score | Skill | Title | Schedule | Peak |
+| ---: | --- | ---: | ---: | ---: | ---: | ---: |
+| 1 | Jon Jones | 2854.6 | 1000.0 | 1000.0 | 854.6 | 2227 |
+| 2 | Georges St-Pierre | 2207.8 | 637.1 | 570.7 | 1000.0 | 2090 |
+| 3 | Demetrious Johnson | 1840.6 | 391.7 | 637.4 | 811.5 | 2006 |
+| 4 | Jose Aldo | 1609.1 | 397.9 | 593.6 | 617.6 | 2003 |
+| 5 | Daniel Cormier | 1589.0 | 477.8 | 553.3 | 557.8 | 2142 |
+| 6 | Islam Makhachev | 1576.6 | 648.6 | 642.4 | 285.5 | 2214 |
+| 7 | Alexander Volkanovski | 1311.3 | 262.7 | 587.6 | 460.9 | 2072 |
+| 8 | Anderson Silva | 1297.7 | 205.3 | 489.6 | 602.8 | 1969 |
+| 9 | Matt Hughes | 1237.9 | 165.1 | 410.5 | 662.3 | 1895 |
+| 10 | Stipe Miocic | 1210.3 | 258.0 | 547.9 | 404.4 | 2021 |
+| 11 | Max Holloway | 1186.3 | 80.6 | 310.8 | 795.0 | 1978 |
+| 12 | Dominick Cruz | 1134.6 | 239.5 | 445.7 | 449.5 | 1979 |
+| 13 | Khabib Nurmagomedov | 1126.4 | 586.6 | 311.3 | 228.5 | 2179 |
+| 14 | Randy Couture | 1044.0 | 22.7 | 196.7 | 824.6 | 1797 |
+| 15 | Francis Ngannou | 992.8 | 336.4 | 306.8 | 349.7 | 2079 |
+| 16 | Lyoto Machida | 975.9 | 260.2 | 123.1 | 592.6 | 2059 |
+| 17 | Aljamain Sterling | 971.3 | 144.4 | 325.9 | 501.0 | 1959 |
+| 18 | Chuck Liddell | 960.4 | 247.9 | 100.4 | 612.2 | 1919 |
+| 19 | Ilia Topuria | 954.4 | 342.2 | 379.3 | 232.9 | 2127 |
+| 20 | Cain Velasquez | 930.0 | 193.5 | 258.9 | 477.7 | 2024 |
+| 21 | Israel Adesanya | 911.0 | 176.1 | 326.7 | 408.2 | 2024 |
+| 22 | Fedor Emelianenko | 900.8 | 307.4 | 216.2 | 377.2 | 2064 |
+| 23 | Dan Henderson | 886.6 | 302.4 | 30.6 | 553.6 | 1968 |
+| 24 | Patricio Freire | 874.2 | 227.3 | 302.3 | 344.6 | 1962 |
+| 25 | BJ Penn | 827.0 | 58.7 | 225.5 | 542.9 | 1891 |
+| 26 | Merab Dvalishvili | 824.2 | 68.9 | 332.4 | 423.0 | 2009 |
+| 27 | Alex Pereira | 790.4 | 60.0 | 262.8 | 467.6 | 1970 |
+| 28 | Justin Gaethje | 778.5 | 142.3 | 276.4 | 359.8 | 2016 |
+| 29 | Joseph Benavidez | 754.5 | 288.7 | 0.0 | 465.7 | 1933 |
+| 30 | Henry Cejudo | 750.5 | 99.8 | 269.4 | 381.4 | 1925 |
+| 31 | Quinton Jackson | 722.8 | 62.7 | 92.6 | 567.6 | 1856 |
+| 32 | Benson Henderson | 709.1 | 75.2 | 250.8 | 383.1 | 1967 |
+| 33 | Ryan Bader | 705.2 | 79.7 | 70.9 | 554.7 | 1953 |
+| 34 | Frankie Edgar | 700.0 | 95.5 | 80.9 | 523.7 | 1970 |
+| 35 | Petr Yan | 684.5 | 115.8 | 202.2 | 366.4 | 1971 |
+| 36 | Vitor Belfort | 684.1 | 128.9 | 30.9 | 524.2 | 1827 |
+| 37 | Josh Barnett | 680.1 | 216.5 | 21.2 | 442.4 | 1948 |
+| 38 | Junior Dos Santos | 678.5 | 112.8 | 165.6 | 400.1 | 1977 |
+| 39 | Fabricio Werdum | 676.4 | 64.8 | 153.9 | 457.7 | 1910 |
+| 40 | Kamaru Usman | 670.2 | 52.6 | 200.5 | 417.1 | 2004 |
+| 41 | Khamzat Chimaev | 667.2 | 360.6 | 108.6 | 198.0 | 2106 |
+| 42 | Chris Weidman | 660.9 | 83.4 | 183.8 | 393.6 | 1988 |
+| 43 | Charles Oliveira | 655.2 | 60.2 | 130.4 | 464.6 | 1988 |
+| 44 | Tyron Woodley | 615.5 | 34.2 | 126.6 | 454.7 | 1926 |
+| 45 | Antonio Rodrigo Nogueira | 611.9 | 204.8 | 16.3 | 390.9 | 1994 |
+| 46 | TJ Dillashaw | 602.2 | 37.3 | 103.8 | 461.1 | 1878 |
+| 47 | Dricus Du Plessis | 592.2 | 189.7 | 138.3 | 264.2 | 2049 |
+| 48 | Mauricio Rua | 590.9 | 88.6 | 130.8 | 371.5 | 1928 |
+| 49 | Eddie Alvarez | 554.0 | 51.1 | 156.0 | 346.9 | 1913 |
+| 50 | Rashad Evans | 545.3 | 94.0 | 35.6 | 415.7 | 1950 |
+| 51 | Deiveson Figueiredo | 538.0 | 127.5 | 66.8 | 343.7 | 1955 |
+| 52 | Conor McGregor | 521.7 | 21.0 | 264.0 | 236.7 | 1895 |
+| 53 | Mirko Filipovic | 508.6 | 44.3 | 73.5 | 390.8 | 1914 |
+| 54 | Luke Rockhold | 507.8 | 44.6 | 84.9 | 378.3 | 1924 |
+| 55 | Robbie Lawler | 498.0 | 10.0 | 92.6 | 395.4 | 1799 |
+| 56 | Ciryl Gane | 497.9 | 303.9 | 77.5 | 116.5 | 2066 |
+| 57 | Vadim Nemkov | 495.4 | 169.8 | 172.3 | 153.3 | 2081 |
+| 58 | Tito Ortiz | 487.5 | 162.4 | 75.4 | 249.6 | 1845 |
+| 59 | Wanderlei Silva | 487.1 | 249.7 | 67.5 | 169.9 | 1890 |
+| 60 | Michael Chandler | 475.0 | 64.9 | 188.2 | 221.9 | 1981 |
+| 61 | Rich Franklin | 472.5 | 173.5 | 35.0 | 264.0 | 1948 |
+| 62 | Sean Strickland | 471.6 | 66.0 | 177.4 | 228.2 | 1951 |
+| 63 | Movsar Evloev | 465.5 | 289.2 | 0.0 | 176.3 | 2105 |
+| 64 | Yoel Romero | 454.2 | 44.3 | 0.0 | 410.0 | 1941 |
+| 65 | Leon Edwards | 453.9 | 6.9 | 172.8 | 274.3 | 1925 |
+| 66 | Frank Mir | 445.5 | 1.1 | 130.6 | 313.8 | 1778 |
+| 67 | Brandon Moreno | 444.2 | 3.5 | 117.3 | 323.4 | 1812 |
+| 68 | Dustin Poirier | 436.5 | 44.0 | 137.9 | 254.5 | 1956 |
+| 69 | Alistair Overeem | 428.1 | 6.4 | 2.8 | 418.8 | 1844 |
+| 70 | Rafael Dos Anjos | 428.1 | 1.5 | 77.6 | 348.9 | 1848 |
+| 71 | Urijah Faber | 424.5 | 130.3 | 6.9 | 287.3 | 1885 |
+| 72 | Anthony Pettis | 423.4 | 15.3 | 199.1 | 208.9 | 1890 |
+| 73 | Takanori Gomi | 415.6 | 135.6 | 0.0 | 280.0 | 1881 |
+| 74 | Jussier Formiga | 408.8 | 66.4 | 0.0 | 342.4 | 1831 |
+| 75 | Robert Whittaker | 386.9 | 32.3 | 66.6 | 288.0 | 1932 |
+| 76 | Renan Barao | 382.4 | 44.2 | 149.2 | 189.0 | 1848 |
+| 77 | Matt Serra | 382.3 | 20.7 | 218.2 | 143.4 | 1722 |
+| 78 | Mark Coleman | 378.0 | 14.1 | 174.6 | 189.3 | 1770 |
+| 79 | Kyoji Horiguchi | 376.9 | 165.4 | 30.9 | 180.6 | 1966 |
+| 80 | Sean Sherk | 374.2 | 141.3 | 54.6 | 178.3 | 1928 |
+| 81 | Gegard Mousasi | 373.1 | 81.1 | 94.6 | 197.5 | 1942 |
+| 82 | Joshua Van | 369.8 | 78.4 | 152.0 | 139.4 | 1966 |
+| 83 | Shavkat Rakhmonov | 367.8 | 301.9 | 0.0 | 65.9 | 2139 |
+| 84 | Phil Davis | 361.7 | 126.5 | 27.1 | 208.1 | 2009 |
+| 85 | Anthony Johnson | 361.4 | 41.6 | 0.0 | 319.7 | 1964 |
+| 86 | Sean O'Malley | 361.0 | 80.3 | 107.3 | 173.4 | 1964 |
+| 87 | Chael Sonnen | 360.3 | 18.4 | 0.0 | 341.9 | 1788 |
+| 88 | Tim Sylvia | 358.5 | 16.3 | 115.3 | 226.8 | 1923 |
+| 89 | Demian Maia | 357.4 | 121.1 | 0.0 | 236.3 | 1947 |
+| 90 | Sergio Pettis | 349.2 | 6.5 | 116.5 | 226.2 | 1856 |
+| 91 | Donald Cerrone | 336.5 | 35.7 | 0.0 | 300.8 | 1924 |
+| 92 | Hayato Sakurai | 334.4 | 68.4 | 0.0 | 266.0 | 1784 |
+| 93 | Beneil Dariush | 327.4 | 7.1 | 0.0 | 320.3 | 1864 |
+| 94 | Ricardo Arona | 318.6 | 114.2 | 0.0 | 204.4 | 1878 |
+| 95 | Jacare Souza | 318.6 | 76.8 | 0.0 | 241.7 | 1932 |
+| 96 | Johnny Eblen | 313.3 | 173.9 | 71.0 | 68.4 | 2056 |
+| 97 | Michael Bisping | 313.1 | 34.0 | 55.0 | 224.1 | 1893 |
+| 98 | Jake Shields | 311.9 | 23.5 | 46.1 | 242.3 | 1882 |
+| 99 | Ben Askren | 310.6 | 127.5 | 90.9 | 92.2 | 2047 |
+| 100 | Jiri Prochazka | 310.1 | 49.2 | 22.0 | 239.0 | 1973 |
 
 <!-- BOARD:TOP100:END -->
 
@@ -195,42 +206,42 @@ both halves of the opponent test.
 
 <!-- BOARD:ELITEPRIME50:BEGIN -->
 
-| # | Fighter | Score | Prime | Elite wins |
-| ---: | --- | ---: | ---: | ---: |
-| 1 | Jon Jones | 5078.7 | 2207.8 | 12 |
-| 2 | Islam Makhachev | 3481.6 | 2171.4 | 9 |
-| 3 | Georges St-Pierre | 3176.5 | 2073.3 | 11 |
-| 4 | Alexander Volkanovski | 2363.9 | 2047.2 | 9 |
-| 5 | Francis Ngannou | 1798.5 | 2041.5 | 7 |
-| 6 | Ilia Topuria | 1635.8 | 2111.7 | 5 |
-| 7 | Max Holloway | 1594.4 | 1961.7 | 9 |
-| 8 | Anderson Silva | 1545.7 | 1925.1 | 11 |
-| 9 | Jose Aldo | 1346.7 | 1977.0 | 7 |
-| 10 | Stipe Miocic | 1313.2 | 2003.4 | 6 |
-| 11 | Dricus Du Plessis | 1298.1 | 2000.9 | 6 |
-| 12 | Alex Pereira | 1235.9 | 1961.1 | 7 |
-| 13 | Vadim Nemkov | 1214.6 | 2027.5 | 5 |
-| 14 | Chris Weidman | 1207.1 | 1957.0 | 7 |
-| 15 | Sean Strickland | 1197.1 | 1917.6 | 9 |
-| 16 | Kamaru Usman | 1177.8 | 1980.9 | 6 |
-| 17 | Charles Oliveira | 1157.4 | 1949.9 | 7 |
-| 18 | Demetrious Johnson | 1136.6 | 1974.0 | 6 |
-| 19 | Aljamain Sterling | 1016.2 | 1929.7 | 7 |
-| 20 | Merab Dvalishvili | 1016.1 | 1911.6 | 8 |
-| 21 | Anthony Johnson | 924.8 | 1938.7 | 6 |
-| 22 | Robert Whittaker | 915.1 | 1899.0 | 8 |
-| 23 | Dominick Cruz | 824.8 | 1949.5 | 5 |
-| 24 | Alexander Volkov | 791.6 | 1897.6 | 7 |
-| 25 | Dustin Poirier | 714.4 | 1927.5 | 5 |
-| 26 | Yoel Romero | 704.1 | 1925.4 | 5 |
-| 27 | Alexandre Pantoja | 414.2 | 1867.4 | 5 |
-| 28 | Nassourdine Imavov | 371.5 | 1846.5 | 6 |
-| 29 | Jake Shields | 360.6 | 1844.7 | 6 |
-| 30 | Quinton Jackson | 231.0 | 1830.8 | 5 |
-| 31 | Rafael Dos Anjos | 103.1 | 1801.7 | 6 |
-| 32 | Neil Magny | 85.7 | 1798.9 | 6 |
-| 33 | Jan Blachowicz | 79.8 | 1797.9 | 6 |
-| 34 | Thiago Santos | 0.0 | 1784.6 | 5 |
+| # | Fighter | Score | Peak | Prime | Elite wins |
+| ---: | --- | ---: | ---: | ---: | ---: |
+| 1 | Jon Jones | 5078.7 | 2227 | 2207.8 | 12 |
+| 2 | Islam Makhachev | 3481.6 | 2214 | 2171.4 | 9 |
+| 3 | Georges St-Pierre | 3176.5 | 2090 | 2073.3 | 11 |
+| 4 | Alexander Volkanovski | 2363.9 | 2072 | 2047.2 | 9 |
+| 5 | Francis Ngannou | 1798.5 | 2079 | 2041.5 | 7 |
+| 6 | Ilia Topuria | 1635.8 | 2127 | 2111.7 | 5 |
+| 7 | Max Holloway | 1594.4 | 1978 | 1961.7 | 9 |
+| 8 | Anderson Silva | 1545.7 | 1969 | 1925.1 | 11 |
+| 9 | Jose Aldo | 1346.7 | 2003 | 1977.0 | 7 |
+| 10 | Stipe Miocic | 1313.2 | 2021 | 2003.4 | 6 |
+| 11 | Dricus Du Plessis | 1298.1 | 2049 | 2000.9 | 6 |
+| 12 | Alex Pereira | 1235.9 | 1970 | 1961.1 | 7 |
+| 13 | Vadim Nemkov | 1214.6 | 2081 | 2027.5 | 5 |
+| 14 | Chris Weidman | 1207.1 | 1988 | 1957.0 | 7 |
+| 15 | Sean Strickland | 1197.1 | 1951 | 1917.6 | 9 |
+| 16 | Kamaru Usman | 1177.8 | 2004 | 1980.9 | 6 |
+| 17 | Charles Oliveira | 1157.4 | 1988 | 1949.9 | 7 |
+| 18 | Demetrious Johnson | 1136.6 | 2006 | 1974.0 | 6 |
+| 19 | Aljamain Sterling | 1016.2 | 1959 | 1929.7 | 7 |
+| 20 | Merab Dvalishvili | 1016.1 | 2009 | 1911.6 | 8 |
+| 21 | Anthony Johnson | 924.8 | 1964 | 1938.7 | 6 |
+| 22 | Robert Whittaker | 915.1 | 1932 | 1899.0 | 8 |
+| 23 | Dominick Cruz | 824.8 | 1979 | 1949.5 | 5 |
+| 24 | Alexander Volkov | 791.6 | 1931 | 1897.6 | 7 |
+| 25 | Dustin Poirier | 714.4 | 1956 | 1927.5 | 5 |
+| 26 | Yoel Romero | 704.1 | 1941 | 1925.4 | 5 |
+| 27 | Alexandre Pantoja | 414.2 | 1900 | 1867.4 | 5 |
+| 28 | Nassourdine Imavov | 371.5 | 1961 | 1846.5 | 6 |
+| 29 | Jake Shields | 360.6 | 1882 | 1844.7 | 6 |
+| 30 | Quinton Jackson | 231.0 | 1856 | 1830.8 | 5 |
+| 31 | Rafael Dos Anjos | 103.1 | 1848 | 1801.7 | 6 |
+| 32 | Neil Magny | 85.7 | 1808 | 1798.9 | 6 |
+| 33 | Jan Blachowicz | 79.8 | 1835 | 1797.9 | 6 |
+| 34 | Thiago Santos | 0.0 | 1810 | 1784.6 | 5 |
 
 <!-- BOARD:ELITEPRIME50:END -->
 

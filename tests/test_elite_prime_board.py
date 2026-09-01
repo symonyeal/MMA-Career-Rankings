@@ -292,3 +292,60 @@ def test_the_published_board_has_no_dominated_pairs():
                 f"{ok.loc[i, 'fighter']} ranked above {ok.loc[j, 'fighter']}, "
                 "who is better on both level and evidence"
             )
+
+
+# --- Making the contender line legible on the published boards ---
+
+def _snapshot_with_history(tmp_path):
+    snap = tmp_path / "snap"
+    snap.mkdir()
+    pd.DataFrame({
+        "fighter": ["A", "A", "A", "B", "B"],
+        "event_date": pd.to_datetime(
+            ["2020-01-01", "2021-01-01", "2022-01-01", "2020-01-01", "2021-01-01"]
+        ),
+        "mu_whr": [1700.0, 1900.0, 1800.0, 1600.0, 1650.0],
+    }).to_parquet(snap / "ratings_history_whr.parquet", index=False)
+    return snap
+
+
+def test_peak_levels_take_the_highest_point_not_the_last(tmp_path):
+    """A declined fighter's peak is what puts them on the contender scale."""
+    peaks = build_boards.peak_levels(_snapshot_with_history(tmp_path))
+
+    assert peaks["A"] == 1900.0   # not 1800, their final rating
+    assert peaks["B"] == 1650.0
+
+
+def test_missing_history_yields_no_peaks_rather_than_raising(tmp_path):
+    assert build_boards.peak_levels(tmp_path).empty
+
+
+def test_contender_line_reach_is_measured_over_established_fighters(tmp_path):
+    """The published share must not be a hand-typed number that goes stale."""
+    snap = _snapshot_with_history(tmp_path)
+    current = pd.DataFrame({
+        "fighter": ["A", "B", "C"],
+        "rating_periods": [20, 20, 2],   # C is below the evidence floor
+    })
+
+    reach = build_boards.contender_line_reach(snap, current)
+
+    # A peaked above the line, B did not, C is not established.
+    assert reach == pytest.approx(0.5)
+
+
+def test_the_published_board_prints_the_peak_on_the_contender_scale():
+    """The score is a resume figure; the peak is what the line can be read against."""
+    gated = pd.DataFrame({
+        "rank": [1], "fighter": ["A"], "status": ["ranked"],
+        "symon_prime_score": [2000.0],
+    })
+    current = pd.DataFrame({"fighter": ["A"], "peak_mu_whr": [1900.4]})
+
+    table = build_boards.top_board_markdown(
+        gated, current, rating_col="symon_prime_score", top=1
+    )
+
+    assert "Peak" in table.splitlines()[0]
+    assert "1900" in table

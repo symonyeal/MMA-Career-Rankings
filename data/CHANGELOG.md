@@ -38,6 +38,21 @@
   design records with restoration instructions. Finalized experimental
   snapshots and intentionally retained research evidence were not removed.
 
+## 2026-09-01 - Publish the rating scale beside the resume scores
+
+- The all-time board printed only resume figures, so the 1750 contender line
+  used by the elite Prime board could not be read against any name. Every
+  published board now carries a `Peak` column: the highest rating the fighter
+  ever reached, on the same scale as the line.
+- The release facts now generate the line and its reach rather than stating it
+  in prose, which would go stale on the next rebuild. On this release 1750 is
+  reached by 19.2% of established fighters.
+- Recorded a caveat that follows from that measurement: at roughly a fifth of
+  established fighters, 1750 selects durable roster regulars rather than title
+  challengers, so the word "contender" overstates it. The five-wins-in-one-
+  window requirement, not the height of the line, is what makes the board
+  selective.
+
 ## 2026-09-01 - Elite Prime board: rank elite-win mass, not the bare level
 
 - The board ranked the Prime level alone. A level is a rate and does not grow
