@@ -492,3 +492,55 @@ def test_multi_block_publication_updates_all_four_boards_together(tmp_path: Path
         assert text.count(begin) == text.count(end) == 1
         assert f"{begin}\n\n{body}\n\n{end}" in text
     assert not readme.with_name(f"{readme.name}.building").exists()
+
+
+def test_publication_and_overview_are_written_from_one_validated_build(tmp_path: Path):
+    rankings = tmp_path / "RANKINGS.md"
+    overview = tmp_path / "README.md"
+    rankings.write_text(
+        f"{build_boards.README_BOARD_BEGIN}\nold men\n{build_boards.README_BOARD_END}\n"
+        f"{build_boards.README_ELITE_PRIME_BEGIN}\nold elite\n"
+        f"{build_boards.README_ELITE_PRIME_END}\n",
+        encoding="utf-8",
+    )
+    overview.write_text(
+        f"# Overview\n\n{build_boards.README_BOARD_BEGIN}\nold men\n"
+        f"{build_boards.README_BOARD_END}\n"
+        f"{build_boards.README_ELITE_PRIME_BEGIN}\nold elite\n"
+        f"{build_boards.README_ELITE_PRIME_END}\n",
+        encoding="utf-8",
+    )
+
+    boards = (
+        (build_boards.README_BOARD_BEGIN, build_boards.README_BOARD_END, "new men"),
+        (
+            build_boards.README_ELITE_PRIME_BEGIN,
+            build_boards.README_ELITE_PRIME_END,
+            "new elite",
+        ),
+    )
+    build_boards.update_publication_files(((rankings, boards), (overview, boards)))
+
+    for document in (rankings, overview):
+        text = document.read_text(encoding="utf-8")
+        assert "new men" in text and "new elite" in text
+        assert "old men" not in text and "old elite" not in text
+        assert not document.with_name(f"{document.name}.building").exists()
+    assert "# Overview" in overview.read_text(encoding="utf-8")
+
+
+def test_a_missing_overview_marker_leaves_the_publication_untouched(tmp_path: Path):
+    rankings = tmp_path / "RANKINGS.md"
+    overview = tmp_path / "README.md"
+    original = (
+        f"{build_boards.README_BOARD_BEGIN}\nold men\n{build_boards.README_BOARD_END}\n"
+    )
+    rankings.write_text(original, encoding="utf-8")
+    overview.write_text("# Overview\n\nno markers here\n", encoding="utf-8")
+
+    board = ((build_boards.README_BOARD_BEGIN, build_boards.README_BOARD_END, "new men"),)
+    with pytest.raises(ValueError):
+        build_boards.update_publication_files(((rankings, board), (overview, board)))
+
+    assert rankings.read_text(encoding="utf-8") == original
+    assert overview.read_text(encoding="utf-8") == "# Overview\n\nno markers here\n"

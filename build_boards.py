@@ -485,16 +485,11 @@ def update_readme_block(readme_path: Path, body: str, *, begin: str, end: str) -
     )
 
 
-def update_readme_blocks(
+def _rendered_publication(
     readme_path: Path,
     replacements: tuple[tuple[str, str, str], ...],
-) -> None:
-    """Validate and replace several marked blocks in one file write.
-
-    The publisher updates related tables together. Validating every marker
-    before changing the file prevents a missing later marker from leaving the
-    publication half refreshed.
-    """
+) -> str:
+    """Validate every marker in one file and return its fully updated text."""
     readme = Path(readme_path)
     text = readme.read_text(encoding="utf-8")
     spans: list[tuple[int, int, str, str, str]] = []
@@ -515,12 +510,49 @@ def update_readme_blocks(
     updated = text
     for start, stop, begin, end, body in reversed(ordered):
         updated = updated[:start] + f"{begin}\n\n{body}\n\n{end}" + updated[stop:]
+    return updated
+
+
+def _write_publication(readme_path: Path, text: str) -> None:
+    """Promote one rendered publication file by atomic replace."""
+    readme = Path(readme_path)
     build_path = readme.with_name(f"{readme.name}.building")
     try:
-        build_path.write_text(updated, encoding="utf-8")
+        build_path.write_text(text, encoding="utf-8")
         os.replace(build_path, readme)
     finally:
         build_path.unlink(missing_ok=True)
+
+
+def update_readme_blocks(
+    readme_path: Path,
+    replacements: tuple[tuple[str, str, str], ...],
+) -> None:
+    """Validate and replace several marked blocks in one file write.
+
+    The publisher updates related tables together. Validating every marker
+    before changing the file prevents a missing later marker from leaving the
+    publication half refreshed.
+    """
+    _write_publication(readme_path, _rendered_publication(readme_path, replacements))
+
+
+def update_publication_files(
+    plans: tuple[tuple[Path, tuple[tuple[str, str, str], ...]], ...],
+) -> None:
+    """Refresh every publication file, validating all of them before any write.
+
+    The business overview reproduces two of the publication's tables. Rendering
+    both documents before either is promoted stops a marker missing from the
+    second file from leaving the first one published against a different
+    release.
+    """
+    rendered = [
+        (Path(path), _rendered_publication(path, replacements))
+        for path, replacements in plans
+    ]
+    for path, text in rendered:
+        _write_publication(path, text)
 
 
 def update_readme_board(readme_path: Path, table: str) -> None:
@@ -583,6 +615,13 @@ def main() -> None:
         default=None,
         help="Also refresh the marked publication blocks (default RANKINGS.md).",
     )
+    ap.add_argument(
+        "--overview-path",
+        type=Path,
+        default=Path("README.md"),
+        help="Business overview whose headline boards are refreshed in the same "
+             "run as --write-readme (default README.md).",
+    )
     ap.add_argument("--readme-top", type=int, default=100)
     ap.add_argument(
         "--women-top",
@@ -641,19 +680,14 @@ def main() -> None:
 
     if args.write_readme is not None:
         current = pd.read_parquet(Path(args.snapshot_dir) / "ratings_current.parquet")
+        release_table = publication_release_markdown(args.snapshot_dir, summary, current)
+        top_table = top_board_markdown(
+            gated, current, rating_col=core_col, top=args.readme_top
+        )
+        elite_table: str | None = None
         replacements: list[tuple[str, str, str]] = [
-            (
-                README_RELEASE_BEGIN,
-                README_RELEASE_END,
-                publication_release_markdown(args.snapshot_dir, summary, current),
-            ),
-            (
-                README_BOARD_BEGIN,
-                README_BOARD_END,
-                top_board_markdown(
-                    gated, current, rating_col=core_col, top=args.readme_top
-                ),
-            )
+            (README_RELEASE_BEGIN, README_RELEASE_END, release_table),
+            (README_BOARD_BEGIN, README_BOARD_END, top_table),
         ]
         prime_path = out / "prime_board.parquet"
         prime = None
@@ -697,17 +731,14 @@ def main() -> None:
             )
         elite_path = out / "prime_elite_board.parquet"
         if elite_path.exists():
+            elite_table = top_board_markdown(
+                pd.read_parquet(elite_path),
+                current,
+                rating_col=PRIME_RATING_COL,
+                top=ELITE_PRIME_TOP,
+            )
             replacements.append(
-                (
-                    README_ELITE_PRIME_BEGIN,
-                    README_ELITE_PRIME_END,
-                    top_board_markdown(
-                        pd.read_parquet(elite_path),
-                        current,
-                        rating_col=PRIME_RATING_COL,
-                        top=ELITE_PRIME_TOP,
-                    ),
-                )
+                (README_ELITE_PRIME_BEGIN, README_ELITE_PRIME_END, elite_table)
             )
         elite_women_path = out / "prime_elite_board_women.parquet"
         if elite_women_path.exists():
@@ -724,8 +755,28 @@ def main() -> None:
                     ),
                 )
             )
-        update_readme_blocks(args.write_readme, tuple(replacements))
+        plans: list[tuple[Path, tuple[tuple[str, str, str], ...]]] = [
+            (Path(args.write_readme), tuple(replacements))
+        ]
+        # The overview carries the two headline boards. Both bodies are the
+        # ones already published above, so the documents cannot disagree.
+        overview: list[tuple[str, str, str]] = [
+            (README_RELEASE_BEGIN, README_RELEASE_END, release_table),
+            (README_BOARD_BEGIN, README_BOARD_END, top_table),
+        ]
+        if elite_table is not None:
+            overview.append(
+                (README_ELITE_PRIME_BEGIN, README_ELITE_PRIME_END, elite_table)
+            )
+        overview_path = (
+            Path(args.overview_path) if args.overview_path is not None else None
+        )
+        if overview_path is not None and overview_path != Path(args.write_readme):
+            plans.append((overview_path, tuple(overview)))
+        update_publication_files(tuple(plans))
         print(f"published {len(replacements)} ranking tables to {args.write_readme}")
+        if len(plans) > 1:
+            print(f"published {len(overview)} headline tables to {overview_path}")
 
 
 if __name__ == "__main__":
