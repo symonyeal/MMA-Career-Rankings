@@ -374,9 +374,11 @@ external retrieval and a new release build are deliberate operations.
   separation.
 - [Career Coverage](docs/CAREER_COVERAGE_2026-08-27.md) documents source
   completeness and the authoritative whole-career coverage rule.
-- [Next Decisions](docs/NEXT_2026-08-28.md) is the active handoff and decision
-  register, including closed options that should not be re-run without new
-  evidence.
+- [Score Investigation](docs/NEXT_2026-09-01.md) is the open question: the
+  all-time score and the elite record printed beside it disagree, and the brief
+  measures why before proposing a change.
+- [Next Decisions](docs/NEXT_2026-08-28.md) is the previous register, still live
+  for the three defects it names, and the record of options already refuted.
 - [Published UFC Rankings](RANKINGS.md) holds every generated table.
 
 Historical design notes and retired experiments are preserved under
