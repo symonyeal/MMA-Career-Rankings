@@ -198,7 +198,7 @@ added to the rating — they decide how much of it is credited — so nothing is
 counted twice, and there is no dial to tune.
 
 The contender line and the five-win minimum are set as policy, not fitted to the
-data. 71 men qualify, so this top 50 is full. Only 2 women do. That is a
+data. 70 men qualify, so this top 50 is full. Only 2 women do. That is a
 statement about how few women in the data have a long UFC record, not about the
 fighters — see [Published UFC Rankings](RANKINGS.md) for that board.
 
@@ -371,17 +371,17 @@ external retrieval and a new release build are deliberate operations.
 
 ## Current technical records
 
-- [Rating Layer and Public Ledger](docs/RATING_LAYER_AND_LEDGER_2026-08-28.md)
-  explains the production skill layer, Public Legacy components, and audit
-  separation.
-- [Career Coverage](docs/CAREER_COVERAGE_2026-08-27.md) documents source
-  completeness and the authoritative whole-career coverage rule.
-- [Score Investigation](docs/NEXT_2026-09-01.md) is the open question: the
-  all-time score and the elite record printed beside it disagree, and the brief
-  measures why before proposing a change.
-- [Next Decisions](docs/NEXT_2026-08-28.md) is the previous register, still live
-  for the three defects it names, and the record of options already refuted.
-- [Published UFC Rankings](RANKINGS.md) holds every generated table.
+- [How the ratings and the score are built](docs/RATING_LAYER_AND_LEDGER_2026-08-28.md)
+  — the rating method, what goes into the all-time score, and what was tested
+  and rejected along the way.
+- [Career coverage](docs/CAREER_COVERAGE_2026-08-27.md) — how a gap in the data
+  turned into rating points, and the rule that stops it returning.
+- [Why the all-time score disagreed with the elite record](docs/NEXT_2026-09-01.md)
+  — closed. The score is now two stated terms, and the outcome sections at the
+  end record what shipped and what is still open.
+- [Next decisions](docs/NEXT_2026-08-28.md) — the previous register, still live
+  for the three problems it names, and the record of what has been rejected.
+- [Published UFC Rankings](RANKINGS.md) — every generated table.
 
 Historical design notes and retired experiments are preserved under
 [`_archive/`](_archive/) with restoration instructions. They are evidence of

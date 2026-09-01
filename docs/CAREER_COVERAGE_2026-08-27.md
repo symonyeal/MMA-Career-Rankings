@@ -1,243 +1,227 @@
-# Career coverage: the top-100 anomalies were a data defect — 2026-08-27
+# The top-100 oddities were a data problem, not a scoring one — 2026-08-27
 
-**Snapshot:** `data/snapshots/2026-08-13` · **Scope:** `majors,pre_unified`
+**Dataset:** `data/snapshots/2026-08-13` · **Scope:** `majors,pre_unified`
 
-Six board repairs shipped between 2026-08-20 and 2026-08-26 — the fixed-mass WHR
-prior, the contender bar, the switch to `public_legacy_score`, per-opponent title
-pricing, the division-scoped title bar, and the division career bar with a
-softplus hinge. Every one was applied downstream of the rating, and the same
-profile of fighter returned each time with a new cast. This document records what
+Six fixes to the board shipped between 2026-08-20 and 2026-08-26. Every one of
+them was applied *after* the ratings were calculated, and the same kind of
+fighter kept coming back with a new name each time. This document records what
 was actually wrong, what completing the data fixed, and what it did not.
 
-## The defect
+## The problem
 
-`majors` is built two ways at once. Cards are enumerated by event for seven
-promotions, which is roster-complete *within* those promotions and truncates
-every career that ran wider. `sherdog_org_loader.parse_fighter_career` exists to
-remove that truncation, and states the principle itself:
+The `majors` dataset was built two ways at once. Fight cards were collected event
+by event for seven promotions, which is complete *within* those promotions and
+cuts off every career that ran wider than them. There is a second routine whose
+whole job is to remove that truncation, and which states the principle itself:
 
-> Rating a fighter on a subset of their record is the same censoring bias that
-> made the old fighter-seeded cache unusable, only applied along a different
-> axis. So once a fighter is in the graph at all, their whole record comes in.
+> Rating a fighter on a subset of their record is the same bias that made the old
+> cache unusable, only along a different axis. So once a fighter is in the graph
+> at all, their whole record comes in.
 
-That expansion ran over the **4,501 fighters who had appeared on a PRIDE / WEC /
-Strikeforce / Affliction / Bellator / RIZIN card**, and never over the UFCStats
-roster. "Once a fighter is in the graph" quietly meant "once a fighter is in the
-*majors* graph", so one corpus carried two coverage rules.
+That routine ran over the **4,501 fighters who had appeared on a PRIDE, WEC,
+Strikeforce, Affliction, Bellator or RIZIN card** — and never over the UFC roster.
+"Once a fighter is in the graph" quietly meant "once a fighter is in the *majors*
+graph", so one dataset was carrying two different coverage rules.
 
-Measured over the 1,825 fighters with three or more UFC bouts:
+Measured over the 1,825 fighters with three or more UFC fights:
 
-| career page read | fighters | median recorded pre-UFC bouts | median corpus bouts |
+| whole career read? | fighters | median pre-UFC fights recorded | median fights held |
 |---|---:|---:|---:|
 | yes | 547 (30.0%) | **13** | 37 |
 | no | 1,278 | **1** | 10 |
 
-Khabib Nurmagomedov was rated on 14 bouts; his record is 29. Volkanovski,
-Makhachev, Adesanya and Topuria each had 0–1 recorded pre-UFC bouts. Usman
+Khabib Nurmagomedov was rated on 14 fights; his record is 29. Volkanovski,
+Makhachev, Adesanya and Topuria each had 0 or 1 pre-UFC fights recorded. Usman
 Nurmagomedov, Eblen, Izawa, Nemkov and McKee had all of theirs.
 
-## Why coverage becomes rating points
+## Why missing fights turn into rating points
 
-A low-loss Bradley–Terry record has no interior maximum — the win gradient
-`sum_j (1 - sigma(r - r_j))` is positive at every finite `r` — so the prior alone
-stops the climb and the equilibrium sits near
+A fighter who rarely loses has no natural ceiling in this kind of model — every
+extra win pushes the rating higher with nothing pulling back — so only the model's
+prior stops the climb, and it settles near
 
-    r* ≈ opponent_level + 173.72 · ln(2k / v)
+    rating ≈ opponent level + 173.72 × ln(2k / v)
 
-`k` is *how many of the fighter's bouts the corpus happens to hold*. It is a
-property of the crawl, and the model reads it as skill.
+where `k` is **how many of that fighter's fights the dataset happens to hold**.
+That is a property of how the data was collected, and the model reads it as skill.
 
-Confirmed against a coverage-symmetric refit (career-fill bouts dropped so all
-seven promotions and nothing else, one rule for everybody), comparing each
-fighter's rating shift against the predicted `173.72·ln(k_after/k_before)`:
+Confirmed by refitting with one coverage rule for everybody (career-fill fights
+dropped, so all seven promotions and nothing else) and comparing each fighter's
+rating shift against what the formula predicts:
 
-| fighters | n | corr(predicted, observed) | median &#124;residual&#124; |
+| fighters | n | correlation, predicted vs actual | median error |
 |---|---:|---:|---:|
-| loss rate ≤ 15% | 95 | **+0.740** | 30 Elo |
-| loss rate 15–35% | 888 | +0.263 | 61 Elo |
-| loss rate > 35% | 1,020 | **−0.146** | 59 Elo |
+| loses ≤ 15% of fights | 95 | **+0.740** | 30 Elo |
+| loses 15–35% | 888 | +0.263 | 61 Elo |
+| loses > 35% | 1,020 | **−0.146** | 59 Elo |
 
-It binds exactly where a record has no interior maximum, and nowhere else.
+It bites exactly where a record has no natural ceiling, and nowhere else.
 
-## A separate, unfixed defect found on the way: the pools are mis-located
+## A separate, still-unfixed problem found on the way
 
-This section records a measurement that is **not** explained by the coverage
-asymmetry. It was found while diagnosing it, was initially assumed to be the same
-defect, and the repair refuted that.
+This section records a measurement that the coverage gap does **not** explain. It
+was found while diagnosing that gap, was assumed at first to be the same thing,
+and the repair proved otherwise.
 
-Held out over seven cutoffs, scoring only the 120 days after each so no rating is
-stale, the ratings are calibrated **within** each pool and mis-located
-**between** them:
+Testing on fights the model had not seen, across seven cut-off dates and scoring
+only the 120 days after each one so no rating is stale, the ratings are accurate
+**within** each pool of fighters and misplaced **between** them:
 
-| segment | n | predicted | actual | gap |
+| group | n | predicted win rate | actual | gap |
 |---|---:|---:|---:|---:|
-| both fighters 0 UFC bouts | 618 | 0.640 | 0.642 | +0.002 |
-| both fighters UFC-tested (8+) | 459 | 0.610 | 0.575 | −0.034 |
-| favourite 0 UFC, opponent 1+ | 172 | 0.649 | **0.523** | **−0.125** |
-| favourite 1+ UFC, opponent 0 | 144 | 0.647 | **0.771** | **+0.124** |
+| both fighters with no UFC record | 618 | 0.640 | 0.642 | +0.002 |
+| both fighters UFC-tested (8+ fights) | 459 | 0.610 | 0.575 | −0.034 |
+| favourite has no UFC record, opponent does | 172 | 0.649 | **0.523** | **−0.125** |
+| favourite has a UFC record, opponent does not | 144 | 0.647 | **0.771** | **+0.124** |
 
-The near-symmetry is the identification. Symmetric measurement error would make
-the favourite under-perform in *both* directions; only a systematic level offset
-flips the sign. A single fitted offset on the UFC-experienced side was **+101
-Elo, event-bootstrap 95% CI [+57, +148]**, positive in 600 of 600 draws, worth
-0.036 of held-out log loss on 316 bouts over 166 events.
+**The near-symmetry is the proof.** If this were just noise, the favourite would
+under-perform in *both* directions. Only a genuine level difference flips the sign.
+Fitting a single offset on the UFC-experienced side gives **+101 Elo, 95% CI
+[+57, +148]**, positive in 600 of 600 resamples, worth 0.036 of prediction error
+on 316 fights across 166 events.
 
-**Completing the coverage did not shrink it.** Re-running the identical test on
-the repaired corpus:
+**Completing the data did not shrink it.** The identical test on the repaired
+dataset:
 
 | | before repair | after repair |
 |---|---|---|
-| favourite 0 UFC, opponent 1+ | 0.649 → 0.523 (n=172) | 0.631 → 0.535 (n=174) |
-| favourite 1+ UFC, opponent 0 | 0.647 → 0.771 (n=144) | 0.676 → 0.821 (n=312) |
+| favourite no UFC, opponent has | 0.649 → 0.523 (n=172) | 0.631 → 0.535 (n=174) |
+| favourite has UFC, opponent none | 0.647 → 0.771 (n=144) | 0.676 → 0.821 (n=312) |
 | fitted offset | **+101 Elo [+57, +148]** | **+110 Elo [+76, +151]** |
 
-The intervals overlap almost entirely and the point estimate moved the wrong way.
-The hypothesis that the coverage asymmetry *caused* the pool-level offset is
-therefore **refuted**, and this is an open defect in its own right. The two
-within-pool segments stay calibrated after the repair (both-external −0.012,
-both-UFC-tested +0.006), so it is specifically the *relative level* of the two
-pools that is wrong, not either pool internally.
+The intervals overlap almost entirely and the estimate moved the wrong way. The
+theory that the coverage gap *caused* the pool difference is therefore
+**disproved**, and this is an open problem in its own right. Both within-pool
+groups stay accurate after the repair (−0.012 and +0.006), so it is specifically
+the *relative level* of the two pools that is wrong, not either pool internally.
 
-It still falsifies the standing conclusion in
-[Board and identification](../_archive/20260831-repository-consolidation/docs/BOARD_AND_IDENTIFICATION_2026-08-25.md) that the pools
-are "connected to the tested core, so an organisation discount is not
-identified": connected is not the same as correctly located, and that conclusion
-was drawn from graph connectivity rather than from a held-out test. What it does
-**not** license is applying the offset as an organisation weight — the engine's
-own rule is that relative promotion strength is an output of the joint fit, and
-an offset fitted on 486 crossing bouts and then subtracted would assert the
-answer. The right next step is to find why the joint fit mis-locates two
-connected pools, most likely selection on who crosses and when.
+It does disprove a standing conclusion in
+[Board and identification](../_archive/20260831-repository-consolidation/docs/BOARD_AND_IDENTIFICATION_2026-08-25.md),
+which held that the pools are "connected to the tested core, so a promotion
+discount cannot be measured". Connected is not the same as correctly placed, and
+that conclusion came from looking at the network rather than from testing on
+held-out fights. What it does **not** justify is applying the offset as a
+promotion weight: this project's rule is that relative promotion strength is an
+*output* of the fit, and an offset fitted on 486 crossover fights and then
+subtracted would assert the answer. The right next step is to find why the fit
+misplaces two connected pools — most likely because of who crosses over, and when.
 
 ## Three things that were not the cause
 
-**Over-dispersion.** The fitted logistic scale on held-out bouts with staleness
-controlled is **beta = 0.936, 95% CI [0.776, 1.241]** — 1.0 is inside it. A
-single 2023 split suggested 1.6x over-dispersion; that was rating staleness, and
-the multi-cutoff design corrected it.
+**The model being over-confident.** With staleness controlled, the fitted scale on
+held-out fights is **0.936, 95% CI [0.776, 1.241]** — 1.0 sits inside it. A single
+2023 test had suggested 1.6× over-confidence; that was stale ratings, and testing
+across multiple cut-offs corrected it.
 
-**Reliability shrinkage.** Bradley–Terry Fisher information is *lowest* for the
-dominant, not for the fake: Jon Jones 2.63, Usman Nurmagomedov 1.62, Khabib 1.59,
-against Donald Cerrone 10.55 and Robbie Lawler 9.61.
-`spearman(board rank, information) = +0.011`. Shrinking by reliability penalises
-dominance and does not discriminate.
+**Shrinking unreliable ratings.** The model is *least* certain about the
+dominant fighters, not the questionable ones: Jon Jones 2.63, Usman Nurmagomedov
+1.62, Khabib 1.59, against Donald Cerrone 10.55 and Robbie Lawler 9.61. The
+correlation between board rank and certainty is +0.011. Shrinking by reliability
+penalises dominance and separates nothing.
 
-**The prior.** The Type-II maximum-likelihood fixed point for `WHR_PRIOR_VAR` is
-**0.58** against the asserted 4.0 — the prior claims fighter skill has sd 347 Elo
-where the fitted ratings have sd 141. That constant is genuinely wrong, but
-correcting it is a near-uniform compression (max fitted rating 2086 → 1837), and
-the analytic sensitivity of an unbeaten record to bout count only falls from 0.87
-to 0.70 nats per log-bout.
+**The prior.** The automatic best-fit value for `WHR_PRIOR_VAR` is **0.58**
+against the 4.0 that was set — the prior claims fighter skill varies by 347 Elo
+where the fitted ratings vary by 141. That setting is genuinely wrong, but
+correcting it compresses everything almost uniformly (top rating 2086 → 1837),
+and an unbeaten record's sensitivity to fight count only falls from 0.87 to 0.70.
 
 ## The repair
 
 `build_sherdog_careers.py` reads one whole-career page for every rated fighter
-whose career rows are not in the corpus, through the same polite cached loader
-the project already uses, and merges them under the existing event-card
-precedence. 1,278 targets; 1,057 Sherdog ids were already present in the corpus
-and 221 needed a fightfinder search, of which **77 could not be resolved and stay
-truncated**.
+whose career is not already in the dataset, through the same cached, rate-limited
+loader the project already uses, and merges the results under the existing
+event-card precedence. 1,278 fighters needed it; 1,057 were already identifiable
+and 221 needed a search, of which **77 could not be found and remain truncated**.
 
 | | before | after |
 |---|---:|---:|
-| Sherdog corpus bouts | 63,813 | **80,902** |
-| rated model bouts | 67,920 | **80,697** |
-| rated fighters | 28,867 | **33,692** |
-| eligible roster with a whole-career page | 547 (30.0%) | **1,744 (95.6%)** |
+| Sherdog fights held | 63,813 | **80,902** |
+| fights used in the model | 67,920 | **80,697** |
+| fighters rated | 28,867 | **33,692** |
+| eligible roster with a whole career read | 547 (30.0%) | **1,744 (95.6%)** |
 
-Recorded bouts, before → after: Khabib 14 → 30, Adesanya 20 → 32, Volkanovski
+Fights recorded, before → after: Khabib 14 → 30, Adesanya 20 → 32, Volkanovski
 19 → 32, Makhachev 19 → 30, Topuria 10 → 20, Whittaker 27 → 38, Jones 26 → 31 —
-against Eblen 19 → 19, Izawa 18 → 18, Usman Nurmagomedov 22 → 24. That
-differential is the repair.
+against Eblen 19 → 19, Izawa 18 → 18, Usman Nurmagomedov 22 → 24. That difference
+is the repair.
 
-Two guards keep it from returning:
+Two guards stop it coming back:
 
-* `loaders/career_coverage.py` states the property as a number.
-  `stage_majors_scope` writes `career_coverage.parquet`, prints it, and warns
-  below `MIN_CAREER_PAGE_SHARE`; `rate_snapshot` publishes it in
-  `rating_run.json`; `refresh.py` writes it into the changelog.
-* `tests/test_career_coverage.py` fails on the corpus shape that broke the
+- `loaders/career_coverage.py` states the property as a number.
+  `stage_majors_scope` writes `career_coverage.parquet`, prints it and warns below
+  the minimum; `rate_snapshot` publishes it in `rating_run.json`; `refresh.py`
+  writes it into the changelog.
+- `tests/test_career_coverage.py` fails on exactly the shape that broke the
   board — two fighters with identical UFC records, one with their pre-UFC
   regional record and one without.
 
-**The risk was named and measured on the wrong axis.**
-[Whole-sport engine](../_archive/20260831-repository-consolidation/docs/PLAN_WHOLE_SPORT_ENGINE_2026-08-21.md) §8 lists "*ragged
-data masquerading as coverage… Mitigation: per-promotion completeness figures and
-abstention*". Per-promotion completeness was built and it passes —
-`majors_coverage.json` reports every promotion roster-complete inside its own
-cards. The raggedness is **per fighter**. Check completeness on the axis the
-estimator is sensitive to.
+**The risk was named, and measured on the wrong axis.** An earlier plan listed
+"ragged data masquerading as coverage" as a risk, with per-promotion completeness
+figures as the mitigation. Per-promotion completeness was built and it passes:
+every promotion is complete within its own cards. The raggedness is **per
+fighter**. Check completeness on the axis the model is actually sensitive to.
 
 ## What it fixed, and what it did not
 
-Left the top 100: Yaroslav Amosov (2 UFC bouts), Usman Nurmagomedov (0), Ben
-Askren (3), A.J. McKee (0) — and also Alexandre Pantoja (18), Erin Blanchfield
-(9) and Sergio Pettis (14). Entered: Beneil Dariush (26), Liz Carmouche (10),
-Alexa Grasso (15), Wanderlei Silva (12), Demian Maia (33), Carla Esparza (16),
-Kayla Harrison (3). Median UFC bouts of those leaving is 9, of those entering 15.
-External-only careers in the top 100 went **7 → 5**; `top10_active_external_
-unanchored` remains empty; top-100 overlap with the old board is 93/100 and
-Spearman over the union of the two top 300 is +0.950.
+Left the top 100: Yaroslav Amosov (2 UFC fights), Usman Nurmagomedov (0), Ben
+Askren (3), A.J. McKee (0) — and also Alexandre Pantoja (18), Erin Blanchfield (9)
+and Sergio Pettis (14). Entered: Beneil Dariush (26), Liz Carmouche (10), Alexa
+Grasso (15), Wanderlei Silva (12), Demian Maia (33), Carla Esparza (16), Kayla
+Harrison (3). Median UFC fights of those leaving is 9; of those entering, 15.
+Careers with no UFC record in the top 100 went **7 → 5**; the top-10 watch list
+stays empty; 93 of the old top 100 are still there, and agreement across the two
+top 300s is +0.950.
 
-**The estimator defect underneath is untouched, and the repair made it symmetric
-rather than removing it.** The deviant-fighter audit that motivated the
-2026-08-20 prior repair still fires: Seika Izawa is rated **269 points above the
-best fighter she has ever faced**, unchanged, and Khabib now sits **192** above
-his because completing his record lengthened an unbeaten run. Izawa, Johnny Eblen
-and Vadim Nemkov are still on the board, and Kayla Harrison enters it at 100 on
-3 UFC bouts — the same profile with a new name. Pantoja, a reigning UFC champion,
-fell out of the top 100.
+**The underlying rating problem is untouched, and the repair made it symmetric
+rather than removing it.** Seika Izawa is still rated **269 points above the best
+fighter she has ever faced**, unchanged, and Khabib now sits **192** above his,
+because completing his record lengthened an unbeaten run. Izawa, Johnny Eblen and
+Vadim Nemkov are all still on the board, and Kayla Harrison enters at 100 on 3 UFC
+fights — the same profile with a new name. Pantoja, a reigning UFC champion, fell
+out of the top 100.
 
 ## What has to happen next
 
-1. **RESOLVED 2026-08-28 — the three WHR constants were fitted on the repaired
-   published scope.** Fourteen rolling cutoffs; the coarse single-parameter
-   sweep produced 8,435 paired held-out bouts across 1,467 events and the joint
-   refinement that made the selection produced 7,641 across 1,355. Calibration for each cutoff used only earlier
-   prediction windows. The selected joint configuration is
-   `WHR_PRIOR_VAR=8`, `WHR_W2_PER_DAY=0.0004`, and `WHR_VIRTUAL_GAMES=1`:
-   calibrated log-loss delta -0.00201, paired event-bootstrap 95% CI
-   [-0.00349, -0.00060], and AUC 0.7041 -> 0.7067 versus the former 4/0.0004/2
-   base. Prior variance 16 was worse, virtual mass 0.5 was unresolved, and
-   `w2=0.0002` was unresolved. The incremental gain from prior variance 8 after
-   setting virtual mass 1 was itself unresolved, so the two changes are not
-   claimed to be independently identified. The empirical-Bayes fixed point
-   0.58 answers in-sample marginal likelihood and was strongly worse for
-   held-out prediction; it was not selected.
-2. **RESOLVED 2026-08-27 — the career functional is scale-equivariant.** The
-   published hinge scale is now 0.175 times each calendar year's population
-   standard deviation of `annual_mean`, rather than a fixed 25 Elo. On the fitted
-   history, rescaling every rating around 1500 by beta in {0.5, 0.7, 1.4, 2.0}
-   produces an identical full rank vector, zero top-100 movement and scores equal
-   to beta times baseline within 2.8e-12. The former board is still exactly
-   reproducible by the named compatibility argument
-   `hinge_scale=DEFAULT_HINGE_SCALE`. Evidence:
+1. **RESOLVED 2026-08-28 — the three model settings were fitted on the repaired
+   data.** Fourteen rolling cut-offs; the coarse sweep produced 8,435 held-out
+   fights across 1,467 events and the joint refinement that made the choice
+   produced 7,641 across 1,355. Each cut-off was calibrated using only earlier
+   windows. The chosen combination is `WHR_PRIOR_VAR=8`, `WHR_W2_PER_DAY=0.0004`,
+   `WHR_VIRTUAL_GAMES=1`: prediction error −0.00201, 95% CI [−0.00349, −0.00060],
+   ranking accuracy 0.7041 → 0.7067 against the former 4 / 0.0004 / 2. Prior
+   variance 16 was worse; virtual mass 0.5 and `w2=0.0002` did not resolve. The
+   extra gain from prior variance 8 *after* setting virtual mass to 1 did not
+   resolve either, so the two changes are not claimed to be independently proven.
+   The automatic best-fit value of 0.58 answers an in-sample question and
+   predicted markedly worse, so it was not chosen.
+2. **RESOLVED 2026-08-27 — the career score no longer moves when ratings are
+   rescaled.** Softness is now 0.175 of each year's rating spread rather than a
+   fixed 25 Elo. On the real fitted history, multiplying every rating by 0.5, 0.7,
+   1.4 or 2.0 leaves the full order identical, moves nobody in the top 100, and
+   scales every score by exactly that factor to within 2.8e-12. The old board is
+   still exactly reproducible with `hinge_scale=DEFAULT_HINGE_SCALE`. Evidence:
    `Claude Func Folder/py/ufc/out/career_scale_equivariance.csv`.
-3. **RESOLVED 2026-08-28 — repaired-corpus held-out evidence was rebuilt, and
-   so were the publication artifacts.** The constant sweep, the fight-information
-   sweep and their strictly prior-fold calibrated, paired event-bootstrap
-   analyses live under `Claude Func Folder/py/ufc/out/`. The snapshot was then
-   re-rated end to end and the boards and README regenerated from it.
-4. **77 fighters remain truncated** because Sherdog's fightfinder could not
-   resolve their name. They are listed in the builder's report; resolving them is
-   a name-matching problem, not a crawl problem.
-5. **DIAGNOSED 2026-08-28, not applied as an organisation weight.** Under the
-   fitted constants the complete-career label reproduces a +104 Elo offset
-   [+67, +148] on 486 bouts. It is concentrated before selected fighters enter
-   the UFC: future signees are +274 [+185, +389] against never-UFC opponents,
-   rising to +463 [+290, +521] within one year of debut. A smaller +54
-   [+10, +100] prior-UFC residual remains, while debutant-versus-incumbent is
-   unresolved [-8, +98]. This supports selection on who crosses and when as the
-   main mechanism, without claiming it explains every residual.
-
-6. **NEW 2026-08-28 — two mechanisms shipped that this document predates.** The
-   winner score now carries method of victory
-   (`ratings.constants.WHR_WINNER_SCORE_COL`), and the title ledger carries a
-   measured pool correction (`legacy_resume.UFC_POOL_OFFSET_ELO`). Every bout
-   count and board position below the "What it fixed" heading was measured
-   before both. See
-   [Rating layer and ledger](RATING_LAYER_AND_LEDGER_2026-08-28.md) for the
-   current board.
+3. **RESOLVED 2026-08-28 — the held-out evidence was rebuilt on the repaired data,
+   and so were the published tables.** The settings sweep, the fight-information
+   sweep and their analyses are under `Claude Func Folder/py/ufc/out/`. The
+   dataset was then re-rated end to end and the boards regenerated from it.
+4. **77 fighters remain truncated** because Sherdog's search could not resolve
+   their name. They are listed in the builder's report. This is a name-matching
+   problem, not a crawling one.
+5. **DIAGNOSED 2026-08-28, and deliberately not applied as a promotion weight.**
+   Under the fitted settings the complete-career label reproduces a +104 Elo gap
+   [+67, +148] on 486 fights. It is concentrated *before* the affected fighters
+   enter the UFC: future signings run +274 [+185, +389] against never-UFC
+   opponents, rising to +463 [+290, +521] within a year of their debut. A smaller
+   +54 [+10, +100] remains afterwards, and newcomer-versus-regular does not
+   resolve [−8, +98]. This points to selection — who crosses over, and when — as
+   the main cause, without claiming it explains every last point.
+6. **NEW 2026-08-28 — two changes shipped that this document predates.** The
+   winner's credit now reflects how the fight ended, and the title résumé carries
+   a measured promotion correction. Every fight count and board position under
+   "What it fixed" above was measured before both. See
+   [How the ratings and the score are built](RATING_LAYER_AND_LEDGER_2026-08-28.md)
+   for the current board.
 
 ## Reproduce
 
@@ -250,8 +234,8 @@ python build_boards.py "data/snapshots/2026-08-13" --scope majors,pre_unified --
 python build_top100_audit.py "data/snapshots/2026-08-13"
 ```
 
-The one-off probes behind the measurements (`probe_corpus_censoring.py`,
+The one-off probes behind these measurements (`probe_corpus_censoring.py`,
 `probe_symmetric_coverage.py`, `probe_lnk_law.py`, `probe_scale_calibration.py`,
 `probe_information_content.py`, `probe_deviant_audit.py`) are kept outside this
-repository beside the working material for this project. The narrative report is
+repository, beside the working material for this project. The narrative report is
 `Claude Status Reports/UFC Top 100 Root Cause Career Coverage 2026-08-27.md`.

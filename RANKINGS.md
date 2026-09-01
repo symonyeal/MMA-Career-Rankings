@@ -231,7 +231,7 @@ the data**. They were chosen by reading the qualifying names at several
 candidate lines. Raising the minimum to 6 removes Topuria, Chimaev and Gane;
 lowering it to 4 admits Khabib Nurmagomedov, who has 4 wins over the line.
 
-**71 men qualify**, so the top 50 is full. **Only 2 women qualify** — Amanda
+**70 men qualify**, so the top 50 is full. **Only 2 women qualify** — Amanda
 Nunes and Valentina Shevchenko. That is a statement about the data, not the
 fighters: 95 women in it have 8 or more UFC bouts, against 699 men, so there are
 far fewer opponents who can meet the tested-opponent half of the rule. The same
@@ -327,4 +327,4 @@ Men and women never fight each other, so no result places the two groups on one 
   a stated line rather than trusting the rating alone.
 
 Return to the [overview](README.md), or read the
-[method and ledger](docs/RATING_LAYER_AND_LEDGER_2026-08-28.md).
+[how the ratings and the score are built](docs/RATING_LAYER_AND_LEDGER_2026-08-28.md).
