@@ -38,7 +38,43 @@
   design records with restoration instructions. Finalized experimental
   snapshots and intentionally retained research evidence were not removed.
 
+## 2026-09-01 - Elite Prime board: rank elite-win mass, not the bare level
+
+- The board ranked the Prime level alone. A level is a rate and does not grow
+  with the number of hard fights behind it, so Ilia Topuria placed above Georges
+  St-Pierre on 5 qualifying wins against 11, and Anderson Silva (11) sat below
+  Vadim Nemkov (5). It now ranks qualifying wins multiplied by how far the
+  fighter's peak stood above the weakest qualifying level. St-Pierre moves to
+  3rd, Topuria to 6th, Silva to 8th and Nemkov to 13th; Sean Strickland (9)
+  passes Anthony Johnson (6). Score, level and win count are all published, and
+  the measure carries no tuning constant.
+- Two orderings were measured and rejected first. Discounting the level by
+  evidence saturates: no setting separated Silva from Nemkov meaningfully, and
+  they finished 1.2 points apart at the closest one. Anchoring that discount at
+  the cohort mean was worse, lifting sub-mean fighters as their evidence thinned
+  and producing dominated pairs such as Poirier (1927, 5 wins) above Sterling
+  (1930, 7 wins).
+- The empirical-Bayes shrinkage inside the Prime score was found inert and is
+  not the mechanism used: between-fighter spread is 101.2 Elo against a median
+  sampling variance of 33.96, so its factor is 0.99+ for every fighter and it
+  moves a qualifier by at most 2.9 Elo.
+
 ## 2026-09-01 - Elite Prime gate: same-day fan-out and temporal leakage
+
+- The elite board ranked the bare Prime level, which is a rate and does not grow
+  with the number of hard fights behind it, so Ilia Topuria placed above Georges
+  St-Pierre on 5 qualifying wins against 11. Each level is now credited above
+  the weakest qualifying level in proportion to the elite wins behind it, half
+  credit at the five-win minimum. St-Pierre moves to 3rd and Topuria to 5th.
+  The score, the underlying level and the win count are all published.
+- The empirical-Bayes shrinkage inside the Prime score was found to be inert and
+  is not the mechanism used: between-fighter spread is 101.2 Elo against a
+  median sampling variance of 33.96, so its factor is 0.99+ for every fighter
+  and it moves a qualifier by at most 2.9 Elo.
+- The credit is anchored at the weakest qualifying level, not the cohort mean.
+  A mean anchor lifts sub-mean fighters as their evidence thins and produced
+  three dominated pairs, including Poirier (1927, 5 wins) above Sterling
+  (1930, 7 wins). The floor anchor is monotone in level and evidence alike.
 
 - The opponent-rating join matched on `(opponent, event_date)` only. WHR writes
   one row per appearance, so a same-day tournament gave an opponent several

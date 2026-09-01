@@ -18,7 +18,7 @@ cannot be separated from its source facts.
 | --- | --- | --- |
 | All-time | What did the fighter's completed body of work amount to? | Public Legacy Score: career skill, championship results, and schedule strength |
 | Prime | How strong was the fighter at their best? | Their strongest ten-year stretch, which must contain at least 13 rated bouts |
-| Prime (elite-tested) | Which of those peaks were actually proven? | The Prime score, restricted to fighters who beat at least 5 rated contenders *during that same ten-year stretch* |
+| Prime (elite-tested) | Which of those peaks were actually proven? | Their Prime level, credited in proportion to how many rated contenders they beat during that same stretch, with a minimum of 5 |
 | Current skill | How strong is the fighter now? | Their latest estimated level, adjusted for age and for time out of competition |
 | Integrity board | How would stated policy discounts change the order? | A separate, itemised deduction against a fighter's rating, shown with the reason for each |
 | Career Skill Mass | How much sustained skill sat above the field over time? | A diagnostic underneath the public score, not the public ranking |
@@ -174,51 +174,63 @@ time of the bout *and* had a tested record of its own — at least 8 UFC bouts.
 Wins after the stretch ends do not count towards it; a later victory cannot
 prove an earlier peak.
 
-The line and the win minimum are stated policy, not fitted values. The
-threshold gates who appears; it never changes the order, which stays the
-rating. 78 men qualify, so this top 50 fills. Only 2 women qualify, which is a
+**How the order is decided.** The board does not rank the Prime level itself. A
+level is a rate: it does not rise with the number of hard fights behind it, so
+ranking it alone puts a fighter who scraped past the gate above one who cleared
+it many times over. The published **Score** multiplies the two — how many
+contenders the fighter beat, by how far their peak stood above the weakest level
+on this board. A high peak proved once and a good peak proved eleven times are
+different achievements, and the product says so.
+
+**Prime** and **Elite wins** are printed beside the score, so any placement can
+be read straight off the row. The wins are never added to the rating; they scale
+how much of the measured level is credited, so the same evidence is not counted
+twice. There is no tuning constant in this.
+
+The contender line and the five-win minimum are stated policy, not fitted
+values. 34 men qualify. Only 2 women qualify, which is a
 fact about corpus depth rather than about the fighters — see
 [Published UFC Rankings](RANKINGS.md) for that board and the reasoning behind
 both halves of the opponent test.
 
 <!-- BOARD:ELITEPRIME50:BEGIN -->
 
-| # | Fighter | Score | Elite wins |
-| ---: | --- | ---: | ---: |
-| 1 | Jon Jones | 2207.8 | 12 |
-| 2 | Islam Makhachev | 2171.4 | 9 |
-| 3 | Ilia Topuria | 2111.7 | 5 |
-| 4 | Georges St-Pierre | 2073.3 | 11 |
-| 5 | Alexander Volkanovski | 2047.2 | 9 |
-| 6 | Francis Ngannou | 2041.5 | 7 |
-| 7 | Vadim Nemkov | 2027.5 | 5 |
-| 8 | Stipe Miocic | 2003.4 | 6 |
-| 9 | Dricus Du Plessis | 2000.9 | 6 |
-| 10 | Kamaru Usman | 1980.9 | 6 |
-| 11 | Jose Aldo | 1977.0 | 7 |
-| 12 | Demetrious Johnson | 1974.0 | 6 |
-| 13 | Max Holloway | 1961.7 | 9 |
-| 14 | Alex Pereira | 1961.1 | 7 |
-| 15 | Chris Weidman | 1957.0 | 7 |
-| 16 | Charles Oliveira | 1949.9 | 7 |
-| 17 | Dominick Cruz | 1949.5 | 5 |
-| 18 | Anthony Johnson | 1938.7 | 6 |
-| 19 | Aljamain Sterling | 1929.7 | 7 |
-| 20 | Dustin Poirier | 1927.5 | 5 |
-| 21 | Yoel Romero | 1925.4 | 5 |
-| 22 | Anderson Silva | 1925.1 | 11 |
-| 23 | Sean Strickland | 1917.6 | 9 |
-| 24 | Merab Dvalishvili | 1911.6 | 8 |
-| 25 | Robert Whittaker | 1899.0 | 8 |
-| 26 | Alexander Volkov | 1897.6 | 7 |
-| 27 | Alexandre Pantoja | 1867.4 | 5 |
-| 28 | Nassourdine Imavov | 1846.5 | 6 |
-| 29 | Jake Shields | 1844.7 | 6 |
-| 30 | Quinton Jackson | 1830.8 | 5 |
-| 31 | Rafael Dos Anjos | 1801.7 | 6 |
-| 32 | Neil Magny | 1798.9 | 6 |
-| 33 | Jan Blachowicz | 1797.9 | 6 |
-| 34 | Thiago Santos | 1784.6 | 5 |
+| # | Fighter | Score | Prime | Elite wins |
+| ---: | --- | ---: | ---: | ---: |
+| 1 | Jon Jones | 5078.7 | 2207.8 | 12 |
+| 2 | Islam Makhachev | 3481.6 | 2171.4 | 9 |
+| 3 | Georges St-Pierre | 3176.5 | 2073.3 | 11 |
+| 4 | Alexander Volkanovski | 2363.9 | 2047.2 | 9 |
+| 5 | Francis Ngannou | 1798.5 | 2041.5 | 7 |
+| 6 | Ilia Topuria | 1635.8 | 2111.7 | 5 |
+| 7 | Max Holloway | 1594.4 | 1961.7 | 9 |
+| 8 | Anderson Silva | 1545.7 | 1925.1 | 11 |
+| 9 | Jose Aldo | 1346.7 | 1977.0 | 7 |
+| 10 | Stipe Miocic | 1313.2 | 2003.4 | 6 |
+| 11 | Dricus Du Plessis | 1298.1 | 2000.9 | 6 |
+| 12 | Alex Pereira | 1235.9 | 1961.1 | 7 |
+| 13 | Vadim Nemkov | 1214.6 | 2027.5 | 5 |
+| 14 | Chris Weidman | 1207.1 | 1957.0 | 7 |
+| 15 | Sean Strickland | 1197.1 | 1917.6 | 9 |
+| 16 | Kamaru Usman | 1177.8 | 1980.9 | 6 |
+| 17 | Charles Oliveira | 1157.4 | 1949.9 | 7 |
+| 18 | Demetrious Johnson | 1136.6 | 1974.0 | 6 |
+| 19 | Aljamain Sterling | 1016.2 | 1929.7 | 7 |
+| 20 | Merab Dvalishvili | 1016.1 | 1911.6 | 8 |
+| 21 | Anthony Johnson | 924.8 | 1938.7 | 6 |
+| 22 | Robert Whittaker | 915.1 | 1899.0 | 8 |
+| 23 | Dominick Cruz | 824.8 | 1949.5 | 5 |
+| 24 | Alexander Volkov | 791.6 | 1897.6 | 7 |
+| 25 | Dustin Poirier | 714.4 | 1927.5 | 5 |
+| 26 | Yoel Romero | 704.1 | 1925.4 | 5 |
+| 27 | Alexandre Pantoja | 414.2 | 1867.4 | 5 |
+| 28 | Nassourdine Imavov | 371.5 | 1846.5 | 6 |
+| 29 | Jake Shields | 360.6 | 1844.7 | 6 |
+| 30 | Quinton Jackson | 231.0 | 1830.8 | 5 |
+| 31 | Rafael Dos Anjos | 103.1 | 1801.7 | 6 |
+| 32 | Neil Magny | 85.7 | 1798.9 | 6 |
+| 33 | Jan Blachowicz | 79.8 | 1797.9 | 6 |
+| 34 | Thiago Santos | 0.0 | 1784.6 | 5 |
 
 <!-- BOARD:ELITEPRIME50:END -->
 

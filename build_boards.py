@@ -33,6 +33,7 @@ from ratings import prequential as PQ
 from ratings.boards import (
     UNRANKED_AT_FLOOR_STATUS,
     completeness_gated_board,
+    elite_win_mass,
     integrity_discounted_board,
     integrity_ledger,
 )
@@ -138,6 +139,24 @@ PRIME_RATING_COL = "symon_prime_score"
 # so Roy Nelson (0-10) outranked Khabib and St-Pierre, and a 1950 bar excluded
 # Jon Jones himself. Counting wins over a stated line does neither.
 ELITE_PRIME_TOP = 50
+
+# The elite board ranks elite-win mass -- qualifying wins multiplied by how far
+# the fighter's peak level sat above the weakest qualifying level -- not the bare
+# Prime level. A Prime score is a rate: it does not grow with the number of hard
+# fights behind it, so ranking it put Ilia Topuria (5 qualifying wins) above
+# Georges St-Pierre (11), and left Anderson Silva (11) below Vadim Nemkov (5).
+# The product is extensive, so both halves count. It carries no tuning constant.
+#
+# The empirical-Bayes shrinkage already inside the Prime score cannot do this
+# job. Between-fighter spread is 101.2 Elo against a median sampling variance of
+# 33.96, so its lambda is 0.99+ for every fighter and it moves a qualifier's
+# score by at most 2.9 Elo. It measures how noisy a fitted trajectory is; the
+# question here is how much of it was tested.
+#
+# The discount is anchored at the weakest qualifying level, not the cohort mean.
+# See ``evidence_weighted_score``: a mean anchor raises sub-mean fighters as
+# evidence thins, which is backwards for a board.
+ELITE_PRIME_RATING_COL = "elite_prime_score"
 
 # The men's and women's boards are built and published SEPARATELY. The rule and
 # the measurements behind it live in ``ratings/gender.py``, which every ranking
@@ -443,12 +462,39 @@ def write_board_artifacts(
             )
             if quality_wins is None:
                 continue
-            elite_prime_boards[gender] = completeness_gated_board(
+            # Two passes: the cohort the level is shrunk toward is the set that
+            # actually clears the gate, so it cannot be known before gating.
+            gate_only = completeness_gated_board(
                 population,
                 rating_col=PRIME_RATING_COL,
                 min_rating_periods=min_rating_periods,
                 tested_wins=quality_wins,
                 min_tested_wins=MIN_QUALITY_WINS,
+            )
+            qualifiers = gate_only.loc[gate_only["status"].eq("ranked"), "fighter"]
+            if qualifiers.empty:
+                continue
+            cohort = pd.to_numeric(
+                population.set_index("fighter")[PRIME_RATING_COL].reindex(qualifiers),
+                errors="coerce",
+            ).dropna()
+            weighted = population.assign(
+                **{
+                    ELITE_PRIME_RATING_COL: elite_win_mass(
+                        population[PRIME_RATING_COL],
+                        population["fighter"].map(quality_wins),
+                        anchor=float(cohort.min()),
+                    )
+                }
+            )
+            elite_prime_boards[gender] = completeness_gated_board(
+                weighted,
+                rating_col=ELITE_PRIME_RATING_COL,
+                min_rating_periods=min_rating_periods,
+                tested_wins=quality_wins,
+                min_tested_wins=MIN_QUALITY_WINS,
+            ).merge(
+                population[["fighter", PRIME_RATING_COL]], on="fighter", how="left"
             )
             elite_prime_boards[gender].to_parquet(
                 target / f"prime_elite_board{suffix}.parquet", index=False
@@ -528,6 +574,8 @@ def top_board_markdown(
         )
         for _, label in PUBLIC_LEGACY_COMPONENTS:
             table[label] = merged[label].round(1).to_numpy()
+    if rating_col != PRIME_RATING_COL and PRIME_RATING_COL in ranked.columns:
+        table["Prime"] = ranked[PRIME_RATING_COL].round(1).to_numpy()
     if "tested_opponent_wins" in ranked.columns:
         table["Elite wins"] = (
             pd.to_numeric(ranked["tested_opponent_wins"], errors="raise")
@@ -839,7 +887,7 @@ def main() -> None:
             elite_table = top_board_markdown(
                 pd.read_parquet(elite_path),
                 current,
-                rating_col=PRIME_RATING_COL,
+                rating_col=ELITE_PRIME_RATING_COL,
                 top=ELITE_PRIME_TOP,
             )
             replacements.append(
@@ -855,7 +903,7 @@ def main() -> None:
                     + top_board_markdown(
                         pd.read_parquet(elite_women_path),
                         current,
-                        rating_col=PRIME_RATING_COL,
+                        rating_col=ELITE_PRIME_RATING_COL,
                         top=args.women_top,
                     ),
                 )

@@ -1,7 +1,12 @@
 """The elite-tested Prime board: a floor on proven record, not on volume."""
 from __future__ import annotations
 
+import pathlib
+
 import pandas as pd
+import pytest
+
+from ratings import boards
 
 import build_boards
 from ratings.boards import completeness_gated_board
@@ -204,3 +209,86 @@ def test_quality_wins_are_unique_and_inside_the_selected_prime_window(tmp_path):
     ).set_index("fighter")
     assert "proven record" in board.loc["Window Fighter", "status"]
     assert pd.isna(board.loc["Window Fighter", "rank"])
+
+
+# --- Ordering: elite-win mass, not the bare level ---
+
+def _mass(levels: dict[str, float], wins: dict[str, int], *, anchor: float):
+    return boards.elite_win_mass(
+        pd.Series(levels), pd.Series(wins), anchor=anchor
+    ).sort_values(ascending=False)
+
+
+FLOOR = 1784.6
+
+
+def test_more_elite_wins_outrank_a_slightly_higher_level():
+    """The first reported defect, with the numbers that produced it.
+
+    Topuria held a higher Prime level than St-Pierre on 5 qualifying wins
+    against 11, and the board ranked the bare level, so he placed above him.
+    """
+    order = _mass({"Topuria": 2111.7, "St-Pierre": 2073.3},
+                  {"Topuria": 5, "St-Pierre": 11}, anchor=FLOOR)
+    assert list(order.index) == ["St-Pierre", "Topuria"]
+
+
+def test_volume_outweighs_a_higher_level_by_a_clear_margin():
+    """The second: Silva's 11 wins must beat Nemkov's 5, not merely tie.
+
+    Shrinking the level by evidence saturates, so no usable strength separated
+    these two -- at k=20 they finished 1.2 points apart. The product does.
+    """
+    order = _mass({"Silva": 1925.1, "Nemkov": 2027.5},
+                  {"Silva": 11, "Nemkov": 5}, anchor=FLOOR)
+    assert list(order.index) == ["Silva", "Nemkov"]
+    assert order["Silva"] > order["Nemkov"] * 1.2
+
+
+def test_nine_tested_wins_outrank_six_at_a_similar_level():
+    """Strickland over Anthony Johnson."""
+    order = _mass({"Strickland": 1917.6, "Johnson": 1938.7},
+                  {"Strickland": 9, "Johnson": 6}, anchor=FLOOR)
+    assert list(order.index) == ["Strickland", "Johnson"]
+
+
+def test_volume_cannot_overturn_a_large_level_gap():
+    """It is a product, not a win count: Jones keeps first on 12 over 11."""
+    order = _mass({"Jones": 2207.8, "St-Pierre": 2073.3},
+                  {"Jones": 12, "St-Pierre": 11}, anchor=FLOOR)
+    assert list(order.index) == ["Jones", "St-Pierre"]
+
+
+def test_the_result_is_monotone_in_both_level_and_evidence():
+    """No fighter may outrank another better on level AND evidence."""
+    levels = {"weak_thin": 1900.0, "weak_thick": 1910.0,
+              "strong_thin": 2100.0, "strong_thick": 2110.0}
+    wins = {"weak_thin": 5, "weak_thick": 12, "strong_thin": 5, "strong_thick": 12}
+    ranked = list(_mass(levels, wins, anchor=1850.0).index)
+    for better in ("weak_thick", "strong_thick"):
+        assert ranked.index(better) < ranked.index(better.replace("thick", "thin"))
+
+
+def test_a_level_at_the_anchor_earns_nothing_however_many_wins():
+    """The anchor is the qualifying floor; distance above it is what is credited."""
+    got = boards.elite_win_mass(
+        pd.Series({"A": 1784.6, "B": 1784.6}), pd.Series({"A": 5, "B": 50}),
+        anchor=1784.6,
+    )
+    assert got["A"] == got["B"] == pytest.approx(0.0)
+
+
+def test_the_published_board_has_no_dominated_pairs():
+    """Property check on the real artifact, if the snapshot is present."""
+    path = pathlib.Path("data/snapshots/2026-08-13/prime_elite_board.parquet")
+    if not path.exists():
+        pytest.skip("snapshot artifact not present")
+    board = pd.read_parquet(path)
+    ok = board[board["status"].eq("ranked")].sort_values("rank").reset_index(drop=True)
+    level, wins = ok["symon_prime_score"], ok["tested_opponent_wins"]
+    for i in range(len(ok)):
+        for j in range(i + 1, len(ok)):
+            assert not (level[j] > level[i] and wins[j] >= wins[i]), (
+                f"{ok.loc[i, 'fighter']} ranked above {ok.loc[j, 'fighter']}, "
+                "who is better on both level and evidence"
+            )

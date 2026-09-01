@@ -300,6 +300,27 @@ stretch**, where a contender is an opponent who was rated **1750 or higher** at
 the time of the bout *and* had a tested record of their own — at least 8 UFC
 bouts. A win after the stretch closes cannot certify the peak inside it.
 
+**How the order is decided.** The board does not rank the Prime level itself. A
+level is a rate: it does not rise with the number of hard fights behind it, so
+ranking it alone puts a fighter who scraped past the gate above one who cleared
+it many times over. The published **Score** multiplies the two — how many
+contenders the fighter beat, by how far their peak stood above the weakest level
+on this board. A high peak proved once and a good peak proved eleven times are
+different achievements, and the product says so.
+
+**Prime** and **Elite wins** are printed beside the score, so any placement can
+be read straight off the row. The wins are never added to the rating; they scale
+how much of the measured level is credited, so the same evidence is not counted
+twice. There is no tuning constant in this.
+
+Two other orderings were measured and rejected on named fighters. Ranking the
+bare level put Ilia Topuria (5 qualifying wins) above Georges St-Pierre (11).
+Discounting the level by evidence instead of multiplying saturates, so no
+setting separated Anderson Silva (11 wins) from Vadim Nemkov (5) by a
+meaningful margin — at the closest tested setting they finished 1.2 points
+apart — and anchoring that discount at the cohort average was worse still,
+lifting weaker fighters as their evidence thinned.
+
 Both halves of that opponent test are needed, and each was checked against
 named fighters before being adopted:
 
@@ -317,7 +338,7 @@ set by reading the qualifying names at several candidate lines. Raising the
 minimum to 6 removes Topuria, Chimaev and Gane; lowering it to 4 admits Khabib
 Nurmagomedov, who has 4 wins over the line.
 
-**78 men qualify**, so the top 50 fills. **Only 2 women qualify** — Amanda Nunes
+**34 men qualify**, so the top 50 is not full. **Only 2 women qualify** — Amanda Nunes
 and Valentina Shevchenko. That is a fact about corpus depth, not about the
 fighters: 95 women in the corpus have 8 or more UFC bouts against 699 men, so
 there are far fewer opponents who can satisfy the tested-opponent half of the
@@ -327,42 +348,42 @@ rule. The same rule is applied to both boards rather than softening it for one.
 
 <!-- BOARD:ELITEPRIME50:BEGIN -->
 
-| # | Fighter | Score | Elite wins |
-| ---: | --- | ---: | ---: |
-| 1 | Jon Jones | 2207.8 | 12 |
-| 2 | Islam Makhachev | 2171.4 | 9 |
-| 3 | Ilia Topuria | 2111.7 | 5 |
-| 4 | Georges St-Pierre | 2073.3 | 11 |
-| 5 | Alexander Volkanovski | 2047.2 | 9 |
-| 6 | Francis Ngannou | 2041.5 | 7 |
-| 7 | Vadim Nemkov | 2027.5 | 5 |
-| 8 | Stipe Miocic | 2003.4 | 6 |
-| 9 | Dricus Du Plessis | 2000.9 | 6 |
-| 10 | Kamaru Usman | 1980.9 | 6 |
-| 11 | Jose Aldo | 1977.0 | 7 |
-| 12 | Demetrious Johnson | 1974.0 | 6 |
-| 13 | Max Holloway | 1961.7 | 9 |
-| 14 | Alex Pereira | 1961.1 | 7 |
-| 15 | Chris Weidman | 1957.0 | 7 |
-| 16 | Charles Oliveira | 1949.9 | 7 |
-| 17 | Dominick Cruz | 1949.5 | 5 |
-| 18 | Anthony Johnson | 1938.7 | 6 |
-| 19 | Aljamain Sterling | 1929.7 | 7 |
-| 20 | Dustin Poirier | 1927.5 | 5 |
-| 21 | Yoel Romero | 1925.4 | 5 |
-| 22 | Anderson Silva | 1925.1 | 11 |
-| 23 | Sean Strickland | 1917.6 | 9 |
-| 24 | Merab Dvalishvili | 1911.6 | 8 |
-| 25 | Robert Whittaker | 1899.0 | 8 |
-| 26 | Alexander Volkov | 1897.6 | 7 |
-| 27 | Alexandre Pantoja | 1867.4 | 5 |
-| 28 | Nassourdine Imavov | 1846.5 | 6 |
-| 29 | Jake Shields | 1844.7 | 6 |
-| 30 | Quinton Jackson | 1830.8 | 5 |
-| 31 | Rafael Dos Anjos | 1801.7 | 6 |
-| 32 | Neil Magny | 1798.9 | 6 |
-| 33 | Jan Blachowicz | 1797.9 | 6 |
-| 34 | Thiago Santos | 1784.6 | 5 |
+| # | Fighter | Score | Prime | Elite wins |
+| ---: | --- | ---: | ---: | ---: |
+| 1 | Jon Jones | 5078.7 | 2207.8 | 12 |
+| 2 | Islam Makhachev | 3481.6 | 2171.4 | 9 |
+| 3 | Georges St-Pierre | 3176.5 | 2073.3 | 11 |
+| 4 | Alexander Volkanovski | 2363.9 | 2047.2 | 9 |
+| 5 | Francis Ngannou | 1798.5 | 2041.5 | 7 |
+| 6 | Ilia Topuria | 1635.8 | 2111.7 | 5 |
+| 7 | Max Holloway | 1594.4 | 1961.7 | 9 |
+| 8 | Anderson Silva | 1545.7 | 1925.1 | 11 |
+| 9 | Jose Aldo | 1346.7 | 1977.0 | 7 |
+| 10 | Stipe Miocic | 1313.2 | 2003.4 | 6 |
+| 11 | Dricus Du Plessis | 1298.1 | 2000.9 | 6 |
+| 12 | Alex Pereira | 1235.9 | 1961.1 | 7 |
+| 13 | Vadim Nemkov | 1214.6 | 2027.5 | 5 |
+| 14 | Chris Weidman | 1207.1 | 1957.0 | 7 |
+| 15 | Sean Strickland | 1197.1 | 1917.6 | 9 |
+| 16 | Kamaru Usman | 1177.8 | 1980.9 | 6 |
+| 17 | Charles Oliveira | 1157.4 | 1949.9 | 7 |
+| 18 | Demetrious Johnson | 1136.6 | 1974.0 | 6 |
+| 19 | Aljamain Sterling | 1016.2 | 1929.7 | 7 |
+| 20 | Merab Dvalishvili | 1016.1 | 1911.6 | 8 |
+| 21 | Anthony Johnson | 924.8 | 1938.7 | 6 |
+| 22 | Robert Whittaker | 915.1 | 1899.0 | 8 |
+| 23 | Dominick Cruz | 824.8 | 1949.5 | 5 |
+| 24 | Alexander Volkov | 791.6 | 1897.6 | 7 |
+| 25 | Dustin Poirier | 714.4 | 1927.5 | 5 |
+| 26 | Yoel Romero | 704.1 | 1925.4 | 5 |
+| 27 | Alexandre Pantoja | 414.2 | 1867.4 | 5 |
+| 28 | Nassourdine Imavov | 371.5 | 1846.5 | 6 |
+| 29 | Jake Shields | 360.6 | 1844.7 | 6 |
+| 30 | Quinton Jackson | 231.0 | 1830.8 | 5 |
+| 31 | Rafael Dos Anjos | 103.1 | 1801.7 | 6 |
+| 32 | Neil Magny | 85.7 | 1798.9 | 6 |
+| 33 | Jan Blachowicz | 79.8 | 1797.9 | 6 |
+| 34 | Thiago Santos | 0.0 | 1784.6 | 5 |
 
 <!-- BOARD:ELITEPRIME50:END -->
 
@@ -372,10 +393,10 @@ rule. The same rule is applied to both boards rather than softening it for one.
 
 Men and women never fight, so no bout locates the two rating levels against each other: their relative level is set by the prior, not by evidence, and one number cannot rank them together. The boards are therefore separate, and each one's ranks are identified within it.
 
-| # | Fighter | Score | Elite wins |
-| ---: | --- | ---: | ---: |
-| 1 | Amanda Nunes | 1947.0 | 5 |
-| 2 | Valentina Shevchenko | 1939.8 | 7 |
+| # | Fighter | Score | Prime | Elite wins |
+| ---: | --- | ---: | ---: | ---: |
+| 1 | Amanda Nunes | 35.9 | 1947.0 | 5 |
+| 2 | Valentina Shevchenko | 0.0 | 1939.8 | 7 |
 
 <!-- BOARD:ELITEPRIMEWOMEN10:END -->
 

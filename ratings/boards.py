@@ -196,6 +196,48 @@ def integrity_discounted_board(
     return out.head(top) if top else out
 
 
+def elite_win_mass(
+    scores: pd.Series,
+    evidence: pd.Series,
+    *,
+    anchor: float,
+) -> pd.Series:
+    """How much elite-level winning a fighter did: ``n * (level - anchor)``.
+
+    ``scores`` is a rating level -- a rate, not a total. It does not rise with
+    the number of hard fights behind it, so ranking it directly puts a fighter
+    who cleared the gate on five qualifying wins above one holding a similar
+    level on eleven. Multiplying the level's distance above ``anchor`` by the
+    number of qualifying wins makes the result extensive: both how good the
+    peak was and how often it was proved.
+
+    ``anchor`` must sit at or below every score being ranked -- in practice the
+    weakest level that clears the board's own gate, so the quantity reads as
+    "wins over contenders, weighted by how far above the qualifying floor the
+    fighter was while winning them".
+
+    Two alternatives were measured and rejected on named fighters:
+
+    * **Ranking the level alone.** Ilia Topuria (5 qualifying wins) placed above
+      Georges St-Pierre (11).
+    * **Shrinking the level toward a cohort by evidence**, ``anchor + n/(n+k) *
+      (level - anchor)``. Volume saturates, so no usable ``k`` separated
+      Anderson Silva (11 wins) from Vadim Nemkov (5) by a meaningful margin --
+      at ``k=20`` they finished 1.2 points apart. A mean anchor was worse still,
+      lifting sub-mean fighters as evidence thinned and producing dominated
+      pairs such as Poirier (1927, 5 wins) above Sterling (1930, 7 wins).
+
+    The product is monotone in both arguments, so no fighter can outrank another
+    who is better on level and evidence alike. Wins are never added to the
+    rating: they scale how much of the measured distance is credited, so the
+    same evidence is not posted twice. Compare only inside one bout-graph
+    component -- levels are not comparable across components sharing no bouts.
+    """
+    level = pd.to_numeric(scores, errors="coerce")
+    n = pd.to_numeric(evidence, errors="coerce").reindex(level.index).fillna(0.0)
+    return n * (level - float(anchor)).clip(lower=0.0)
+
+
 UNRANKED_AT_FLOOR_STATUS = "unranked (no year above the bar)"
 
 
