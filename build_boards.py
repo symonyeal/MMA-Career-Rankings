@@ -49,6 +49,7 @@ from ratings.opponent_quality import (
     CONTENDER_LINE_MU,
     MIN_OPPONENT_UFC_BOUTS,
     MIN_QUALITY_WINS,
+    best_elite_decade,
     quality_win_record,
 )
 from ratings.scope import DEFAULT_PUBLISHED_SCOPE, scope_sources
@@ -157,6 +158,7 @@ ELITE_PRIME_TOP = 50
 # See ``evidence_weighted_score``: a mean anchor raises sub-mean fighters as
 # evidence thins, which is backwards for a board.
 ELITE_PRIME_RATING_COL = "elite_prime_score"
+ELITE_LEVEL_COL = "elite_level"
 
 # The men's and women's boards are built and published SEPARATELY. The rule and
 # the measurements behind it live in ``ratings/gender.py``, which every ranking
@@ -277,54 +279,24 @@ def _requested_integrity_rating_col(current: pd.DataFrame, requested: str | None
     return requested
 
 
-def _quality_win_map(
-    snapshot_dir: Path,
-    prime_windows: pd.DataFrame | None = None,
-) -> pd.Series | None:
-    """Fighter -> qualifying wins inside that fighter's selected Prime window.
+def _elite_decade_map(snapshot_dir: Path) -> pd.DataFrame | None:
+    """Fighter -> their best decade of beating contenders, and its level.
 
-    Opponent strength is read from the same retrospective WHR trajectory the
-    board ranks, at the date of the event. WHR has one row per appearance, so a
-    tournament can give an opponent several rows on one event. Those rows are
-    one latent state for this event-grained gate: average them before the merge
-    and validate the join, or one win can be counted several times.
+    Opponent strength is read from the same retrospective trajectory the board
+    ranks, at the date of the event. That trajectory has one row per appearance,
+    so a tournament can give an opponent several rows on one event; they are one
+    latent state for this event-grained gate, so they are averaged before the
+    merge and the join is validated.
 
-    A Prime score may select an early part of a career. Only bouts inside that
-    exact selected window can prove that peak; later wins cannot certify an
-    earlier, higher-scoring window while their lower rating rows are excluded.
-
-    Returns ``None`` rather than an empty map when an input is missing: a
-    snapshot that cannot support the gate publishes no elite board at all,
-    instead of one that withholds every fighter for lack of evidence.
+    Returns ``None`` when an input is missing, so a snapshot that cannot support
+    the gate publishes no elite board rather than one withholding everybody.
     """
     snap = Path(snapshot_dir)
-    current_path = snap / "ratings_current.parquet"
     appearances_path = snap / "performance_appearances.parquet"
     history_path = snap / "ratings_history_whr.parquet"
     combined_path = snap / "combined_fights.parquet"
-    if not (
-        appearances_path.exists()
-        and history_path.exists()
-        and combined_path.exists()
-        and (prime_windows is not None or current_path.exists())
-    ):
+    if not (appearances_path.exists() and history_path.exists() and combined_path.exists()):
         return None
-
-    if prime_windows is None:
-        prime_windows = pd.read_parquet(
-            current_path,
-            columns=["fighter", "symon_prime_window_start", "symon_prime_window_end"],
-        )
-    window_columns = {
-        "fighter",
-        "symon_prime_window_start",
-        "symon_prime_window_end",
-    }
-    if not window_columns.issubset(prime_windows.columns):
-        return None
-    windows = prime_windows[list(window_columns)].copy()
-    if windows["fighter"].duplicated().any():
-        raise ValueError("Prime windows must contain at most one row per fighter")
 
     fights = pd.read_parquet(
         combined_path,
@@ -339,24 +311,16 @@ def _quality_win_map(
     appearances = pd.read_parquet(
         appearances_path,
         columns=[
-            "fight_url",
-            "fighter",
-            "opponent",
-            "event_date",
-            "event_name",
-            "is_winner",
+            "fight_url", "fighter", "opponent", "event_date", "event_name", "is_winner",
         ],
     )
     history = pd.read_parquet(
         history_path, columns=["fighter", "event_date", "event_name", "mu_whr"]
-    ).rename(columns={"fighter": "opponent", "mu_whr": "opponent_mu"})
+    )
     opponent_events = (
-        history.groupby(
-            ["opponent", "event_date", "event_name"],
-            as_index=False,
-            sort=False,
-            dropna=False,
-        )["opponent_mu"]
+        history.rename(columns={"fighter": "opponent", "mu_whr": "opponent_mu"})
+        .groupby(["opponent", "event_date", "event_name"], as_index=False,
+                 sort=False, dropna=False)["opponent_mu"]
         .mean()
     )
     rated = appearances.merge(
@@ -367,19 +331,21 @@ def _quality_win_map(
     )
     if len(rated) != len(appearances) or rated.duplicated(["fight_url", "fighter"]).any():
         raise ValueError("elite Prime evidence must contain one row per fight and fighter")
-    rated = rated.merge(windows, on="fighter", how="left", validate="many_to_one")
-    rated = rated[
-        rated["event_date"].between(
-            rated["symon_prime_window_start"],
-            rated["symon_prime_window_end"],
-            inclusive="both",
-        )
-    ]
+
     tested = rated[rated["opponent"].map(ufc_bouts).fillna(0) >= MIN_OPPONENT_UFC_BOUTS]
-    record = quality_win_record(tested, min_opponent_mu=CONTENDER_LINE_MU)
-    if record.empty:
+    wins = quality_win_record(tested, min_opponent_mu=CONTENDER_LINE_MU)
+    if wins.empty:
         return None
-    return record.set_index("fighter")["quality_wins"]
+    qualifying = tested[
+        tested["is_winner"].fillna(False).astype(bool)
+        & (pd.to_numeric(tested["opponent_mu"], errors="coerce") >= CONTENDER_LINE_MU)
+    ][["fighter", "event_date"]]
+    own = (
+        history.groupby(["fighter", "event_date"], as_index=False, sort=False)["mu_whr"]
+        .mean()
+    )
+    decade = best_elite_decade(qualifying, own)
+    return decade if not decade.empty else None
 
 
 def write_board_artifacts(
@@ -447,7 +413,7 @@ def write_board_artifacts(
     prime_boards: dict[str, pd.DataFrame] = {}
     elite_prime_boards: dict[str, pd.DataFrame] = {}
     if PRIME_RATING_COL in current.columns:
-        quality_wins = _quality_win_map(snap, current)
+        decade = _elite_decade_map(snap)
         for gender, population in partition.items():
             if population is None or population.empty:
                 continue
@@ -460,13 +426,16 @@ def write_board_artifacts(
             prime_boards[gender].to_parquet(
                 target / f"prime_board{suffix}.parquet", index=False
             )
-            if quality_wins is None:
+            if decade is None:
                 continue
-            # Two passes: the cohort the level is shrunk toward is the set that
-            # actually clears the gate, so it cannot be known before gating.
+            # The win count and the level both come from the same decade, so a
+            # win can neither certify a stretch it falls outside nor be lost to
+            # one picked on a different criterion.
+            enriched = population.merge(decade, on="fighter", how="left")
+            quality_wins = enriched.set_index("fighter")["elite_wins"]
             gate_only = completeness_gated_board(
-                population,
-                rating_col=PRIME_RATING_COL,
+                enriched,
+                rating_col=ELITE_LEVEL_COL,
                 min_rating_periods=min_rating_periods,
                 tested_wins=quality_wins,
                 min_tested_wins=MIN_QUALITY_WINS,
@@ -475,14 +444,16 @@ def write_board_artifacts(
             if qualifiers.empty:
                 continue
             cohort = pd.to_numeric(
-                population.set_index("fighter")[PRIME_RATING_COL].reindex(qualifiers),
+                enriched.set_index("fighter")[ELITE_LEVEL_COL].reindex(qualifiers),
                 errors="coerce",
             ).dropna()
-            weighted = population.assign(
+            if cohort.empty:
+                continue
+            weighted = enriched.assign(
                 **{
                     ELITE_PRIME_RATING_COL: elite_win_mass(
-                        population[PRIME_RATING_COL],
-                        population["fighter"].map(quality_wins),
+                        enriched[ELITE_LEVEL_COL],
+                        enriched["elite_wins"],
                         anchor=float(cohort.min()),
                     )
                 }
@@ -494,7 +465,9 @@ def write_board_artifacts(
                 tested_wins=quality_wins,
                 min_tested_wins=MIN_QUALITY_WINS,
             ).merge(
-                population[["fighter", PRIME_RATING_COL]], on="fighter", how="left"
+                enriched[["fighter", ELITE_LEVEL_COL, "elite_window_start",
+                          "elite_window_end"]],
+                on="fighter", how="left",
             )
             elite_prime_boards[gender].to_parquet(
                 target / f"prime_elite_board{suffix}.parquet", index=False
@@ -574,7 +547,14 @@ def top_board_markdown(
         )
         for _, label in PUBLIC_LEGACY_COMPONENTS:
             table[label] = merged[label].round(1).to_numpy()
-    if "peak_mu_whr" in current.columns:
+    if ELITE_LEVEL_COL in ranked.columns:
+        # On the elite board the level that drives the score is the mean rating
+        # inside the fighter's own elite decade, not their career peak.
+        table["Level"] = (
+            pd.to_numeric(ranked[ELITE_LEVEL_COL], errors="coerce")
+            .round(0).astype("Int64").to_numpy()
+        )
+    elif "peak_mu_whr" in current.columns:
         peak = pd.to_numeric(
             ranked["fighter"].map(current.set_index("fighter")["peak_mu_whr"]),
             errors="coerce",

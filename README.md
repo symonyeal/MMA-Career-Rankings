@@ -182,8 +182,16 @@ actually proven? Prime is the best fixed ten-year rating window with at least
 the fighter beat, and when**: at least **5 wins over contenders inside that
 same ten-year stretch**, where a contender was rated **1750 or higher** at the
 time of the bout *and* had a tested record of its own — at least 8 UFC bouts.
-Wins after the stretch ends do not count towards it; a later victory cannot
-prove an earlier peak.
+Both numbers come from the same stretch, so a win can neither certify a peak it
+falls outside of nor be lost to one picked on other grounds.
+
+**Which ten years.** The stretch is the one holding the most wins over
+contenders, not the one with the highest average rating. Choosing it by rating
+picks the years a fighter lost least, because an unbeaten record is rated above
+everyone in it — which made Daniel Cormier's peak his 13-0 Strikeforce run and
+put his entire UFC title reign outside it, counting 2 qualifying wins where he
+has 8. Mirko Filipovic scored none at all on the same mechanism. A stretch is a
+peak because of who was beaten in it.
 
 **How the order is decided.** The board does not rank the Prime level itself. A
 level is a rate: it does not rise with the number of hard fights behind it, so
@@ -199,49 +207,65 @@ how much of the measured level is credited, so the same evidence is not counted
 twice. There is no tuning constant in this.
 
 The contender line and the five-win minimum are stated policy, not fitted
-values. 34 men qualify. Only 2 women qualify, which is a
+values. 71 men qualify, so this top 50 fills. Only 2 women qualify, which is a
 fact about corpus depth rather than about the fighters — see
 [Published UFC Rankings](RANKINGS.md) for that board and the reasoning behind
 both halves of the opponent test.
 
 <!-- BOARD:ELITEPRIME50:BEGIN -->
 
-| # | Fighter | Score | Peak | Prime | Elite wins |
-| ---: | --- | ---: | ---: | ---: | ---: |
-| 1 | Jon Jones | 5078.7 | 2227 | 2207.8 | 12 |
-| 2 | Islam Makhachev | 3481.6 | 2214 | 2171.4 | 9 |
-| 3 | Georges St-Pierre | 3176.5 | 2090 | 2073.3 | 11 |
-| 4 | Alexander Volkanovski | 2363.9 | 2072 | 2047.2 | 9 |
-| 5 | Francis Ngannou | 1798.5 | 2079 | 2041.5 | 7 |
-| 6 | Ilia Topuria | 1635.8 | 2127 | 2111.7 | 5 |
-| 7 | Max Holloway | 1594.4 | 1978 | 1961.7 | 9 |
-| 8 | Anderson Silva | 1545.7 | 1969 | 1925.1 | 11 |
-| 9 | Jose Aldo | 1346.7 | 2003 | 1977.0 | 7 |
-| 10 | Stipe Miocic | 1313.2 | 2021 | 2003.4 | 6 |
-| 11 | Dricus Du Plessis | 1298.1 | 2049 | 2000.9 | 6 |
-| 12 | Alex Pereira | 1235.9 | 1970 | 1961.1 | 7 |
-| 13 | Vadim Nemkov | 1214.6 | 2081 | 2027.5 | 5 |
-| 14 | Chris Weidman | 1207.1 | 1988 | 1957.0 | 7 |
-| 15 | Sean Strickland | 1197.1 | 1951 | 1917.6 | 9 |
-| 16 | Kamaru Usman | 1177.8 | 2004 | 1980.9 | 6 |
-| 17 | Charles Oliveira | 1157.4 | 1988 | 1949.9 | 7 |
-| 18 | Demetrious Johnson | 1136.6 | 2006 | 1974.0 | 6 |
-| 19 | Aljamain Sterling | 1016.2 | 1959 | 1929.7 | 7 |
-| 20 | Merab Dvalishvili | 1016.1 | 2009 | 1911.6 | 8 |
-| 21 | Anthony Johnson | 924.8 | 1964 | 1938.7 | 6 |
-| 22 | Robert Whittaker | 915.1 | 1932 | 1899.0 | 8 |
-| 23 | Dominick Cruz | 824.8 | 1979 | 1949.5 | 5 |
-| 24 | Alexander Volkov | 791.6 | 1931 | 1897.6 | 7 |
-| 25 | Dustin Poirier | 714.4 | 1956 | 1927.5 | 5 |
-| 26 | Yoel Romero | 704.1 | 1941 | 1925.4 | 5 |
-| 27 | Alexandre Pantoja | 414.2 | 1900 | 1867.4 | 5 |
-| 28 | Nassourdine Imavov | 371.5 | 1961 | 1846.5 | 6 |
-| 29 | Jake Shields | 360.6 | 1882 | 1844.7 | 6 |
-| 30 | Quinton Jackson | 231.0 | 1856 | 1830.8 | 5 |
-| 31 | Rafael Dos Anjos | 103.1 | 1848 | 1801.7 | 6 |
-| 32 | Neil Magny | 85.7 | 1808 | 1798.9 | 6 |
-| 33 | Jan Blachowicz | 79.8 | 1835 | 1797.9 | 6 |
-| 34 | Thiago Santos | 0.0 | 1810 | 1784.6 | 5 |
+| # | Fighter | Score | Level | Elite wins |
+| ---: | --- | ---: | ---: | ---: |
+| 1 | Jon Jones | 5867.6 | 2213 | 12 |
+| 2 | Islam Makhachev | 4233.8 | 2195 | 9 |
+| 3 | Georges St-Pierre | 3848.3 | 2074 | 11 |
+| 4 | Alexander Volkanovski | 2929.2 | 2050 | 9 |
+| 5 | Daniel Cormier | 2878.6 | 2084 | 8 |
+| 6 | Francis Ngannou | 2515.6 | 2039 | 8 |
+| 7 | Anderson Silva | 2186.6 | 1923 | 11 |
+| 8 | Kamaru Usman | 2183.1 | 1967 | 9 |
+| 9 | Max Holloway | 2138.5 | 1962 | 9 |
+| 10 | Lyoto Machida | 2032.2 | 1978 | 8 |
+| 11 | Merab Dvalishvili | 2009.3 | 1975 | 8 |
+| 12 | Ciryl Gane | 2004.4 | 2058 | 6 |
+| 13 | Ilia Topuria | 1966.8 | 2118 | 5 |
+| 14 | Dricus Du Plessis | 1914.7 | 2043 | 6 |
+| 15 | Israel Adesanya | 1884.5 | 1934 | 9 |
+| 16 | Jose Aldo | 1848.5 | 1930 | 9 |
+| 17 | Khamzat Chimaev | 1829.6 | 2090 | 5 |
+| 18 | Charles Oliveira | 1777.0 | 1978 | 7 |
+| 19 | Sean Strickland | 1743.3 | 1918 | 9 |
+| 20 | Vadim Nemkov | 1719.8 | 2068 | 5 |
+| 21 | Stipe Miocic | 1673.5 | 2003 | 6 |
+| 22 | Alex Pereira | 1666.7 | 1962 | 7 |
+| 23 | Justin Gaethje | 1614.7 | 1993 | 6 |
+| 24 | Aljamain Sterling | 1543.9 | 1945 | 7 |
+| 25 | Demetrious Johnson | 1502.9 | 1975 | 6 |
+| 26 | Fedor Emelianenko | 1461.8 | 2017 | 5 |
+| 27 | Robert Whittaker | 1408.9 | 1900 | 8 |
+| 28 | Petr Yan | 1374.3 | 1953 | 6 |
+| 29 | Frankie Edgar | 1347.9 | 1893 | 8 |
+| 30 | Anthony Johnson | 1323.1 | 1945 | 6 |
+| 31 | Nassourdine Imavov | 1283.4 | 1938 | 6 |
+| 32 | Ryan Bader | 1263.0 | 1935 | 6 |
+| 33 | Alexander Volkov | 1261.9 | 1904 | 7 |
+| 34 | Dustin Poirier | 1202.9 | 1925 | 6 |
+| 35 | Chris Weidman | 1178.0 | 1871 | 8 |
+| 36 | Benson Henderson | 1091.4 | 1880 | 7 |
+| 37 | Dominick Cruz | 1084.0 | 1941 | 5 |
+| 38 | Sean Sherk | 1016.9 | 1894 | 6 |
+| 39 | Gegard Mousasi | 987.5 | 1922 | 5 |
+| 40 | Curtis Blaydes | 929.5 | 1910 | 5 |
+| 41 | Demian Maia | 913.7 | 1855 | 7 |
+| 42 | Belal Muhammad | 868.3 | 1898 | 5 |
+| 43 | Yoel Romero | 862.8 | 1868 | 6 |
+| 44 | Luke Rockhold | 847.8 | 1865 | 6 |
+| 45 | Chuck Liddell | 790.0 | 1823 | 8 |
+| 46 | Glover Teixeira | 776.7 | 1854 | 6 |
+| 47 | Henry Cejudo | 756.0 | 1875 | 5 |
+| 48 | Alexandre Pantoja | 751.0 | 1874 | 5 |
+| 49 | Beneil Dariush | 744.4 | 1848 | 6 |
+| 50 | Dan Henderson | 731.4 | 1870 | 5 |
 
 <!-- BOARD:ELITEPRIME50:END -->
 

@@ -11,6 +11,7 @@ from ratings import boards
 import build_boards
 from ratings.boards import completeness_gated_board
 from ratings.opponent_quality import (
+    best_elite_decade,
     CONTENDER_LINE_MU,
     MIN_QUALITY_WINS,
     quality_win_record,
@@ -146,11 +147,11 @@ def test_the_gate_is_off_by_default():
 
 def test_a_snapshot_without_the_inputs_publishes_no_elite_board(tmp_path):
     """No inputs means no gate, not a board that withholds everyone."""
-    assert build_boards._quality_win_map(tmp_path) is None
+    assert build_boards._elite_decade_map(tmp_path) is None
 
 
 def test_quality_wins_are_unique_and_inside_the_selected_prime_window(tmp_path):
-    """Later wins cannot certify an earlier peak, and event joins cannot fan out."""
+    """The decade holds every win it contains, and event joins cannot fan out."""
     inside_dates = pd.date_range("2020-01-01", periods=3, freq="180D")
     later_dates = pd.date_range("2023-01-01", periods=2, freq="180D")
     opponents = [f"Contender {number}" for number in range(5)]
@@ -187,28 +188,15 @@ def test_quality_wins_are_unique_and_inside_the_selected_prime_window(tmp_path):
             )
     pd.DataFrame(ufc_rows).to_parquet(tmp_path / "combined_fights.parquet", index=False)
 
-    windows = pd.DataFrame(
-        {
-            "fighter": ["Window Fighter"],
-            "symon_prime_window_start": [inside_dates.min()],
-            "symon_prime_window_end": [inside_dates.max()],
-        }
-    )
-    wins = build_boards._quality_win_map(tmp_path, windows)
+    decade = build_boards._elite_decade_map(tmp_path)
 
-    assert wins is not None
-    assert wins.loc["Window Fighter"] == 3
-
-    current = windows.assign(symon_prime_score=2100.0, rating_periods=13)
-    board = completeness_gated_board(
-        current,
-        rating_col="symon_prime_score",
-        min_rating_periods=13,
-        tested_wins=wins,
-        min_tested_wins=MIN_QUALITY_WINS,
-    ).set_index("fighter")
-    assert "proven record" in board.loc["Window Fighter", "status"]
-    assert pd.isna(board.loc["Window Fighter", "rank"])
+    assert decade is not None
+    row = decade.set_index("fighter").loc["Window Fighter"]
+    # All five wins fall inside one decade, and the duplicated same-event
+    # rating row must not make bout-0 count twice.
+    assert row["elite_wins"] == 5
+    assert row["elite_window_start"] == inside_dates.min()
+    assert row["elite_window_end"] == later_dates.max()
 
 
 # --- Ordering: elite-win mass, not the bare level ---
@@ -285,7 +273,7 @@ def test_the_published_board_has_no_dominated_pairs():
         pytest.skip("snapshot artifact not present")
     board = pd.read_parquet(path)
     ok = board[board["status"].eq("ranked")].sort_values("rank").reset_index(drop=True)
-    level, wins = ok["symon_prime_score"], ok["tested_opponent_wins"]
+    level, wins = ok["elite_level"], ok["tested_opponent_wins"]
     for i in range(len(ok)):
         for j in range(i + 1, len(ok)):
             assert not (level[j] > level[i] and wins[j] >= wins[i]), (
@@ -349,3 +337,76 @@ def test_the_published_board_prints_the_peak_on_the_contender_scale():
 
     assert "Peak" in table.splitlines()[0]
     assert "1900" in table
+
+
+# --- The window must be chosen by wins, not by the quietest rating stretch ---
+
+def _wins(dates: list[str], fighter: str = "A") -> pd.DataFrame:
+    return pd.DataFrame({"fighter": fighter, "event_date": pd.to_datetime(dates)})
+
+
+def _history(pairs: list[tuple[str, float]], fighter: str = "A") -> pd.DataFrame:
+    return pd.DataFrame({
+        "fighter": fighter,
+        "event_date": pd.to_datetime([d for d, _ in pairs]),
+        "mu_whr": [m for _, m in pairs],
+    })
+
+
+def test_the_window_follows_the_wins_not_the_highest_rated_stretch():
+    """Cormier's defect: an undefeated early run outscored his real prime.
+
+    Choosing the window by mean rating picks the stretch with the fewest
+    losses, because an undefeated record is rated above everyone in it. That
+    made his 13-0 Strikeforce years his 'prime' and left his UFC title reign
+    outside it, counting 2 qualifying wins where he has 8.
+    """
+    wins = _wins(["2015-01-01", "2016-01-01", "2017-01-01"])
+    history = _history([
+        ("2010-01-01", 2200.0), ("2011-01-01", 2200.0),   # quiet, unbeaten, no wins
+        ("2015-01-01", 2000.0), ("2016-01-01", 2000.0), ("2017-01-01", 2000.0),
+    ])
+
+    got = best_elite_decade(wins, history).set_index("fighter")
+
+    assert got.loc["A", "elite_wins"] == 3
+    assert got.loc["A", "elite_window_start"] == pd.Timestamp("2015-01-01")
+    assert got.loc["A", "elite_level"] == pytest.approx(2000.0)
+
+
+def test_the_level_is_read_from_the_same_window_as_the_wins():
+    """No leakage in either direction: one window supplies both numbers."""
+    wins = _wins(["2022-01-01", "2023-01-01"])
+    history = _history([
+        ("2015-01-01", 1500.0),   # long before the elite stretch
+        ("2022-01-01", 2100.0), ("2023-01-01", 2100.0),
+    ])
+
+    got = best_elite_decade(wins, history).set_index("fighter")
+
+    assert got.loc["A", "elite_level"] == pytest.approx(2100.0)
+
+
+def test_wins_further_apart_than_the_span_do_not_share_a_window():
+    wins = _wins(["2000-01-01", "2001-01-01", "2020-01-01"])
+    history = _history([("2000-01-01", 1900.0), ("2001-01-01", 1900.0),
+                        ("2020-01-01", 1900.0)])
+
+    got = best_elite_decade(wins, history).set_index("fighter")
+
+    assert got.loc["A", "elite_wins"] == 2
+
+
+def test_a_tie_on_count_goes_to_the_stronger_stretch():
+    wins = _wins(["2000-01-01", "2020-01-01"])
+    history = _history([("2000-01-01", 1800.0), ("2020-01-01", 2000.0)])
+
+    got = best_elite_decade(wins, history).set_index("fighter")
+
+    assert got.loc["A", "elite_wins"] == 1
+    assert got.loc["A", "elite_level"] == pytest.approx(2000.0)
+
+
+def test_no_qualifying_wins_yields_no_window():
+    assert best_elite_decade(pd.DataFrame(columns=["fighter", "event_date"]),
+                             _history([("2000-01-01", 1900.0)])).empty

@@ -279,3 +279,78 @@ def quality_win_record(
         .agg(quality_wins=("_won", "sum"), quality_bouts=("_won", "size"))
     )
     return out[QUALITY_WIN_COLUMNS].reset_index(drop=True)
+
+
+ELITE_DECADE_SPAN_YEARS = 10
+ELITE_DECADE_COLUMNS = [
+    "fighter",
+    "elite_wins",
+    "elite_level",
+    "elite_window_start",
+    "elite_window_end",
+]
+
+
+def best_elite_decade(
+    qualifying_wins: pd.DataFrame,
+    history: pd.DataFrame,
+    *,
+    span_years: int = ELITE_DECADE_SPAN_YEARS,
+) -> pd.DataFrame:
+    """Each fighter's best ``span_years`` stretch of beating contenders.
+
+    ``qualifying_wins`` is ``(fighter, event_date)`` for wins that already
+    passed the opponent test. ``history`` is ``(fighter, event_date, mu_whr)``
+    for the fighter's own rated appearances. The window is chosen to hold the
+    most qualifying wins, ties broken by the higher mean rating inside it, and
+    both the win count and the level are then read from that same window.
+
+    **Why the window is chosen this way.** Picking it by mean rating instead --
+    which is what ``symon_prime_score`` does -- selects the stretch with the
+    fewest losses, because an undefeated record is rated above everyone in it
+    and a loss pulls the mean down. That made Daniel Cormier's peak his 13-0
+    Strikeforce run of 2009-2013 and put his entire UFC title reign outside it,
+    leaving him 2 qualifying wins where he has 8. Mirko Filipovic scored zero
+    in-window wins on the same mechanism. A stretch is a peak because of who was
+    beaten in it, not because nobody won inside it.
+
+    Reading both quantities from one window also removes the leakage the other
+    direction: a win cannot certify a peak it falls outside of, because the peak
+    is defined as the stretch the win sits in.
+    """
+    empty = pd.DataFrame(columns=ELITE_DECADE_COLUMNS)
+    if qualifying_wins is None or qualifying_wins.empty:
+        return empty
+    span = pd.Timedelta(days=round(365.25 * span_years))
+    levels = {
+        name: group.sort_values("event_date")
+        for name, group in history.groupby("fighter", sort=False)
+    }
+    rows: list[dict[str, object]] = []
+    for fighter, group in qualifying_wins.groupby("fighter", sort=False):
+        dates = group["event_date"].sort_values().to_numpy()
+        own = levels.get(fighter)
+        best: tuple[int, float, object, object] | None = None
+        for start in dates:
+            end = start + span
+            count = int(((dates >= start) & (dates <= end)).sum())
+            level = float("nan")
+            if own is not None:
+                inside = own.loc[own["event_date"].between(start, end), "mu_whr"]
+                if not inside.empty:
+                    level = float(inside.mean())
+            # Most wins first; a tie goes to the stronger stretch.
+            key = (count, -1e18 if pd.isna(level) else level)
+            if best is None or key > (best[0], best[1]):
+                last = dates[dates <= end].max()
+                best = (count, key[1], start, last)
+        if best is None:
+            continue
+        rows.append({
+            "fighter": fighter,
+            "elite_wins": best[0],
+            "elite_level": best[1] if best[1] > -1e17 else float("nan"),
+            "elite_window_start": pd.Timestamp(best[2]),
+            "elite_window_end": pd.Timestamp(best[3]),
+        })
+    return pd.DataFrame(rows, columns=ELITE_DECADE_COLUMNS) if rows else empty

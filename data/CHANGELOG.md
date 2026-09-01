@@ -38,6 +38,28 @@
   design records with restoration instructions. Finalized experimental
   snapshots and intentionally retained research evidence were not removed.
 
+## 2026-09-01 - Choose the elite decade by wins, not by the quietest rating
+
+- The elite board read its win count from `symon_prime_score`'s window, which is
+  chosen by mean rating. That selects the stretch a fighter lost least in,
+  because an unbeaten record is rated above everyone in it. Daniel Cormier's
+  window was his 13-0 Strikeforce run of 2009-2013, putting his whole UFC title
+  reign outside it and counting 2 qualifying wins where he has 8; Mirko
+  Filipovic scored zero in-window wins the same way, while fighters with long
+  flat windows kept all of theirs.
+- The board now picks, per fighter, the ten-year stretch holding the most wins
+  over contenders, ties broken by the stronger stretch, and reads both the win
+  count and the level from it. Cormier enters at 5th and Fedor Emelianenko at
+  26th. Qualifiers go 34 -> 71.
+- Reading both numbers from one window settles the leakage question in both
+  directions: a win cannot certify a stretch it falls outside, because the
+  stretch is defined as the one the win sits in.
+- The published `Level` column is that window's mean rating rather than the
+  career peak, so the number driving the score is the one shown.
+- Cro Cop and Khabib Nurmagomedov remain withheld on 4 qualifying wins against a
+  minimum of 5. Lowering the minimum to 4 would admit them but also Movsar
+  Evloev, Ian Machado Garry and Umar Nurmagomedov, so the minimum stands.
+
 ## 2026-09-01 - Publish the rating scale beside the resume scores
 
 - The all-time board printed only resume figures, so the 1750 contender line
