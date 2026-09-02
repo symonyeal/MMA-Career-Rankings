@@ -180,48 +180,23 @@ Vadim Nemkov are all still on the board, and Kayla Harrison enters at 100 on 3 U
 fights — the same profile with a new name. Pantoja, a reigning UFC champion, fell
 out of the top 100.
 
-## What has to happen next
+## Where this went
 
-1. **RESOLVED 2026-08-28 — the three model settings were fitted on the repaired
-   data.** Fourteen rolling cut-offs; the coarse sweep produced 8,435 held-out
-   fights across 1,467 events and the joint refinement that made the choice
-   produced 7,641 across 1,355. Each cut-off was calibrated using only earlier
-   windows. The chosen combination is `WHR_PRIOR_VAR=8`, `WHR_W2_PER_DAY=0.0004`,
-   `WHR_VIRTUAL_GAMES=1`: prediction error −0.00201, 95% CI [−0.00349, −0.00060],
-   ranking accuracy 0.7041 → 0.7067 against the former 4 / 0.0004 / 2. Prior
-   variance 16 was worse; virtual mass 0.5 and `w2=0.0002` did not resolve. The
-   extra gain from prior variance 8 *after* setting virtual mass to 1 did not
-   resolve either, so the two changes are not claimed to be independently proven.
-   The automatic best-fit value of 0.58 answers an in-sample question and
-   predicted markedly worse, so it was not chosen.
-2. **RESOLVED 2026-08-27 — the career score no longer moves when ratings are
-   rescaled.** Softness is now 0.175 of each year's rating spread rather than a
-   fixed 25 Elo. On the real fitted history, multiplying every rating by 0.5, 0.7,
-   1.4 or 2.0 leaves the full order identical, moves nobody in the top 100, and
-   scales every score by exactly that factor to within 2.8e-12. The old board is
-   still exactly reproducible with `hinge_scale=DEFAULT_HINGE_SCALE`. Evidence:
-   `Claude Func Folder/py/ufc/out/career_scale_equivariance.csv`.
-3. **RESOLVED 2026-08-28 — the held-out evidence was rebuilt on the repaired data,
-   and so were the published tables.** The settings sweep, the fight-information
-   sweep and their analyses are under `Claude Func Folder/py/ufc/out/`. The
-   dataset was then re-rated end to end and the boards regenerated from it.
-4. **77 fighters remain truncated** because Sherdog's search could not resolve
-   their name. They are listed in the builder's report. This is a name-matching
-   problem, not a crawling one.
-5. **DIAGNOSED 2026-08-28, and deliberately not applied as a promotion weight.**
-   Under the fitted settings the complete-career label reproduces a +104 Elo gap
-   [+67, +148] on 486 fights. It is concentrated *before* the affected fighters
-   enter the UFC: future signings run +274 [+185, +389] against never-UFC
-   opponents, rising to +463 [+290, +521] within a year of their debut. A smaller
-   +54 [+10, +100] remains afterwards, and newcomer-versus-regular does not
-   resolve [−8, +98]. This points to selection — who crosses over, and when — as
-   the main cause, without claiming it explains every last point.
-6. **NEW 2026-08-28 — two changes shipped that this document predates.** The
-   winner's credit now reflects how the fight ended, and the title résumé carries
-   a measured promotion correction. Every fight count and board position under
-   "What it fixed" above was measured before both. See
-   [How the ratings and the score are built](RATING_LAYER_AND_LEDGER_2026-08-28.md)
-   for the current board.
+Everything this document called for was done, and the measurements now live in
+the record that owns them rather than being restated here.
+
+- The three model settings were refitted on the repaired data, the career score
+  was made invariant to a rescaling of the ratings, and the UFC-versus-outside
+  gap was measured and deliberately not applied as a promotion weight. All three
+  are in
+  [How the ratings and the score are built](RATING_LAYER_AND_LEDGER_2026-08-28.md),
+  sections 2, 1 and 3, with the full tables and confidence intervals.
+- Two changes shipped after this document was written, so every fight count and
+  board position under "What it fixed" above predates them: the winner's credit
+  now reflects how the fight ended, and the title résumé carries a measured
+  promotion correction.
+- The 77 fighters Sherdog's search could not resolve are still truncated. That
+  and everything else still open is in [Open decisions](DECISIONS.md).
 
 ## Reproduce
 

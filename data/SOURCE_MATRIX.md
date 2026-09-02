@@ -111,10 +111,10 @@ falls below `MIN_CAREER_PAGE_SHARE`, and `rating_run.json` publishes it.
 | fightmatrix_profiles        | FightMatrix public profiles | Ranked-cohort biography, debut, career summary, and diagnostic metrics. |
 | fightmatrix_bouts           | FightMatrix public profiles | Deduplicated complete histories for the bounded current-ranked + all-time seed cohort. |
 | fightmatrix_crossorg_fights | FightMatrix public profiles | Post-2000-11-17, non-UFC, UFC-deduplicated canonical rows; public ranks are not model inputs. |
-| fightmatrix_profile_queue | Archived experiment | Recursive-expansion crawl state. No live producer or consumer since 2026-08-31; present only in the finalized 2026-08-14 experimental snapshots. |
-| fightmatrix_profiles_expanded | Archived experiment | Recursively fetched public profiles with independent HTTP, parse, reconciliation and completeness state. Archived 2026-08-31. |
-| fightmatrix_bouts_expanded | Archived experiment | Per-profile public history rows before reciprocal reconciliation. Archived 2026-08-31. |
-| fightmatrix_model_eligible_bouts | Archived experiment | Experimental canonical rows after UFC overlap removal and the declared completeness policy. Archived 2026-08-31. |
+| fightmatrix_profile_queue | Retired experiment | Recursive-expansion crawl state. Producer archived 2026-08-31; the snapshots that held it were removed 2026-09-01. |
+| fightmatrix_profiles_expanded | Retired experiment | Recursively fetched public profiles with independent HTTP, parse, reconciliation and completeness state. Removed 2026-09-01. |
+| fightmatrix_bouts_expanded | Retired experiment | Per-profile public history rows before reciprocal reconciliation. Removed 2026-09-01. |
+| fightmatrix_model_eligible_bouts | Retired experiment | Experimental canonical rows after UFC overlap removal and the declared completeness policy. Removed 2026-09-01. |
 | combined_fights              | Derived from selected scope | One model-input table preserving the union of admitted source columns, with `bout_fingerprint`, `source_corpus`, `source_priority`, `rated_scope`, and `is_model_bout`. |
 | method_raw / method_class   | Sherdog    | Parsed from fighter history pages for cross-org bouts. |
 | end_round / end_time_seconds| Sherdog    | Parsed from fighter history pages for cross-org bouts. |
@@ -141,42 +141,36 @@ falls below `MIN_CAREER_PAGE_SHARE`, and `rating_run.json` publishes it.
 | association / debut / record | FightMatrix public profile | Queryable profile context. |
 | quality %, 540 metric, combat age | FightMatrix derived | Stored for comparison only; never enters rating input. |
 
-### Archived recursive profile experiment
+### Matching a public bout to the canonical UFC table
 
-The archived recursive FightMatrix experiment followed public opponent links carrying a
-stable numeric profile ID. It does not use authenticated endpoints, CIRRS, or a
-proprietary database. The breadth-first queue is bounded by depth, total and
-per-run profile counts, request count, wall clock, minimum priority, earliest
-date, minimum professional record, organization tier, unresolved-profile rate,
-graph closure, and weighted edge support. Cached HTML is always preferred.
-
-The priority score is transparent: `2*log1p(seed referrers) + 2*(opponent beat
-or drew with referrer) + organization tier signal + 1.5*(title bout) + ranked
-opponent signal`. This score orders work; it is not a rating input.
-
-Deduplicating a public bout against the canonical UFC table is a name problem,
-not just a key problem. The overlap test scans a one-day window (public profiles
-date some Asian cards a day later than the UFC source) and treats a name-order
-permutation, a generational suffix, a token subset and a three-character
-first-name prefix as the same fighter. Names that no rule can derive - a ring
-name replacing a family name, a married name, a mononym - live in
+This is a name problem, not just a key problem. The overlap test scans a one-day
+window — public profiles date some Asian cards a day later than the UFC source —
+and treats a name-order permutation, a generational suffix, a token subset and a
+three-character first-name prefix as the same fighter. Names no rule can derive
+(a ring name replacing a family name, a married name, a mononym) live in
 `data/external/fightmatrix/name_aliases.csv`, which records the reason and the
 number of shared event dates behind each pair. That file is project-owned and
 separate from the vendored `data/external/aliases/fighter_aliases.csv`, whose
 upstream attribution must stay intact.
 
-That historical pipeline blocked FightMatrix rank, points, quality
-percentage, 540 metric, combat age, and pre-fight rank from the model schema.
-The committed organization rule table is time-aware and initially diagnostic;
-it does not add promotion prestige bonuses. Reliability weighting multiplies
-the existing participant-caliber fight weight by the geometric mean of the two
-profile completeness scores. FightMatrix remains a named diagnostic scope and
-is not part of the published `majors,pre_unified` default.
+### What FightMatrix is never allowed to contribute
 
-That recursive expansion pipeline, its tests, and its design record were
-archived on 2026-08-31. The finalized experimental snapshots remain intact as
-immutable research evidence. The live pipeline uses the bounded ranked-cohort
-loader described below.
+Rank, points, quality percentage, the 540 metric, combat age and pre-fight rank
+are blocked from the model schema. They are stored for audit and comparison and
+never enter a rating. The committed organization rule table is time-aware and
+diagnostic; it adds no promotion prestige bonus. FightMatrix stays a named
+diagnostic scope and is not part of the published `majors,pre_unified` default.
+
+### The recursive expansion experiment is gone
+
+It followed public opponent links under a bounded breadth-first queue. Its
+pipeline, tests and design record were archived on 2026-08-31, and on 2026-09-01
+the four experimental snapshots it produced were removed along with the 4,035
+crawled profile pages only they read. Nothing live could open either. The code is
+on the `fightmatrix-recursive-expansion-2026-08` branch and under
+`_archive/20260831-repository-consolidation/`; the removed profile ids are in
+`_archive/20260901-lean-pass/stale_profile_ids.txt`, so a revival can target
+exactly them. The live pipeline is the bounded ranked-cohort loader below.
 
 Current Sherdog staging: `build_sherdog_majors.py` produced the roster-complete
 six-promotion event crawl, and the completed whole-career crawl is preserved as
@@ -192,6 +186,8 @@ tables (no recursive opponent crawl), caches the HTML under
 `data/external/fightmatrix/profiles/`, and emits profile, raw-bout, canonical
 cross-org, and provenance-summary artifacts. The 2026-08-14 local run contains
 302 profiles, 6,644 unique public bouts and 4,023 model-ready cross-org bouts.
+The HTML cache holds exactly those 302 pages: it is trimmed to what the live
+artifacts reference, so its size states the bound rather than hiding it.
 FightMatrix ranks, points, quality percentages, 540 metrics and combat age are
 diagnostic only. Only result/method/round/event/date fields enter the optional
 rating input. The standard snapshot uses `majors,pre_unified`; the explicit
@@ -387,5 +383,24 @@ Implementation path (deferred to a later phase, after engine wiring):
 
 All raw HTML caches and ingested CSVs stay project-local. Nothing gets
 redistributed. Cross-org / pre-UFC odds remain entirely out of scope.
+
+### Where cached pages live
+
+Every scraped page sits in one store per source: `pages.sqlite`, in that
+source's cache directory, holding gzipped page text under a kind and a key.
+`loaders/page_cache.py` is the only thing that reads or writes it, and
+`open_cache(cache_dir)` is how a reader opens it, so `--cache-dir` still names a
+directory.
+
+Before 2026-09-01 each reader dropped one file per page into its own directory in
+its own layout — 6,972 files, 254 MB, three naming schemes. The store holds the
+same pages in two files and 182 MB, and a reader can no longer disagree with
+another about where a cached page belongs. Sherdog: 5,702 fighter pages, 717
+events, 221 searches, 6 organizations. FightMatrix: 302 profiles.
+
+The 13 committed FightMatrix ranking pages under
+`data/external/fightmatrix/html/` stay as loose files on purpose. They are in
+version control as readable provenance, and a binary store would hide them from
+review.
 
 Both github candidates are recorded under `source_gaps` until ingested.

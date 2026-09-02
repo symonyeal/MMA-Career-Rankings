@@ -1,5 +1,55 @@
 # Snapshot Changelog
 
+## 2026-09-01 - Dead data and dead code swept out
+
+No ranking changed. Every published table still matches its board artifact
+row for row, and the release facts beside them are the same figures.
+
+- Removed 1.35 GB of material nothing could read, taking the working copy from
+  2,070 MB to 706 MB. All of it was already outside version control, so the
+  repository history is untouched.
+- The FightMatrix profile cache held 4,337 pages; the bounded crawl the engine
+  actually runs needs 302. The other 4,035 were left by the depth-one expansion
+  that was measured and never promoted. They are gone, and their ids are listed
+  in `_archive/20260901-lean-pass/stale_profile_ids.txt` so the crawl can
+  be aimed at exactly them again if that experiment is ever revived.
+- Removed the four 2026-08-14 expansion snapshots. Their producer was archived
+  on 2026-08-31, so no live code could open them.
+- Removed three ad-hoc backup parquets that had been left inside the published
+  2026-08-13 snapshot. A release directory should hold the release.
+- Removed the regenerable SQLite and cache trees under four `_archive` folders,
+  and four abandoned pytest temp directories.
+- Retired 19 chart builders from `analysis/viz.py` that the notebook never
+  drew — 796 lines, 16% of the file. Four of them read `sleeve_attribution`,
+  which no snapshot has produced since the 2026-08-20 core evolution, so they
+  could not have run against current data. Two had no caller at all.
+- Removed a second, unused README-writing path in `build_boards.py`. The four
+  invariants its tests covered now run against the publisher that actually
+  writes the files, so the coverage is real rather than nominal.
+- Gave both Sherdog readers one user agent and one politeness delay. They write
+  into the same cache directory and fetch from the same host; the second set of
+  values was drift, not a second policy.
+- Removed `build_organization_map` and `annotate_organizations`, which belonged
+  to the archived expansion pipeline.
+- Put every scraped page in one store per source. Each reader had been writing
+  one file per page into its own directory in its own layout — 6,972 files across
+  three naming schemes. `loaders/page_cache.py` now holds them as gzipped rows in
+  a single `pages.sqlite` per source, and is the only code that reads or writes a
+  cache. Every page was verified to read back identical before a loose file was
+  removed. The working copy went from 7,493 files to 566, and the FightMatrix
+  cache from 72.3 MB to 9.4 MB because it had never been compressed.
+- Merged the two decision registers into one, `docs/DECISIONS.md`. They had
+  repeated six of seven refusals word for word, carried two rebuild command
+  blocks, and one had grown two outcome sections and two "still open" lists. Not
+  one open item or refusal was dropped. The originals are in
+  `_archive/20260901-lean-pass/docs/`.
+- Removed from `docs/CAREER_COVERAGE_2026-08-27.md` the five findings it restated
+  from the methodology record, which holds them with full tables and confidence
+  intervals. The one item still open moved to the register.
+- Archived `analysis/CHART_PLAN.md`. It was a completed 2026-06 rollout plan,
+  already labelled historical, kept live only because three code comments cited
+  it; those now cite the archive.
+
 ## 2026-08-31 - Repository consolidation and consistency repair
 
 - Replaced the research-log README with a business overview and moved all four
@@ -164,7 +214,7 @@
 - Removed tournament appearance fan-out (9,580 duplicate rows), moving Matt
   Hughes from 7th to 9th and Dan Henderson from 8th to 23rd on that release.
 - Rebuilt schema-8 held-out prequential evidence and recorded unresolved model
-  choices in `docs/NEXT_2026-08-28.md` so closed tuning options are not repeated.
+  choices in the decision register so closed tuning options are not repeated.
 
 ## 2026-08-26 - Stale-surface cleanup; no data rebuild
 
@@ -891,7 +941,7 @@ Backup: pre-consolidation snapshot copied to
 
 ## 2026-06-23 - Notebook chart expansion
 
-Implemented all 12 ideas in `analysis/CHART_PLAN.md`. The dashboard grows from
+Implemented all 12 ideas in `_archive/20260901-lean-pass/analysis/CHART_PLAN.md`. The dashboard grows from
 14 to 23 code cells (22 markdown). New `analysis/viz.py` builders:
 `striking_profile_chart`, `dominance_leaderboard_chart`, `snapshot_movers_chart`,
 `inactivity_table`, `integrity_ledger_table`, `integrity_impact_chart`,

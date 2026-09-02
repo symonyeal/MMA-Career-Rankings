@@ -19,12 +19,11 @@ are then parsed like any other. The loop runs to fixpoint, so coverage is a
 property of the bout graph rather than of a seed list.
 
 Identity comes from the Sherdog numeric fighter id, not from name matching.
-All HTML is cached gzipped under ``data/external/sherdog/`` and never
-redistributed.
+All HTML is cached in the shared page store under ``data/external/sherdog/`` and
+never redistributed.
 """
 from __future__ import annotations
 
-import gzip
 import re
 import time
 from dataclasses import dataclass
@@ -33,14 +32,16 @@ from pathlib import Path
 import pandas as pd
 from bs4 import BeautifulSoup
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_CACHE_DIR = PROJECT_ROOT / "data" / "external" / "sherdog"
-BASE = "https://www.sherdog.com"
-USER_AGENT = (
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-    "(KHTML, like Gecko) Chrome/120 Safari/537.36"
+# One host, one identity, one politeness floor. Both Sherdog readers write into
+# the same cache directory, so a second user agent and a shorter delay here were
+# drift, not a second policy.
+from loaders.page_cache import PageCache, open_cache
+from loaders.sherdog_loader import (  # noqa: F401  (_session is re-exported)
+    BASE,
+    DEFAULT_CACHE_DIR,
+    POLITE_DELAY_SECONDS,
+    _session,
 )
-POLITE_DELAY_SECONDS = 1.0
 
 
 @dataclass(frozen=True)
@@ -100,25 +101,14 @@ class FetchFailed(RuntimeError):
     """
 
 
-def _session():
-    import requests
-
-    s = requests.Session()
-    s.headers.update({"User-Agent": USER_AGENT})
-    return s
-
-
-def _cache_path(cache_dir: Path, kind: str, key: str) -> Path:
-    return cache_dir / kind / f"{key}.html.gz"
-
-
-def fetch(session, path: str, cache_dir: Path, kind: str, key: str,
+def fetch(session, path: str, cache_dir: Path | PageCache, kind: str, key: str,
           *, refresh: bool = False) -> str | None:
-    """Return page HTML, from cache when present. ``None`` on a hard 404."""
-    cp = _cache_path(cache_dir, kind, key)
-    if cp.exists() and not refresh:
-        with gzip.open(cp, "rt", encoding="utf-8", errors="replace") as fh:
-            return fh.read()
+    """Return page HTML, from the store when present. ``None`` on a hard 404."""
+    cache = open_cache(cache_dir)
+    if not refresh:
+        held = cache.get(kind, key)
+        if held is not None:
+            return held
     url = path if path.startswith("http") else BASE + path
     for attempt in range(4):
         try:
@@ -132,9 +122,7 @@ def fetch(session, path: str, cache_dir: Path, kind: str, key: str,
             time.sleep(3 * (attempt + 1))
             continue
         r.raise_for_status()
-        cp.parent.mkdir(parents=True, exist_ok=True)
-        with gzip.open(cp, "wt", encoding="utf-8") as fh:
-            fh.write(r.text)
+        cache.put(kind, key, r.text)
         time.sleep(POLITE_DELAY_SECONDS)
         return r.text
     raise FetchFailed(url)
@@ -615,22 +603,18 @@ def _frames(bouts: list[dict], events: list[dict]) -> tuple[pd.DataFrame, pd.Dat
     return bouts_df, pd.DataFrame(events)
 
 
-def parse_cached_events(cache_dir: Path = DEFAULT_CACHE_DIR) -> tuple[pd.DataFrame, pd.DataFrame]:
+def parse_cached_events(
+    cache_dir: Path | PageCache = DEFAULT_CACHE_DIR,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Rebuild bouts and events from cached HTML, without touching the network.
 
     A crawl in progress is still a usable dataset for every promotion whose
     listing was already complete, so this exists to read what has landed rather
     than waiting on the one promotion that needs expansion.
     """
-    events_dir = cache_dir / "events"
-    if not events_dir.exists():
-        return _frames([], [])
     bouts: list[dict] = []
     events: list[dict] = []
-    for path in sorted(events_dir.glob("*.html.gz")):
-        with gzip.open(path, "rt", encoding="utf-8", errors="replace") as fh:
-            html = fh.read()
-        key = path.name.removesuffix(".html.gz")
+    for key, html in open_cache(cache_dir).items("events"):
         event, rows = parse_event(html, f"/events/x-{key}")
         if event is None:
             continue

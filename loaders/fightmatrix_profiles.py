@@ -25,6 +25,7 @@ from loaders.sherdog_loader import (
     org_from_event,
     to_canonical_fights,
 )
+from loaders.page_cache import PageCache, open_cache
 from project_helpers import bout_fingerprint, normalize_name_key
 
 
@@ -32,6 +33,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 BASE_URL = "https://www.fightmatrix.com"
 USER_AGENT = "Symon-UFC-Rank-Engine/0.2 (+local research; polite bounded cache)"
 DEFAULT_PROFILE_CACHE_DIR = PROJECT_ROOT / "data" / "external" / "fightmatrix" / "profiles"
+PROFILE_KIND = "profiles"
 
 PROFILE_COLUMNS = [
     "profile_id", "fighter", "profile_url", "sherdog_url", "issue_date",
@@ -76,16 +78,16 @@ def _id_from_url(url: str | None, kind: str) -> str | None:
     return match.group(1) if match else None
 
 
-def _profile_cache_path(cache_dir: Path, profile_url: str) -> Path:
+def _profile_cache_key(profile_url: str) -> str:
     profile_id = _id_from_url(profile_url, "fighter-profile")
     if not profile_id:
         raise ValueError(f"FightMatrix profile URL has no numeric id: {profile_url}")
-    return cache_dir / f"{profile_id}.html"
+    return profile_id
 
 
 def fetch_profile_html(
     profile_url: str,
-    cache_dir: Path,
+    cache_dir: Path | PageCache,
     *,
     refresh: bool = False,
     sleep_seconds: float = 1.0,
@@ -97,10 +99,12 @@ def fetch_profile_html(
         "fightmatrix.com", "www.fightmatrix.com",
     }:
         raise ValueError(f"refusing non-FightMatrix profile URL: {profile_url}")
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    path = _profile_cache_path(cache_dir, profile_url)
-    if path.exists() and not refresh:
-        return path.read_text(encoding="utf-8", errors="replace")
+    cache = open_cache(cache_dir)
+    key = _profile_cache_key(profile_url)
+    if not refresh:
+        held = cache.get(PROFILE_KIND, key)
+        if held is not None:
+            return held
 
     if not verify_tls:
         from urllib3 import disable_warnings
@@ -113,7 +117,7 @@ def fetch_profile_html(
         verify=verify_tls,
     )
     response.raise_for_status()
-    path.write_text(response.text, encoding="utf-8")
+    cache.put(PROFILE_KIND, key, response.text)
     if sleep_seconds > 0:
         time.sleep(sleep_seconds)
     return response.text
@@ -372,6 +376,7 @@ def build_public_profile_snapshot(
     """Cache ranked-cohort profiles and stage public bout/cross-org artifacts."""
     snapshot_dir = Path(snapshot_dir).resolve()
     cache_dir = Path(cache_dir).resolve()
+    cache = open_cache(cache_dir)
     seeds = _seed_profiles(snapshot_dir)
     if max_profiles is not None:
         seeds = seeds.head(max(0, int(max_profiles)))
@@ -386,7 +391,7 @@ def build_public_profile_snapshot(
         try:
             profile_html = fetch_profile_html(
                 seed.profile_url,
-                cache_dir,
+                cache,
                 refresh=refresh,
                 sleep_seconds=sleep_seconds,
                 verify_tls=verify_tls,

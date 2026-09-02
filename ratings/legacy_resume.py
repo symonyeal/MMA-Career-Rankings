@@ -147,7 +147,7 @@ RESUME_QUALITY_SCALE = 1000.0
 # at the value of one maximal win however many contenders were beaten in it.
 #
 # Without this the résumé is unbounded in career length, which is the
-# Single-Entry violation ``docs/NEXT_2026-08-28.md`` §3.2 names against the
+# Single-Entry violation named against the
 # component this replaces: Career Skill Mass already posts one contribution per
 # active year, so an uncapped win ledger posts career length a second time. The
 # cap is a bound, not a mechanism: measured on the 2026-08-13 published scope it
@@ -1068,7 +1068,7 @@ def contender_resume_ledger(
     Pricing reuses :func:`title_quality` against the contender line, so one
     function prices both ledgers and a win just past the line is worth a
     sixteenth of one 400 points above it. That answers the other half of the old
-    component's defect, recorded in ``docs/NEXT_2026-08-28.md`` section 3.2: it
+    component's defect, recorded in ``docs/DECISIONS.md``: it
     counted ranked wins inside an 8% band rather than pricing them.
 
     :data:`UFC_POOL_OFFSET_ELO` is deliberately NOT applied here. On the title
@@ -1291,7 +1291,7 @@ def public_legacy_score_rows(
     # Exposure still multiplies both quality components. Neutralising it was
     # measured on 2026-08-27 and refuted -- zero-UFC fighters in the top 100
     # doubled -- so it stays until something measured replaces it, and it is the
-    # standing item in ``docs/NEXT_2026-08-28.md`` section 3.3.
+    # standing item in ``docs/DECISIONS.md``.
     out["public_legacy_resume_score"] = (
         RESUME_QUALITY_SCALE * out["public_legacy_resume_quality"]
         * out["public_legacy_exposure_factor"]

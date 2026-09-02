@@ -323,7 +323,7 @@ Men and women never fight each other, so no result places the two groups on one 
   certifying the ones that survive.
 - **An undefeated record is rated above everyone it has beaten**, because
   nothing in the method caps it from above. This is a known open problem
-  (`docs/NEXT_2026-08-28.md` §6), and it is why the Prime board counts wins over
+  (`docs/DECISIONS.md`), and it is why the Prime board counts wins over
   a stated line rather than trusting the rating alone.
 
 Return to the [overview](README.md), or read the

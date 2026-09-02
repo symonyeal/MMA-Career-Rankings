@@ -10,10 +10,12 @@
 
 > **Update 2026-06-25 (dashboard cleanup):** three of the boards below were
 > removed per user review — **#1 Model Accuracy** (calibration curve, "means
-> nothing"), **#6 Since Last Snapshot** ("useless"), and **#7 Ring Rust**. The
+> nothing"), **#6 Since Last Snapshot** ("useless"), and **#7 Ring Rust**. Their
 > `viz.py` helpers (`calibration_residuals_chart`, `snapshot_movers_chart`,
-> `inactivity_table`) are kept and still unit-tested, just no longer wired into
-> the notebook. Reworked in the same pass: **Most Dominant** (y-axis labels no
+> `inactivity_table`) were kept unwired for a year and then retired on
+> 2026-09-01 to
+> `_archive/20260901-dead-data-purge/analysis/unwired_chart_builders.py`, along
+> with 16 other builders the notebook never drew. Reworked in the same pass: **Most Dominant** (y-axis labels no
 > longer clipped), **Legacy vs Prime** (name labels dropped, richer hover),
 > **Risers & Fallers** (now a top-N diverging bar, not a 500-dot smear, and it
 > no longer blanks under Peak/Prime form), **Title Lineage** (single belt-baton

@@ -5,6 +5,7 @@ import pandas as pd
 import pytest
 
 from loaders import sherdog_org_loader as sol
+from loaders.page_cache import open_cache
 
 EVENT_HTML = """
 <html><body>
@@ -134,12 +135,7 @@ def test_fetch_returns_none_on_404_and_raises_on_repeated_failure(tmp_path, monk
 
 
 def test_cached_pages_rebuild_without_network(tmp_path):
-    import gzip
-
-    path = tmp_path / "events" / "4088.html.gz"
-    path.parent.mkdir(parents=True)
-    with gzip.open(path, "wt", encoding="utf-8") as fh:
-        fh.write(EVENT_HTML)
+    open_cache(tmp_path).put("events", "4088", EVENT_HTML)
 
     bouts, events = sol.parse_cached_events(tmp_path)
     assert len(events) == 1

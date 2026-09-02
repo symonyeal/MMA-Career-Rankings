@@ -651,19 +651,6 @@ def publication_release_markdown(
     return "\n".join(["| Release fact | Value |", "| --- | ---: |", *rows])
 
 
-def update_readme_block(readme_path: Path, body: str, *, begin: str, end: str) -> None:
-    """Replace one marked block in the README with freshly built content."""
-    readme = Path(readme_path)
-    text = readme.read_text(encoding="utf-8")
-    start = text.find(begin)
-    stop = text.find(end)
-    if start < 0 or stop < 0:
-        raise ValueError(f"{readme} has no board block: expected {begin} ... {end}")
-    readme.write_text(
-        text[:start] + f"{begin}\n\n{body}\n\n" + text[stop:], encoding="utf-8"
-    )
-
-
 def _rendered_publication(
     readme_path: Path,
     replacements: tuple[tuple[str, str, str], ...],
@@ -703,28 +690,15 @@ def _write_publication(readme_path: Path, text: str) -> None:
         build_path.unlink(missing_ok=True)
 
 
-def update_readme_blocks(
-    readme_path: Path,
-    replacements: tuple[tuple[str, str, str], ...],
-) -> None:
-    """Validate and replace several marked blocks in one file write.
-
-    The publisher updates related tables together. Validating every marker
-    before changing the file prevents a missing later marker from leaving the
-    publication half refreshed.
-    """
-    _write_publication(readme_path, _rendered_publication(readme_path, replacements))
-
-
 def update_publication_files(
     plans: tuple[tuple[Path, tuple[tuple[str, str, str], ...]], ...],
 ) -> None:
     """Refresh every publication file, validating all of them before any write.
 
-    The overview reproduces two of the publication's tables. Rendering
-    both documents before either is promoted stops a marker missing from the
-    second file from leaving the first one published against a different
-    release.
+    Related tables are updated together, and the overview reproduces two of the
+    publication's tables. Rendering every document before any of them is
+    promoted stops a missing marker from leaving one file half refreshed, or the
+    first file published against a different release than the second.
     """
     rendered = [
         (Path(path), _rendered_publication(path, replacements))
@@ -732,23 +706,6 @@ def update_publication_files(
     ]
     for path, text in rendered:
         _write_publication(path, text)
-
-
-def update_readme_board(readme_path: Path, table: str) -> None:
-    """Replace the marked board block in the README with a freshly built table."""
-    update_readme_block(
-        readme_path, table, begin=README_BOARD_BEGIN, end=README_BOARD_END
-    )
-
-
-def update_readme_women_board(readme_path: Path, table: str) -> None:
-    """Replace the women's block, which is published beside the men's table."""
-    update_readme_block(
-        readme_path,
-        f"{GENDER_GAUGE_NOTE}\n\n{table}",
-        begin=README_WOMEN_BEGIN,
-        end=README_WOMEN_END,
-    )
 
 
 def main() -> None:

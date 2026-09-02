@@ -9,47 +9,32 @@ from analysis.viz import (
     RATING_STREAMS,
     compose_rating_stream,
     _fight_duration_seconds,
-    calibration_plot,
     datalab_scorecard_decision_summary,
-    datalab_scorecard_insight_chart,
     division_strength_comparison_chart,
     division_strength_timeline_chart,
-    division_year_snapshot_chart,
-    external_source_coverage_dashboard,
     favorite_underdog_performance_table,
     favorite_underdog_performance_chart,
     fighter_detail,
     era_heatmap_chart,
     glicko_fightmatrix_scatter,
-    h2h_prediction,
     load_snapshot,
     odds_adjustment_distribution_chart,
     odds_coverage_summary,
     integrity_impact_chart,
     rank_delta_table,
-    ranking_context_impact_table,
     performance_factor_audit_table,
-    sleeve_factor_summary_table,
-    sleeve_effects_by_fight_table,
-    weight_class_context_impact_table,
     normalize_division,
     public_history_key,
     public_rating_label,
-    public_rating_stream,
-    select_modular_rating_column,
     select_public_ranking_column,
-    select_public_rating_column,
     select_rating_column,
-    sleeve_ranking_table,
     striker_grappler_scatter,
-    period_leaderboard_chart,
     fighter_odds_history_chart,
     fighter_profile_chart,
     top_n_table,
     top100_division_density_chart,
     top_fighter_placement_scatter,
     trajectory_chart,
-    weight_class_strength_chart,
 )
 
 
@@ -77,25 +62,13 @@ def test_viz_builders_smoke(snapshot):
     detail = fighter_detail("Jon Jones", fighters, rc, fights, snapshot.get("fighter_dominance"))
     assert "ratings" in detail
 
-    h2h = h2h_prediction("Jon Jones", "Khabib Nurmagomedov", rc)
-    assert 0 <= h2h["p_a_wins"] <= 1
-
     figures = [
         trajectory_chart(rh, fights, ["Jon Jones", "Anderson Silva"]),
-        weight_class_strength_chart(rh, fights, divisions=["Lightweight"]),
         division_strength_timeline_chart(rh, fights, rating_col="mu_canonical", divisions=["Lightweight"]),
-        division_year_snapshot_chart(rh, fights, rating_col="mu_canonical", year=2024, divisions=["Lightweight"]),
         striker_grappler_scatter(rounds, fights, rc, fighters),
-        calibration_plot(rh, fights),
         glicko_fightmatrix_scatter(rc, snapshot["fightmatrix_rankings"]),
-        external_source_coverage_dashboard(snapshot),
-        integrity_impact_chart(
-            snapshot.get("integrity_appearances", pd.DataFrame()),
-            snapshot.get("sleeve_attribution", pd.DataFrame()),
-        ),
-        period_leaderboard_chart(rc),
+        integrity_impact_chart(snapshot.get("integrity_appearances", pd.DataFrame())),
         division_strength_comparison_chart(rc, fights, snapshot["fightmatrix_rankings"]),
-        datalab_scorecard_insight_chart(snapshot["datalab_scorecards"]),
         top_fighter_placement_scatter(rc, n=50),
         top100_division_density_chart(rc, n=50),
         fighter_profile_chart("Jon Jones", rc),
@@ -122,34 +95,8 @@ def test_fight_duration_uses_actual_finish_time():
     assert _fight_duration_seconds(fights).tolist() == [30, 900, 1292]
 
 
-def test_weight_class_strength_chart_handles_no_qualifying_rows():
-    ratings_history = pd.DataFrame(
-        {
-            "fighter": ["A", "B"],
-            "event_date": ["2024-01-01", "2024-01-01"],
-            "mu_canonical": [1510.0, 1490.0],
-        }
-    )
-    fights = pd.DataFrame(
-        {
-            "event_date": ["2024-01-01"],
-            "weight_class": ["UFC Lightweight Bout"],
-            "fighter_a": ["A"],
-            "fighter_b": ["B"],
-        }
-    )
-    fig = weight_class_strength_chart(
-        ratings_history,
-        fights,
-        top_n_per_division=15,
-        divisions=["Lightweight"],
-    )
-    assert hasattr(fig, "layout")
-    assert fig.layout.annotations
-
-
 # ---------------------------------------------------------------------------
-# Odds helpers + sleeve composer should degrade cleanly
+# Odds helpers and rating-column resolution should degrade cleanly
 
 def test_odds_coverage_summary_present_or_absent(snapshot):
     odds_lines = snapshot.get("odds_lines")
@@ -256,13 +203,6 @@ def test_compose_rating_stream_locks_canonical():
         compose_rating_stream("canonical", use_performance=True)
 
 
-def test_modular_lookup_resolves_to_method_streams(snapshot):
-    rc = snapshot["ratings_current"]
-    assert select_modular_rating_column(rc, "canonical") == "mu_canonical"
-    if "mu_method_integrity_performance" in rc.columns:
-        assert select_modular_rating_column(rc, "method", use_performance=True) == "mu_method_performance"
-
-
 def test_public_ranking_views_resolve_new_columns_only():
     rc = pd.DataFrame({
         "symon_career_skill_mass": [10.0],
@@ -285,7 +225,6 @@ def test_public_ranking_views_resolve_new_columns_only():
     for view, column in expected.items():
         assert select_public_ranking_column(rc, view) == column
         assert public_history_key(view) == "ratings_history_whr"
-        assert public_rating_stream(view) == "whr"
         assert "integrity_performance" not in select_public_ranking_column(rc, view)
     assert public_rating_label("all_time") == "All-time"
     retired_only = rc[["mu_method_integrity_performance", "mu_whr_integrity_performance"]]
@@ -307,46 +246,14 @@ def test_public_ranking_views_fall_back_to_base_old_snapshot_columns():
     assert select_public_ranking_column(old, "all_time") == "mu_whr"
     assert select_public_ranking_column(old, "prime") == "mu_whr"
     assert select_public_ranking_column(old, "current") == "mu_whr"
-    # Retired two-argument callers normalize onto the same base-only mapping.
-    assert select_public_rating_column(old, "complete", "current") == "mu_whr"
-
-
-def test_sleeve_ranking_table_filters_and_delta(snapshot):
-    table = sleeve_ranking_table(
-        snapshot["ratings_current"],
-        "mu_canonical",
-        n=5,
-        min_fights=3,
-        fights=snapshot["fights"],
-        query="Jones",
-    )
-    assert list(table.columns) == [
-        "rank", "fighter", "current_rating", "baseline_rating",
-        "delta_vs_baseline", "last_event_date", "query_match",
-    ]
-    assert len(table) == 5
-    assert table["delta_vs_baseline"].eq(0).all()
 
 
 def test_new_market_and_era_charts_smoke(snapshot):
     market = favorite_underdog_performance_table(snapshot.get("odds_lines"), snapshot["fights"])
-    context = ranking_context_impact_table(snapshot.get("performance_appearances", pd.DataFrame()), n=5)
-    weight_context = weight_class_context_impact_table(snapshot.get("performance_appearances", pd.DataFrame()), n=5)
     perf_audit = performance_factor_audit_table(snapshot.get("performance_appearances", pd.DataFrame()), n=10)
-    summary = sleeve_factor_summary_table(
-        snapshot.get("performance_appearances", pd.DataFrame()),
-    )
-    effects = sleeve_effects_by_fight_table(
-        snapshot.get("performance_appearances", pd.DataFrame()),
-        n=5,
-    )
     figures = [
         favorite_underdog_performance_chart(market),
         era_heatmap_chart(snapshot["ratings_history"], snapshot["fights"], top_n=10),
     ]
     assert all(hasattr(fig, "layout") for fig in figures)
-    assert "context_multiplier" in context.columns
-    assert "perf_factor_weight_class" in weight_context.columns
     assert {"factor", "effect", "multiplier"}.issubset(perf_audit.columns)
-    assert {"sleeve", "factor", "appearances", "median_effect_pct"}.issubset(summary.columns)
-    assert {"fighter", "combined_effect_pct", "factors"}.issubset(effects.columns)

@@ -1,4 +1,4 @@
-"""Tests for the 2026-06-23 notebook chart additions (analysis/CHART_PLAN.md).
+"""Tests for the 2026-06-23 notebook chart additions (_archive/20260901-lean-pass/analysis/CHART_PLAN.md).
 
 Synthetic unit tests lock the aggregation logic without a snapshot; a smoke test
 exercises every builder against the pinned snapshot when present.
@@ -15,14 +15,12 @@ from analysis.viz import (
     all_time_benchmark_table,
     dominance_leaderboard_chart,
     heldout_scorecard_chart,
-    inactivity_table,
     integrity_impact_chart,
     integrity_ledger_table,
     legacy_vs_prime_scatter,
     load_snapshot,
     method_mix_timeline_chart,
     prequential_summary_is_current,
-    snapshot_movers_chart,
     striking_profile_chart,
     title_lineage_chart,
 )
@@ -53,17 +51,6 @@ def test_striking_profile_unknown_fighter_is_empty_state():
     fig = striking_profile_chart(rounds, "Nobody")
     assert len(fig.data) == 0
     assert hasattr(fig, "layout")
-
-
-def test_snapshot_movers_signs_and_empty_branch():
-    cur = pd.DataFrame({"fighter": ["A", "B"], "mu_canonical": [1600.0, 1400.0]})
-    prev = pd.DataFrame({"fighter": ["A", "B"], "mu_canonical": [1500.0, 1500.0]})
-    fig = snapshot_movers_chart(cur, prev, rating_col="mu_canonical", n=5)
-    assert len(fig.data) == 1
-    xs = list(fig.data[0].x)
-    assert min(xs) < 0 < max(xs)  # one riser (+100), one faller (-100)
-    # no previous snapshot -> graceful empty state
-    assert len(snapshot_movers_chart(cur, None).data) == 0
 
 
 def test_prequential_artifacts_are_in_snapshot_loader_map():
@@ -163,23 +150,6 @@ def test_method_mix_buckets_and_shares():
     assert decision.y[0] == pytest.approx(0.5)  # 2 of 4 fights went to decision
 
 
-def test_inactivity_table_window_bounds():
-    rc = pd.DataFrame({
-        "fighter": ["Old", "Recent", "Active", "LowRated"],
-        "months_inactive": [200.0, 30.0, 2.0, 30.0],
-        "mu_canonical": [1800.0, 1800.0, 1800.0, 1500.0],
-        "activity_mu_penalty": [50.0, 20.0, 0.0, 20.0],
-        "mu_canonical_activity_adjusted": [1750.0, 1780.0, 1800.0, 1480.0],
-        "last_event_date": ["2008-01-01", "2024-01-01", "2026-05-01", "2024-01-01"],
-    })
-    out = inactivity_table(rc, n=10)
-    names = set(out["fighter"])
-    assert "Recent" in names          # within 1-8yr window, highly rated
-    assert "Old" not in names         # beyond max_months
-    assert "Active" not in names      # below min_months
-    assert "LowRated" not in names    # below min_rating
-
-
 def test_integrity_ledger_and_impact():
     integ = pd.DataFrame({
         "fight_url": ["f1", "f2", "f3"],
@@ -189,17 +159,12 @@ def test_integrity_ledger_and_impact():
         "integrity_factor_missed_weight": [1.0, 1.0, 1.0],
         "integrity_weight": [0.8, 0.92, 1.0],
     })
-    attr = pd.DataFrame({
-        "fight_url": ["f1", "f2"], "fighter": ["A", "B"],
-        "event_date": ["2013-01-01", "2014-01-01"], "opponent": ["X", "Y"],
-        "integrity_delta": [-49.0, -40.0],
-    })
-    ledger = integrity_ledger_table(integ, attr, n=10)
+    ledger = integrity_ledger_table(integ, n=10)
     # The ledger is a reader-facing audit table, so it carries display labels;
     # the machine reason codes stay in the boards artifact. C never fired.
     assert set(ledger["reason"]) == {"PED-confirmed win", "Disqualification win"}
     assert ledger.iloc[0]["fighter"] == "A"        # biggest discount first
-    fig = integrity_impact_chart(integ, attr)
+    fig = integrity_impact_chart(integ)
     assert len(fig.data) == 1
 
 
@@ -240,12 +205,9 @@ def test_new_builders_smoke(snapshot):
         legacy_vs_prime_scatter(rc, n=40),
         method_mix_timeline_chart(snapshot["fights"], divisions=["Lightweight"]),
         title_lineage_chart(snapshot["performance_appearances"], division="Lightweight"),
-        integrity_impact_chart(snapshot.get("integrity_appearances", pd.DataFrame()),
-                               snapshot.get("sleeve_attribution", pd.DataFrame())),
+        integrity_impact_chart(snapshot.get("integrity_appearances", pd.DataFrame())),
     ]
     assert all(hasattr(f, "layout") for f in figs)
-    assert inactivity_table(rc, n=10) is not None
     assert "reason" in integrity_ledger_table(
         snapshot.get("integrity_appearances", pd.DataFrame()),
-        snapshot.get("sleeve_attribution", pd.DataFrame()),
     ).columns

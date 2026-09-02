@@ -312,8 +312,9 @@ Source ownership, licensing and known gaps are listed in
 - **No model can recover fights missing from every source.** Coverage gaps stay
   part of every release decision.
 
-These are current limits, not open questions. Options already tested and
-rejected are recorded in [Next Decisions](docs/NEXT_2026-08-28.md).
+These are current limits, not open questions. What is still unresolved, and
+what has already been tried and refused, is in
+[Open decisions](docs/DECISIONS.md).
 
 ## Use the project
 
@@ -365,22 +366,21 @@ external retrieval and a new release build are deliberate operations.
 | `analysis/` | Charts and the generated interactive notebook |
 | `tests/` | Behavioral, regression, consistency, and smoke tests |
 | `data/snapshots/<date>/` | Immutable-style release inputs and generated artifacts |
+| `data/external/<source>/` | Ingested source data, and one `pages.sqlite` holding that source's cached pages |
 | `data/model_tuning/` | Held-out comparisons and top-100 audit evidence |
 | `docs/` | Current methodology, coverage, and decision records |
 | `_archive/` | Recoverable historical research, retired code, and stale generated material |
 
 ## Current technical records
 
+Four documents, each answering one question.
+
 - [How the ratings and the score are built](docs/RATING_LAYER_AND_LEDGER_2026-08-28.md)
-  — the rating method, what goes into the all-time score, and what was tested
-  and rejected along the way.
+  — the method: how a rating is fitted and what goes into the all-time score.
+- [Open decisions](docs/DECISIONS.md) — what is still wrong, what has already
+  been tried and refused, and the rules a change has to meet.
 - [Career coverage](docs/CAREER_COVERAGE_2026-08-27.md) — how a gap in the data
   turned into rating points, and the rule that stops it returning.
-- [Why the all-time score disagreed with the elite record](docs/NEXT_2026-09-01.md)
-  — closed. The score is now two stated terms, and the outcome sections at the
-  end record what shipped and what is still open.
-- [Next decisions](docs/NEXT_2026-08-28.md) — the previous register, still live
-  for the three problems it names, and the record of what has been rejected.
 - [Published UFC Rankings](RANKINGS.md) — every generated table.
 
 Historical design notes and retired experiments are preserved under

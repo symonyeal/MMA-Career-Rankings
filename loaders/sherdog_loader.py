@@ -18,8 +18,9 @@ like UFC bouts; weight class (absent from Sherdog history rows) is filled from
 the fighter's UFC division by the caller, and title bouts are flagged from the
 event name.
 
-All HTML is cached project-local under ``data/external/sherdog/`` and never
-redistributed. bs4 + requests only (no lxml).
+All HTML is cached project-local in the shared page store under
+``data/external/sherdog/`` and never redistributed. bs4 + requests only
+(no lxml).
 """
 from __future__ import annotations
 
@@ -30,6 +31,7 @@ from pathlib import Path
 import pandas as pd
 from bs4 import BeautifulSoup
 
+from loaders.page_cache import PageCache, open_cache
 from project_helpers import normalize_name_key
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -80,10 +82,19 @@ def _session():
     return s
 
 
-def _cached_get(url: str, cache_path: Path, session, *, delay: float = POLITE_DELAY_SECONDS) -> str | None:
-    """Return text for ``url``, reading/writing ``cache_path``. Polite on miss."""
-    if cache_path.exists():
-        return cache_path.read_text(encoding="utf-8", errors="replace")
+def _cached_get(
+    url: str,
+    cache: PageCache,
+    kind: str,
+    key: str,
+    session,
+    *,
+    delay: float = POLITE_DELAY_SECONDS,
+) -> str | None:
+    """Return text for ``url``, reading and writing the store. Polite on miss."""
+    held = cache.get(kind, key)
+    if held is not None:
+        return held
     try:
         time.sleep(delay)
         resp = session.get(url, timeout=30, allow_redirects=True)
@@ -91,8 +102,7 @@ def _cached_get(url: str, cache_path: Path, session, *, delay: float = POLITE_DE
         return None
     if resp.status_code != 200:
         return None
-    cache_path.parent.mkdir(parents=True, exist_ok=True)
-    cache_path.write_text(resp.text, encoding="utf-8")
+    cache.put(kind, key, resp.text)
     return resp.text
 
 
@@ -211,15 +221,17 @@ def _slugify(name: str) -> str:
     return re.sub(r"[^a-z0-9]+", "+", name.strip().lower()).strip("+")
 
 
-def resolve_fighter_url(name: str, session, cache_dir: Path) -> str | None:
+def resolve_fighter_url(name: str, session, cache_dir: Path | PageCache) -> str | None:
     """Resolve a fighter name to a Sherdog ``/fighter/Name-ID`` path.
 
     Uses the fightfinder search and an exact normalized-name match (the search
     returns several popular fighters first, so the first hit is not reliable).
     """
     key = normalize_name_key(name, compact=True)
-    search_cache = cache_dir / "search" / f"{key or _slugify(name)}.html"
-    html = _cached_get(SEARCH_URL + _slugify(name), search_cache, session)
+    cache = open_cache(cache_dir)
+    html = _cached_get(
+        SEARCH_URL + _slugify(name), cache, "search", key or _slugify(name), session
+    )
     if not html:
         return None
     soup = BeautifulSoup(html, "html.parser")
@@ -239,13 +251,13 @@ def resolve_fighter_url(name: str, session, cache_dir: Path) -> str | None:
     return None
 
 
-def fetch_fighter_history(name: str, session, cache_dir: Path) -> pd.DataFrame:
-    url = resolve_fighter_url(name, session, cache_dir)
+def fetch_fighter_history(name: str, session, cache_dir: Path | PageCache) -> pd.DataFrame:
+    cache = open_cache(cache_dir)
+    url = resolve_fighter_url(name, session, cache)
     if not url:
         return pd.DataFrame()
     fid = url.rsplit("-", 1)[-1]
-    page_cache = cache_dir / "fighter" / f"{fid}.html"
-    html = _cached_get(BASE + url, page_cache, session)
+    html = _cached_get(BASE + url, cache, "fighter", fid, session)
     if not html:
         return pd.DataFrame()
     hist = parse_fighter_history(html)
@@ -276,7 +288,7 @@ def build_crossorg_bouts(
     is_title_fight, sherdog_url. One row per fighter-perspective; dedup to one
     canonical bout happens in :func:`to_canonical_fights`.
     """
-    cache_dir = Path(cache_dir)
+    cache_dir = open_cache(cache_dir)
     session = _session()
     frames = []
     n = len(fighter_names)

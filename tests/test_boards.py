@@ -385,7 +385,11 @@ def test_readme_board_block_is_replaced_in_place(tmp_path: Path):
         encoding="utf-8",
     )
 
-    build_boards.update_readme_board(readme, "| # |\n| ---: |\n| 1 |")
+    build_boards.update_publication_files(
+        ((readme, ((build_boards.README_BOARD_BEGIN,
+                    build_boards.README_BOARD_END,
+                    "| # |\n| ---: |\n| 1 |"),)),)
+    )
     text = readme.read_text(encoding="utf-8")
 
     assert "stale table" not in text
@@ -399,8 +403,12 @@ def test_readme_board_block_refuses_a_file_without_markers(tmp_path: Path):
     readme = tmp_path / "README.md"
     readme.write_text("# Engine\n\nno markers here\n", encoding="utf-8")
 
-    with pytest.raises(ValueError, match="no board block"):
-        build_boards.update_readme_board(readme, "| # |")
+    with pytest.raises(ValueError, match="exactly one board block"):
+        build_boards.update_publication_files(
+            ((readme, ((build_boards.README_BOARD_BEGIN,
+                        build_boards.README_BOARD_END,
+                        "| # |"),)),)
+        )
     assert readme.read_text(encoding="utf-8") == "# Engine\n\nno markers here\n"
 
 
@@ -507,8 +515,16 @@ def test_readme_blocks_are_replaced_independently(tmp_path: Path):
         "tail\n",
         encoding="utf-8",
     )
-    build_boards.update_readme_board(readme, "| # | Fighter |")
-    build_boards.update_readme_women_board(readme, "| # | Fighter W |")
+    build_boards.update_publication_files(
+        ((readme, (
+            (build_boards.README_BOARD_BEGIN,
+             build_boards.README_BOARD_END,
+             "| # | Fighter |"),
+            (build_boards.README_WOMEN_BEGIN,
+             build_boards.README_WOMEN_END,
+             f"{build_boards.GENDER_GAUGE_NOTE}\n\n| # | Fighter W |"),
+        )),)
+    )
     text = readme.read_text(encoding="utf-8")
 
     assert "old men" not in text and "old women" not in text
@@ -522,8 +538,12 @@ def test_readme_blocks_are_replaced_independently(tmp_path: Path):
 def test_updating_a_missing_block_raises_rather_than_appending(tmp_path: Path):
     readme = tmp_path / "README.md"
     readme.write_text("no markers here\n", encoding="utf-8")
-    with pytest.raises(ValueError, match="no board block"):
-        build_boards.update_readme_women_board(readme, "table")
+    with pytest.raises(ValueError, match="exactly one board block"):
+        build_boards.update_publication_files(
+            ((readme, ((build_boards.README_WOMEN_BEGIN,
+                        build_boards.README_WOMEN_END,
+                        "table"),)),)
+        )
 
 
 def test_multi_block_publication_validates_every_marker_before_writing(tmp_path: Path):
@@ -536,20 +556,22 @@ def test_multi_block_publication_validates_every_marker_before_writing(tmp_path:
     readme.write_text(original, encoding="utf-8")
 
     with pytest.raises(ValueError, match="exactly one board block"):
-        build_boards.update_readme_blocks(
-            readme,
-            (
+        build_boards.update_publication_files(
+            ((
+                readme,
                 (
-                    build_boards.README_BOARD_BEGIN,
-                    build_boards.README_BOARD_END,
-                    "new men",
+                    (
+                        build_boards.README_BOARD_BEGIN,
+                        build_boards.README_BOARD_END,
+                        "new men",
+                    ),
+                    (
+                        build_boards.README_ELITE_PRIME_BEGIN,
+                        build_boards.README_ELITE_PRIME_END,
+                        "new prime",
+                    ),
                 ),
-                (
-                    build_boards.README_ELITE_PRIME_BEGIN,
-                    build_boards.README_ELITE_PRIME_END,
-                    "new prime",
-                ),
-            ),
+            ),)
         )
 
     assert readme.read_text(encoding="utf-8") == original
@@ -572,7 +594,7 @@ def test_multi_block_publication_updates_all_four_boards_together(tmp_path: Path
         encoding="utf-8",
     )
 
-    build_boards.update_readme_blocks(readme, markers)
+    build_boards.update_publication_files(((readme, markers),))
     text = readme.read_text(encoding="utf-8")
 
     assert "\nold\n" not in text

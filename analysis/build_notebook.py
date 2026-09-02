@@ -93,7 +93,7 @@ from analysis.viz import (  # noqa: E402
     win_streaks,
     win_streaks_table,
     yearly_rating_delta_scatter,
-    # --- 2026-06-23 chart additions (see analysis/CHART_PLAN.md) ---
+    # --- 2026-06-23 chart additions (see _archive/20260901-lean-pass/analysis/CHART_PLAN.md) ---
     division_entropy_chart,
     odds_coverage_summary,
     fighter_betting_line_chart,
