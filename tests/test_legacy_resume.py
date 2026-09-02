@@ -9,6 +9,7 @@ from ratings.legacy_resume import (
     LEGACY_ACHIEVEMENT_WEIGHT,
     LEGACY_QUALITY_SKILL_SHARE,
     ORG_FACTOR_BY_TIER,
+    TITLE_QUALITY_MAJOR_FLOOR,
     _organization_context,
     PUBLIC_LEGACY_DISPLAY_SCALE,
     RANK_CONTEXT_WIN_POINTS,
@@ -198,6 +199,114 @@ def test_title_quality_ledger_prices_a_stacked_reign_over_a_padded_one():
     )
     # and the padded reign is still credited something, not zeroed
     assert ledger.loc["Padded", "public_legacy_title_quality"] > 0
+
+
+def _title_bout(fight_url, org, winner="Champ", opponent="Weak", date="2020-01-01"):
+    return {
+        "fight_url": fight_url,
+        "event_date": date,
+        "event_name": "Title Night",
+        "org": org,
+        "weight_class": "Lightweight",
+        "fighter_a": winner,
+        "fighter_b": opponent,
+        "winner": winner,
+        "is_draw": False,
+        "is_title_fight": True,
+    }
+
+
+def test_a_major_title_win_is_never_worth_almost_nothing():
+    """The defect the floor exists to fix, on the shape that produced it.
+
+    A champion who beat an opponent sitting just under their division's line
+    scored almost nothing for winning a world title. The floor lifts only the
+    bottom: the convex ordering above it is untouched, so a win over an elite
+    opponent must still outscore a win over a marginal one.
+    """
+    fights = pd.DataFrame(
+        [
+            _title_bout("m1", "UFC", winner="Marginal", opponent="Barely"),
+            _title_bout("m2", "UFC", winner="Dominant", opponent="Elite"),
+        ]
+    )
+    # Bar is the population mean, 1800 here, so "Barely" sits 200 points under
+    # the line their own division would have judged them by.
+    history = pd.DataFrame(
+        [
+            {"fighter": "Barely", "event_date": "2019-01-01", "mu_whr": 1600.0},
+            {"fighter": "Elite", "event_date": "2019-01-01", "mu_whr": 2100.0},
+            {"fighter": "Bar", "event_date": "2019-01-01", "mu_whr": 1700.0},
+        ]
+    )
+
+    floored = title_quality_ledger(fights, history, reference="mean").set_index("fighter")
+    unfloored = title_quality_ledger(
+        fights, history, reference="mean", major_title_floor=0.0
+    ).set_index("fighter")
+
+    assert unfloored.loc["Marginal", "public_legacy_title_quality"] < 0.01
+    assert floored.loc["Marginal", "public_legacy_title_quality"] >= (
+        TITLE_QUALITY_MAJOR_FLOOR
+    )
+    # The floor lifts the bottom without flattening the top.
+    assert (
+        floored.loc["Dominant", "public_legacy_title_quality"]
+        > floored.loc["Marginal", "public_legacy_title_quality"]
+    )
+
+
+def test_only_a_recognised_major_championship_is_floored():
+    """A tier-2 belt and an unresolvable promotion keep the pure convex weight.
+
+    This is the guard on the promotion judgement the floor reintroduces. RIZIN
+    is a real promotion at tier 2; "Backyard Brawls" matches no rule at all.
+    Neither may be paid as a world championship.
+    """
+    fights = pd.DataFrame(
+        [
+            _title_bout("t1", "UFC", winner="Major", opponent="Barely"),
+            _title_bout("t2", "RIZIN", winner="Second", opponent="Barely"),
+            _title_bout("t3", "Backyard Brawls", winner="Unknown", opponent="Barely"),
+        ]
+    )
+    history = pd.DataFrame(
+        [
+            {"fighter": "Barely", "event_date": "2019-01-01", "mu_whr": 1600.0},
+            {"fighter": "Elite", "event_date": "2019-01-01", "mu_whr": 2100.0},
+            {"fighter": "Bar", "event_date": "2019-01-01", "mu_whr": 1700.0},
+        ]
+    )
+
+    ledger = title_quality_ledger(fights, history, reference="mean").set_index("fighter")
+
+    assert ledger.loc["Major", "public_legacy_title_quality"] >= TITLE_QUALITY_MAJOR_FLOOR
+    for lesser in ("Second", "Unknown"):
+        assert ledger.loc[lesser, "public_legacy_title_quality"] < 0.01
+    # Every one of them still scores something. The floor changes the size of
+    # the credit, never whether a title win is credited at all.
+    assert (ledger["public_legacy_title_quality"] > 0).all()
+
+
+def test_a_major_title_loss_earns_no_floor():
+    """The floor must not become title-loss credit under another name.
+
+    Paying for reaching a title fight and losing it was measured and refused on
+    2026-09-01. Only wins are in this ledger, and the floor is applied after
+    that filter, so a fighter with only title losses stays absent.
+    """
+    fights = pd.DataFrame([_title_bout("l1", "UFC", winner="Champ", opponent="Loser")])
+    history = pd.DataFrame(
+        [
+            {"fighter": "Loser", "event_date": "2019-01-01", "mu_whr": 1705.0},
+            {"fighter": "Champ", "event_date": "2019-01-01", "mu_whr": 1900.0},
+            {"fighter": "Bar", "event_date": "2019-01-01", "mu_whr": 1700.0},
+        ]
+    )
+
+    ledger = title_quality_ledger(fights, history, reference="mean").set_index("fighter")
+
+    assert "Loser" not in ledger.index
 
 
 def test_title_quality_ledger_ignores_the_bout_being_priced():

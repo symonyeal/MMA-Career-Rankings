@@ -60,7 +60,13 @@ def test_division_bar_prices_a_light_division_title_win_far_above_the_sport_wide
     history, fights = _history(), _title_fight()
     divisions = pd.Series(DIVISION)
 
-    sport_wide = title_quality_ledger(fights, history, reference="contender:60")
+    # major_title_floor=0.0 throughout: this test measures how the BAR prices a
+    # title win, and the floor adds the same constant to both sides, which at
+    # these magnitudes swamps the ratio being asserted. See the note above
+    # ratings.legacy_resume.TITLE_QUALITY_MAJOR_FLOOR.
+    sport_wide = title_quality_ledger(
+        fights, history, reference="contender:60", major_title_floor=0.0
+    )
     by_division = title_quality_ledger(
         fights, history, reference="contender:60", divisions=divisions
     )
@@ -162,7 +168,11 @@ def test_run_scores_the_public_resume_after_the_division_columns_exist(tmp_path:
     fights = _source_fights_for_public_resume(snap, "ufc")
 
     def _quality(**kwargs) -> pd.Series:
-        led = title_quality_ledger(fights, history, reference="contender:60", **kwargs)
+        # The floor is held at zero here for the same reason as above: this
+        # asserts what the bar does, not what the floor adds.
+        led = title_quality_ledger(
+            fights, history, reference="contender:60", major_title_floor=0.0, **kwargs
+        )
         return led.set_index("fighter")["public_legacy_title_quality"]
 
     stored = current.set_index("fighter")["public_legacy_title_quality"]

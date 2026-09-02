@@ -95,6 +95,54 @@ TITLE_QUALITY_SCALE = 1000.0
 # artifact returns (at q**6 Matt Serra climbs back to 42nd).
 TITLE_QUALITY_EXPONENT = 4.0
 
+# Minimum credit for winning a recognised major championship, adopted
+# 2026-09-02. A title win is priced ``floor + (1 - floor) * q**4``, so the convex
+# opponent-quality ordering above the floor is untouched and only the bottom is
+# lifted. Losses are unaffected: they are not in this ledger at all, which is the
+# property the 2026-09-01 refusal of title-loss credit turned on.
+#
+# **Why a floor is needed.** Value comes from the opponent beaten, measured
+# against their own division-year line. That is right in general and wrong at the
+# bottom: a champion who beat an opponent sitting just under the line scores
+# almost nothing for winning a world title. Glover Teixeira rated 1879 against an
+# 1865 bar, so the UFC light-heavyweight title priced at 0.073; the floor makes
+# it 0.119. Becoming champion of a major promotion is an achievement in itself,
+# and the score now says so without paying a flat per-belt bonus -- the thing the
+# 2026-08-25 rebuild removed and which must not come back.
+#
+# **Why it is gated on tier 1, and what that costs.** The gate is the committed,
+# time-aware promotion table: UFC, PRIDE, Zuffa-era WEC, Showtime-era
+# Strikeforce, 2011-onward Bellator, Affliction. 614 of 653 priced title wins
+# clear it. This does reintroduce a promotion judgement on the title path, which
+# was removed on 2026-08-25 -- but that removal was of a quality DISCOUNT
+# multiplying an opponent's rating, refused because the organisation is already
+# inside that rating and pricing it twice is a second posting of one fact. A
+# floor posts a different fact: that a sanctioning body's world championship was
+# won. An unlabelled or lower-tier belt keeps the pure convex weight.
+#
+# **Measured 2026-09-02 before adoption**, against the no-floor baseline:
+# fighters in the top 100 scoring zero on the title term fall 16 to 14;
+# agreement with elite wins rises 0.5911 to 0.6055; agreement with Prime moves
+# 0.5312 to 0.5238. Single-upset padding does NOT return -- Matt Serra falls, 60
+# to 70, because a floor paid to every champion dilutes a career built on one
+# exceptional win. All sixteen outside-list intervals straddle zero, so the
+# outside check cannot separate this from the baseline and no claim is made that
+# it can. Raising the floor to 0.10 buys elite-win agreement 0.6114 and costs
+# Prime 0.5210; 0.05 is the modest end of that trade. Set to 0.0 to reproduce
+# the 2026-09-01 ledger exactly.
+#
+# **What it costs, stated plainly.** A floor compresses the bottom. Two major
+# title wins over opponents far below their division line used to differ by an
+# order of magnitude (0.0001 against 0.001) and now both read about 0.0500. That
+# ordering was never meaningful at those magnitudes, but it is gone rather than
+# merely small, so any test measuring how the BAR prices a title win has to pass
+# ``major_title_floor=0.0`` to see it -- `tests/test_title_division_bar.py`
+# does exactly that, and says why.
+TITLE_QUALITY_MAJOR_FLOOR = 0.05
+
+# The tier the committed promotion table assigns a recognised major promotion.
+MAJOR_PROMOTION_TIER = 1
+
 # Held-out level offset between the UFC-tested and never-UFC pools, in Elo.
 #
 # **This is a ledger term, not a rating term.** It never enters the bout
@@ -494,6 +542,22 @@ def _organization_context(fights: pd.DataFrame) -> pd.DataFrame:
     return mapped[columns].drop_duplicates("fight_url")
 
 
+def _major_title_bouts(fights: pd.DataFrame) -> pd.Series:
+    """``fight_url -> was this bout staged by a recognised major promotion``.
+
+    False where the promotion cannot be resolved. An unlabelled event is missing
+    evidence, not evidence of a major championship, so it is never floored.
+    """
+    context = _organization_context(fights)
+    if context.empty or "fight_url" not in context.columns:
+        return pd.Series(dtype=bool)
+    tier = pd.to_numeric(context["organization_tier"], errors="coerce")
+    return pd.Series(
+        tier.eq(MAJOR_PROMOTION_TIER).to_numpy(),
+        index=context["fight_url"],
+    )
+
+
 def organization_exposure_ledger(fights: pd.DataFrame) -> pd.DataFrame:
     """Evaluate how much of each career was proven in top organization context."""
     if fights is None or fights.empty or "fighter_a" not in fights.columns:
@@ -830,6 +894,7 @@ def title_quality_ledger(
     divisions: pd.Series | None = None,
     ufc_debut_dates: pd.Series | None = None,
     pool_offset_elo: float = UFC_POOL_OFFSET_ELO,
+    major_title_floor: float = TITLE_QUALITY_MAJOR_FLOOR,
 ) -> pd.DataFrame:
     """Title resume priced by the opponent actually beaten, bout by bout.
 
@@ -844,6 +909,10 @@ def title_quality_ledger(
     line is read from -- so the two stay on one scale. A division whose pool is
     already UFC-tested therefore barely moves; a mixed one moves by however much
     of it is not.
+
+    A win in a recognised major championship is floored at
+    ``major_title_floor``; see the note above :data:`TITLE_QUALITY_MAJOR_FLOOR`
+    for why, and pass ``0.0`` to reproduce the 2026-09-01 ledger.
 
     Returns one row per fighter with the summed quality and the count of wins
     that cleared the contender line.
@@ -934,7 +1003,7 @@ def title_quality_ledger(
         ],
         ignore_index=True,
         sort=False,
-    )[["fighter", "opponent", "event_date", "winner"]].dropna(
+    )[["fight_url", "fighter", "opponent", "event_date", "winner"]].dropna(
         subset=["fighter", "opponent"]
     )
     wins = sides[sides["winner"].eq(sides["fighter"])].sort_values("event_date")
@@ -977,6 +1046,22 @@ def title_quality_ledger(
         local = pd.Series(division_bar.reindex(keys).to_numpy(), index=priced.index)
         priced["bar"] = local.fillna(priced["bar"])
     priced["weight"] = title_quality(priced["opponent_mu"], priced["bar"])
+    # A recognised major championship carries a minimum credit. See the note
+    # above TITLE_QUALITY_MAJOR_FLOOR. A bout whose promotion cannot be resolved
+    # is not asserted to be a major title and keeps the pure convex weight.
+    if "fight_url" in priced.columns:
+        major = (
+            _major_title_bouts(fights)
+            .reindex(priced["fight_url"])
+            .fillna(False)
+            .to_numpy(dtype=bool)
+        )
+    else:
+        major = np.zeros(len(priced), dtype=bool)
+    priced.loc[major, "weight"] = (
+        major_title_floor
+        + (1.0 - major_title_floor) * priced.loc[major, "weight"]
+    )
     # Reported diagnostic, not a scoring term: title wins over an opponent at or
     # above their division's contender line. The SCORE uses the convex weight,
     # which never zeroes -- this count is what a reader wants to see beside it.
