@@ -66,110 +66,130 @@ Prime and Prime rank will not always agree, and that is deliberate. Prime is how
 high a fighter rated. The Prime board ranks how often they proved it. So a
 fighter can rate higher than someone placed above them.
 
+**Two careers, and why the board separates them.** Demetrious Johnson is 6th and
+Fedor Emelianenko 23rd, and the first thing to notice is that Fedor rates *higher*
+at his peak — 2,014 against Johnson's 1,982. The board is not saying Johnson was
+the better fighter at his best. It is saying he achieved more with it, and three
+numbers carry that. **What they won:** Johnson has 12 title wins and 11 defenses
+against Fedor's 5 and 2, which scores 2,248 against 804 — by far the largest gap
+between them, and the achievement term is 30% of the whole score. **Who they
+beat:** almost level, 6 contender wins to 5, scoring 1,170 against 1,000. **How
+much of the career we can see:** Fedor never fought in the UFC, so 4 of his rated
+fights carry no promotion name at all and his exposure factor is 0.828 against
+Johnson's 0.921 — which takes his skill figure from 1,339 down to 1,109, a cut of
+230 points where Johnson loses 130.
+
+That last one is a stated policy, not a fact the results prove, and it is the
+part of Fedor's placement most open to argument — it is listed under
+[Important limitations](#important-limitations) for exactly that reason. The
+first two are not: a fighter who defended a world title eleven times did
+something a fighter who defended twice did not, and the score is built to say so.
+
+
 <!-- BOARD:TOP100:BEGIN -->
 
 | # | Fighter | Score | Prime | Prime rank | Elite wins |
 | ---: | --- | ---: | ---: | ---: | ---: |
-| 1 | Jon Jones | 4062.3 | 2210 | 1 | 12 |
-| 2 | Islam Makhachev | 2493.4 | 2180 | 3 | 7 |
-| 3 | Georges St-Pierre | 2202.7 | 2073 | 2 | 11 |
-| 4 | Daniel Cormier | 2103.9 | 2080 | 5 | 8 |
-| 5 | Jose Aldo | 1965.6 | 1930 | 16 | 9 |
-| 6 | Alexander Volkanovski | 1946.0 | 2048 | 4 | 9 |
-| 7 | Demetrious Johnson | 1899.8 | 1982 | 24 | 6 |
-| 8 | Stipe Miocic | 1870.7 | 1994 | 22 | 6 |
-| 9 | Francis Ngannou | 1730.1 | 2037 | 6 | 8 |
-| 10 | Anderson Silva | 1705.0 | 1922 | 8 | 11 |
-| 11 | Max Holloway | 1539.1 | 1963 | 9 | 9 |
-| 12 | Ilia Topuria | 1477.8 | 2119 | 12 | 5 |
-| 13 | Dominick Cruz | 1460.8 | 1941 | 34 | 5 |
-| 14 | Israel Adesanya | 1437.4 | 1935 | 15 | 9 |
-| 15 | Merab Dvalishvili | 1413.5 | 1974 | 11 | 8 |
-| 16 | Khabib Nurmagomedov | 1383.3 | 2172 |  | 4 |
-| 17 | Aljamain Sterling | 1319.2 | 1945 | 25 | 7 |
-| 18 | Lyoto Machida | 1292.6 | 1976 | 19 | 7 |
-| 19 | Alex Pereira | 1253.9 | 1962 | 21 | 7 |
-| 20 | Sean Strickland | 1237.2 | 1921 | 13 | 10 |
-| 21 | Justin Gaethje | 1236.8 | 1994 | 23 | 6 |
-| 22 | Matt Hughes | 1146.1 | 1830 |  | 3 |
-| 23 | Fedor Emelianenko | 1107.6 | 2014 | 27 | 5 |
-| 24 | Charles Oliveira | 1060.2 | 1978 | 18 | 7 |
-| 25 | Benson Henderson | 1055.7 | 1869 | 42 | 6 |
-| 26 | Kamaru Usman | 1012.8 | 1968 | 7 | 10 |
-| 27 | Dustin Poirier | 1010.9 | 1922 | 38 | 5 |
-| 28 | Khamzat Chimaev | 1000.1 | 2089 | 17 | 5 |
-| 29 | Cain Velasquez | 962.1 | 1964 |  | 4 |
-| 30 | Ciryl Gane | 956.4 | 2060 | 10 | 6 |
-| 31 | Junior Dos Santos | 941.2 | 1914 |  | 4 |
-| 32 | Henry Cejudo | 934.8 | 1873 | 48 | 5 |
-| 33 | Dricus Du Plessis | 912.7 | 2044 | 14 | 6 |
-| 34 | Petr Yan | 875.6 | 1951 | 28 | 6 |
-| 35 | Frankie Edgar | 872.6 | 1905 | 26 | 8 |
-| 36 | Chris Weidman | 870.9 | 1871 | 33 | 8 |
-| 37 | Mauricio Rua | 827.6 | 1833 | 52 | 6 |
-| 38 | Anthony Pettis | 821.9 | 1759 | 69 | 6 |
-| 39 | Conor McGregor | 816.7 | 1840 |  | 4 |
-| 40 | Dan Henderson | 805.2 | 1869 | 50 | 5 |
-| 41 | Vadim Nemkov | 768.3 | 2067 | 20 | 5 |
-| 42 | Patricio Freire | 753.9 | 1933 |  | 3 |
-| 43 | BJ Penn | 748.8 | 1793 | 63 | 5 |
-| 44 | Movsar Evloev | 739.9 | 2103 |  | 4 |
-| 45 | Chuck Liddell | 710.8 | 1820 | 54 | 6 |
-| 46 | Ryan Bader | 703.1 | 1926 | 37 | 5 |
-| 47 | Randy Couture | 686.2 | 1763 |  | 4 |
-| 48 | Anthony Johnson | 681.7 | 1938 | 30 | 6 |
-| 49 | Jan Blachowicz | 676.0 | 1801 | 62 | 5 |
-| 50 | Fabricio Werdum | 670.6 | 1894 |  | 4 |
-| 51 | Wanderlei Silva | 669.7 | 1812 |  | 4 |
-| 52 | Robert Whittaker | 662.9 | 1893 | 32 | 7 |
-| 53 | Antonio Rodrigo Nogueira | 661.6 | 1889 |  | 4 |
-| 54 | Leon Edwards | 649.1 | 1888 |  | 4 |
-| 55 | Tito Ortiz | 648.1 | 1786 |  | 4 |
-| 56 | Sean O'Malley | 627.2 | 1953 |  | 4 |
-| 57 | Rashad Evans | 624.5 | 1814 | 60 | 5 |
-| 58 | Vitor Belfort | 617.9 | 1781 | 68 | 5 |
-| 59 | Eddie Alvarez | 605.3 | 1763 |  | 4 |
-| 60 | Matt Serra | 601.0 | 1688 |  | 1 |
-| 61 | Luke Rockhold | 595.6 | 1863 | 45 | 6 |
-| 62 | Shavkat Rakhmonov | 593.3 | 2146 |  | 2 |
-| 63 | Gegard Mousasi | 589.5 | 1919 | 39 | 5 |
-| 64 | Tom Aspinall | 588.3 | 1934 |  | 4 |
-| 65 | Phil Davis | 588.0 | 1956 |  | 4 |
-| 66 | Alexander Volkov | 586.2 | 1906 | 31 | 7 |
-| 67 | Quinton Jackson | 567.8 | 1832 | 56 | 5 |
-| 68 | Rafael Dos Anjos | 565.0 | 1772 | 66 | 7 |
-| 69 | Derrick Lewis | 539.4 | 1818 | 59 | 5 |
-| 70 | Tyron Woodley | 534.7 | 1803 | 61 | 5 |
-| 71 | Mirko Filipovic | 533.6 | 1831 |  | 4 |
-| 72 | Curtis Blaydes | 519.8 | 1910 | 40 | 5 |
-| 73 | Belal Muhammad | 514.2 | 1901 | 35 | 6 |
-| 74 | Beneil Dariush | 511.3 | 1850 | 47 | 6 |
-| 75 | TJ Dillashaw | 500.7 | 1853 |  | 4 |
-| 76 | Joshua Van | 491.0 | 1944 |  | 3 |
-| 77 | Demian Maia | 480.5 | 1853 | 46 | 6 |
-| 78 | Glover Teixeira | 478.3 | 1867 | 43 | 6 |
-| 79 | Deiveson Figueiredo | 474.0 | 1828 | 58 | 5 |
-| 80 | Mark Coleman | 464.4 | 1722 |  | 2 |
-| 81 | Nassourdine Imavov | 459.1 | 1941 | 29 | 6 |
-| 82 | Jake Shields | 449.0 | 1820 | 51 | 7 |
+| 1 | Jon Jones | 3962.6 | 2210 | 1 | 12 |
+| 2 | Islam Makhachev | 2352.7 | 2180 | 3 | 7 |
+| 3 | Georges St-Pierre | 2223.3 | 2073 | 2 | 11 |
+| 4 | Daniel Cormier | 2016.7 | 2080 | 5 | 8 |
+| 5 | Jose Aldo | 1936.0 | 1930 | 16 | 9 |
+| 6 | Demetrious Johnson | 1879.6 | 1982 | 24 | 6 |
+| 7 | Alexander Volkanovski | 1855.6 | 2048 | 4 | 9 |
+| 8 | Stipe Miocic | 1765.0 | 1994 | 22 | 6 |
+| 9 | Anderson Silva | 1720.2 | 1922 | 8 | 11 |
+| 10 | Francis Ngannou | 1644.5 | 2037 | 6 | 8 |
+| 11 | Max Holloway | 1508.4 | 1963 | 9 | 9 |
+| 12 | Israel Adesanya | 1462.6 | 1935 | 15 | 9 |
+| 13 | Dominick Cruz | 1388.1 | 1941 | 34 | 5 |
+| 14 | Ilia Topuria | 1387.0 | 2119 | 12 | 5 |
+| 15 | Merab Dvalishvili | 1353.0 | 1974 | 11 | 8 |
+| 16 | Khabib Nurmagomedov | 1338.2 | 2172 |  | 4 |
+| 17 | Lyoto Machida | 1282.2 | 1976 | 19 | 7 |
+| 18 | Alex Pereira | 1266.4 | 1962 | 21 | 7 |
+| 19 | Aljamain Sterling | 1261.8 | 1945 | 25 | 7 |
+| 20 | Sean Strickland | 1208.3 | 1921 | 13 | 10 |
+| 21 | Justin Gaethje | 1181.9 | 1994 | 23 | 6 |
+| 22 | Matt Hughes | 1151.3 | 1830 |  | 3 |
+| 23 | Fedor Emelianenko | 1119.8 | 2014 | 27 | 5 |
+| 24 | Kamaru Usman | 1069.2 | 1968 | 7 | 10 |
+| 25 | Benson Henderson | 1065.3 | 1869 | 42 | 6 |
+| 26 | Charles Oliveira | 1047.2 | 1978 | 18 | 7 |
+| 27 | Khamzat Chimaev | 975.1 | 2089 | 17 | 5 |
+| 28 | Dustin Poirier | 972.9 | 1922 | 38 | 5 |
+| 29 | Ciryl Gane | 962.9 | 2060 | 10 | 6 |
+| 30 | Cain Velasquez | 933.6 | 1964 |  | 4 |
+| 31 | Dricus Du Plessis | 915.0 | 2044 | 14 | 6 |
+| 32 | Junior Dos Santos | 912.0 | 1914 |  | 4 |
+| 33 | Henry Cejudo | 899.2 | 1873 | 48 | 5 |
+| 34 | Frankie Edgar | 898.9 | 1905 | 26 | 8 |
+| 35 | Chris Weidman | 874.6 | 1871 | 33 | 8 |
+| 36 | Dan Henderson | 852.2 | 1869 | 50 | 5 |
+| 37 | Petr Yan | 851.3 | 1951 | 28 | 6 |
+| 38 | Patricio Freire | 825.4 | 1933 |  | 3 |
+| 39 | Mauricio Rua | 813.0 | 1833 | 52 | 6 |
+| 40 | Anthony Pettis | 805.3 | 1759 | 69 | 6 |
+| 41 | Vadim Nemkov | 795.3 | 2067 | 20 | 5 |
+| 42 | Ryan Bader | 791.3 | 1926 | 37 | 5 |
+| 43 | Randy Couture | 783.7 | 1763 |  | 4 |
+| 44 | Conor McGregor | 770.1 | 1840 |  | 4 |
+| 45 | Chuck Liddell | 768.1 | 1820 | 54 | 6 |
+| 46 | BJ Penn | 753.9 | 1793 | 63 | 5 |
+| 47 | Movsar Evloev | 739.9 | 2103 |  | 4 |
+| 48 | Tito Ortiz | 735.3 | 1786 |  | 4 |
+| 49 | Wanderlei Silva | 720.3 | 1812 |  | 4 |
+| 50 | Anthony Johnson | 681.7 | 1938 | 30 | 6 |
+| 51 | Robert Whittaker | 675.4 | 1893 | 32 | 7 |
+| 52 | Antonio Rodrigo Nogueira | 674.6 | 1889 |  | 4 |
+| 53 | Jan Blachowicz | 670.3 | 1801 | 62 | 5 |
+| 54 | Gegard Mousasi | 649.7 | 1919 | 39 | 5 |
+| 55 | Rashad Evans | 649.1 | 1814 | 60 | 5 |
+| 56 | Fabricio Werdum | 648.1 | 1894 |  | 4 |
+| 57 | Leon Edwards | 636.6 | 1888 |  | 4 |
+| 58 | Vitor Belfort | 626.5 | 1781 | 68 | 5 |
+| 59 | Luke Rockhold | 620.2 | 1863 | 45 | 6 |
+| 60 | Sean O'Malley | 619.5 | 1953 |  | 4 |
+| 61 | Alexander Volkov | 604.8 | 1906 | 31 | 7 |
+| 62 | Eddie Alvarez | 600.8 | 1763 |  | 4 |
+| 63 | Phil Davis | 596.4 | 1956 |  | 4 |
+| 64 | Shavkat Rakhmonov | 593.3 | 2146 |  | 2 |
+| 65 | Tom Aspinall | 571.5 | 1934 |  | 4 |
+| 66 | Rafael Dos Anjos | 571.2 | 1772 | 66 | 7 |
+| 67 | Quinton Jackson | 569.6 | 1832 | 56 | 5 |
+| 68 | Tyron Woodley | 561.3 | 1803 | 61 | 5 |
+| 69 | TJ Dillashaw | 554.9 | 1853 |  | 4 |
+| 70 | Matt Serra | 549.8 | 1688 |  | 1 |
+| 71 | Derrick Lewis | 539.4 | 1818 | 59 | 5 |
+| 72 | Mirko Filipovic | 523.1 | 1831 |  | 4 |
+| 73 | Curtis Blaydes | 519.8 | 1910 | 40 | 5 |
+| 74 | Belal Muhammad | 519.1 | 1901 | 35 | 6 |
+| 75 | Beneil Dariush | 511.3 | 1850 | 47 | 6 |
+| 76 | Deiveson Figueiredo | 505.3 | 1828 | 58 | 5 |
+| 77 | Glover Teixeira | 488.0 | 1867 | 43 | 6 |
+| 78 | Demian Maia | 480.5 | 1853 | 46 | 6 |
+| 79 | Joshua Van | 471.0 | 1944 |  | 3 |
+| 80 | Nassourdine Imavov | 459.1 | 1941 | 29 | 6 |
+| 81 | Mark Coleman | 450.9 | 1722 |  | 2 |
+| 82 | Jake Shields | 449.7 | 1820 | 51 | 7 |
 | 83 | Arman Tsarukyan | 440.1 | 2014 |  | 4 |
-| 84 | Umar Nurmagomedov | 429.2 | 2027 |  | 4 |
-| 85 | Frank Mir | 416.5 | 1737 |  | 3 |
-| 86 | Alistair Overeem | 412.8 | 1810 |  | 4 |
-| 87 | Sergio Pettis | 411.9 | 1830 |  | 3 |
-| 88 | Matt Hamill | 411.4 | 1652 |  | 2 |
-| 89 | Michael Chandler | 408.1 | 1812 |  | 1 |
-| 90 | Joseph Benavidez | 407.6 | 1847 |  | 2 |
-| 91 | Yoel Romero | 402.3 | 1867 | 44 | 6 |
-| 92 | Magomed Ankalaev | 401.2 | 1968 |  | 2 |
-| 93 | Robbie Lawler | 400.6 | 1705 |  | 3 |
-| 94 | Ian Machado Garry | 395.7 | 2071 |  | 4 |
-| 95 | Sean Sherk | 395.2 | 1894 | 36 | 6 |
-| 96 | Renan Barao | 390.3 | 1648 |  | 3 |
-| 97 | Jacare Souza | 387.9 | 1836 |  | 4 |
-| 98 | Andrei Arlovski | 387.9 | 1780 |  | 4 |
-| 99 | Donald Cerrone | 385.1 | 1849 | 53 | 5 |
-| 100 | Carlos Ulberg | 383.7 | 1991 |  | 3 |
+| 84 | Urijah Faber | 433.3 | 1800 |  | 3 |
+| 85 | Alistair Overeem | 431.3 | 1810 |  | 4 |
+| 86 | Andrei Arlovski | 430.5 | 1780 |  | 4 |
+| 87 | Michael Chandler | 429.5 | 1812 |  | 1 |
+| 88 | Umar Nurmagomedov | 429.2 | 2027 |  | 4 |
+| 89 | Robbie Lawler | 422.5 | 1705 |  | 3 |
+| 90 | Matt Hamill | 411.4 | 1652 |  | 2 |
+| 91 | Sean Sherk | 411.4 | 1894 | 36 | 6 |
+| 92 | Alexandre Pantoja | 409.3 | 1869 | 49 | 5 |
+| 93 | Joseph Benavidez | 407.6 | 1847 |  | 2 |
+| 94 | Renan Barao | 405.4 | 1648 |  | 3 |
+| 95 | Frank Mir | 404.5 | 1737 |  | 3 |
+| 96 | Sergio Pettis | 403.3 | 1830 |  | 3 |
+| 97 | Yoel Romero | 402.3 | 1867 | 44 | 6 |
+| 98 | Carlos Condit | 400.6 | 1721 |  | 4 |
+| 99 | Magomed Ankalaev | 396.3 | 1968 |  | 2 |
+| 100 | Ian Machado Garry | 395.7 | 2071 |  | 4 |
 
 <!-- BOARD:TOP100:END -->
 
@@ -179,8 +199,13 @@ How good was the fighter at their best — counting only the peaks they actually
 proved? To qualify, a fighter must have beaten **5 contenders within a single
 ten-year stretch**. A contender means an opponent rated **1,750 or higher at the
 time of the fight** who also had a tested record of their own: at least 8 UFC
-bouts. Both figures come from the same ten years, so a win cannot prove a peak
-it falls outside of.
+bouts. That number is easier to read as names than as a figure. On the top-100
+table above, Anthony Pettis peaked at 1,759 and Randy Couture at 1,763, both just
+over the line; Frank Mir at 1,737 and Mark Coleman at 1,722 sit just under it.
+So a contender is not a title challenger — it is a fighter of roughly that
+standing, and the work is done by needing to beat five of them, not by the height
+of the line. Both figures come from the same ten years, so a win cannot prove a
+peak it falls outside of.
 
 **Which ten years.** We take the stretch with the most wins over contenders, not
 the one with the highest average rating. Picking by rating rewards the years a

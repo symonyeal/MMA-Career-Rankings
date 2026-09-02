@@ -301,14 +301,23 @@ Dvalishvili, Gaethje, Penn. The count of top-25 fighters absent from all three
 published lists falls from 4 to **3** — Ngannou, Sterling and Dvalishvili, all
 UFC champions the lists happen to omit, not regional outliers.
 
-The Freire half of the complaint is addressed. **The Pantoja half is not.** 99th
-is on the board but nowhere near the 29th an outside list gives him, and the
-reason is not the promotion question. The résumé raises each title win to the
-fourth power before adding them up, so five wins over opponents sitting near their
-own division's bar cannot catch ten wins over opponents the model rates well
-above theirs. What is left is the open rating problem in §6 — lightly-tested
-careers rated too high — amplified by that fourth power. A promotion term does
-not fix it, and was never claimed to.
+The Freire half of the complaint is addressed. **The Pantoja half is not.** He is
+92nd on the board published 2026-09-02, nowhere near the 29th an outside list
+gives him, and the reason is not the promotion question. The résumé raises each
+title win to the fourth power before adding them up, so five wins over opponents
+sitting near their own division's bar cannot catch ten wins over opponents the
+model rates well above theirs. What is left is the open rating problem in §6 —
+lightly-tested careers rated too high — amplified by that fourth power. A
+promotion term does not fix it, and was never claimed to.
+
+**Amended 2026-09-02.** A win in a recognised major championship is now floored
+at 0.05 before that fourth power is added up, which lifts exactly the case this
+paragraph describes: a title win over an opponent near their own bar is no longer
+worth almost nothing. It narrows the Pantoja gap without closing it — his five
+title wins are worth more than they were, but the arithmetic above still favours
+the fighter whose ten wins came against opponents rated far higher. The floor is a
+minimum, not a re-weighting. See `TITLE_QUALITY_MAJOR_FLOOR` in
+`ratings/legacy_resume.py` and item 1 of [Open decisions](DECISIONS.md).
 
 **One assumption, stated.** The 54 was measured on the fight-by-fight model and
 is applied to the whole-career model. Both share one fit and one weak bridge

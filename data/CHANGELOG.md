@@ -1,9 +1,22 @@
 # Snapshot Changelog
 
-## 2026-09-02 - Careers completed, promotions relabelled, ratings rebuilt
+## 2026-09-02 - Careers completed, promotions relabelled, major titles floored
 
-**The rankings changed.** The corpus grew and the ratings were refitted on it.
-No scoring rule and no model setting was changed.
+**The rankings changed**, for two reasons: the corpus grew and the ratings were
+refitted on it, and the title term gained a minimum credit for winning a major
+championship. No model setting changed.
+
+**A major title win now carries a floor of 0.05.** A title win is priced
+`floor + (1 - floor) * q**4`, applied only to championships in a tier-1
+promotion. Value still comes from the opponent beaten, and the convex ordering
+above the floor is untouched — only the bottom is lifted. Winning the UFC
+light-heavyweight title over Glover Teixeira, who rated 1879 against an 1865 bar,
+priced at 0.073 and now prices at 0.119. Fighters in the top 100 scoring zero on
+the title term fall from 16 to 14; agreement with elite wins rises from 0.5911 to
+0.6055 on a fixed population. Single-upset padding does not return: Matt Serra
+falls rather than climbing, because a floor paid to every champion dilutes a
+career built on one exceptional win. Losses are unaffected — they are not in the
+ledger, and crediting them was refused on 2026-09-01.
 
 Broken readers repaired first, because everything after this depended on them:
 

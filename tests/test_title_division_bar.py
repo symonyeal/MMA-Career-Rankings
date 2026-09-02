@@ -18,7 +18,11 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from ratings.legacy_resume import _division_labels, title_quality_ledger
+from ratings.legacy_resume import (
+    TITLE_QUALITY_MAJOR_FLOOR,
+    _division_labels,
+    title_quality_ledger,
+)
 
 # The contender line is struck per division-YEAR, and a division-year thinner
 # than symon_score.DEFAULT_DIVISION_MIN_POPULATION cannot describe its own line
@@ -68,7 +72,8 @@ def test_division_bar_prices_a_light_division_title_win_far_above_the_sport_wide
         fights, history, reference="contender:60", major_title_floor=0.0
     )
     by_division = title_quality_ledger(
-        fights, history, reference="contender:60", divisions=divisions
+        fights, history, reference="contender:60", divisions=divisions,
+        major_title_floor=0.0,
     )
 
     weak = float(sport_wide.loc[sport_wide["fighter"].eq("Fly 0"), "public_legacy_title_quality"].iloc[0])
@@ -167,20 +172,26 @@ def test_run_scores_the_public_resume_after_the_division_columns_exist(tmp_path:
     history = pd.read_parquet(snap / "ratings_history_whr.parquet")
     fights = _source_fights_for_public_resume(snap, "ufc")
 
-    def _quality(**kwargs) -> pd.Series:
-        # The floor is held at zero here for the same reason as above: this
-        # asserts what the bar does, not what the floor adds.
+    def _quality(*, floor: float, **kwargs) -> pd.Series:
         led = title_quality_ledger(
-            fights, history, reference="contender:60", major_title_floor=0.0, **kwargs
+            fights, history, reference="contender:60", major_title_floor=floor, **kwargs
         )
         return led.set_index("fighter")["public_legacy_title_quality"]
 
     stored = current.set_index("fighter")["public_legacy_title_quality"]
-    by_division = _quality(divisions=divisions)
-    sport_wide = _quality()
+    # Two questions, and they need different settings to answer.
+    #
+    # Does the bar matter? Only visible with the floor off, because the floor
+    # adds the same constant to both sides and swamps the ratio at these
+    # magnitudes. See the note above legacy_resume.TITLE_QUALITY_MAJOR_FLOOR.
+    unfloored_by_division = _quality(floor=0.0, divisions=divisions)
+    unfloored_sport_wide = _quality(floor=0.0)
+    champion = unfloored_by_division.idxmax()
+    assert unfloored_by_division[champion] > 2 * unfloored_sport_wide.get(champion, 0.0)
 
-    champion = by_division.idxmax()
-    # Guard against a vacuous pass: the fixture must make the two bars differ.
-    assert by_division[champion] > 2 * sport_wide.get(champion, 0.0)
+    # Did the published run use the division bar? That has to be asked at the
+    # production floor, because that is what the stored column was scored with.
+    by_division = _quality(floor=TITLE_QUALITY_MAJOR_FLOOR, divisions=divisions)
+    sport_wide = _quality(floor=TITLE_QUALITY_MAJOR_FLOOR)
     assert stored[champion] == pytest.approx(by_division[champion], rel=1e-9)
     assert stored[champion] != pytest.approx(sport_wide[champion], rel=1e-9)

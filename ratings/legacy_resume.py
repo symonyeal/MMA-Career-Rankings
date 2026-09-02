@@ -1003,9 +1003,13 @@ def title_quality_ledger(
         ],
         ignore_index=True,
         sort=False,
-    )[["fight_url", "fighter", "opponent", "event_date", "winner"]].dropna(
-        subset=["fighter", "opponent"]
     )
+    side_columns = ["fighter", "opponent", "event_date", "winner"]
+    if "fight_url" in sides.columns:
+        # Carried only so a priced win can be joined to the promotion that
+        # sanctioned it. A frame without it simply gets no major-title floor.
+        side_columns.insert(0, "fight_url")
+    sides = sides[side_columns].dropna(subset=["fighter", "opponent"])
     wins = sides[sides["winner"].eq(sides["fighter"])].sort_values("event_date")
     if wins.empty:
         return _empty_quality_ledger()

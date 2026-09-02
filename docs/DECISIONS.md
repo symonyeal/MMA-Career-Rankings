@@ -23,45 +23,49 @@ Where the data comes from is [Source Matrix](../data/SOURCE_MATRIX.md).
 
 ## Open model and score decisions
 
-1. **Title pricing is the case that is clearly wrong, and the obvious fix does
-   not fix it.** Jiri Prochazka sits at 146 on the completed corpus. His title
-   record, priced bout by bout:
+1. **A major title now carries a minimum credit; what the title term still
+   cannot price is the rest.** Shipped 2026-09-02. A title win is priced
+   `floor + (1 - floor) * q**4` with `floor = 0.05`, applied only to
+   championships in a tier-1 promotion — UFC, PRIDE, Zuffa-era WEC,
+   Showtime-era Strikeforce, 2011-onward Bellator, Affliction. 614 of 653
+   priced title wins clear that gate.
 
-   | date | opponent | result | opponent rating | division bar | weight | promotion |
-   |---|---|---|---:|---:|---:|---|
-   | 2019-04-21 | Muhammed Lawal | **won** | 1678 | 1827 | **0.008** | RIZIN (tier 2) |
-   | 2022-06-11 | Glover Teixeira | **won** | 1879 | 1865 | **0.073** | UFC (tier 1) |
-   | 2023-11-11 | Alex Pereira | lost | 2022 | 1877 | 0.236 | UFC |
-   | 2024-06-29 | Alex Pereira | lost | 2023 | 1885 | 0.225 | UFC |
-   | 2026-04-11 | Carlos Ulberg | lost | 2047 | 1918 | 0.210 | UFC |
+   The defect it fixes is real and was visible on named fighters: value comes
+   from the opponent beaten against their own division-year line, which is right
+   in general and wrong at the bottom. Glover Teixeira rated 1879 against an 1865
+   bar, so winning the UFC light-heavyweight title priced at **0.073**; it now
+   prices at **0.119**. Winning a major world championship is an achievement in
+   itself and the score now says so, without paying the flat per-belt bonus the
+   2026-08-25 rebuild removed.
 
-   His losses price at roughly three times his wins, and the résumé counts only
-   wins. Separately, 18 of his 39 rated fights carry no promotion label and drop
-   to the lowest tier factor of 0.20, giving him an exposure factor of 0.734
-   against a top-100 median of 0.891.
+   Measured on a fixed population before adoption, against no floor:
 
-   **A minimum credit for a major championship was measured on 2026-09-02 and
-   does not reach him.** Pricing a title win at `floor + (1 - floor) * q**4`,
-   over 653 priced title wins of which 614 are in a tier-1 promotion:
+   | floor and gate | top 100 scoring zero on titles | agreement, elite wins | agreement, Prime | Serra |
+   |---|---:|---:|---:|---:|
+   | none | 16 | 0.5911 | 0.5312 | 60 |
+   | **0.05, major promotions only — shipped** | **14** | **0.6055** | 0.5238 | 70 |
+   | 0.10, major promotions only | 14 | 0.6114 | 0.5210 | 74 |
+   | 0.10, any title | 14 | 0.6123 | 0.5205 | 74 |
 
-   | floor and gate | top 100 scoring zero on titles | agreement, elite wins | agreement, Prime | Prochazka | Serra |
-   |---|---:|---:|---:|---:|---:|
-   | none — current | 16 | 0.5911 | 0.5312 | 146 | 60 |
-   | 0.05, major promotions only | 14 | 0.6055 | 0.5238 | 146 | 70 |
-   | 0.10, major promotions only | 14 | 0.6114 | 0.5210 | 144 | 74 |
-   | 0.10, any title | 14 | 0.6123 | 0.5205 | 133 | 74 |
+   Single-upset padding does **not** return: Matt Serra falls, because a floor
+   paid to every champion dilutes a career built on one exceptional win. All
+   sixteen outside-list intervals straddled zero, so the outside check could not
+   separate these and no claim is made that it did.
 
-   The reason is in the first table. Prochazka's RIZIN belt is tier 2, so a floor
-   restricted to recognised major championships never touches it, and his one
-   major title win is already priced above every floor tried. He reaches 133 only
-   under the promotion-blind gate, which is the judgement the major gate exists
-   to avoid. Two things the measurement does settle: the floor cuts fighters
-   scoring zero on the title term from 16 to 14, and it does **not** revive
-   single-upset padding — Matt Serra *falls*, 60 to 74, because a floor paid to
-   every champion dilutes a career built on one exceptional win. All sixteen
-   outside-list intervals straddle zero, so that check cannot separate any of
-   these from the baseline. Harness:
-   `Claude Func Folder\ufc-rank-engine\py\title_floor_shapes.py`.
+   **What is still open.** Three things the floor does not touch, each of which
+   would need its own measurement:
+   - A tier-2 championship gets nothing extra. That is the promotion judgement
+     the gate deliberately makes, and it is a policy, not a finding.
+   - Title *losses* still price at nothing, while a loss to an elite champion is
+     priced higher than most wins on the opponent scale. Crediting them was
+     measured and refused on 2026-09-01 because it pays for exposure rather than
+     contention; that refusal stands.
+   - Below the floor the ordering is gone rather than merely small. Two major
+     title wins over opponents far under their line used to differ by an order of
+     magnitude and now both read about 0.050. Any test asking what the *bar*
+     does must pass `major_title_floor=0.0`.
+
+   Harness: `Claude Func Folder\ufc-rank-engine\py\title_floor_shapes.py`.
 2. **The ratings themselves are the largest error, and completing the data fixed
    part of it.** Measured as a fighter's final rating minus the final rating of
    the strongest opponent they ever faced:
@@ -74,11 +78,14 @@ Where the data comes from is [Source Matrix](../data/SOURCE_MATRIX.md).
    That is the coverage argument confirming itself: the fighter whose record was
    truncated moved, the fighter whose record was already whole did not. The gap
    that remains is the real one, and every board still reads it.
-3. **A single upset can still climb.** Matt Serra sits at 60 on one contender
-   win, and keeps rising as the achievement weight rises — 60 / 49 / 43 / 40 at
-   0.30 / 0.40 / 0.50 / 0.60. The weights are owner policy, but this is what
-   raising the achievement weight buys. The title floor in item 1 moves him the
-   other way.
+3. **A single upset can still climb, but less than it did.** Matt Serra sits at
+   **70** on the board published 2026-09-02, having been 60 before the major-title
+   floor; the floor moved him down because a minimum paid to every champion
+   dilutes a career built on one exceptional win. The concern itself stands: he
+   still keeps rising as the achievement weight rises — measured before the floor
+   at 60 / 49 / 43 / 40 for weights 0.30 / 0.40 / 0.50 / 0.60, a sweep that has
+   not been re-run since. The weights are owner policy, and this is what raising
+   the achievement weight buys.
 4. **The promotion table is typed in by hand** and multiplies both quality
    components. It is not fitted to anything. A measurement on 2026-09-01 found no
    *further* promotion term is needed — after the +54 correction a UFC title win
@@ -239,24 +246,39 @@ and after; agreement between the score and elite wins and between the score and
 Prime; and agreement with all three outside lists, each with its confidence
 interval and a statement of what that check can detect.
 
-Those two agreement figures are **0.5911 and 0.5312** as of 2026-09-02. Do not
-compare them with the 0.722 and 0.637 this section used to quote. Both are
-measured over a population held fixed across variants, and the population
-changed: the preserved 2026-09-01 incumbent board those numbers were computed on
-was swept in the lean pass, so the fixed population is now the current baseline
-top 100. A number measured over a different set of fighters is a different
-number, not a worse board.
+On the board published 2026-09-02 those two figures are **0.6067 and 0.5629**,
+with 14 of the top 100 scoring zero on the title term. Agreement with the outside
+lists is ESPN 0.9152, FightMatrix 0.6734, The 100 Greatest 0.6046, Tapology
+0.5636.
+
+Do not compare any of these with the 0.722 and 0.637 this section used to quote.
+Both are measured over a population held fixed across variants, and the
+population changed: the preserved 2026-09-01 incumbent board those numbers came
+from was swept in the lean pass, so the population is now the current top 100. A
+number measured over a different set of fighters is a different number, not a
+worse board. For the same reason, a variant comparison must hold one population
+across all of its arms, which is why item 1's table reads 0.6055 where this
+section reads 0.6067 for the same shipped board.
 
 ## Rebuild and verify
 
-A score or board change reads the existing ratings:
+A score or board change reads the existing ratings — but it must **re-score the
+snapshot first**. `build_boards.py` publishes the `public_legacy_*` columns
+already stored in `ratings_current.parquet`; it does not recompute them. Skip the
+first line below and the boards publish the old scores while the audit, which
+does recompute, publishes the new ones, and the two silently disagree:
 
 ```text
+C:\Python314\python.exe -m ratings.rate_snapshot --snapshot-dir data/snapshots/2026-08-13 --scope majors,pre_unified --career-only
 C:\Python314\python.exe build_boards.py data/snapshots/2026-08-13 --scope majors,pre_unified --write-readme
 C:\Python314\python.exe build_top100_audit.py data/snapshots/2026-08-13 --scope majors,pre_unified
 C:\Python314\python.exe -m pytest -q
 C:\Python314\python.exe -m ruff check .
 ```
+
+`--career-only` re-scores against the persisted fit and refuses if the scope does
+not match the fit that produced it, so it cannot quietly re-score one scope's
+board from another scope's ratings.
 
 A data or rating change needs the full path, and `rate_snapshot` takes about
 fifteen minutes:
