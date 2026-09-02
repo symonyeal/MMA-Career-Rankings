@@ -32,9 +32,12 @@ This module states the property as a number, so a build can check it.
 """
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pandas as pd
+
+from loaders.page_cache import open_cache
 
 COVERAGE_COLUMNS = [
     "fighter",
@@ -42,14 +45,15 @@ COVERAGE_COLUMNS = [
     "corpus_bouts",
     "pre_ufc_bouts",
     "sherdog_id",
-    "career_page_read",
+    "whole_career_merged",
 ]
 
-# Share of the eligible roster whose whole-career page must have been read
+# Share of the eligible roster whose whole-career rows must have been merged
 # before the corpus can be called coverage-symmetric. Not 1.0: a few fighters
 # have no resolvable Sherdog identity at all, and abstaining on those is honest,
 # whereas demanding perfection would make the gate unenforceable.
-MIN_CAREER_PAGE_SHARE = 0.95
+MIN_WHOLE_CAREER_SHARE = 0.95
+INCORPORATED_PAGE_IDS_ARTIFACT = "career_pages_incorporated.json"
 
 # Below this many UFC bouts a fighter cannot reach the board's completeness gate
 # on UFC evidence, so their coverage does not decide a published rank.
@@ -57,11 +61,53 @@ DEFAULT_MIN_UFC_BOUTS = 3
 
 
 def cached_page_ids(cache_dir: Path | str) -> set[str]:
-    """Sherdog ids whose whole-career page is on disk."""
-    return {
-        path.name.split(".", 1)[0]
-        for path in Path(cache_dir).glob("*.html.gz")
+    """Sherdog ids whose whole-career page is in the shared page store."""
+    with open_cache(cache_dir) as cache:
+        return set(cache.keys("fighters"))
+
+
+def incorporated_page_ids(
+    cache_dir: Path | str,
+    bouts: pd.DataFrame | None = None,
+) -> set[str]:
+    """Sherdog ids whose parsed career rows reached the corpus.
+
+    Most ids are recoverable from surviving ``fighter_page`` rows. A page whose
+    every bout duplicated a better event-card row leaves no such provenance, so
+    the builder records that successful incorporation separately.
+    """
+    ids: set[str] = set()
+    if bouts is not None and not bouts.empty and "fighter_a_id" in bouts.columns:
+        source = bouts.get("source", pd.Series("", index=bouts.index))
+        ids.update(
+            bouts.loc[source.eq("fighter_page"), "fighter_a_id"]
+            .dropna()
+            .astype(str)
+        )
+
+    path = Path(cache_dir) / INCORPORATED_PAGE_IDS_ARTIFACT
+    if not path.exists():
+        return ids
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        recorded = payload["fighter_ids"]
+    except (OSError, json.JSONDecodeError, KeyError, TypeError) as exc:
+        raise ValueError(f"invalid incorporated-page audit at {path}") from exc
+    ids.update(str(value) for value in recorded)
+    return ids
+
+
+def record_incorporated_page_ids(cache_dir: Path | str, fighter_ids: set[str]) -> None:
+    """Atomically preserve page ids after their parsed rows are merged."""
+    path = Path(cache_dir) / INCORPORATED_PAGE_IDS_ARTIFACT
+    existing = incorporated_page_ids(cache_dir)
+    payload = {
+        "schema_version": 1,
+        "fighter_ids": sorted(existing | {str(value) for value in fighter_ids}),
     }
+    candidate = path.with_name(path.name + ".new")
+    candidate.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    candidate.replace(path)
 
 
 def coverage_rows(
@@ -69,15 +115,15 @@ def coverage_rows(
     corpus_fights: pd.DataFrame,
     *,
     sherdog_ids: pd.Series | dict | None = None,
-    read_ids: set[str] | None = None,
+    merged_ids: set[str] | None = None,
 ) -> pd.DataFrame:
     """One row per UFC fighter: what the corpus holds of their career.
 
     ``corpus_fights`` is the staged, canonically-named fight table for the rated
     scope. ``sherdog_ids`` maps a canonical name to the Sherdog id the identity
-    resolver assigned it, and ``read_ids`` is the set of ids whose career page
-    has been read; both are optional, so the shape can be audited without the
-    HTML cache present.
+    resolver assigned it, and ``merged_ids`` is the set of ids whose parsed
+    whole-career rows were incorporated into ``corpus_fights``. Both are
+    optional, so the shape can be audited before the extension exists.
     """
     if canonical_fights is None or canonical_fights.empty:
         return pd.DataFrame(columns=COVERAGE_COLUMNS)
@@ -116,7 +162,7 @@ def coverage_rows(
     ids = pd.Series(sherdog_ids, dtype=object) if sherdog_ids is not None else pd.Series(dtype=object)
     out["sherdog_id"] = out["fighter"].map(ids) if len(ids) else None
     known = out["sherdog_id"].astype("string").fillna("")
-    out["career_page_read"] = known.isin(read_ids or set()) & known.ne("")
+    out["whole_career_merged"] = known.isin(merged_ids or set()) & known.ne("")
     return out[COVERAGE_COLUMNS]
 
 
@@ -128,47 +174,51 @@ def coverage_summary(
     """The asymmetry, as numbers a build can assert on.
 
     ``pre_ufc_bouts_gap`` is the statistic that failed before the repair: the
-    difference in median recorded pre-UFC bouts between the fighters whose
-    career page was read and the fighters whose page was not. Under one coverage
-    rule it has nothing to measure, because there is no second group.
+    difference in median recorded pre-UFC bouts between fighters whose parsed
+    whole-career rows were merged and fighters whose rows were not. Under one
+    coverage rule it has nothing to measure, because there is no second group.
     """
-    empty = {"eligible": 0, "career_page_share": 1.0, "pre_ufc_bouts_gap": 0.0}
+    empty = {"eligible": 0, "whole_career_share": 1.0, "pre_ufc_bouts_gap": 0.0}
     if rows is None or rows.empty:
         return empty
+    if "whole_career_merged" not in rows.columns:
+        raise ValueError(
+            "career coverage predates the merged-row audit; restage the majors scope"
+        )
     eligible = rows[rows["ufc_bouts"] >= int(min_ufc_bouts)]
     if eligible.empty:
         return empty
-    read = eligible[eligible["career_page_read"]]
-    unread = eligible[~eligible["career_page_read"]]
+    merged = eligible[eligible["whole_career_merged"]]
+    unmerged = eligible[~eligible["whole_career_merged"]]
     gap = (
-        float(read["pre_ufc_bouts"].median() - unread["pre_ufc_bouts"].median())
-        if len(read) and len(unread) else 0.0
+        float(merged["pre_ufc_bouts"].median() - unmerged["pre_ufc_bouts"].median())
+        if len(merged) and len(unmerged) else 0.0
     )
     return {
         "eligible": int(len(eligible)),
-        "career_page_read": int(len(read)),
-        "career_page_share": float(len(read) / len(eligible)),
-        "median_pre_ufc_bouts_read":
-            float(read["pre_ufc_bouts"].median()) if len(read) else float("nan"),
-        "median_pre_ufc_bouts_unread":
-            float(unread["pre_ufc_bouts"].median()) if len(unread) else float("nan"),
+        "whole_career_merged": int(len(merged)),
+        "whole_career_share": float(len(merged) / len(eligible)),
+        "median_pre_ufc_bouts_merged":
+            float(merged["pre_ufc_bouts"].median()) if len(merged) else float("nan"),
+        "median_pre_ufc_bouts_unmerged":
+            float(unmerged["pre_ufc_bouts"].median()) if len(unmerged) else float("nan"),
         "pre_ufc_bouts_gap": gap,
-        "median_corpus_bouts_read":
-            float(read["corpus_bouts"].median()) if len(read) else float("nan"),
-        "median_corpus_bouts_unread":
-            float(unread["corpus_bouts"].median()) if len(unread) else float("nan"),
+        "median_corpus_bouts_merged":
+            float(merged["corpus_bouts"].median()) if len(merged) else float("nan"),
+        "median_corpus_bouts_unmerged":
+            float(unmerged["corpus_bouts"].median()) if len(unmerged) else float("nan"),
     }
 
 
 def is_coverage_symmetric(
     summary: dict,
     *,
-    min_share: float = MIN_CAREER_PAGE_SHARE,
+    min_share: float = MIN_WHOLE_CAREER_SHARE,
 ) -> bool:
     """Whether the corpus applies one coverage rule to the eligible roster."""
     if not summary or not summary.get("eligible"):
         return True
-    return float(summary.get("career_page_share", 0.0)) >= float(min_share)
+    return float(summary.get("whole_career_share", 0.0)) >= float(min_share)
 
 
 def describe(summary: dict) -> str:
@@ -176,9 +226,9 @@ def describe(summary: dict) -> str:
         return "career coverage: no eligible fighters"
     return (
         "career coverage: "
-        f"{summary['career_page_read']:,}/{summary['eligible']:,} eligible fighters "
-        f"({summary['career_page_share']:.1%}) have a whole-career page; "
-        f"median recorded pre-UFC bouts {summary['median_pre_ufc_bouts_read']:.0f} read "
-        f"vs {summary['median_pre_ufc_bouts_unread']:.0f} unread "
+        f"{summary['whole_career_merged']:,}/{summary['eligible']:,} eligible fighters "
+        f"({summary['whole_career_share']:.1%}) have whole-career rows merged; "
+        f"median recorded pre-UFC bouts {summary['median_pre_ufc_bouts_merged']:.0f} merged "
+        f"vs {summary['median_pre_ufc_bouts_unmerged']:.0f} unmerged "
         f"(gap {summary['pre_ufc_bouts_gap']:+.0f})"
     )

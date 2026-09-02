@@ -3,9 +3,13 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
+import build_top100_audit
+
 from ratings.legacy_resume import (
     LEGACY_ACHIEVEMENT_WEIGHT,
     LEGACY_QUALITY_SKILL_SHARE,
+    ORG_FACTOR_BY_TIER,
+    _organization_context,
     PUBLIC_LEGACY_DISPLAY_SCALE,
     RANK_CONTEXT_WIN_POINTS,
     RESUME_QUALITY_SCALE,
@@ -250,7 +254,12 @@ def test_public_legacy_score_keeps_raw_skill_mass_as_auditable_component():
     current = pd.DataFrame(
         {"fighter": ["A"], "symon_career_skill_mass": [123.0]}
     )
-    scored = public_legacy_score_rows(current, pd.DataFrame()).iloc[0]
+    scored = public_legacy_score_rows(
+        current,
+        pd.DataFrame(),
+        source_fights=pd.DataFrame(),
+        history=pd.DataFrame(),
+    ).iloc[0]
 
     assert scored["public_legacy_skill_mass"] == pytest.approx(123.0)
     assert scored["public_legacy_title_score"] == pytest.approx(0.0)
@@ -262,6 +271,15 @@ def test_public_legacy_score_keeps_raw_skill_mass_as_auditable_component():
         * (1.0 - LEGACY_ACHIEVEMENT_WEIGHT)
         * LEGACY_QUALITY_SKILL_SHARE
     )
+
+
+def test_public_legacy_score_refuses_an_omitted_ledger_input():
+    current = pd.DataFrame(
+        {"fighter": ["A"], "symon_career_skill_mass": [123.0]}
+    )
+
+    with pytest.raises(ValueError, match="requires source_fights and history"):
+        public_legacy_score_rows(current, pd.DataFrame())
 
 
 def test_rank_context_win_mass_is_reported_but_no_longer_scored():
@@ -287,7 +305,12 @@ def test_rank_context_win_mass_is_reported_but_no_longer_scored():
         ]
     )
 
-    scored = public_legacy_score_rows(current, appearances).iloc[0]
+    scored = public_legacy_score_rows(
+        current,
+        appearances,
+        source_fights=pd.DataFrame(),
+        history=pd.DataFrame(),
+    ).iloc[0]
 
     assert scored["public_legacy_rank_context_win_mass"] == pytest.approx(0.08)
     assert "public_legacy_schedule_score" not in scored.index
@@ -347,6 +370,28 @@ def _contender_fixture() -> tuple[pd.DataFrame, pd.DataFrame]:
         ]
     )
     return pd.concat([fights, padding], ignore_index=True), history
+
+
+def test_top100_audit_fallback_builds_the_full_public_score(tmp_path, monkeypatch):
+    fights, history = _contender_fixture()
+    pd.DataFrame(
+        {
+            "fighter": ["Climber"],
+            "symon_career_skill_mass": [0.0],
+            "rating_periods": [3],
+        }
+    ).to_parquet(tmp_path / "ratings_current.parquet", index=False)
+    history.to_parquet(tmp_path / "ratings_history_whr.parquet", index=False)
+    monkeypatch.setattr(
+        build_top100_audit.PQ,
+        "load_fight_table",
+        lambda _snapshot, *, scope: fights,
+    )
+
+    scored = build_top100_audit._current_with_legacy(tmp_path, "ufc").iloc[0]
+
+    assert scored["public_legacy_contender_wins"] == 1
+    assert scored["public_legacy_resume_score"] > 0
 
 
 def test_contender_resume_screens_on_rating_and_on_a_tested_opponent():
@@ -573,6 +618,7 @@ def test_public_legacy_score_uses_source_title_flags_when_appearance_context_is_
         current,
         appearances,
         source_fights=source_fights,
+        history=pd.DataFrame(),
     ).iloc[0]
 
     assert scored["public_legacy_title_appearances"] == 1
@@ -582,6 +628,38 @@ def test_public_legacy_score_uses_source_title_flags_when_appearance_context_is_
     assert scored["public_legacy_title_score"] == pytest.approx(0.0)
     assert scored["public_legacy_exposure_factor"] == pytest.approx(0.95)
     assert scored["public_legacy_skill_score"] == pytest.approx(95.0)
+
+
+def test_a_stored_promotion_label_is_priced_at_the_tier_it_was_given():
+    """The exact shape that silently under-priced 6,081 rated bouts.
+
+    ``majors_scope`` stores the canonical promotion the rules assigned, and the
+    exposure ledger reads that label back through the same rules. A canonical
+    name is not always its own pattern -- "Major Regional" names the family
+    whose pattern lists the promotions in it -- so the round trip used to land
+    on Unknown and price a recognised regional show at the lowest tier, 0.20
+    instead of 0.42. Nothing failed; the score was just wrong.
+    """
+    fights = pd.DataFrame(
+        [
+            {
+                "fight_url": "1",
+                "event_date": "2016-05-01",
+                "event_name": "LFA 5",
+                "source": "sherdog_majors",
+                "org": "Major Regional",
+                "fighter_a": "Alice Ace",
+                "fighter_b": "Bob Bruiser",
+                "winner": "Alice Ace",
+            }
+        ]
+    )
+
+    context = _organization_context(fights).iloc[0]
+
+    assert context["canonical_organization"] == "Major Regional"
+    assert context["organization_tier"] == 3
+    assert context["public_legacy_org_factor"] == pytest.approx(ORG_FACTOR_BY_TIER[3])
 
 
 def test_source_title_resume_ledger_infers_defenses_with_blank_org():

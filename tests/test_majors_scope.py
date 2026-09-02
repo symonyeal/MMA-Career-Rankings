@@ -9,9 +9,11 @@ from loaders.majors_scope import (
     build_majors_fights,
     load_majors_bouts,
     resolve_identities,
+    sherdog_birth_dates,
     to_canonical_fights,
     unmatched_names,
 )
+from loaders.page_cache import open_cache
 
 
 def _card(fid_a, name_a, fid_b, name_b, *, date, org="PRIDE", event_id="1",
@@ -82,6 +84,20 @@ def test_an_unrateable_result_is_marked_excluded_not_dropped():
     assert "result_not_rateable" in str(by_date.loc[2001, "exclusion_reason"])
 
 
+def test_fighter_page_event_name_recovers_a_known_organization():
+    row = _card(
+        "1", "Wanderlei Silva", "2", "Kazushi Sakuraba", date="2012-06-23"
+    )
+    row["org"] = None
+    row["event_name"] = "UFC 147 - Silva vs. Franklin 2"
+    bouts = pd.DataFrame([row])
+
+    fights = to_canonical_fights(bouts, resolve_identities(bouts, _canonical()))
+
+    assert fights.iloc[0]["org"] == "UFC"
+    assert fights.iloc[0]["event_name"] == "UFC 147 - Silva vs. Franklin 2"
+
+
 def test_a_fighter_who_matches_nothing_keeps_their_own_identity():
     """Not asserted to be someone in the UFC set, and still rated.
 
@@ -123,3 +139,25 @@ def test_build_reports_the_bridge_population(tmp_path):
 def test_missing_corpus_says_which_builder_makes_it(tmp_path):
     with pytest.raises(FileNotFoundError, match="build_sherdog_majors"):
         load_majors_bouts(tmp_path)
+
+
+def test_sherdog_birth_dates_read_the_shared_store(tmp_path):
+    open_cache(tmp_path).put(
+        "fighters",
+        "17",
+        '<span itemprop="birthDate">Jan 2, 1990</span>',
+    )
+    identity = pd.DataFrame(
+        {"sherdog_id": ["17"], "canonical_name": ["Alice Ace"]}
+    )
+
+    births = sherdog_birth_dates(identity, cache_dir=tmp_path)
+
+    assert births.to_dict(orient="records") == [
+        {
+            "fighter": "Alice Ace",
+            "dob": pd.Timestamp("1990-01-02"),
+            "source": "sherdog_profile",
+            "source_id": "17",
+        }
+    ]

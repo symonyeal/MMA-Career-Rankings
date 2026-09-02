@@ -131,14 +131,29 @@ and an unbeaten record's sensitivity to fight count only falls from 0.87 to 0.70
 whose career is not already in the dataset, through the same cached, rate-limited
 loader the project already uses, and merges the results under the existing
 event-card precedence. 1,278 fighters needed it; 1,057 were already identifiable
-and 221 needed a search, of which **77 could not be found and remain truncated**.
+and 221 needed a search, of which **77 could not be found in that run**. A second
+pass on 2026-09-02 closed all but four of those, because the careers merged in
+the first pass named the missing fighters as opponents and made them
+identifiable.
 
-| | before | after |
-|---|---:|---:|
-| Sherdog fights held | 63,813 | **80,902** |
-| fights used in the model | 67,920 | **80,697** |
-| fighters rated | 28,867 | **33,692** |
-| eligible roster with a whole career read | 547 (30.0%) | **1,744 (95.6%)** |
+| | before | after the 2026-08-27 repair | after the 2026-09-02 completion |
+|---|---:|---:|---:|
+| Sherdog fights held | 63,813 | 80,902 | **81,875** |
+| fights used in the model | 67,920 | 80,697 | **81,281** |
+| fighters rated | 28,867 | 33,692 | **34,085** |
+| eligible roster with whole-career rows merged | 547 (30.0%) | 1,743 (95.5%) | **1,821 (99.8%)** |
+
+The four careers that remain unmerged are named in
+[Open decisions](DECISIONS.md); each is a Sherdog identity that cannot be
+resolved, not a page that failed to download.
+
+**What the last 4.3 points of coverage were worth.** Khabib Nurmagomedov is the
+clean test, because his was one of the truncated records. His rating sat 206
+points above the strongest opponent he had ever faced when the model held 14 of
+his fights; it sits 160 points above once it holds all 30. Seika Izawa is the
+control: her record was already complete, nothing was added to it, and her gap
+did not move — 319 before, 320 after. The problem this document describes and the
+repair it prescribes are the same thing, seen twice.
 
 Fights recorded, before → after: Khabib 14 → 30, Adesanya 20 → 32, Volkanovski
 19 → 32, Makhachev 19 → 30, Topuria 10 → 20, Whittaker 27 → 38, Jones 26 → 31 —
@@ -148,9 +163,9 @@ is the repair.
 Two guards stop it coming back:
 
 - `loaders/career_coverage.py` states the property as a number.
-  `stage_majors_scope` writes `career_coverage.parquet`, prints it and warns below
-  the minimum; `rate_snapshot` publishes it in `rating_run.json`; `refresh.py`
-  writes it into the changelog.
+  `stage_majors_scope` writes and prints `career_coverage.parquet`;
+  `rate_snapshot` refuses a majors fit below the minimum and publishes a passing
+  audit in `rating_run.json`; `refresh.py` writes it into the changelog.
 - `tests/test_career_coverage.py` fails on exactly the shape that broke the
   board — two fighters with identical UFC records, one with their pre-UFC
   regional record and one without.
@@ -195,8 +210,9 @@ the record that owns them rather than being restated here.
   board position under "What it fixed" above predates them: the winner's credit
   now reflects how the fight ended, and the title résumé carries a measured
   promotion correction.
-- The 77 fighters Sherdog's search could not resolve are still truncated. That
-  and everything else still open is in [Open decisions](DECISIONS.md).
+- Four eligible careers remain unmerged after the 2026-09-02 completion pass,
+  all of them unresolvable Sherdog identities. They are named in
+  [Open decisions](DECISIONS.md).
 
 ## Reproduce
 

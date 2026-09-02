@@ -52,9 +52,24 @@ def normalize_organization(
     raw = " ".join(str(raw_label or "").split())
     when = pd.to_datetime(event_date, errors="coerce")
     source = load_organization_rules() if rules is None else rules
-    for row in source.itertuples(index=False):
-        if re.search(row.pattern, raw, flags=re.IGNORECASE) is None:
-            continue
+    matched = [
+        row
+        for row in source.itertuples(index=False)
+        if re.search(row.pattern, raw, flags=re.IGNORECASE) is not None
+    ]
+    if not matched:
+        # Normalization must be idempotent: a label this function already
+        # produced has to normalize back to itself. A canonical name is not
+        # always its own pattern -- "Major Regional" names a family whose
+        # pattern lists the promotions in it -- so a stored canonical label
+        # would otherwise round-trip to Unknown and be priced at the lowest
+        # tier, which is the opposite of what the rule assigned it.
+        matched = [
+            row
+            for row in source.itertuples(index=False)
+            if row.canonical_organization.casefold() == raw.casefold()
+        ]
+    for row in matched:
         active = _within(when, row.active_from, row.active_to)
         tier_active = _within(when, row.tier_from, row.tier_to)
         return {

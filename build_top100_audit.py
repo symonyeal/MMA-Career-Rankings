@@ -235,11 +235,17 @@ def _current_with_legacy(snapshot: Path, scope: str) -> pd.DataFrame:
     appearances = snapshot / "performance_appearances.parquet"
     if "symon_career_skill_mass" in current.columns:
         appearance_rows = pd.read_parquet(appearances) if appearances.exists() else pd.DataFrame()
+        history_path = snapshot / "ratings_history_whr.parquet"
+        if not history_path.exists():
+            raise FileNotFoundError(
+                "public legacy audit requires ratings_history_whr.parquet"
+            )
         current = current.merge(
             public_legacy_score_rows(
                 current,
                 appearance_rows,
                 source_fights=PQ.load_fight_table(snapshot, scope=scope),
+                history=pd.read_parquet(history_path),
             ),
             on="fighter",
             how="left",

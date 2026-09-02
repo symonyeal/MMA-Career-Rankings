@@ -334,11 +334,13 @@ def parse_fighter_career(html: str, fighter_id: str) -> list[dict]:
     fighter on a subset of their record is the same censoring bias that made the
     old fighter-seeded cache unusable, only applied along a different axis.
 
-    So once a fighter is in the graph at all, their whole record comes in. There
-    is no organization weight for a promotion label to feed, which is why a bout
-    is usable here without knowing which promotion staged it -- ``event_href``
-    identifies the card, and the promotion is a reporting question, not a
-    modelling one.
+    So once a fighter is in the graph at all, their whole record comes in. A bout
+    is usable here without knowing which promotion staged it, because no
+    organization weight feeds the rating -- ``event_href`` identifies the card.
+    The label is not free, though: the published score's exposure factor reads
+    it, and an unlabelled bout is scored as the lowest tier. ``majors_scope``
+    therefore recovers a promotion from the event name where the committed rules
+    match one, and what to do with the rest is an open decision.
     """
     if not html:
         return []

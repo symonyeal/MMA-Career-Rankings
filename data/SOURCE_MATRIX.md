@@ -101,13 +101,14 @@ fighter's bouts the corpus happens to hold.
 `build_sherdog_careers.py` completes the coverage and
 `loaders/career_coverage.py` states it as a number that a build can assert on;
 the majors staging writes `career_coverage.parquet` and warns when the share
-falls below `MIN_CAREER_PAGE_SHARE`, and `rating_run.json` publishes it.
+falls below `MIN_WHOLE_CAREER_SHARE`, and `rate_snapshot` refuses a majors fit
+without a passing audit. `rating_run.json` publishes the result.
 **When a completeness figure is quoted here, name the axis it was measured on.**
 
 | Field                       | Source     | Notes |
 |-----------------------------|------------|-------|
 | majors_fights               | Sherdog    | `loaders/majors_scope.py` stages the preserved seven-promotion event crawl plus completed whole-career pages as canonical-shaped rows. A staged build input: every row is in `combined_fights`. |
-| career_coverage             | Derived    | Per UFC fighter: UFC bouts, corpus bouts, recorded pre-UFC bouts, Sherdog id, and whether their whole-career page was read. |
+| career_coverage             | Derived    | Per UFC fighter: UFC bouts, corpus bouts, recorded pre-UFC bouts, Sherdog id, and whether parsed whole-career rows were merged into the rated corpus. |
 | fightmatrix_profiles        | FightMatrix public profiles | Ranked-cohort biography, debut, career summary, and diagnostic metrics. |
 | fightmatrix_bouts           | FightMatrix public profiles | Deduplicated complete histories for the bounded current-ranked + all-time seed cohort. |
 | fightmatrix_crossorg_fights | FightMatrix public profiles | Post-2000-11-17, non-UFC, UFC-deduplicated canonical rows; public ranks are not model inputs. |
@@ -158,8 +159,14 @@ upstream attribution must stay intact.
 Rank, points, quality percentage, the 540 metric, combat age and pre-fight rank
 are blocked from the model schema. They are stored for audit and comparison and
 never enter a rating. The committed organization rule table is time-aware and
-diagnostic; it adds no promotion prestige bonus. FightMatrix stays a named
-diagnostic scope and is not part of the published `majors,pre_unified` default.
+adds no promotion weight to the **rating**: every bout enters the likelihood at
+the same organisation weight of 1.0. It is not diagnostic-only, though, and
+saying so would understate it — the tier it assigns sets
+`public_legacy_exposure_factor`, which multiplies both quality components of the
+published all-time **score**. That the table is hand-typed rather than fitted is
+the standing item in [Open decisions](../docs/DECISIONS.md). FightMatrix stays a
+named diagnostic scope and is not part of the published `majors,pre_unified`
+default.
 
 ### The recursive expansion experiment is gone
 

@@ -42,10 +42,10 @@ def _coverage_line(summary: dict) -> str:
     if not summary or not summary.get("eligible"):
         return str(summary.get("status", "not measured"))
     return (
-        f"{summary['career_page_read']:,}/{summary['eligible']:,} eligible fighters "
-        f"({summary['career_page_share']:.1%}) have a whole-career page; median recorded "
-        f"pre-UFC bouts {summary['median_pre_ufc_bouts_read']:.0f} read vs "
-        f"{summary['median_pre_ufc_bouts_unread']:.0f} unread. Run "
+        f"{summary['whole_career_merged']:,}/{summary['eligible']:,} eligible fighters "
+        f"({summary['whole_career_share']:.1%}) have whole-career rows merged; "
+        f"median recorded pre-UFC bouts {summary['median_pre_ufc_bouts_merged']:.0f} merged "
+        f"vs {summary['median_pre_ufc_bouts_unmerged']:.0f} unmerged. Run "
         f"build_sherdog_careers.py if the share is low."
     )
 

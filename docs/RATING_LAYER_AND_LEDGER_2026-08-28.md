@@ -26,6 +26,11 @@ next is measured on.
 - Tests are run by holding out later fights, fitting on earlier ones only, and
   resampling whole events rather than individual bouts. Nothing that scores a
   version is allowed to have been used to tune it.
+- **The result tables below are the evidence.** Each measurement was produced by
+  a one-off research script writing to a local working folder; those raw files
+  are working material and are not part of the repository, so they are not cited
+  here. Where a finding is also enforced in code, the test that enforces it is
+  named, and running it is the way to check the claim.
 
 ---
 
@@ -43,8 +48,9 @@ the career score moves with them. The 0.175 was chosen to reproduce the old
 setting, not to introduce a new one: the typical yearly spread in this dataset is
 142.0 Elo, giving a softness of 24.9 Elo against the old fixed 25.
 
-**Checked on the real fitted history, not a toy example**
-(`out/career_scale_equivariance.csv`):
+**Checked on the real fitted history, not a toy example.** The property is held
+in place by
+`tests/test_symon_score.py::test_relative_hinge_is_scale_equivariant_for_the_full_rank_vector`:
 
 | rating multiplier | same order? | fighters moved | largest score error |
 |---|---|---:|---:|
@@ -55,9 +61,11 @@ setting, not to introduce a new one: the typical yearly spread in this dataset i
 
 95,412 fighter-years, and the top 100 is identical at every multiplier. The old
 behaviour is still available exactly: setting `hinge_scale=DEFAULT_HINGE_SCALE`
-reproduces all **33,692** stored scores with **zero** differences
-(`out/career_fixed_hinge_compatibility.csv`). The two modes cannot both be set;
-asking for both raises an error.
+reproduced all **33,692** stored scores of that build with **zero** differences,
+which
+`tests/test_symon_score.py::test_fixed_hinge_compatibility_mode_reproduces_the_prior_published_call`
+checks on every run. The two modes cannot both be set; asking for both raises an
+error.
 
 **What this means for the rest of this document.** An older archived experiment
 concluded that raising the model's prior weight promoted journeymen — "Travis
@@ -113,8 +121,8 @@ Ranking accuracy (AUC) 0.7041 → 0.7067.
 ## 3. The UFC-versus-outside gap: measured, explained, deliberately not applied
 
 Out of sample, the ratings are well calibrated **within** each pool of fighters
-and misplaced **between** them. Re-measured under the new settings
-(`out/pool_selection_offsets.csv`, seven cut-offs, 120-day windows, 600 resamples):
+and misplaced **between** them. Re-measured under the new settings, over seven cut-offs, 120-day windows and
+600 resamples:
 
 | group | n | gap (Elo) | 95% CI | resamples positive |
 |---|---:|---:|---|---:|
@@ -148,9 +156,7 @@ the résumé score, never in the ratings. See §4.3.
 ## 4. Judge the fight, not only the opponent
 
 Seven cut-offs, 120-day scoring windows, 18 variants, a full model refit for each
-variant at each cut-off. 2,039 held-out fights across 371 events
-(`out/fight_information_scores.csv`,
-`out/fight_information_paired_event_bootstrap.csv`).
+variant at each cut-off. 2,039 held-out fights across 371 events.
 
 ### 4.1 REJECTED — "a title fight tells us more" is simply false
 
@@ -236,8 +242,8 @@ from inside the model cannot see, because the model has no pool setting and each
 fighter's own rating absorbs the gap. Only an out-of-sample measurement can see
 it.
 
-**Measured effect** on the rebuilt ratings with everything else held fixed
-(`out/pool_priced_title_quality.parquet`). Title résumé value:
+**Measured effect** on the rebuilt ratings with everything else held fixed.
+Title résumé value:
 
 | fighter | no offset | offset 54 | change |
 |---|---:|---:|---:|
@@ -257,8 +263,7 @@ against rise together.
 
 **What the outside check says, honestly.** A score that never predicts a fight
 cannot be judged on prediction error, so this project's fallback is agreement
-with published all-time lists. That check **does not resolve**
-(`out/pool_offset_anchor_agreement.csv`):
+with published all-time lists. That check **does not resolve**:
 
 | list | n | agreement, 0 → 54 | change | 95% CI | resolves? |
 |---|---:|---|---:|---|---|
@@ -314,8 +319,9 @@ carries across is not something we measured.
 
 ## 5. Men and women are ranked on separate boards
 
-Men's and women's fights form **two completely separate networks** — 0 of 80,697
-rated fights and 0 shared opponents connect them — so adding a constant to every
+Men's and women's fights form **two completely separate networks** — 0 of the
+81,281 rated fights and 0 shared opponents connect them, re-checked after the
+2026-09-02 corpus completion — so adding a constant to every
 women's rating changes no predicted fight outcome at all. The gap between the two
 levels is set by an assumption, not by evidence. It is not small: on 2026-08-25,
 sliding that assumption from −200 to +200 Elo moved total women's career mass
@@ -450,34 +456,8 @@ and the coin flip on the published data, and its AUC of 0.7032 lands where the
 settings refit put it independently (0.7067 on 7,641 fights). Two different
 harnesses agreeing on the same model.
 
-## 6. What is still open
+## 6. Open work
 
-- **`WHR_W2_PER_DAY` is still an assumption.** It was measured and did not
-  resolve, so the risk it was meant to close is not closed.
-- **The rating problem is untouched, and re-measuring after this pass says so
-  plainly.** Seika Izawa is now rated **+319** above the best fighter she has
-  ever faced (it was +269 before the coverage repair) and Khabib **+206** (was
-  +192). The résumé correction moved the *board*; it did not touch the rating
-  that produces those gaps. The two contender bars used in different parts of the
-  code are still different measures, and the condition set on 2026-08-26 — "fix
-  the rating, then unify the bar" — is still unmet, so they stay different.
-- **77 fighters still have incomplete records** because Sherdog's search could
-  not resolve their name. That is a name-matching problem, not a crawling one.
-- **The +274 Elo pre-signing effect is not modelled**, deliberately. It is only
-  knowable after the fact, and pricing an achievement by who was later signed
-  would be hindsight dressed up as a résumé.
-- **The exposure path still uses the hand-typed promotion table.** The measured
-  correction was applied to the **title** path, where the problem was
-  demonstrated. Nothing was shown to be wrong with the exposure path — it already
-  orders Oliveira 565 against Freire 322 — but "measured, not typed" is only half
-  done. Extending the correction there is a separate change needing its own
-  measurement.
-- **The intended ordering comes out in aggregate, not term by term.** "UFC title
-  > top UFC opposition > top outside opposition > regular UFC > regular outside"
-  now falls out of the title and schedule components together. No single term
-  encodes it, and none should — a hand-written ladder is exactly the arbitrary
-  exchange rate this score exists to avoid.
-- **The outside lists are too small to settle anything but a large reordering.**
-  Ten to thirty-four names cannot resolve a résumé change. Any change that needs
-  outside validation needs a bigger outside reference than this project currently
-  has.
+This document owns the implemented method and the evidence behind it. The live
+list of unresolved model choices, data work and accepted limitations is kept once,
+in [Open decisions](DECISIONS.md).

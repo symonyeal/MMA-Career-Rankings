@@ -39,9 +39,15 @@ no page at all, and keying off the cache would make a second run merge nothing.
 Cached pages cost no network, so re-running is free and idempotent.
 
 Run of 2026-08-27: 1,278 targets, 1,057 ids already known from the corpus and
-221 needing a fightfinder search, of which 77 could not be resolved and stay
-truncated. Corpus 63,813 -> 80,902 bouts; coverage of the eligible roster
-30.0% -> 95.6%.
+221 needing a fightfinder search, of which 77 could not be resolved. Corpus
+63,813 -> 80,902 bouts.
+
+Completion pass of 2026-09-02: the careers merged in the first pass named most
+of those 77 as opponents, which made them identifiable, so repeated runs closed
+all but four. Coverage of the eligible roster is 1,821 of 1,825, 99.8%. The four
+that remain -- Leonardo Mafra, Thiago Perpetuo, Marcos Vinicius, Ozzy Diaz --
+are names the search cannot separate from other fighters carrying them, and
+this builder has no way to be handed an id by hand.
 
 Usage::
 
@@ -67,6 +73,8 @@ from loaders.career_coverage import (  # noqa: E402
     coverage_rows,
     coverage_summary,
     describe,
+    incorporated_page_ids,
+    record_incorporated_page_ids,
 )
 from loaders.majors_scope import (  # noqa: E402
     DEFAULT_MAJORS_DIR,
@@ -118,9 +126,9 @@ def coverage_table(
     canonical_fights: pd.DataFrame,
     corpus_fights: pd.DataFrame,
     identity: pd.DataFrame,
-    majors_dir: Path,
+    merged_ids: set[str],
 ) -> pd.DataFrame:
-    """One row per UFC fighter: what the corpus holds, and whether it was read."""
+    """One row per UFC fighter: what the corpus holds and has incorporated."""
     resolved = identity[identity["join_method"].ne("unjoined")]
     return coverage_rows(
         canonical_fights,
@@ -130,7 +138,7 @@ def coverage_table(
             .drop_duplicates("canonical_name")
             .set_index("canonical_name")["_id"]
         ),
-        read_ids=cached_page_ids(Path(majors_dir) / "fighters"),
+        merged_ids=merged_ids,
     )
 
 
@@ -152,27 +160,24 @@ def main() -> dict:
     identity = resolve_identities(bouts, canonical)
     staged = to_canonical_fights(bouts, identity)
     corpus = pd.concat([canonical, staged], ignore_index=True, sort=False)
-    table = coverage_table(canonical, corpus, identity, majors_dir)
-
     # "Needs reading" is decided by whether the fighter's career rows are in the
     # CORPUS, not by whether their HTML is on disk. A cached page whose rows were
     # never merged is exactly as truncating as no page at all, and defining the
     # work from the cache makes the builder non-idempotent: a second run would
     # see every page cached and merge nothing.
-    merged_ids = set(
-        bouts.loc[bouts["source"].eq("fighter_page"), "fighter_a_id"].dropna().astype(str)
-    )
+    merged_ids = incorporated_page_ids(majors_dir, bouts)
+    table = coverage_table(canonical, corpus, identity, merged_ids)
     eligible = table[table["ufc_bouts"] >= args.min_ufc_bouts].copy()
-    eligible["career_rows_merged"] = (
-        eligible["sherdog_id"].astype("string").fillna("").isin(merged_ids)
-    )
-    todo = eligible[~eligible["career_rows_merged"]]
+    todo = eligible[~eligible["whole_career_merged"]]
+    cached_ids = cached_page_ids(majors_dir)
     report = {
         "min_ufc_bouts": int(args.min_ufc_bouts),
         "ufc_fighters": int(len(table)),
         "eligible": int(len(eligible)),
-        "already_read": int(eligible["career_page_read"].sum()),
-        "already_merged": int(eligible["career_rows_merged"].sum()),
+        "already_cached": int(
+            eligible["sherdog_id"].astype("string").fillna("").isin(cached_ids).sum()
+        ),
+        "already_merged": int(eligible["whole_career_merged"].sum()),
         "to_read": int(len(todo)),
         "id_known": int(todo["sherdog_id"].notna().sum()),
         "id_unknown": int(todo["sherdog_id"].isna().sum()),
@@ -210,7 +215,7 @@ def main() -> dict:
             print(f"  search {n}/{len(missing)}  resolved={len(ids)}", flush=True)
     report["search_resolved"] = len(ids) - int(todo["sherdog_id"].notna().sum())
     report["search_unresolved"] = len(unresolved)
-    report["unresolved_names"] = unresolved[:50]
+    report["unresolved_names"] = unresolved
 
     if args.limit:
         ids = ids[: args.limit]
@@ -221,14 +226,17 @@ def main() -> dict:
         careers["fighter_a"] = careers["fighter_a"].fillna(subject)
         report["subject_names_filled"] = int(subject.notna().sum())
     report["career_rows_fetched"] = int(len(careers))
-    report["unreachable"] = list(careers.attrs.get("unreachable", []))[:50]
+    report["unreachable"] = list(careers.attrs.get("unreachable", []))
 
     if not careers.empty:
         path = majors_dir / MAJORS_CAREERS
         merged = align_to_stored_schema(merge_careers(bouts, careers), pd.read_parquet(path))
         merged.to_parquet(path, index=False)
+        parsed_ids = set(careers["fighter_a_id"].dropna().astype(str))
+        record_incorporated_page_ids(majors_dir, merged_ids | parsed_ids)
         report["bouts_after"] = int(len(merged))
         report["bouts_added"] = int(len(merged) - len(bouts))
+        report["career_pages_incorporated"] = int(len(merged_ids | parsed_ids))
         report["artifact"] = str(path)
     else:
         report["bouts_after"] = int(len(bouts))

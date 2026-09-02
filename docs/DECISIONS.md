@@ -1,9 +1,9 @@
-# Open decisions and settled ground
+# Open decisions, remaining data work and settled ground
 
-The one register. What is still wrong, what has already been tried and refused,
-and the rules a change has to meet. Two separate registers were kept until
-2026-09-01 and repeated six of seven refusals word for word; they are in
-`_archive/20260901-lean-pass/docs/` with the analysis that produced them.
+The one register for unresolved model choices, remaining data work, accepted
+limitations and changes already tried and refused. Two separate registers were
+kept until 2026-09-01 and repeated six of seven refusals word for word; they are
+in `_archive/20260901-lean-pass/docs/` with the analysis that produced them.
 
 How the engine works is a different document:
 [How the ratings and the score are built](RATING_LAYER_AND_LEDGER_2026-08-28.md).
@@ -21,47 +21,140 @@ Where the data comes from is [Source Matrix](../data/SOURCE_MATRIX.md).
 - **Report unresolved as unresolved.** An earlier assessment is handed to you to
   attack, this document included.
 
-## Open
+## Open model and score decisions
 
-1. **Title pricing, not the cliff, is the case that is clearly wrong.** Jiri
-   Prochazka sits at 139 and no weighting reaches him: 139 at achievement weight
-   0.30, 140 at 0.50. Both his title wins are over opponents below their
-   division's bar (Lawal 1679 against 1827, weight 0.008; Teixeira 1855 against
-   1868, weight 0.054) while all three title losses are against opponents above
-   it (0.229 / 0.215 / 0.206). His losses price at ten times his wins and the
-   résumé counts only wins. On top of that, 19 of his 40 rated fights carry no
-   promotion label and drop to the lowest tier factor of 0.20, giving him an
-   exposure factor of 0.730 against a top-100 median of 0.87. Forcing that to 1.0
-   moves him to 110. A former champion pricing at 0.008 is the defect; zero for
-   someone who never won a title is what a championship term should say.
-2. **The ratings themselves are the largest error, and nothing here fixes them.**
-   Seika Izawa is rated 319 points above the best fighter she has ever faced;
-   Khabib Nurmagomedov 206. Every board reads that error, and a higher bar reads
-   it more sensitively, not less.
-3. **A single upset can still climb.** Matt Serra moved 77 to 60 on one contender
+1. **Title pricing is the case that is clearly wrong, and the obvious fix does
+   not fix it.** Jiri Prochazka sits at 146 on the completed corpus. His title
+   record, priced bout by bout:
+
+   | date | opponent | result | opponent rating | division bar | weight | promotion |
+   |---|---|---|---:|---:|---:|---|
+   | 2019-04-21 | Muhammed Lawal | **won** | 1678 | 1827 | **0.008** | RIZIN (tier 2) |
+   | 2022-06-11 | Glover Teixeira | **won** | 1879 | 1865 | **0.073** | UFC (tier 1) |
+   | 2023-11-11 | Alex Pereira | lost | 2022 | 1877 | 0.236 | UFC |
+   | 2024-06-29 | Alex Pereira | lost | 2023 | 1885 | 0.225 | UFC |
+   | 2026-04-11 | Carlos Ulberg | lost | 2047 | 1918 | 0.210 | UFC |
+
+   His losses price at roughly three times his wins, and the résumé counts only
+   wins. Separately, 18 of his 39 rated fights carry no promotion label and drop
+   to the lowest tier factor of 0.20, giving him an exposure factor of 0.734
+   against a top-100 median of 0.891.
+
+   **A minimum credit for a major championship was measured on 2026-09-02 and
+   does not reach him.** Pricing a title win at `floor + (1 - floor) * q**4`,
+   over 653 priced title wins of which 614 are in a tier-1 promotion:
+
+   | floor and gate | top 100 scoring zero on titles | agreement, elite wins | agreement, Prime | Prochazka | Serra |
+   |---|---:|---:|---:|---:|---:|
+   | none — current | 16 | 0.5911 | 0.5312 | 146 | 60 |
+   | 0.05, major promotions only | 14 | 0.6055 | 0.5238 | 146 | 70 |
+   | 0.10, major promotions only | 14 | 0.6114 | 0.5210 | 144 | 74 |
+   | 0.10, any title | 14 | 0.6123 | 0.5205 | 133 | 74 |
+
+   The reason is in the first table. Prochazka's RIZIN belt is tier 2, so a floor
+   restricted to recognised major championships never touches it, and his one
+   major title win is already priced above every floor tried. He reaches 133 only
+   under the promotion-blind gate, which is the judgement the major gate exists
+   to avoid. Two things the measurement does settle: the floor cuts fighters
+   scoring zero on the title term from 16 to 14, and it does **not** revive
+   single-upset padding — Matt Serra *falls*, 60 to 74, because a floor paid to
+   every champion dilutes a career built on one exceptional win. All sixteen
+   outside-list intervals straddle zero, so that check cannot separate any of
+   these from the baseline. Harness:
+   `Claude Func Folder\ufc-rank-engine\py\title_floor_shapes.py`.
+2. **The ratings themselves are the largest error, and completing the data fixed
+   part of it.** Measured as a fighter's final rating minus the final rating of
+   the strongest opponent they ever faced:
+
+   | fighter | before career completion | after | why |
+   |---|---:|---:|---|
+   | Seika Izawa | +319 | **+320** | her record was already complete; nothing was added |
+   | Khabib Nurmagomedov | +206 | **+160** | rated on 14 fights before, 30 after |
+
+   That is the coverage argument confirming itself: the fighter whose record was
+   truncated moved, the fighter whose record was already whole did not. The gap
+   that remains is the real one, and every board still reads it.
+3. **A single upset can still climb.** Matt Serra sits at 60 on one contender
    win, and keeps rising as the achievement weight rises — 60 / 49 / 43 / 40 at
    0.30 / 0.40 / 0.50 / 0.60. The weights are owner policy, but this is what
-   raising the achievement weight buys.
+   raising the achievement weight buys. The title floor in item 1 moves him the
+   other way.
 4. **The promotion table is typed in by hand** and multiplies both quality
    components. It is not fitted to anything. A measurement on 2026-09-01 found no
    *further* promotion term is needed — after the +54 correction a UFC title win
    prices at 0.119 against Bellator's 0.059, difference +0.061, CI95 [+0.044,
    +0.078] — but the table itself was never justified.
+
+   **What an unlabelled bout is worth is the live half of this.** After the
+   2026-09-02 label repair, 64.5% of rated bouts still carry no promotion, and
+   the published rule reads every one of them as the lowest tier, 0.20 — the same
+   number a genuinely small show gets. Measured three ways on identical inputs:
+
+   | unlabelled bout treated as | top 100 with no UFC bout | agreement, elite wins | agreement, Prime |
+   |---|---:|---:|---:|
+   | lowest tier, 0.20 — current | 2 | 0.5911 | 0.5312 |
+   | left out of the average | 2 | 0.5957 | **0.5581** |
+   | recognised regional, 0.42 | 2 | 0.5975 | 0.5406 |
+
+   Leaving unlabelled bouts out of the average is the only one of the three that
+   improves agreement with *both* references, and none of the three re-opens the
+   failure that refuted removing exposure altogether on 2026-08-27: fighters with
+   no UFC bout in the top 100 stay at 2 throughout. No outside list resolves any
+   of it. This is an owner policy choice rather than a measurement result, which
+   is why it is recorded here and not shipped. Harness:
+   `Claude Func Folder\ufc-rank-engine\py\exposure_unknown_shapes.py`.
 5. **Two contender bars, not one.** The résumé uses the absolute contender line;
    the title résumé uses a division-year quantile. Unifying them was measured and
    reverted on 2026-08-26 for reasons that still hold: fix the rating first.
-6. **`WHR_W2_PER_DAY` is an assumption, not a fitted value.** 0.0002 was measured
-   and did not resolve.
-7. **The rank-context window is live in the model fit, and its ceiling is small.**
-   Across 161,196 appearances the factor does nothing on 94.02% and is the
-   largest of four factors on 3.28%. The clip to fifteen places binds on 92.82%
-   of rows with a known division size, and the division size is unknown on 47.64%
-   of appearances, so the share rule cannot fire on nearly half the table at any
-   value. Repairing it changes window membership on 2,830 rows and is the largest
-   factor on 1,214 — 0.75% of appearances. Budget any re-rate against that.
-8. **77 fighters are still truncated** because Sherdog's search could not resolve
-   their name. The builder's report lists them. A name-matching problem, not a
-   crawling one.
+6. **`WHR_W2_PER_DAY` is bounded below but still not fitted from above.**
+   How fast a rating is allowed to drift between fights is the one production
+   setting a held-out test can actually choose, so it was re-measured on the
+   completed corpus (2026-09-02: seven rolling origins, 180-day scoring windows,
+   temperature learned only on earlier folds, event bootstrap, 1,417 events and
+   4,060 scored bouts).
+
+   | drift setting | log loss against 0.0004 | 95% CI | resolves? |
+   |---|---:|---|---|
+   | 0.0002 | **+0.00178** worse | [+0.00033, +0.00323] | **yes — worse** |
+   | 0.0008 | +0.00161 worse | [−0.00033, +0.00349] | no |
+
+   Brier agrees on both rows. This closes half the question and leaves the other
+   half open: halving the drift is now *resolved worse*, where the 2026-08-28
+   refit could only say it did not resolve, so the setting is no longer free to
+   move down. Doubling it is still merely unresolved, so nothing has bounded it
+   from above. **0.0004 stays**, because a setting change ships only on a
+   resolved improvement and there is none. Harness:
+   `Claude Func Folder\ufc_whr_drift_recalibration.py`.
+
+## Remaining data work
+
+7. **Four eligible fighter careers are still unmerged, and all four are identity
+   failures.** Leonardo Mafra, Thiago Perpetuo, Marcos Vinicius and Ozzy Diaz
+   have three or four UFC bouts each and no resolvable Sherdog id, so the corpus
+   holds only their UFC record. Merged coverage is 1,821 of 1,825 eligible
+   careers, 99.8%. Sherdog's fightfinder search cannot separate these names from
+   other fighters carrying them, and the builder has no way to be handed an id:
+   it uses ids that already appear in the corpus, or ids its own search finds.
+   Fixing these four therefore means adding a hand-checked-id entry point, not
+   crawling harder. `identity_overrides.csv` does not help — it maps a Sherdog
+   *name* to a canonical name, which presupposes the page was already found.
+   Four careers of 1,825 cannot move a published rank, which is why this is the
+   point at which crawling stopped.
+
+## Accepted limitations and clarifications
+
+8. **The rank-context window reaches nothing published.** An earlier version of
+   this register called it "live in the model fit". That was wrong, and the
+   correction matters because it retires the item rather than answering it. The
+   published fit takes one shared bout weight and the staged method score; the
+   side-specific performance weights that carry `perf_factor_rank_context` are
+   retired and say so in their own module. The window survives in exactly three
+   places, none of them published: the retired performance-weight audit table,
+   the diagnostic division résumé, and `public_legacy_rank_context_win_mass`,
+   which is reported beside the all-time score and deliberately excluded from
+   it. Its measured ceiling — the factor does nothing on 94.02% of 161,196
+   appearances — was therefore a ceiling on an audit column. Changing the window
+   cannot move a rating or a board, so do not budget a re-rate against it.
 9. **About 17% of filled weight classes are wrong for that particular fight.**
    That is the price of the 2026-08-28 schedule repair, paid knowingly.
 10. **Three duplicate-date pairs are recorded, not fixed.** One is a genuine
@@ -143,8 +236,16 @@ only list with real power, and both are flat to slightly negative on it.
 Report movement of the fighters under discussion plus Magny, Maia, Dariush and
 Anthony Johnson; the count of top-100 fighters with a zero title component before
 and after; agreement between the score and elite wins and between the score and
-Prime, currently 0.722 and 0.637; and agreement with all three outside lists,
-each with its confidence interval and a statement of what that check can detect.
+Prime; and agreement with all three outside lists, each with its confidence
+interval and a statement of what that check can detect.
+
+Those two agreement figures are **0.5911 and 0.5312** as of 2026-09-02. Do not
+compare them with the 0.722 and 0.637 this section used to quote. Both are
+measured over a population held fixed across variants, and the population
+changed: the preserved 2026-09-01 incumbent board those numbers were computed on
+was swept in the lean pass, so the fixed population is now the current baseline
+top 100. A number measured over a different set of fighters is a different
+number, not a worse board.
 
 ## Rebuild and verify
 

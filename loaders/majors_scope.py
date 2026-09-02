@@ -31,19 +31,17 @@ is structural rather than a defect: this corpus back-fills careers that are
 largely over before the 2010+ evaluation window opens. **It is justified on
 completeness, explicitly, and never on prediction.**
 
-One caution that travels with any board built from it: the 0.9 year bar was
-calibrated on the UFC-only population (~60 fighter-years of ~578). Here the same
-quantile admits 197-419. See the note above ``DEFAULT_CAREER_REFERENCE`` in
-``ratings/symon_score.py``.
+The table used the predecessor 0.9-quantile career bar. Production now preserves
+its intended capacity directly with ``contender:60``; the rationale is above
+``DEFAULT_CAREER_REFERENCE`` in ``ratings/symon_score.py``.
 
-No organisation weight is applied, here or anywhere. Relative promotion
-strength is an output of the joint fit, read off the fighters who crossed
-between promotions; a weight would assert the answer the fit exists to
-estimate.
+No organisation weight is applied to the rating likelihood. Relative promotion
+strength is an output of the joint fit, read from fighters who crossed between
+promotions. The published career score separately uses an explicit promotion
+exposure factor; ``docs/DECISIONS.md`` records that open policy choice.
 """
 from __future__ import annotations
 
-import gzip
 import re
 from pathlib import Path
 
@@ -51,10 +49,10 @@ import numpy as np
 import pandas as pd
 
 from loaders.career_coverage import (
-    cached_page_ids,
     coverage_rows,
     coverage_summary,
     describe,
+    incorporated_page_ids,
     is_coverage_symmetric,
 )
 from loaders.crossorg_identity import (
@@ -63,6 +61,8 @@ from loaders.crossorg_identity import (
     resolve_by_bout_evidence,
     resolve_collisions,
 )
+from loaders.fightmatrix_organizations import normalize_organization
+from loaders.page_cache import open_cache
 from loaders.sherdog_loader import classify_method
 from project_helpers import normalize_name_key
 
@@ -192,10 +192,35 @@ def to_canonical_fights(bouts: pd.DataFrame, identity: pd.DataFrame) -> pd.DataF
         + "::" + joined["fighter_b_id"].astype(str)
     )
 
+    # Fighter pages carry the event name and date even when they lack a separate
+    # promotion field. Recover only labels matched by the committed, time-aware
+    # rules; an unresolved event stays unknown rather than being guessed.
+    organizations = joined["org"].astype("object").copy()
+    missing_org = organizations.isna()
+    if missing_org.any():
+        events = (
+            joined.loc[missing_org, ["event_id", "event_name", "event_date"]]
+            .drop_duplicates("event_id")
+        )
+        inferred = {}
+        for event_id, event_name, event_date in events.itertuples(index=False, name=None):
+            match = normalize_organization(event_name, event_date)
+            if match["canonical_organization"] != "Unknown":
+                inferred[event_id] = match["canonical_organization"]
+        organizations.loc[missing_org] = joined.loc[missing_org, "event_id"].map(inferred)
+
+    event_names = joined["event_name"].astype("object").copy()
+    declared_org = joined["org"].notna()
+    event_names.loc[declared_org] = (
+        joined.loc[declared_org, "org"].astype(str)
+        + " | "
+        + joined.loc[declared_org, "event_name"].astype(str)
+    )
+
     out = pd.DataFrame({
         "fight_url": fight_url,
         "event_url": "sherdog-event::" + joined["event_id"].astype(str),
-        "event_name": joined["org"].astype(str) + " | " + joined["event_name"].astype(str),
+        "event_name": event_names,
         "event_date": joined["event_date"],
         "event_location": joined.get("event_location"),
         "fighter_a": joined["fighter_a"],
@@ -215,7 +240,7 @@ def to_canonical_fights(bouts: pd.DataFrame, identity: pd.DataFrame) -> pd.DataF
         "end_time_seconds": joined.get("end_time_seconds"),
         "referee": joined.get("referee"),
         "details_text": "",
-        "org": joined["org"],
+        "org": organizations,
         "source": "sherdog_majors",
         # Never an organisation weight. See the module docstring.
         "org_weight": 1.0,
@@ -232,7 +257,7 @@ def _build_majors_fights(
     canonical_fights: pd.DataFrame,
     *,
     majors_dir: Path = DEFAULT_MAJORS_DIR,
-) -> tuple[pd.DataFrame, dict, pd.DataFrame]:
+) -> tuple[pd.DataFrame, dict, pd.DataFrame, set[str]]:
     """The majors scope as canonical-shaped rows, plus a coverage report."""
     bouts = load_majors_bouts(majors_dir)
     identity = resolve_identities(bouts, canonical_fights)
@@ -255,7 +280,8 @@ def _build_majors_fights(
         "promotions_named": int(fights["org"].notna().sum()),
         "promotions_unnamed": int(fights["org"].isna().sum()),
     }
-    return fights, report, identity
+    merged_ids = incorporated_page_ids(majors_dir, bouts)
+    return fights, report, identity, merged_ids
 
 
 def build_majors_fights(
@@ -264,7 +290,7 @@ def build_majors_fights(
     majors_dir: Path = DEFAULT_MAJORS_DIR,
 ) -> tuple[pd.DataFrame, dict]:
     """Public two-value form retained for callers that do not need identity."""
-    fights, report, _ = _build_majors_fights(
+    fights, report, _, _ = _build_majors_fights(
         canonical_fights, majors_dir=majors_dir
     )
     return fights, report
@@ -278,15 +304,12 @@ def sherdog_birth_dates(
     """Birth dates from cached Sherdog profiles, under resolved rating names."""
     names = identity.set_index(identity["sherdog_id"].astype(str))["canonical_name"]
     rows = []
-    for path in sorted(Path(cache_dir).glob("*.html.gz")):
-        fighter_id = path.name.split(".", 1)[0]
+    with open_cache(cache_dir) as cache:
+        pages = list(cache.items("fighters"))
+    for fighter_id, html in pages:
         if fighter_id not in names.index:
             continue
-        try:
-            with gzip.open(path, "rt", encoding="utf-8", errors="ignore") as handle:
-                match = _BIRTH_DATE_RE.search(handle.read())
-        except OSError:
-            continue
+        match = _BIRTH_DATE_RE.search(html)
         if match is None:
             continue
         dob = pd.to_datetime(match.group(1).strip(), errors="coerce")
@@ -315,9 +338,11 @@ def stage_majors_scope(
     """Write ``majors_fights.parquet`` beside the snapshot it belongs to."""
     snapshot_dir = Path(snapshot_dir)
     canonical = pd.read_parquet(snapshot_dir / "canonical_fights.parquet")
-    fights, report, identity = _build_majors_fights(canonical, majors_dir=majors_dir)
+    fights, report, identity, merged_ids = _build_majors_fights(
+        canonical, majors_dir=majors_dir
+    )
     fights.to_parquet(snapshot_dir / SNAPSHOT_ARTIFACT, index=False)
-    cache_dir = Path(majors_dir) / "fighters"
+    cache_dir = Path(majors_dir)
     births = sherdog_birth_dates(identity, cache_dir=cache_dir)
     births.to_parquet(snapshot_dir / SHERDOG_BIRTH_DATES_ARTIFACT, index=False)
     report["birth_dates"] = int(len(births))
@@ -335,7 +360,7 @@ def stage_majors_scope(
             .drop_duplicates("canonical_name")
             .set_index("canonical_name")["_id"]
         ),
-        read_ids=cached_page_ids(cache_dir),
+        merged_ids=merged_ids,
     )
     coverage.to_parquet(snapshot_dir / CAREER_COVERAGE_ARTIFACT, index=False)
     summary = coverage_summary(coverage)

@@ -13,8 +13,8 @@ The skill career functional is Symon Career Skill Mass: the sum of positive
 annual WHR skill above that year's global contender line, with at most one
 contribution per active year -- a skill *diagnostic*, not the public board.
 The published all-time board is Public Legacy Score: exposure-adjusted career
-skill mass plus a separate, auditable championship resume ledger and schedule
-context. Prime is the fixed ten-year WHR window.
+skill mass plus auditable championship and contender-win ledgers. Prime is the
+fixed ten-year WHR window.
 """
 from __future__ import annotations
 
@@ -74,6 +74,7 @@ from ratings.scope import (  # noqa: F401
     UFC_ONLY,
     merge_scope,
     scope_guard,
+    scope_sources,
 )
 from loaders.career_coverage import coverage_summary, is_coverage_symmetric
 from loaders.combined_fights import (
@@ -150,6 +151,24 @@ def _career_coverage_summary(snapshot_dir: Path) -> dict:
         return {"status": "not measured; stage the majors scope to produce it"}
     summary = coverage_summary(pd.read_parquet(path))
     summary["symmetric"] = bool(is_coverage_symmetric(summary))
+    return summary
+
+
+def _require_career_coverage(snapshot_dir: Path, scope: str) -> dict:
+    """Refuse a majors fit whose whole-career coverage was not proved."""
+    summary = _career_coverage_summary(snapshot_dir)
+    if "majors" not in scope_sources(scope):
+        return summary
+    if "status" in summary:
+        raise ValueError(
+            "the majors scope requires a career-coverage audit; "
+            "run stage_majors_scope before rating"
+        )
+    if not summary.get("symmetric", False):
+        raise ValueError(
+            "the majors scope has asymmetric whole-career coverage; "
+            "run build_sherdog_careers.py before rating"
+        )
     return summary
 
 
@@ -538,6 +557,7 @@ def run(
                 "do not supply both"
             )
         scope = "fightmatrix"
+    career_coverage = _require_career_coverage(snapshot_dir, scope)
     # One authoritative fight table, written at every corpus the snapshot
     # staged, then filtered to the scope this run is allowed to rate. The
     # artifact used to be written at the *run's* scope, so a UFC-only run
@@ -814,10 +834,7 @@ def run(
     ):
         legacy_path = snapshot_dir / legacy
         if legacy_path.exists():
-            try:
-                legacy_path.unlink()
-            except OSError:
-                pass
+            legacy_path.unlink()
 
     # ------------------------------------------------------------------
     # Reporting
@@ -894,7 +911,7 @@ def run(
         # low-loss Bradley-Terry record has no interior maximum, so its rating
         # grows with how many of the fighter's bouts the corpus happens to
         # hold; a run built on asymmetric coverage is reading that as skill.
-        "career_coverage": _career_coverage_summary(snapshot_dir),
+        "career_coverage": career_coverage,
         "ped_confirmed_fights": int(integrity["ped_confirmed"].fillna(False).sum()),
         "dq_fights": int(integrity["is_dq"].fillna(False).sum()),
         "missed_weight_fights": int(integrity["missed_weight"].fillna(False).sum()),

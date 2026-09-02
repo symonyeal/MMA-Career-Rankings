@@ -1195,15 +1195,20 @@ def public_legacy_score_rows(
     above :data:`LEGACY_ACHIEVEMENT_WEIGHT` for what the previous divide-by-max
     silently did instead.
 
-    ``history`` is the appearance-level WHR table. **Without it both the title
-    and the contender resume are zero for everyone**, which silently reduces the
-    board to skill alone -- callers that want the published board must pass it.
+    ``source_fights`` and ``history`` are required. Omitting either used to
+    produce a plausible but different skill-only board, so an omitted input now
+    raises. Pass an empty frame explicitly only when testing an empty ledger.
 
     The resume ledger is intentionally auditable. It repairs the product-label
     bug without mutating the latent rating model.
     """
     if current is None or current.empty or skill_col not in current.columns:
         return _empty()
+    if source_fights is None or history is None:
+        raise ValueError(
+            "public legacy scoring requires source_fights and history; "
+            "pass empty frames explicitly only for an empty-ledger diagnostic"
+        )
 
     out = current[["fighter", skill_col]].copy()
     out = out.rename(columns={skill_col: "public_legacy_skill_mass"})

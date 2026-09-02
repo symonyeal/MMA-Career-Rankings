@@ -1,5 +1,64 @@
 # Snapshot Changelog
 
+## 2026-09-02 - Careers completed, promotions relabelled, ratings rebuilt
+
+**The rankings changed.** The corpus grew and the ratings were refitted on it.
+No scoring rule and no model setting was changed.
+
+Broken readers repaired first, because everything after this depended on them:
+
+- Reconnected career coverage and Sherdog birth-date staging to the consolidated
+  SQLite page store introduced on 2026-09-01. The broken paths reported zero
+  coverage and zero Sherdog birth dates; the repaired readers find 5,702 fighter
+  pages and 4,722 resolved birth dates.
+- Made the coverage audit measure whole-career rows merged into the corpus, not
+  merely pages cached. A cached page whose rows never merged truncates a career
+  exactly as much as no page at all.
+
+Then the data was completed:
+
+- Repeated builder runs closed all but four of the 77 careers the 2026-08-27
+  crawl could not resolve. The careers merged in the first pass named the missing
+  fighters as opponents, which made them identifiable. Whole-career coverage of
+  the eligible roster is now **1,821 of 1,825, 99.8%**, up from 95.5%. The four
+  that remain — Leonardo Mafra, Thiago Perpetuo, Marcos Vinicius, Ozzy Diaz — are
+  names Sherdog's search cannot separate from namesakes.
+- Recovered a promotion for **22,874 fights** that carried none, by matching the
+  event name against the committed, time-aware rules. An event the rules do not
+  match stays unknown rather than being guessed; 52,802 rows remain unlabelled.
+- Fixed promotion normalization so a label the pipeline itself writes is read
+  back as the same label. `Major Regional` names a family whose rule pattern
+  lists the promotions in it, so storing the canonical name and reading it back
+  returned `Unknown` and priced the fight at the lowest tier, 0.20 instead of
+  0.42. **6,081 rated fights were affected.** Nothing failed; the exposure factor
+  was simply wrong. `tests/test_legacy_resume.py` now states that shape.
+
+Then the model settings were re-tested and the ratings rebuilt:
+
+- Re-measured the rating drift setting on the completed corpus over seven rolling
+  origins, 1,417 events and 4,060 held-out fights. Halving it is now **resolved
+  worse** (+0.00178 log loss, CI95 [+0.00033, +0.00323]) where it previously did
+  not resolve; doubling it remains unresolved. `WHR_W2_PER_DAY` stays at 0.0004,
+  because a setting only changes on a resolved improvement.
+- Refitted the ratings and rebuilt every board and audit. Rated fights 80,598 to
+  **81,281**; rated fighters 33,692 to **34,085**.
+
+What the completion was worth, on the statistic this repair exists to move:
+Khabib Nurmagomedov was rated 206 points above the strongest opponent he had ever
+faced on 14 recorded fights, and 160 points above on all 30. Seika Izawa, whose
+record was already complete, did not move: 319 before, 320 after.
+
+Guards added so none of this returns silently:
+
+- A majors rating refuses to run without a current, passing coverage audit, and
+  fails before the fifteen-minute fit rather than after it.
+- Retired rating artifacts must be removed successfully; a locked stale file now
+  stops the rebuild instead of surviving beside fresh output.
+- The top-100 audit requires rating history and source fights before rebuilding
+  the public score, so it cannot silently emit a skill-only board.
+- Coverage reports retain every unresolved or unreachable name instead of
+  truncating each list at 50.
+
 ## 2026-09-01 - Dead data and dead code swept out
 
 No ranking changed. Every published table still matches its board artifact
