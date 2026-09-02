@@ -10,7 +10,7 @@ from loaders.ufcstats_loader import (
     load_raw,
     parse_events,
 )
-from ratings.rate_snapshot import run as run_ratings
+from ratings.rate_snapshot import refresh_career_columns, run as run_ratings
 
 
 RAW_DIR = Path("data/raw/2026-05-13")
@@ -48,11 +48,14 @@ def test_loader_to_engine_roundtrip_on_ten_event_slice(tmp_path: Path):
 
     summary = run_ratings(snapshot_dir, scope="ufc")
     current = pd.read_parquet(snapshot_dir / "ratings_current.parquet")
-    history = pd.read_parquet(snapshot_dir / "ratings_history.parquet")
+    history = pd.read_parquet(snapshot_dir / "ratings_history_whr.parquet")
 
     assert summary["events_processed"] == 10
     assert summary["current_fighters"] > 20
     assert summary["history_rows"] == len(history)
+    refreshed = refresh_career_columns(snapshot_dir, scope="ufc")
+    assert refreshed["history_rows"] == summary["history_rows"]
+    assert refreshed["events_processed"] == summary["events_processed"]
     assert current["mu_canonical"].max() > 1500
     assert current["mu_canonical"].min() < 1500
     assert current.sort_values("mu_canonical", ascending=False).iloc[0]["fighter"]

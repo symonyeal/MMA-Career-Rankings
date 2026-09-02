@@ -164,10 +164,14 @@ Where the data comes from is [Source Matrix](../data/SOURCE_MATRIX.md).
    cannot move a rating or a board, so do not budget a re-rate against it.
 9. **About 17% of filled weight classes are wrong for that particular fight.**
    That is the price of the 2026-08-28 schedule repair, paid knowingly.
-10. **Three duplicate-date pairs are recorded, not fixed.** One is a genuine
-    same-night tournament pair (Sakuraba against Silveira, UFC Ultimate Japan).
-    The other two sit inside the `majors` source with no UFC record on either
-    side, so nothing says which date is right. Two rows in 80,896.
+10. **Three close-date repeat cases are recorded, not guessed away.** Canonical
+    UFC URLs establish Sakuraba against Silveira at UFC Ultimate Japan as a
+    genuine same-night tournament rematch, so both fights remain distinct. Two
+    non-UFC pairs recur one day apart in the `majors` source: Anthony Ruiz–Jaime
+    Jara on 2004-06-02/03 and Mike Whitehead–Tim Sylvia on 2002-04-26/27. Both
+    rows remain because their source names successive events and no available
+    evidence establishes a duplicate. These are two possible extra rows among
+    81,281 rated bouts; neither changes the contender-win count.
 11. **The career contender-win count and the printed Elite-wins column are
     different measures** — whole career against best ten years — so they
     legitimately differ (Jones 16 against 12). They can also differ by one fight

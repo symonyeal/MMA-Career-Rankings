@@ -839,8 +839,8 @@ def run(
     # ------------------------------------------------------------------
     # Reporting
     print(f"tau used: {tau}")
-    print(f"events processed: {history['event_date'].nunique()}")
-    print(f"fighter-event rows in history: {len(history)}")
+    print(f"events processed: {whr_history['event_date'].nunique()}")
+    print(f"published WHR appearance rows: {len(whr_history)}")
     print(f"unique fighters rated: {len(current)}")
     print(
         f"integrity flags  PED={int(integrity['ped_confirmed'].fillna(False).sum())} "
@@ -903,9 +903,13 @@ def run(
         "age_drift": True,
         "rated_bouts": int(len(rated_fights)),
         "birth_dates": int(len(birth_dates)),
-        "history_rows": int(len(history)),
+        # Keep the metadata invariant across a full fit and ``--career-only``.
+        # The public career and board layers read WHR history; recording the
+        # diagnostic Glicko row count here made the same snapshot report two
+        # different values depending on which rebuild path ran last.
+        "history_rows": int(len(whr_history)),
         "current_fighters": int(len(current)),
-        "events_processed": int(history["event_date"].nunique()),
+        "events_processed": int(whr_history["event_date"].nunique()),
         "combined_fights": combined_summary,
         # Whether the corpus gave every fighter the same coverage rule. A
         # low-loss Bradley-Terry record has no interior maximum, so its rating

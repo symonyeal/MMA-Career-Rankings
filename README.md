@@ -334,7 +334,7 @@ Source ownership, licensing and known gaps are listed in
 
 ## Important limitations
 
-- **The all-time score looks backwards.** An opponent is priced on everything now
+- **The all-time score is retrospective.** An opponent is priced on everything now
   known about them, so it measures how good a win turned out to be, not how good
   it looked on the night.
 - **The contender résumé favours long careers**, though it counts at most one win
@@ -344,24 +344,26 @@ Source ownership, licensing and known gaps are listed in
   something the fight results prove. It also bites hardest where the data is
   thinnest: 64% of rated fights carry no promotion name, and every one of them is
   currently scored as the weakest tier. That costs Jiri Prochazka, 18 of whose 39
-  fights are unnamed, an exposure factor of 0.73 against a top-100 median of 0.89.
-- **A championship can be worth almost nothing.** Value comes from the opponent
-  beaten, measured against their own division. Prochazka's win over Glover
-  Teixeira for the UFC light-heavyweight title scores 0.073 because Teixeira
-  rated barely above the line that year, while each of Prochazka's title *losses*
-  is worth three times more than either of his wins — and losses are not counted.
-  A minimum credit for winning a major title was measured and does not fix it;
-  the numbers are in [Open decisions](docs/DECISIONS.md).
+  fights are unnamed, an exposure factor of 0.73 against the published men's
+  top-100 median of 0.88.
+- **The major-title floor fixes the zero, not every pricing issue.** Value still
+  comes mainly from the opponent beaten, measured against their own division.
+  The new floor raises Prochazka's UFC title win over Glover Teixeira from 0.073
+  to 0.119. His RIZIN title win remains 0.008 because RIZIN is outside the
+  tier-1 gate, while his three title losses would price at 0.210–0.236 on the
+  same opponent scale and are not counted. The mechanism and remaining policy
+  choices are in the [decision register](docs/DECISIONS.md).
 - **Weight class and fighter identity are partly inferred** where the sources are
   incomplete. About 17% of filled weight classes are wrong for that particular
   fight, and four fighters cannot be told apart from namesakes at all, so only
   their UFC record is held. Those inferences are audited, but they feed the
   rankings.
-- **Same-night rematches.** UFC records identify them properly; other sources do
-  not always, so an unclear same-day duplicate is treated as one fight. Three
-  such pairs are known: Kazushi Sakuraba against Marcus Silveira at UFC Ultimate
-  Japan is a genuine same-night tournament pair and is kept, and the other two
-  are left as recorded because nothing in any source says which date is right.
+- **Close-date repeats need source evidence.** Canonical UFC URLs preserve
+  Kazushi Sakuraba and Marcus Silveira's genuine same-night tournament rematch.
+  Two non-UFC pairs recur one day apart — Anthony Ruiz–Jaime Jara and Mike
+  Whitehead–Tim Sylvia — and both rows are retained because the source names
+  successive events and no available evidence establishes a duplicate. Neither
+  ambiguous pair changes the contender-win count.
 - **No model can recover fights missing from every source.** Coverage gaps stay
   part of every release decision.
 
