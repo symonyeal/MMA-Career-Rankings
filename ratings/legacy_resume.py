@@ -370,6 +370,23 @@ ORG_FACTOR_BY_TIER = {
     4: 0.20,
 }
 
+# Pseudo-count for the exposure factor, in bouts. 64.5% of rated bouts carry no
+# promotion label, and an unlabelled bout is missing evidence, not evidence of a
+# weak promotion -- so it is left out of the average rather than scored at the
+# tier-4 floor. Dropping it outright would then read a career identified on two
+# bouts at those two bouts' level with full confidence, so the identified-bout
+# factor is shrunk back toward the pooled identified mean by ``n / (n + k)``.
+#
+# Reading unlabelled bouts as tier 4 is the ``k -> inf`` limit of this estimator
+# with the floor as its prior; dropping them is ``k = 0``. Measured 2026-09-02 on
+# one fixed population against the shipped board, k = 5 held the 2026-08-27 guard
+# (top-100 fighters with no UFC bout stays at 2), moved top-100 fighters scoring
+# zero on titles 14 -> 13, and read 0.6132 against elite wins where the tier-4
+# rule read 0.6067. k = 10 broke the guard at 3 and is the bound above. No
+# outside list resolved any arm -- every sign test came back p >= 0.23 -- so this
+# ships on mechanism, and the outside check could not detect it either way.
+EXPOSURE_SHRINKAGE_PSEUDO_COUNT = 5.0
+
 
 TITLE_COUNT_COLUMNS = [
     "fighter",
@@ -573,12 +590,15 @@ def organization_exposure_ledger(fights: pd.DataFrame) -> pd.DataFrame:
         sort=False,
     )
     sides = sides.merge(context, on="fight_url", how="left")
+    sides["_is_unknown_org"] = sides["canonical_organization"].fillna("Unknown").eq("Unknown")
+    # An unlabelled bout carries no promotion evidence, so it is dropped from the
+    # two averages rather than scored at the floor; see the note above
+    # :data:`EXPOSURE_SHRINKAGE_PSEUDO_COUNT`.
     sides["public_legacy_org_factor"] = pd.to_numeric(
         sides["public_legacy_org_factor"], errors="coerce"
-    ).fillna(ORG_FACTOR_BY_TIER[4])
+    ).mask(sides["_is_unknown_org"])
     sides["_is_ufc"] = sides["canonical_organization"].eq("UFC")
     sides["_is_top_org"] = sides["public_legacy_org_factor"].ge(0.82)
-    sides["_is_unknown_org"] = sides["canonical_organization"].fillna("Unknown").eq("Unknown")
 
     def _top_quartile_mean(values: pd.Series) -> float:
         clean = pd.to_numeric(values, errors="coerce").dropna().sort_values(ascending=False)
@@ -590,14 +610,29 @@ def organization_exposure_ledger(fights: pd.DataFrame) -> pd.DataFrame:
     out = grouped.agg(
         _mean_factor=("public_legacy_org_factor", "mean"),
         _top_quartile_factor=("public_legacy_org_factor", _top_quartile_mean),
+        _identified_bouts=("public_legacy_org_factor", "count"),
         public_legacy_ufc_bouts=("_is_ufc", "sum"),
         public_legacy_top_org_bouts=("_is_top_org", "sum"),
         public_legacy_unknown_org_bouts=("_is_unknown_org", "sum"),
     ).reset_index()
+
+    # The prior is the pooled mean over every identified bout in the corpus --
+    # the complete-pooling end of the same estimator, not the tier-4 floor. The
+    # floor is the weak-promotion verdict, and the premise here is that an
+    # unlabelled bout is not evidence of a weak promotion.
+    identified = pd.to_numeric(sides["public_legacy_org_factor"], errors="coerce").dropna()
+    prior = float(identified.mean()) if not identified.empty else ORG_FACTOR_BY_TIER[4]
+    own = 0.5 * pd.to_numeric(out["_mean_factor"], errors="coerce") + 0.5 * pd.to_numeric(
+        out["_top_quartile_factor"], errors="coerce"
+    )
+    n_identified = pd.to_numeric(out["_identified_bouts"], errors="coerce").fillna(0)
+    weight = n_identified / (n_identified + EXPOSURE_SHRINKAGE_PSEUDO_COUNT)
+    # A career with no identified bout has no evidence to shrink and keeps the floor.
     out["public_legacy_exposure_factor"] = (
-        0.5 * pd.to_numeric(out["_mean_factor"], errors="coerce").fillna(ORG_FACTOR_BY_TIER[4])
-        + 0.5 * pd.to_numeric(out["_top_quartile_factor"], errors="coerce").fillna(ORG_FACTOR_BY_TIER[4])
-    ).clip(lower=ORG_FACTOR_BY_TIER[4], upper=1.0)
+        (weight * own + (1.0 - weight) * prior)
+        .fillna(ORG_FACTOR_BY_TIER[4])
+        .clip(lower=ORG_FACTOR_BY_TIER[4], upper=1.0)
+    )
     for col in (
         "public_legacy_ufc_bouts",
         "public_legacy_top_org_bouts",

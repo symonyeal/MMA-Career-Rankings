@@ -92,24 +92,58 @@ Where the data comes from is [Source Matrix](../data/SOURCE_MATRIX.md).
    prices at 0.119 against Bellator's 0.059, difference +0.061, CI95 [+0.044,
    +0.078] — but the table itself was never justified.
 
-   **What an unlabelled bout is worth is the live half of this.** After the
-   2026-09-02 label repair, 64.5% of rated bouts still carry no promotion, and
-   the published rule reads every one of them as the lowest tier, 0.20 — the same
-   number a genuinely small show gets. Measured three ways on identical inputs:
+   **What an unlabelled bout is worth is now settled.** Shipped 2026-09-02. 64.5%
+   of rated bouts carry no promotion, and the rule this replaced read every one of
+   them as the lowest tier, 0.20 — the same number a genuinely small show gets.
+   An unlabelled bout is missing evidence, not evidence of a weak promotion, so it
+   is now left out of the two averages, and the identified-bout factor is shrunk
+   back toward the pooled mean of every identified bout by `n / (n + k)` with
+   `k = 5` bouts. Reading unlabelled bouts at the floor is the `k -> inf` limit of
+   that estimator with the floor as its prior; dropping them outright is `k = 0`,
+   which reads a career identified on two bouts at those two bouts' level with
+   full confidence.
 
-   | unlabelled bout treated as | top 100 with no UFC bout | agreement, elite wins | agreement, Prime |
-   |---|---:|---:|---:|
-   | lowest tier, 0.20 — current | 2 | 0.5911 | 0.5312 |
-   | left out of the average | 2 | 0.5957 | **0.5581** |
-   | recognised regional, 0.42 | 2 | 0.5975 | 0.5406 |
+   Measured on one fixed population against the shipped board:
 
-   Leaving unlabelled bouts out of the average is the only one of the three that
-   improves agreement with *both* references, and none of the three re-opens the
-   failure that refuted removing exposure altogether on 2026-08-27: fighters with
-   no UFC bout in the top 100 stay at 2 throughout. No outside list resolves any
-   of it. This is an owner policy choice rather than a measurement result, which
-   is why it is recorded here and not shipped. Harness:
-   `Claude Func Folder\ufc-rank-engine\py\exposure_unknown_shapes.py`.
+   | unlabelled bout treated as | top 100 with no UFC bout | top 100 zero on titles | agreement, elite wins | agreement, Prime |
+   |---|---:|---:|---:|---:|
+   | lowest tier, 0.20 — the rule replaced | 2 | 14 | 0.6067 | 0.5629 |
+   | left out, no shrinkage (`k = 0`) | 2 | 15 | 0.6075 | **0.5740** |
+   | recognised regional, 0.42 | 2 | 14 | 0.6093 | 0.5732 |
+   | left out, `k = 1` | 2 | 15 | 0.6094 | 0.5722 |
+   | left out, `k = 3` | 2 | **13** | 0.6110 | 0.5707 |
+   | **left out, `k = 5` — shipped** | **2** | **13** | **0.6132** | 0.5678 |
+   | left out, `k = 10` | **3** | 12 | 0.6143 | 0.5628 |
+
+   `k = 10` is the bound above: it breaks the failure that refuted removing
+   exposure altogether on 2026-08-27, putting a third fighter with no UFC bout in
+   the top 100. Every lighter arm holds that guard at 2.
+
+   **The outside check could not detect any of this.** For the shipped arm,
+   The 100 Greatest +0.0052 (p 0.36), FightMatrix +0.0090 (p 0.34), Tapology
+   −0.0121 (p 0.64), ESPN unchanged. Every sign test across every arm came back
+   p >= 0.23. This ships on mechanism, which is what a score change ships on, and
+   no claim is made that the outside lists chose it.
+
+   **Two corrections to what this item used to say.** The three-way table it
+   carried was measured against the *pre-floor* board — baseline elite wins
+   0.5911, Prime 0.5312 — so its numbers are not comparable with anything
+   measured since, and they are replaced above rather than extended. On that
+   pre-floor population, leaving unlabelled bouts out moved FightMatrix −0.0272
+   (p 0.052); re-measured against the shipped board the same arm moves it
+   +0.0050. The direction reversed with the population, which is why the earlier
+   run cannot be read as evidence either way.
+
+   **What the change does not fix.** Sean Strickland rises 20 to 17, and he is
+   this project's named symptom of paying for exposure rather than contention.
+   That movement is common to every arm that changes anything at all except the
+   0.42 arm, so it does not separate the shipped rule from its alternatives — but
+   it is not answered by it either. A career identified from a handful of bouts
+   still receives an estimate rather than an admission that it cannot be told
+   apart. Harness:
+   `Claude Func Folder\ufc-rank-engine\py\exposure_unknown_shapes.py`;
+   the shipped ledger is verified equal to the `shrink5` arm by
+   `Claude Func Folder\ufc-rank-engine\py\verify_shrinkage_ship.py`.
 5. **Two contender bars, not one.** The résumé uses the absolute contender line;
    the title résumé uses a division-year quantile. Unifying them was measured and
    reverted on 2026-08-26 for reasons that still hold: fix the rating first.
@@ -250,10 +284,21 @@ and after; agreement between the score and elite wins and between the score and
 Prime; and agreement with all three outside lists, each with its confidence
 interval and a statement of what that check can detect.
 
-On the board published 2026-09-02 those two figures are **0.6067 and 0.5629**,
-with 14 of the top 100 scoring zero on the title term. Agreement with the outside
-lists is ESPN 0.9152, FightMatrix 0.6734, The 100 Greatest 0.6046, Tapology
-0.5636.
+On the board published 2026-09-02, after the exposure change in item 4, those two
+figures are **0.6453 and 0.5144**, with 13 of the top 100 scoring zero on the
+title term. Agreement with the outside lists is ESPN 0.9152, FightMatrix 0.6824,
+The 100 Greatest 0.6098, Tapology 0.5515.
+
+Read the first two against the previous board's 0.6067 and 0.5629 only with the
+population caveat below: those were measured over the previous top 100, and the
+top 100 changed. The variant table in item 4 holds one population across all of
+its arms and reads 0.6132 and 0.5678 for this same shipped board — that is the
+number to compare arms on, and the pair above is the number to publish.
+
+The exposure change moved the fighters this section names as follows: Prochazka
+146 to 137, Strickland 20 to 17, Whittaker 51 to 49, Serra 70 unchanged, Dariush
+75 unchanged, Usman 24 to 25, Johnson 50 to 51, Chandler 87 to 90, Maia 78 to 82,
+Magny 136 to 139.
 
 Do not compare any of these with the 0.722 and 0.637 this section used to quote.
 Both are measured over a population held fixed across variants, and the
@@ -261,8 +306,8 @@ population changed: the preserved 2026-09-01 incumbent board those numbers came
 from was swept in the lean pass, so the population is now the current top 100. A
 number measured over a different set of fighters is a different number, not a
 worse board. For the same reason, a variant comparison must hold one population
-across all of its arms, which is why item 1's table reads 0.6055 where this
-section reads 0.6067 for the same shipped board.
+across all of its arms, which is why item 4's table reads 0.6132 and 0.5678 where
+this section reads 0.6453 and 0.5144 for the same shipped board.
 
 ## Rebuild and verify
 

@@ -16,6 +16,7 @@ from ratings.legacy_resume import (
     RESUME_QUALITY_SCALE,
     championship_resume_ledger,
     contender_resume_ledger,
+    organization_exposure_ledger,
     public_legacy_score_rows,
     source_title_resume_ledger,
     title_quality,
@@ -564,6 +565,79 @@ def test_contender_resume_caps_a_year_at_one_contribution():
 
     assert int(ledger.loc["Busy", "public_legacy_contender_wins"]) == 6
     assert float(ledger.loc["Busy", "public_legacy_resume_quality"]) == pytest.approx(1.0)
+
+
+def _exposure_bout(url: str, a: str, b: str, org: str | None) -> dict[str, object]:
+    return {
+        "fight_url": url,
+        "event_date": "2015-06-01",
+        "event_name": "Card",
+        "source": "sherdog_majors",
+        "org": org,
+        "fighter_a": a,
+        "fighter_b": b,
+        "winner": a,
+        "is_draw": False,
+    }
+
+
+def _exposure_corpus(thin_unlabelled: int) -> pd.DataFrame:
+    """One UFC bout for Thin, twenty for Thick, and Bellator to move the prior.
+
+    ``thin_unlabelled`` unlabelled bouts are added to Thin's record. They carry
+    no promotion, so under the shipped rule they are evidence of nothing.
+    """
+    rows = [_exposure_bout("thin-ufc", "Thin", "Foe A", "UFC")]
+    rows += [
+        _exposure_bout(f"thin-unk-{i}", "Thin", "Foe B", None)
+        for i in range(thin_unlabelled)
+    ]
+    rows += [
+        _exposure_bout(f"thick-ufc-{i}", "Thick", "Foe C", "UFC") for i in range(20)
+    ]
+    # Without a second promotion the pooled prior is 1.0 and shrinkage is a
+    # no-op, which would hide the behaviour under test.
+    rows += [
+        _exposure_bout(f"bell-{i}", "Anchor A", "Anchor B", "Bellator")
+        for i in range(20)
+    ]
+    return pd.DataFrame(rows)
+
+
+def test_an_unlabelled_bout_does_not_lower_the_exposure_factor():
+    """It is missing evidence, not evidence of a weak promotion.
+
+    The rule this replaced read every unlabelled bout at the tier-4 floor, so
+    adding regional history a source never named cost a fighter exposure.
+    """
+    without = organization_exposure_ledger(_exposure_corpus(0)).set_index("fighter")
+    with_unlabelled = organization_exposure_ledger(_exposure_corpus(9)).set_index(
+        "fighter"
+    )
+
+    assert int(with_unlabelled.loc["Thin", "public_legacy_unknown_org_bouts"]) == 9
+    assert with_unlabelled.loc["Thin", "public_legacy_exposure_factor"] == pytest.approx(
+        without.loc["Thin", "public_legacy_exposure_factor"]
+    )
+
+
+def test_a_thinly_identified_career_is_shrunk_toward_the_pooled_prior():
+    """Dropping unlabelled bouts outright would read one bout at full confidence.
+
+    Thin and Thick have identical identified records -- every identified bout is
+    a UFC bout -- and differ only in how many there are. The factor must order
+    them, and Thin must land between the pooled prior and Thick.
+    """
+    ledger = organization_exposure_ledger(_exposure_corpus(9)).set_index("fighter")
+    thin = float(ledger.loc["Thin", "public_legacy_exposure_factor"])
+    thick = float(ledger.loc["Thick", "public_legacy_exposure_factor"])
+
+    assert thin < thick
+    # k = 5 against one identified bout leaves five sixths of the weight on the
+    # prior, and the prior here is well under a UFC career.
+    assert thin < 0.9
+    assert thick > 0.9
+    assert thin > ORG_FACTOR_BY_TIER[4]
 
 
 def test_public_legacy_score_weights_achievement_against_quality_as_stated():
