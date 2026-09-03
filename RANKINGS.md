@@ -314,6 +314,109 @@ Men and women never fight each other, so no result places the two groups on one 
 
 <!-- BOARD:ELITEPRIMEWOMEN10:END -->
 
+## Current rankings
+
+Current answers the third question: **how good is this fighter now?** It starts
+from the fighter's last fitted rating, carried forward to the snapshot date
+through the measured age-drift curve, so a layoff costs what a layoff has
+historically cost fighters of that age.
+
+Two screens decide who appears, both taken from the boards above:
+
+- **Fought within the last 18 months.** The projection is shallow — it charges
+  Khabib Nurmagomedov 37 points for five years away and Georges St-Pierre 48 for
+  nine — so without this the board would seat retired champions near the top and
+  quietly answer "how good were they" for a third time.
+- **At least 8 UFC bouts**, the same bar the Prime board applies to an opponent
+  before a win over them counts. Nothing in this kind of model caps an unbeaten
+  record from above, so a fighter who rarely loses in a weak field rates
+  alongside one who has beaten contenders. Without this screen the top thirty
+  held six Bellator and PFL fighters, Usman Nurmagomedov 2nd. The screen is the
+  model declining to place them, not a verdict on them.
+
+The surviving rating is then discounted twice, both times on the fighter's edge
+over the contender line:
+
+- **By time away, compounding.** Each of the last ten years holding no bout
+  retains 80% of that edge. The recency screen above cannot see a layoff that
+  ended recently — Ronda Rousey returned in May 2026 after ten years, a gap the
+  measured age prior charged 36 points — so this is what charges it. Eight idle
+  years leave 17%, and she places 11th rather than 3rd.
+- **By the exposure factor**, how much of the career the corpus can identify.
+  It shrinks toward the contender line rather than multiplying the rating,
+  because a rating has no meaningful zero to multiply against.
+
+The 18-month bar and the 80% retention are stated policy about what "current"
+claims. Neither is fitted: no comeback sample here is large enough to estimate a
+return-from-layoff effect.
+
+Fighters who fail either screen are withheld with the reason recorded, not
+ranked last. The rating is on the same scale as the contender line in the release
+facts above; the columns beside it are the two screens.
+
+This board is not comparable with the two above it. All-time and Prime are
+retrospective and a career does not expire; Current is a claim about today.
+
+### Men — top 30
+
+<!-- BOARD:CURRENT30:BEGIN -->
+
+| # | Fighter | Rating | UFC bouts | Idle yrs | Last bout |
+| ---: | --- | ---: | ---: | ---: | ---: |
+| 1 | Islam Makhachev | 2068 | 18 | 1 | 2025-11-15 |
+| 2 | Ilia Topuria | 2050 | 10 | 0 | 2026-06-14 |
+| 3 | Movsar Evloev | 2050 | 10 | 0 | 2026-03-21 |
+| 4 | Dricus Du Plessis | 2005 | 11 | 0 | 2026-07-18 |
+| 5 | Arman Tsarukyan | 2003 | 12 | 0 | 2025-11-22 |
+| 6 | Alexander Volkanovski | 1992 | 18 | 0 | 2026-01-31 |
+| 7 | Umar Nurmagomedov | 1989 | 9 | 0 | 2026-01-24 |
+| 8 | Justin Gaethje | 1985 | 16 | 0 | 2026-06-14 |
+| 9 | Francis Ngannou | 1973 | 14 | 1 | 2026-05-16 |
+| 10 | Merab Dvalishvili | 1967 | 17 | 0 | 2025-12-06 |
+| 11 | Khamzat Chimaev | 1964 | 10 | 1 | 2026-05-09 |
+| 12 | Charles Oliveira | 1961 | 36 | 0 | 2026-03-07 |
+| 13 | Magomed Ankalaev | 1936 | 16 | 0 | 2026-07-25 |
+| 14 | Ciryl Gane | 1933 | 13 | 2 | 2026-06-14 |
+| 15 | Max Holloway | 1932 | 33 | 0 | 2026-07-11 |
+| 16 | Sean O'Malley | 1932 | 15 | 0 | 2026-06-14 |
+| 17 | Corey Anderson | 1923 | 15 | 0 | 2025-10-03 |
+| 18 | Mario Bautista | 1922 | 15 | 0 | 2026-07-11 |
+| 19 | Sean Brady | 1920 | 11 | 0 | 2026-05-09 |
+| 20 | Aljamain Sterling | 1915 | 23 | 0 | 2026-04-25 |
+| 21 | Alexander Volkov | 1907 | 19 | 0 | 2026-05-09 |
+| 22 | Sean Strickland | 1906 | 25 | 1 | 2026-05-09 |
+| 23 | Gabriel Bonfim | 1905 | 8 | 1 | 2026-06-06 |
+| 24 | Caio Borralho | 1903 | 9 | 0 | 2026-03-07 |
+| 25 | Petr Yan | 1900 | 16 | 1 | 2025-12-06 |
+| 26 | Ian Machado Garry | 1897 | 11 | 3 | 2025-11-22 |
+| 27 | Brendan Allen | 1893 | 19 | 0 | 2026-06-06 |
+| 28 | Paddy Pimblett | 1893 | 9 | 0 | 2026-07-11 |
+| 29 | Carlos Prates | 1891 | 8 | 0 | 2026-05-02 |
+| 30 | Anthony Hernandez | 1890 | 12 | 0 | 2026-02-21 |
+
+<!-- BOARD:CURRENT30:END -->
+
+### Women — top 10
+
+<!-- BOARD:CURRENTWOMEN10:BEGIN -->
+
+Men and women never fight each other, so no result places the two groups on one scale. Ranking them in a single list would be guesswork. The boards are kept separate, and a rank means something only within its own board.
+
+| # | Fighter | Rating | UFC bouts | Idle yrs | Last bout |
+| ---: | --- | ---: | ---: | ---: | ---: |
+| 1 | Valentina Shevchenko | 1896 | 19 | 1 | 2025-11-15 |
+| 2 | Liz Carmouche | 1852 | 10 | 0 | 2026-06-27 |
+| 3 | Zhang Weili | 1849 | 13 | 0 | 2025-11-15 |
+| 4 | Manon Fiorot | 1840 | 9 | 2 | 2025-10-18 |
+| 5 | Erin Blanchfield | 1835 | 9 | 2 | 2025-11-15 |
+| 6 | Natalia Silva | 1827 | 8 | 1 | 2026-01-24 |
+| 7 | Alexa Grasso | 1811 | 15 | 0 | 2026-03-28 |
+| 8 | Tatiana Suarez | 1802 | 10 | 4 | 2026-04-11 |
+| 9 | Maycee Barber | 1785 | 13 | 0 | 2026-03-28 |
+| 10 | Jasmine Jasudavicius | 1777 | 12 | 2 | 2026-04-18 |
+
+<!-- BOARD:CURRENTWOMEN10:END -->
+
 ## Reading the tables
 
 - **A fighter with too little evidence is left out.** That is us declining to
@@ -324,6 +427,17 @@ Men and women never fight each other, so no result places the two groups on one 
 - **The Prime board is only as good as the opponent ratings it screens on.** It
   removes records that were never tested, which is a weaker claim than
   certifying the ones that survive.
+- **The idle-year discount is a judgement, not a measurement.** Charging 20% of
+  a fighter's edge per year without a bout says what "current" should claim. It
+  is applied to the rating, not to evidence: no model here knows what a fighter
+  looks like after a layoff, only that it should stop asserting they are the
+  fighter they were.
+- **The Current board ages a rating; it does not watch a fighter.** Inside the
+  18-month window a fighter is ranked on what they last proved, discounted only
+  by what age costs the population and by how much of their career is
+  identified. It cannot know about an injury, a retirement not yet in the fight
+  record, or a camp change. Its UFC-bout screen also means it is silent about
+  every fighter outside the UFC, however good — silence, not a low placement.
 - **An undefeated record is rated above everyone it has beaten**, because
   nothing in the method caps it from above. Seika Izawa is rated 320 points above
   the strongest opponent she has ever faced. This is a known open problem,

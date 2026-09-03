@@ -20,6 +20,11 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 from project_helpers import date_range, normalize_name_key
+from ratings.boards import (
+    CORE_RATING_CANDIDATES,
+    CURRENT_RATING_CANDIDATES,
+    PRIME_RATING_CANDIDATES,
+)
 from ratings.constants import (
     FIVE_YEAR_PEAK_MIN_FIGHTS,
     FIVE_YEAR_PEAK_WINDOW_DAYS,
@@ -1693,49 +1698,6 @@ def all_time_benchmark_chart(
     return fig
 
 
-def source_coverage_summary(data: dict[str, pd.DataFrame]) -> pd.DataFrame:
-    """Summarize source row counts, columns, date ranges, and fighter coverage."""
-    table_labels = [
-        ("events", "Greco canonical events"),
-        ("fights", "Greco canonical fights"),
-        ("rounds", "Greco canonical rounds"),
-        ("fighters", "Greco canonical fighters"),
-        ("ratings_current", "Current ratings"),
-        ("datalab_bouts_all", "DataLab bouts all"),
-        ("datalab_merged_stats_scorecards", "DataLab merged stats/scorecards"),
-        ("datalab_fighter_details", "DataLab fighter details"),
-        ("datalab_scorecards", "DataLab scorecards"),
-        ("fightmatrix_rankings", "FightMatrix rankings"),
-        ("fightmatrix_all_time", "FightMatrix all-time absolute"),
-    ]
-    rows = []
-    for key, label in table_labels:
-        df = data.get(key)
-        if df is None or df.empty:
-            rows.append({"key": key, "table": label, "rows": 0, "columns": 0})
-            continue
-        min_date, max_date = _date_range(df)
-        fighter_count = None
-        if "fighter" in df.columns:
-            fighter_count = int(df["fighter"].dropna().nunique())
-        elif "fighter_name" in df.columns:
-            fighter_count = int(df["fighter_name"].dropna().nunique())
-        elif {"fighter_a", "fighter_b"}.issubset(df.columns):
-            fighter_count = int(pd.concat([df["fighter_a"], df["fighter_b"]]).dropna().nunique())
-        elif {"red_fighter_name", "blue_fighter_name"}.issubset(df.columns):
-            fighter_count = int(pd.concat([df["red_fighter_name"], df["blue_fighter_name"]]).dropna().nunique())
-        rows.append({
-            "key": key,
-            "table": label,
-            "rows": int(len(df)),
-            "columns": int(len(df.columns)),
-            "unique_fighters": fighter_count,
-            "min_date": min_date,
-            "max_date": max_date,
-        })
-    return pd.DataFrame(rows)
-
-
 def division_strength_comparison_chart(
     ratings_current: pd.DataFrame,
     fights: pd.DataFrame,
@@ -2246,29 +2208,13 @@ _PUBLIC_VIEW_LABELS = {
     "current": "Current skill",
 }
 
-# New snapshots provide the first column in each tuple. Older snapshots fall
-# back only to unsleeved WHR, then canonical, so a stale weighted artifact can
-# never silently re-enter the public board.
+# One definition, shared with the board builder. The notebook and the published
+# board must not be able to disagree about which column each view ranks, and
+# holding two copies in step by hand is what let them disagree before.
 _PUBLIC_VIEW_COLUMN_CANDIDATES = {
-    # Must lead with the same column ``build_boards.CORE_RATING_CANDIDATES``
-    # leads with. The notebook previously showed raw Career Skill Mass while the
-    # published board ranked on Public Legacy Score, so the dashboard and the
-    # board disagreed about who was first -- a visible internal conflict, not a
-    # presentation choice. Career Skill Mass stays available as a diagnostic.
-    "all_time": (
-        "public_legacy_score",
-        "symon_career_skill_mass",
-        "mu_whr",
-        "mu_canonical",
-    ),
-    "prime": ("symon_prime_score", "mu_whr", "mu_canonical"),
-    "current": (
-        "mu_whr_age_activity_adjusted",
-        "mu_whr_activity_adjusted",
-        "mu_whr",
-        "mu_canonical_activity_adjusted",
-        "mu_canonical",
-    ),
+    "all_time": CORE_RATING_CANDIDATES,
+    "prime": PRIME_RATING_CANDIDATES,
+    "current": CURRENT_RATING_CANDIDATES,
 }
 
 

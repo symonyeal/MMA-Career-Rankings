@@ -1697,7 +1697,22 @@ def build() -> dict:
     }
 
 
+def write(target: Path | None = None) -> Path:
+    """Write the notebook, and be the only thing that decides how.
+
+    ``refresh.py`` used to hold its own copy of this line. Both spelled the
+    encoding differently from whatever last wrote the checked-in file, so every
+    rebuild rewrote 69 lines that had not changed -- em dashes escaped to
+    ``\u2014`` and back. ``ensure_ascii=False`` keeps the UTF-8 the document is
+    already written in, so a rebuild with no content change produces no diff.
+    """
+    target = Path(__file__).resolve().parent / "notebook.ipynb" if target is None else Path(target)
+    target.write_text(
+        json.dumps(build(), indent=1, ensure_ascii=False) + "\n", encoding="utf-8"
+    )
+    return target
+
+
 if __name__ == "__main__":
-    target = Path(__file__).resolve().parent / "notebook.ipynb"
-    target.write_text(json.dumps(build(), indent=1), encoding="utf-8")
-    print(f"wrote {target} ({target.stat().st_size} bytes)")
+    written = write()
+    print(f"wrote {written} ({written.stat().st_size} bytes)")

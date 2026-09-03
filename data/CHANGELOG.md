@@ -1,5 +1,86 @@
 # Snapshot Changelog
 
+## 2026-09-03 - Current board published, drifted figures repaired
+
+**A third board is published.** The overview had promised a Current ranking —
+"how good are they now" — since the four-row summary was written, and never
+carried one. It does now, as a men's top 30 in the overview and men's and
+women's tables in the publication.
+
+**Current is not a re-sort of the other two.** It starts from the last fitted
+rating carried to the snapshot date through the measured age-drift curve, then
+applies two screens and one adjustment, all borrowed rather than invented:
+
+- **18 months since the last bout**, stated policy set by the project owner. The
+  age projection is shallow — 37 points for Khabib Nurmagomedov's five years
+  away, 48 for Georges St-Pierre's nine — so without it the board seated retired
+  champions 4th and 21st and answered "how good were they" a third time. It also
+  withholds fighters who have not retired: Jon Jones and Shavkat Rakhmonov.
+- **At least 8 UFC bouts**, the bar the Prime board already applies to an
+  opponent before a win over them counts. Nothing in this model caps an unbeaten
+  record from above, so a fighter who rarely loses in a weak field rates
+  alongside one who has beaten contenders. Ranked without it the men's top 30
+  held six Bellator and PFL fighters, Usman Nurmagomedov 2nd. The screen is the
+  model declining to place them, not a verdict on them.
+- **A compounding charge for time away.** The recency bar asks when a fighter
+  last competed and cannot see a layoff that *ended* recently, so one comeback
+  bout re-admitted a decade-old rating at nearly full value: Ronda Rousey last
+  fought in the UFC in 2016, returned in May 2026, and the ten-year gap cost her
+  36 rating points, seating a 2015 rating 3rd on the women's board. A year out
+  costs a fraction of what a fighter has left, not a fixed number of points, so
+  each of the last ten years holding no bout now retains 80% of that fighter's
+  edge over the contender line. Eight idle years leave 17% of it; Rousey places
+  11th. The idle-year count is published beside the rating.
+- **The exposure factor**, shrinking the distance from the contender line rather
+  than multiplying the rating. The all-time board multiplies Career Skill Mass, a
+  sum with a real zero; a rating is an interval scale with no meaningful zero, so
+  the same factor cannot scale it.
+
+The 18-month bar and the 80% annual retention are stated policy in the sense
+CONTENDER_LINE_MU is: they say what "current" is willing to claim. Neither is
+fitted, and no accuracy measure selected them — there is no comeback sample in
+this corpus large enough to estimate a return-from-layoff effect.
+
+Fighters failing either screen are withheld with the reason recorded, which is
+the refusal the other boards already make about thin evidence.
+
+**Defects fixed:**
+
+- `completeness_gated_board` computed `eligibility_override` and then dropped it
+  from its own output, so the override count `build_boards.py` reported was
+  structurally zero however many fighters the title override had seated. The
+  flag is provenance for a published rank and now travels with the board.
+- The changelog's own "Top 10" took the ten best fighters above three rating
+  periods, ungendered — a combined men-and-women list, the exact ranking this
+  project refuses to publish, and gated well below the published floor. Amanda
+  Nunes appears inside two historical men's top tens above for that reason. It
+  now quotes the published men's board.
+- Markdown pipe escaping in a fighter name wrote two backslashes, escaping the
+  backslash instead of the pipe, and would still have broken the row.
+- The notebook builder and `refresh.py` each wrote the notebook their own way and
+  neither matched the committed file, so every rebuild rewrote 69 unchanged lines
+  of escaped em dashes. One writer now, and a rebuild with no content change
+  produces no diff.
+
+**Published figures corrected against the snapshot they describe.** The
+generated tables cannot drift; the prose around them had. Demetrious Johnson was
+called 6th on a board that has him 7th; the two resume scores read 1,170 and
+1,000 against 1,139 and 1,009; his exposure factor read 0.904 against 0.897; 70
+men were said to qualify for a board 72 qualify for; Jiri Prochazka's record was
+given as 39 fights against 40. The paragraph explaining the contender line said
+fighters "peaked at" figures taken from the Prime column, which is a best-decade
+level and a different quantity — Anthony Pettis reads 1,759 there and peaked at
+1,882 — and it read Frank Mir off a top-100 table he is not on.
+
+`tests/test_readme_narrative_figures.py` now holds every one of those figures to
+the snapshot, so the next drift fails the suite instead of shipping.
+
+**Leaner:** the rating-column preference lists lived in both `build_boards.py`
+and `analysis/viz.py`, kept in step by a comment saying they must be — and they
+had already disagreed once, the notebook showing Career Skill Mass while the
+board ranked Public Legacy Score. One definition now, in `ratings/boards.py`.
+Removed `analysis/viz.py:source_coverage_summary`, called from nowhere.
+
 ## 2026-09-02 - Careers completed, promotions relabelled, major titles floored
 
 **The rankings changed**, for two reasons: the corpus grew and the ratings were

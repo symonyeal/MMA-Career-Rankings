@@ -92,12 +92,8 @@ def championship_quality_level(
     opponent_interim: object | None = None,
 ) -> pd.Series:
     """0..1 title-bout and reigning-titleholder quality level."""
-    base = _as_bool_series(is_title, _as_float_series(0.0).index)
-    if isinstance(is_title, pd.Series):
-        index = is_title.index
-        base = _as_bool_series(is_title, index)
-    else:
-        index = base.index
+    index = is_title.index if isinstance(is_title, pd.Series) else _as_float_series(0.0).index
+    base = _as_bool_series(is_title, index)
     signal = pd.Series(0.0, index=index, dtype="float64")
     signal.loc[base] = 0.65
     if is_interim_title is not None:

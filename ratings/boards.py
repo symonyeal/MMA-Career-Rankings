@@ -26,6 +26,63 @@ from ratings.constants import (
     INTEGRITY_PED_FACTOR,
 )
 
+# The public/core board is Public Legacy Score, NOT raw Career Skill Mass.
+#
+# Career Skill Mass is a retrospective WHR functional: it backfills whole-career
+# evidence into earlier years, so a clean low-loss record in a less-tested
+# circuit accumulates above-bar years and lands beside title legends as if the
+# public resume question had been answered. It had not been. Selecting it as the
+# public board is what put Usman Nurmagomedov 6th, Yaroslav Amosov 7th and Josh
+# Barnett 8th all-time (2026-08-25 audit); under Public Legacy the same fighters
+# sit 60th, 51st and 27th and the top 25 had zero unanchored names on that day's
+# corpus. On the 2026-08-28 board the count is 3 -- Ngannou, Sterling and
+# Dvalishvili, all UFC champions absent from the three supplied anchor lists
+# rather than regional outliers. The count is a smell test, not a target: the
+# anchor lists were authored in the same commit as the layer they score.
+#
+# This was diagnosed and repaired on 2026-08-24
+# (_archive/20260826-stale-project-material/docs/PUBLIC_PERCEPTION_REPAIR_2026-08-24.md),
+# reverted by the 2026-08-25
+# cohesive pass, and restored here. **Career Skill Mass is a skill diagnostic,
+# not the public board.** Do not promote it again without re-running
+# build_top100_audit.py and reading the unanchored top-25 count.
+#
+# The integrity debit is denominated in rating points, so keep that judgement on
+# a base WHR point scale.
+#
+# The rating column each published view ranks, in preference order.
+#
+# These live here, beside the board builder, because two consumers need the
+# same answer: ``build_boards.py`` writes the boards and ``analysis/viz.py``
+# draws the dashboard from the same snapshot. They used to hold separate copies
+# kept in step by a comment, and the copies drifted -- the notebook showed raw
+# Career Skill Mass while the board ranked Public Legacy Score, so the two
+# disagreed about who was first. One definition removes the class of defect.
+#
+# The first entry is what a current snapshot provides; the rest are fallbacks
+# for older snapshots, and never include a retired weighted stream.
+CORE_RATING_CANDIDATES = (
+    "public_legacy_score",
+    "symon_career_skill_mass",
+    "mu_whr",
+    "mu_canonical",
+)
+PRIME_RATING_CANDIDATES = (
+    "symon_prime_score",
+    "mu_whr",
+    "mu_canonical",
+)
+# "How good are they now": the last fitted rating carried forward to the
+# snapshot date through the measured age-drift curve, so time out of
+# competition is charged at the population's own rate rather than a guess.
+CURRENT_RATING_CANDIDATES = (
+    "mu_whr_age_activity_adjusted",
+    "mu_whr_activity_adjusted",
+    "mu_whr",
+    "mu_canonical_activity_adjusted",
+    "mu_canonical",
+)
+
 LEDGER_COLUMNS = (
     "fighter",
     "fight_url",
@@ -238,6 +295,46 @@ def elite_win_mass(
     return n * (level - float(anchor)).clip(lower=0.0)
 
 
+def exposure_shrunk_level(
+    levels: pd.Series,
+    exposure: pd.Series,
+    *,
+    anchor: float,
+) -> pd.Series:
+    """Pull a rating toward ``anchor`` by how little of the career is identified.
+
+    A Bradley-Terry rating has no ceiling from above: a fighter who rarely loses
+    is rated above everyone they have beaten, so an unbeaten record built in a
+    weak field climbs as high as one built against contenders. The all-time
+    board already answers this by multiplying Career Skill Mass -- a sum with a
+    meaningful zero -- by the exposure factor. A rating is an interval scale, so
+    the same factor cannot multiply it: 0.85 * 2000 assumes the scale has an
+    origin at zero, and it does not.
+
+    The interval-scale form of the same correction is to shrink the distance
+    from a stated reference::
+
+        adjusted = anchor + exposure * (level - anchor)
+
+    which discounts a level proved in unidentified company and leaves a fully
+    identified career untouched. Shrinkage moves a rating below the anchor
+    upward, which is correct: less evidence means closer to the reference, from
+    whichever side.
+
+    ``anchor`` is the contender line, the project's existing statement of where
+    top standing begins, so the quantity reads as "how far above contender level
+    this fighter has proved themselves, discounted by where they proved it".
+    """
+    level = pd.to_numeric(levels, errors="coerce")
+    factor = (
+        pd.to_numeric(exposure, errors="coerce")
+        .reindex(level.index)
+        .fillna(1.0)
+        .clip(lower=0.0, upper=1.0)
+    )
+    return float(anchor) + factor * (level - float(anchor))
+
+
 UNRANKED_AT_FLOOR_STATUS = "unranked (no year above the bar)"
 
 
@@ -251,6 +348,9 @@ def completeness_gated_board(
     min_completeness: float = 0.8,
     tested_wins: pd.Series | None = None,
     min_tested_wins: int | None = None,
+    tested_wins_label: str = "wins over tested contenders",
+    months_inactive: pd.Series | None = None,
+    max_months_inactive: float | None = None,
     unranked_at_or_below: float | None = None,
     top: int | None = None,
 ) -> pd.DataFrame:
@@ -292,6 +392,13 @@ def completeness_gated_board(
     the first by counting wins and the second by admitting only opponents with a
     tested record of their own.
 
+    ``max_months_inactive`` adds a recency floor, for the one board where "now"
+    is part of the question. A rating projected forward through an aging curve
+    still says something about a fighter who stopped competing years ago, but it
+    is no longer an answer to "how good are they today", so that fighter is
+    withheld and told apart from one who was never rated. Leave it ``None`` for
+    every retrospective board: a career does not expire.
+
     It gates rather than scores. A fighter is on the board or not; where they
     land is still the rating. Folding opposition quality into the score would
     post it twice, since the rating is already estimated from those same
@@ -331,7 +438,17 @@ def completeness_gated_board(
         unproven = wins.isna() | (wins < int(min_tested_wins))
         status[unproven & status.eq("ranked")] = (
             "insufficient proven record to rank "
-            f"(< {int(min_tested_wins)} wins over tested contenders)")
+            f"(< {int(min_tested_wins)} {tested_wins_label})")
+    if max_months_inactive is not None:
+        idle = pd.to_numeric(
+            board["fighter"].map(months_inactive) if months_inactive is not None else pd.NA,
+            errors="coerce",
+        )
+        board["months_inactive"] = idle
+        stale = idle.isna() | (idle > float(max_months_inactive))
+        status[stale & status.eq("ranked")] = (
+            "not currently active enough to rank "
+            f"(last bout over {float(max_months_inactive):g} months ago)")
     if unranked_at_or_below is not None:
         at_floor = rated.notna() & (rated <= float(unranked_at_or_below))
         status[at_floor & status.eq("ranked")] = UNRANKED_AT_FLOOR_STATUS
@@ -345,6 +462,11 @@ def completeness_gated_board(
 
     out = pd.concat([ranked.head(top) if top else ranked, withheld], ignore_index=True, sort=False)
     cols = ["rank", "fighter", rating_col, "status"]
-    cols += [c for c in ("rating_periods", "observed_completeness", "tested_opponent_wins")
+    # ``eligibility_override`` says a fighter was seated by the caller's own
+    # rule rather than by the periods floor. It is provenance for a published
+    # rank, so it travels with the board; dropping it here left the count
+    # reported by build_boards.py reading zero whoever was overridden.
+    cols += [c for c in ("rating_periods", "observed_completeness", "tested_opponent_wins",
+                         "months_inactive", "eligibility_override")
              if c in out.columns]
     return out[cols]

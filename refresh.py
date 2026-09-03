@@ -30,7 +30,6 @@ from loaders.fightmatrix_loader import build_snapshot as build_fightmatrix_snaps
 from loaders.fightmatrix_profiles import build_public_profile_snapshot  # noqa: E402
 from loaders.odds_ingest_mdabbert import run as ingest_mdabbert_odds  # noqa: E402
 from ratings.glicko2_engine import DEFAULT_TAU  # noqa: E402
-from ratings.constants import SUSTAINED_PEAK_MIN_FIGHTS  # noqa: E402
 from ratings.rate_snapshot import run as run_ratings  # noqa: E402
 from ratings.rules_era import stage_pre_unified_scope  # noqa: E402
 from ratings.scope import DEFAULT_PUBLISHED_SCOPE  # noqa: E402
@@ -71,8 +70,15 @@ def stage_scopes(snapshot_dir: Path) -> dict[str, object]:
             staged[name] = f"not staged: {type(exc).__name__}: {exc}"
             print(f"[refresh] scope {name} not staged: {exc}")
     return staged
-from analysis.build_notebook import build as build_notebook  # noqa: E402
-from build_boards import select_core_rating_col, write_board_artifacts  # noqa: E402
+from analysis.build_notebook import write as write_notebook  # noqa: E402
+from build_boards import (  # noqa: E402
+    RATING_FLOOR_IS_UNRANKED,
+    select_core_rating_col,
+    write_board_artifacts,
+)
+from ratings.boards import completeness_gated_board  # noqa: E402
+from ratings.constants import SUSTAINED_PEAK_MIN_FIGHTS  # noqa: E402
+from ratings.gender import partition_by_gender  # noqa: E402
 
 
 _MDABBERT_CANDIDATES = (
@@ -131,15 +137,37 @@ def mover_lines(current_path: Path, previous_path: Path | None, limit: int = 10)
     return lines
 
 
+def _headline_top_line(current: pd.DataFrame, headline_col: str, limit: int = 10) -> str:
+    """The published men's top ``limit``, gated as the published board is gated."""
+    men = partition_by_gender(current).get("M")
+    population = current if men is None or men.empty else men
+    board = completeness_gated_board(
+        population,
+        rating_col=headline_col,
+        min_rating_periods=SUSTAINED_PEAK_MIN_FIGHTS,
+        unranked_at_or_below=RATING_FLOOR_IS_UNRANKED.get(headline_col),
+    )
+    ranked = board[board["status"].eq("ranked")].head(limit)
+    if ranked.empty:
+        return "no fighter cleared the published evidence floor"
+    return "; ".join(
+        f"{row.fighter} {getattr(row, headline_col):.1f}"
+        for row in ranked.itertuples(index=False)
+    )
+
+
 def append_changelog(project_root: Path, snapshot_date: str, counts: dict[str, int],
                      ratings_summary: dict, previous_dir: Path | None) -> None:
     changelog = project_root / "data" / "CHANGELOG.md"
     current_path = project_root / "data" / "snapshots" / snapshot_date / "ratings_current.parquet"
     current = pd.read_parquet(current_path)
-    eligible = current[current["rating_periods"] >= 3].copy()
-    headline_col = select_core_rating_col(eligible)
-    top = eligible.sort_values(headline_col, ascending=False).head(10)
-    top_line = "; ".join(f"{row.fighter} {getattr(row, headline_col):.1f}" for row in top.itertuples(index=False))
+    headline_col = select_core_rating_col(current)
+    # The changelog quotes the published board, so it has to be gated the way
+    # the published board is gated: the same rating-period floor, and one
+    # gender. It used to take the top ten of everyone above three periods, which
+    # printed a combined men-and-women list -- the exact ranking this project
+    # refuses to publish, because no result connects the two groups.
+    top_line = _headline_top_line(current, headline_col)
     from ratings.constants import rating_label
     headline_label = (
         "Public Legacy Score"
@@ -182,9 +210,7 @@ def append_changelog(project_root: Path, snapshot_date: str, counts: dict[str, i
 
 
 def rebuild_notebook(project_root: Path) -> Path:
-    target = project_root / "analysis" / "notebook.ipynb"
-    target.write_text(json.dumps(build_notebook(), indent=1), encoding="utf-8")
-    return target
+    return write_notebook(project_root / "analysis" / "notebook.ipynb")
 
 
 def main() -> None:

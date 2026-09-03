@@ -35,10 +35,17 @@ PUBLICATION_MARKERS = (
     "BOARD:WOMEN10",
     "BOARD:ELITEPRIME50",
     "BOARD:ELITEPRIMEWOMEN10",
+    "BOARD:CURRENT30",
+    "BOARD:CURRENTWOMEN10",
 )
-# The overview publishes the two headline boards beside the release
-# facts they were built from. Every other table stays in the publication only.
-OVERVIEW_MARKERS = ("PUBLICATION:RELEASE", "BOARD:TOP100", "BOARD:ELITEPRIME50")
+# The overview publishes the three men's headline boards beside the release
+# facts they were built from. Every women's table stays in the publication only.
+OVERVIEW_MARKERS = (
+    "PUBLICATION:RELEASE",
+    "BOARD:TOP100",
+    "BOARD:ELITEPRIME50",
+    "BOARD:CURRENT30",
+)
 
 
 def _marked_block(text: str, marker: str) -> str:

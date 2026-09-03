@@ -32,9 +32,12 @@ import pandas as pd
 
 from ratings import prequential as PQ
 from ratings.boards import (
+    CORE_RATING_CANDIDATES,
+    CURRENT_RATING_CANDIDATES,
     UNRANKED_AT_FLOOR_STATUS,
     completeness_gated_board,
     elite_win_mass,
+    exposure_shrunk_level,
     integrity_discounted_board,
     integrity_ledger,
 )
@@ -55,34 +58,9 @@ from ratings.opponent_quality import (
 from ratings.scope import DEFAULT_PUBLISHED_SCOPE, scope_sources
 
 
-# The public/core board is Public Legacy Score, NOT raw Career Skill Mass.
-#
-# Career Skill Mass is a retrospective WHR functional: it backfills whole-career
-# evidence into earlier years, so a clean low-loss record in a less-tested
-# circuit accumulates above-bar years and lands beside title legends as if the
-# public resume question had been answered. It had not been. Selecting it as the
-# public board is what put Usman Nurmagomedov 6th, Yaroslav Amosov 7th and Josh
-# Barnett 8th all-time (2026-08-25 audit); under Public Legacy the same fighters
-# sit 60th, 51st and 27th and the top 25 had zero unanchored names on that day's
-# corpus. On the 2026-08-28 board the count is 3 -- Ngannou, Sterling and
-# Dvalishvili, all UFC champions absent from the three supplied anchor lists
-# rather than regional outliers. The count is a smell test, not a target: the
-# anchor lists were authored in the same commit as the layer they score.
-#
-# This was diagnosed and repaired on 2026-08-24
-# (_archive/20260826-stale-project-material/docs/PUBLIC_PERCEPTION_REPAIR_2026-08-24.md),
-# reverted by the 2026-08-25
-# cohesive pass, and restored here. **Career Skill Mass is a skill diagnostic,
-# not the public board.** Do not promote it again without re-running
-# build_top100_audit.py and reading the unanchored top-25 count.
-#
-# The integrity debit is denominated in rating points, so keep that judgement on
-# a base WHR point scale.
-CORE_RATING_CANDIDATES = (
-    "public_legacy_score",
-    "symon_career_skill_mass",
-    "mu_whr",
-)
+# The integrity debit is denominated in rating points, so keep that judgement
+# on a base WHR point scale. This one is not shared: no other consumer applies a
+# point-scale debit.
 INTEGRITY_RATING_CANDIDATES = (
     "mu_whr",
 )
@@ -104,8 +82,78 @@ README_ELITE_PRIME_BEGIN = "<!-- BOARD:ELITEPRIME50:BEGIN -->"
 README_ELITE_PRIME_END = "<!-- BOARD:ELITEPRIME50:END -->"
 README_ELITE_PRIME_WOMEN_BEGIN = "<!-- BOARD:ELITEPRIMEWOMEN10:BEGIN -->"
 README_ELITE_PRIME_WOMEN_END = "<!-- BOARD:ELITEPRIMEWOMEN10:END -->"
+README_CURRENT_BEGIN = "<!-- BOARD:CURRENT30:BEGIN -->"
+README_CURRENT_END = "<!-- BOARD:CURRENT30:END -->"
+README_CURRENT_WOMEN_BEGIN = "<!-- BOARD:CURRENTWOMEN10:BEGIN -->"
+README_CURRENT_WOMEN_END = "<!-- BOARD:CURRENTWOMEN10:END -->"
 README_RELEASE_BEGIN = "<!-- PUBLICATION:RELEASE:BEGIN -->"
 README_RELEASE_END = "<!-- PUBLICATION:RELEASE:END -->"
+
+# The Current board answers the third published question -- "how good are they
+# now" -- from the last fitted rating carried to the snapshot date through the
+# measured age-drift curve. Two properties make it a different board, not a
+# re-sort of the others:
+#
+# * It is a rating level, so like Prime it has no zero floor meaning "no
+#   evidence" and must NOT be added to RATING_FLOOR_IS_UNRANKED.
+# * It is the only board with a recency gate. The projection is shallow -- it
+#   charges Khabib Nurmagomedov 37 points for five years away and Georges
+#   St-Pierre 48 for nine -- so without the gate the board seated retired
+#   champions 4th and 21st and answered "how good were they" a third time.
+#
+# The bar is stated policy, set by the project owner at 18 months on
+# 2026-09-03. It is not fitted, and no accuracy measure selected it: it is the
+# answer to "how long can a fighter be away before a rating stops describing
+# them", which is a judgement about what the word "current" claims, not a
+# quantity in the data. It sits well inside ACTIVITY_MU_PENALTY_FULL_MONTHS (30),
+# the point at which the separate inactivity penalty is fully charged, so a
+# fighter is withheld from this board before that penalty saturates.
+# A third property, and the one that decides who is on it. A rating alone is
+# the wrong quantity to rank "best right now": nothing in a Bradley-Terry model
+# caps an unbeaten record from above, so a fighter who has not lost in a weak
+# field rates alongside one who has beaten contenders. Ranked raw, this board
+# seated six Bellator/PFL fighters -- Usman Nurmagomedov 2nd, Nemkov 8th, Amosov
+# 12th, Eblen 18th -- plus several short unbeaten UFC records, above men who had
+# actually beaten the division. Both boards beside this one already answer that
+# question, and this one now answers it the same way, twice:
+#
+# * a tested-record screen at MIN_OPPONENT_UFC_BOUTS, the same bar the Prime
+#   board applies to an OPPONENT before a win over them counts; and
+# * the exposure factor, applied on the interval scale a rating actually lives
+#   on -- see :func:`ratings.boards.exposure_shrunk_level`.
+#
+# The screen is what removes a career the corpus cannot place; the shrink is
+# what stops a thinly identified career inside the screen from being read at
+# full confidence.
+CURRENT_BOARD_TOP = 30
+CURRENT_MAX_MONTHS_INACTIVE = 18.0
+CURRENT_MIN_UFC_BOUTS = MIN_OPPONENT_UFC_BOUTS
+CURRENT_SCORE_COL = "current_board_score"
+CURRENT_TESTED_LABEL = "UFC bouts"
+
+# Time away compounds, and the recency bar alone does not charge it.
+#
+# The bar asks when a fighter last competed. It cannot see a layoff that ENDED
+# recently, so one comeback bout re-admits a rating built a decade earlier at
+# nearly full value. Ronda Rousey last fought in the UFC in 2016 and returned in
+# May 2026: the ten-year gap cost her 36 rating points inside WHR, because the
+# age prior is a measured per-year population rate applied once across the gap,
+# and she then re-entered the women's board 3rd on a 2015 rating.
+#
+# A year out does not cost a fixed number of points; it costs a fraction of what
+# a fighter has left, and the fractions multiply. So idle time is charged
+# geometrically: each year in the freshness window with no bout retains
+# CURRENT_ANNUAL_RETENTION of the fighter's edge over the contender line. Eight
+# idle years leave 17% of it.
+#
+# Both numbers are stated policy, set by the project owner on 2026-09-03 in the
+# same sense as CONTENDER_LINE_MU: they say what "current" is willing to claim.
+# Neither is fitted, and no accuracy measure selected them -- there is no
+# comeback sample in this corpus large enough to estimate a return-from-layoff
+# effect, and pretending otherwise would be the kind of measurement claim this
+# project does not make.
+CURRENT_FRESHNESS_WINDOW_YEARS = 10
+CURRENT_ANNUAL_RETENTION = 0.80
 
 # Prime answers a different question from the all-time board: not "what did this
 # career amount to" but "how good was this fighter at their best". It is a
@@ -205,6 +253,13 @@ def _select_rating_col(
 def select_core_rating_col(current: pd.DataFrame) -> str:
     """Choose the lean headline score, never a retired weighted stream."""
     return _select_rating_col(current, CORE_RATING_CANDIDATES, board_name="core board")
+
+
+def select_current_rating_col(current: pd.DataFrame) -> str:
+    """Choose the age/inactivity-projected level the Current board ranks."""
+    return _select_rating_col(
+        current, CURRENT_RATING_CANDIDATES, board_name="current board"
+    )
 
 
 def select_integrity_rating_col(current: pd.DataFrame) -> str:
@@ -335,6 +390,44 @@ def _elite_decade_map(snapshot_dir: Path) -> pd.DataFrame | None:
     return decade if not decade.empty else None
 
 
+def recent_idle_years(snapshot_dir: Path, *, window_years: int = CURRENT_FRESHNESS_WINDOW_YEARS) -> pd.Series:
+    """Fighter -> calendar years in the recent window holding no bout.
+
+    Counted in calendar years rather than as a single longest gap because a
+    career is lived in seasons: a fighter who fought once in 2019 and once in
+    2025 was away for the years in between whichever way the gap is sliced, and
+    a fighter with a bout in every year has no idle time however uneven the
+    spacing. The window ends at the last event in the corpus, so the measure
+    moves with the snapshot rather than with the day it is read.
+
+    A fighter absent from the window is idle for all of it, which is what
+    withholds a rating that no recent bout supports.
+    """
+    path = Path(snapshot_dir) / "combined_fights.parquet"
+    if not path.exists():
+        return pd.Series(dtype="float64")
+    fights = pd.read_parquet(
+        path, columns=["fighter_a", "fighter_b", "event_date", "is_model_bout"]
+    )
+    fights = fights[fights["is_model_bout"].fillna(False).astype(bool)]
+    sides = pd.concat(
+        [
+            fights[["fighter_a", "event_date"]].rename(columns={"fighter_a": "fighter"}),
+            fights[["fighter_b", "event_date"]].rename(columns={"fighter_b": "fighter"}),
+        ],
+        ignore_index=True,
+        sort=False,
+    )
+    sides["event_date"] = pd.to_datetime(sides["event_date"], errors="coerce")
+    sides = sides.dropna(subset=["fighter", "event_date"])
+    if sides.empty:
+        return pd.Series(dtype="float64")
+    as_of = sides["event_date"].max()
+    window = sides[sides["event_date"] >= as_of - pd.Timedelta(days=round(365.25 * window_years))]
+    active = window.groupby("fighter")["event_date"].apply(lambda dates: dates.dt.year.nunique())
+    return (float(window_years) - active).clip(lower=0.0)
+
+
 def write_board_artifacts(
     snapshot_dir: Path,
     *,
@@ -460,6 +553,70 @@ def write_board_artifacts(
                 target / f"prime_elite_board{suffix}.parquet", index=False
             )
 
+    # The Current board. Three gates and one adjustment, none of them new:
+    # the shared rating-period floor, the recency bar, the Prime board's
+    # tested-record bar, and the all-time board's exposure factor applied on the
+    # interval scale a rating lives on.
+    current_boards: dict[str, pd.DataFrame] = {}
+    current_col: str | None = None
+    try:
+        current_col = select_current_rating_col(current)
+    except ValueError:
+        current_col = None
+    if current_col is not None and "public_legacy_ufc_bouts" in current.columns:
+        indexed = current.set_index("fighter")
+        months_idle = indexed["months_inactive"] if "months_inactive" in current.columns else None
+        ufc_bouts = indexed["public_legacy_ufc_bouts"]
+        idle_years = recent_idle_years(snap)
+        for gender, population in partition.items():
+            if population is None or population.empty:
+                continue
+            # Two discounts, both on the fighter's edge over the contender line
+            # and therefore composed as one factor: how much of the career the
+            # corpus can identify, and how much of the freshness window the
+            # fighter actually competed in.
+            exposure = pd.to_numeric(
+                population.get(
+                    "public_legacy_exposure_factor",
+                    pd.Series(1.0, index=population.index),
+                ),
+                errors="coerce",
+            ).fillna(1.0)
+            idle = pd.to_numeric(
+                population["fighter"].map(idle_years), errors="coerce"
+            ).fillna(float(CURRENT_FRESHNESS_WINDOW_YEARS))
+            scored = population.assign(
+                current_idle_years=idle.to_numpy(),
+                **{
+                    CURRENT_SCORE_COL: exposure_shrunk_level(
+                        pd.to_numeric(population[current_col], errors="coerce"),
+                        exposure * (CURRENT_ANNUAL_RETENTION ** idle),
+                        anchor=CONTENDER_LINE_MU,
+                    )
+                }
+            )
+            frame = completeness_gated_board(
+                scored,
+                rating_col=CURRENT_SCORE_COL,
+                min_rating_periods=min_rating_periods,
+                tested_wins=ufc_bouts,
+                min_tested_wins=CURRENT_MIN_UFC_BOUTS,
+                tested_wins_label=CURRENT_TESTED_LABEL,
+                months_inactive=months_idle,
+                max_months_inactive=CURRENT_MAX_MONTHS_INACTIVE,
+            )
+            if frame.empty:
+                continue
+            # The idle-year count is why a rating was discounted, so it is
+            # published beside the score rather than left inside the build.
+            frame = frame.merge(
+                scored[["fighter", "current_idle_years"]], on="fighter", how="left"
+            )
+            current_boards[gender] = frame
+            frame.to_parquet(
+                target / f"current_board{BOARD_GENDER_SUFFIX[gender]}.parquet", index=False
+            )
+
     return {
         "out_dir": target,
         "scope": scope,
@@ -493,6 +650,17 @@ def write_board_artifacts(
         "elite_prime_ranked_by_gender": {
             gender: int(frame["status"].eq("ranked").sum())
             for gender, frame in elite_prime_boards.items()
+        },
+        "current_rating_col": CURRENT_SCORE_COL if current_boards else None,
+        "current_source_rating_col": current_col if current_boards else None,
+        "current_max_months_inactive": (
+            CURRENT_MAX_MONTHS_INACTIVE if current_boards else None
+        ),
+        "current_min_ufc_bouts": CURRENT_MIN_UFC_BOUTS if current_boards else None,
+        "current_annual_retention": CURRENT_ANNUAL_RETENTION if current_boards else None,
+        "current_ranked_by_gender": {
+            gender: int(frame["status"].eq("ranked").sum())
+            for gender, frame in current_boards.items()
         },
     }
 
@@ -535,7 +703,10 @@ def top_board_markdown(
 
     columns: dict[str, object] = {
         "#": ranked["rank"].astype(int).to_numpy(),
-        "Fighter": ranked["fighter"].str.replace("|", r"\\|", regex=False).to_numpy(),
+        # A pipe in a name would end the Markdown cell. The replacement is literal
+        # (regex=False), so it must be ONE backslash: the previous two escaped
+        # the backslash instead of the pipe and still broke the row.
+        "Fighter": ranked["fighter"].str.replace("|", r"\|", regex=False).to_numpy(),
     }
     # The elite board is ordered by elite-win mass, whose unit is rating points
     # times wins. Printing that adds a number nothing can be read against; the
@@ -566,8 +737,11 @@ def top_board_markdown(
             columns["Prime rank"] = [
                 "" if pd.isna(value) else f"{value:.0f}" for value in positions
             ]
-    table = pd.DataFrame(columns)
+    return _markdown_table(pd.DataFrame(columns))
 
+
+def _markdown_table(table: pd.DataFrame) -> str:
+    """Render a prepared frame as a Markdown table: rank left, figures right."""
     header = "| " + " | ".join(table.columns) + " |"
     align = "| ---: | --- |" + " ---: |" * (len(table.columns) - 2)
     rows = [
@@ -575,6 +749,46 @@ def top_board_markdown(
         for row in table.itertuples(index=False)
     ]
     return "\n".join([header, align, *rows])
+
+
+def current_board_markdown(
+    gated: pd.DataFrame,
+    current: pd.DataFrame,
+    *,
+    rating_col: str,
+    top: int = CURRENT_BOARD_TOP,
+) -> str:
+    """Render the Current board: the rating, and the date it was last proved.
+
+    It deliberately omits the Prime and all-time columns the other boards
+    carry. Those answer what a career was worth, and setting them beside a "how
+    good are they now" figure invites exactly the comparison the three boards
+    are separated to prevent.
+
+    The columns it does print are the screens and the discounts, so the reader
+    can see them working: the UFC bout count the board gates on, how many years
+    of the freshness window held no bout, and the date the rating was last
+    proved.
+    """
+    ranked = gated[gated["status"].eq("ranked")].head(top).copy()
+    if ranked.empty:
+        raise ValueError("the current board has no ranked fighters to publish")
+    lookup = current.set_index("fighter") if "fighter" in current.columns else current
+    last = (
+        pd.to_datetime(ranked["fighter"].map(lookup["whr_last_event_date"]), errors="coerce")
+        if "whr_last_event_date" in getattr(lookup, "columns", [])
+        else pd.Series(pd.NaT, index=ranked.index)
+    )
+    bouts = pd.to_numeric(ranked.get("tested_opponent_wins"), errors="coerce")
+    idle = pd.to_numeric(ranked.get("current_idle_years"), errors="coerce")
+    return _markdown_table(pd.DataFrame({
+        "#": ranked["rank"].astype(int).to_numpy(),
+        "Fighter": ranked["fighter"].str.replace("|", "\\|", regex=False).to_numpy(),
+        "Rating": ranked[rating_col].round(0).astype(int).to_numpy(),
+        "UFC bouts": ["" if pd.isna(v) else f"{v:.0f}" for v in bouts],
+        "Idle yrs": ["" if pd.isna(v) else f"{v:.0f}" for v in idle],
+        "Last bout": ["" if pd.isna(d) else d.strftime("%Y-%m-%d") for d in last],
+    }))
 
 
 def peak_levels(snapshot_dir: Path) -> pd.Series:
@@ -743,6 +957,12 @@ def main() -> None:
     )
     ap.add_argument("--readme-top", type=int, default=100)
     ap.add_argument(
+        "--current-top",
+        type=int,
+        default=CURRENT_BOARD_TOP,
+        help=f"Length of the published Current board (default {CURRENT_BOARD_TOP}).",
+    )
+    ap.add_argument(
         "--women-top",
         type=int,
         default=10,
@@ -788,6 +1008,11 @@ def main() -> None:
         print(women_ranked.head(args.women_top)[["rank", "fighter", core_col]]
               .round(1).to_string(index=False))
         print(f"\n{GENDER_GAUGE_NOTE}")
+    current_ranked = summary.get("current_ranked_by_gender", {})
+    if current_ranked:
+        print(f"\ncurrent board (active within "
+              f"{summary['current_max_months_inactive']:g} months): "
+              + ", ".join(f"{g} {n:,} ranked" for g, n in sorted(current_ranked.items())))
     print(f"\nwritten to {out}")
 
     if args.write_readme is not None:
@@ -848,6 +1073,33 @@ def main() -> None:
             replacements.append(
                 (README_ELITE_PRIME_BEGIN, README_ELITE_PRIME_END, elite_table)
             )
+        current_col = summary.get("current_rating_col")
+        generated_current = summary.get("current_ranked_by_gender", {})
+        current_table: str | None = None
+        if current_col and "M" in generated_current:
+            current_table = current_board_markdown(
+                pd.read_parquet(out / "current_board.parquet"),
+                current,
+                rating_col=str(current_col),
+                top=args.current_top,
+            )
+            replacements.append(
+                (README_CURRENT_BEGIN, README_CURRENT_END, current_table)
+            )
+        if current_col and "F" in generated_current:
+            replacements.append(
+                (
+                    README_CURRENT_WOMEN_BEGIN,
+                    README_CURRENT_WOMEN_END,
+                    f"{GENDER_GAUGE_NOTE}\n\n"
+                    + current_board_markdown(
+                        pd.read_parquet(out / "current_board_women.parquet"),
+                        current,
+                        rating_col=str(current_col),
+                        top=args.women_top,
+                    ),
+                )
+            )
         if "F" in generated_elite:
             replacements.append(
                 (
@@ -874,6 +1126,10 @@ def main() -> None:
         if elite_table is not None:
             overview.append(
                 (README_ELITE_PRIME_BEGIN, README_ELITE_PRIME_END, elite_table)
+            )
+        if current_table is not None:
+            overview.append(
+                (README_CURRENT_BEGIN, README_CURRENT_END, current_table)
             )
         overview_path = (
             Path(args.overview_path) if args.overview_path is not None else None

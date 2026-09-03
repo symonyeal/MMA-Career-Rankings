@@ -20,7 +20,7 @@ without the facts it came from.
 | --- | --- | --- |
 | All-time | What did the fighter's career add up to? | How good they were over time, what they won, and who they beat |
 | Prime | How good were they at their best, and how often did they prove it? | Their rating in their best ten years, weighted by how many top opponents they beat in them |
-| Current | How good are they now? | Their latest rating, adjusted for age and time out of competition |
+| Current | How good are they now? | Their latest rating, aged forward and discounted for unidentified career, among fighters active in the last 18 months with 8+ UFC bouts |
 | Integrity | How would the published conduct deductions change the order? | A line-by-line list of deductions, each with its reason |
 
 These are three views of the same fight history. They are not meant to be added
@@ -66,17 +66,17 @@ Prime and Prime rank will not always agree, and that is deliberate. Prime is how
 high a fighter rated. The Prime board ranks how often they proved it. So a
 fighter can rate higher than someone placed above them.
 
-**Two careers, and why the board separates them.** Demetrious Johnson is 6th and
+**Two careers, and why the board separates them.** Demetrious Johnson is 7th and
 Fedor Emelianenko 23rd, and the first thing to notice is that Fedor rates *higher*
 at his peak — 2,014 against Johnson's 1,982. The board is not saying Johnson was
 the better fighter at his best. It is saying he achieved more with it, and three
 numbers carry that. **What they won:** Johnson has 12 title wins and 11 defenses
 against Fedor's 5 and 2, which scores 2,248 against 804 — by far the largest gap
 between them, and the achievement term is 30% of the whole score. **Who they
-beat:** almost level, 6 contender wins to 5, scoring 1,170 against 1,000. **How
+beat:** almost level, 6 contender wins to 5, scoring 1,139 against 1,009. **How
 much of the career we can see:** Fedor never fought in the UFC, so his career is
 judged on the promotions we can name, and his exposure factor is 0.835 against
-Johnson's 0.904 — which cuts his skill figure by more than it cuts Johnson's.
+Johnson's 0.897 — which cuts his skill figure by more than it cuts Johnson's.
 
 That last one is a stated policy, not a fact the results prove, and it is the
 part of Fedor's placement most open to argument — it is listed under
@@ -198,9 +198,11 @@ How good was the fighter at their best — counting only the peaks they actually
 proved? To qualify, a fighter must have beaten **5 contenders within a single
 ten-year stretch**. A contender means an opponent rated **1,750 or higher at the
 time of the fight** who also had a tested record of their own: at least 8 UFC
-bouts. That number is easier to read as names than as a figure. On the top-100
-table above, Anthony Pettis peaked at 1,759 and Randy Couture at 1,763, both just
-over the line; Frank Mir at 1,737 and Mark Coleman at 1,722 sit just under it.
+bouts. That number is easier to read as names than as a figure. In the Prime
+column of the top-100 table above — a fighter's rating across their best decade,
+not their highest single reading — Anthony Pettis rates 1,759 and Randy Couture
+1,763, both just over the line; Mark Coleman at 1,722 and Robbie Lawler at 1,705
+sit just under it.
 So a contender is not a title challenger — it is a fighter of roughly that
 standing, and the work is done by needing to beat five of them, not by the height
 of the line. Both figures come from the same ten years, so a win cannot prove a
@@ -223,7 +225,7 @@ added to the rating — they decide how much of it is credited — so nothing is
 counted twice, and there is no dial to tune.
 
 The contender line and the five-win minimum are set as policy, not fitted to the
-data. 70 men qualify, so this top 50 is full. Only 2 women do. That is a
+data. 72 men qualify, so this top 50 is full. Only 2 women do. That is a
 statement about how few women in the data have a long UFC record, not about the
 fighters — see [Published UFC Rankings](RANKINGS.md) for that board.
 
@@ -283,6 +285,99 @@ fighters — see [Published UFC Rankings](RANKINGS.md) for that board.
 | 50 | Dan Henderson | 1869 | 5 |
 
 <!-- BOARD:ELITEPRIME50:END -->
+
+### Current — men, top 30
+
+How good is the fighter now? This starts from their last fitted rating, carried
+to the snapshot date through the measured age-drift curve. Two screens then
+decide who is on the board at all — both borrowed from the boards above rather
+than invented for this one — and two discounts decide where they land.
+
+**They must have fought within the last 18 months.** The age projection is
+deliberately shallow — it charges Khabib Nurmagomedov 37 points for five years
+out and Georges St-Pierre 48 for nine — so without this bar the board would seat
+retired champions 4th and 21st and answer "how good were they" for a third time.
+It is strict enough to withhold fighters who have not retired: Jon Jones and
+Shavkat Rakhmonov are both out on it.
+
+**They must have a tested record: at least 8 UFC bouts.** This is the same bar
+the Prime board applies to an *opponent* before a win over them counts, used here
+on the fighter. It matters because nothing in this kind of rating model caps an
+unbeaten record from above — a fighter who rarely loses is rated above everyone
+they have beaten, however weak the field. Ranked without it, this board put six
+Bellator and PFL fighters in the top thirty, Usman Nurmagomedov 2nd, ahead of men
+who had beaten the division. That is not a verdict on those fighters; it is the
+model saying it cannot place them, and the honest response is to say so rather
+than to rank them anyway.
+
+**Time away is then charged, and it compounds.** The recency screen asks when a
+fighter last competed; it cannot see a layoff that *ended* recently. Ronda Rousey
+last fought in the UFC in 2016 and returned in May 2026, and the decade in
+between cost her 36 rating points — because the age prior is a measured per-year
+population rate, applied once across the gap. That put a 2015 rating 3rd on the
+women's board.
+
+A year out does not cost a fixed number of points. It costs a fraction of what a
+fighter has left, and fractions multiply, so each year of the last ten holding no
+bout retains 80% of that fighter's edge over the contender line. One idle year is
+barely felt. Eight leave 17% of it, and Rousey is 11th rather than 3rd.
+
+**The rating is also discounted by how much of the career we can identify**, the
+same exposure factor the all-time board applies, adapted to the scale. The
+all-time board multiplies Career Skill Mass, a sum with a real zero. A rating has
+no zero, so multiplying it would be meaningless; the distance above the contender
+line is shrunk instead.
+
+Both the 18-month bar and the 80% retention are stated policy about what the word
+"current" is willing to claim. Neither is fitted: there is no comeback sample in
+this data large enough to estimate a return-from-layoff effect, and this project
+does not dress a judgement as a measurement.
+
+The result is on the same scale as the contender line in the release facts above.
+The columns beside it are the screens and the discounts: the UFC bout count the
+board gates on, how many of the last ten years held no bout, and the date the
+rating was last proved.
+
+Do not read this board against the two above it. All-time and Prime are
+retrospective, and a career does not expire; this one is a claim about today.
+The women's Current board is in [Published UFC Rankings](RANKINGS.md).
+
+<!-- BOARD:CURRENT30:BEGIN -->
+
+| # | Fighter | Rating | UFC bouts | Idle yrs | Last bout |
+| ---: | --- | ---: | ---: | ---: | ---: |
+| 1 | Islam Makhachev | 2068 | 18 | 1 | 2025-11-15 |
+| 2 | Ilia Topuria | 2050 | 10 | 0 | 2026-06-14 |
+| 3 | Movsar Evloev | 2050 | 10 | 0 | 2026-03-21 |
+| 4 | Dricus Du Plessis | 2005 | 11 | 0 | 2026-07-18 |
+| 5 | Arman Tsarukyan | 2003 | 12 | 0 | 2025-11-22 |
+| 6 | Alexander Volkanovski | 1992 | 18 | 0 | 2026-01-31 |
+| 7 | Umar Nurmagomedov | 1989 | 9 | 0 | 2026-01-24 |
+| 8 | Justin Gaethje | 1985 | 16 | 0 | 2026-06-14 |
+| 9 | Francis Ngannou | 1973 | 14 | 1 | 2026-05-16 |
+| 10 | Merab Dvalishvili | 1967 | 17 | 0 | 2025-12-06 |
+| 11 | Khamzat Chimaev | 1964 | 10 | 1 | 2026-05-09 |
+| 12 | Charles Oliveira | 1961 | 36 | 0 | 2026-03-07 |
+| 13 | Magomed Ankalaev | 1936 | 16 | 0 | 2026-07-25 |
+| 14 | Ciryl Gane | 1933 | 13 | 2 | 2026-06-14 |
+| 15 | Max Holloway | 1932 | 33 | 0 | 2026-07-11 |
+| 16 | Sean O'Malley | 1932 | 15 | 0 | 2026-06-14 |
+| 17 | Corey Anderson | 1923 | 15 | 0 | 2025-10-03 |
+| 18 | Mario Bautista | 1922 | 15 | 0 | 2026-07-11 |
+| 19 | Sean Brady | 1920 | 11 | 0 | 2026-05-09 |
+| 20 | Aljamain Sterling | 1915 | 23 | 0 | 2026-04-25 |
+| 21 | Alexander Volkov | 1907 | 19 | 0 | 2026-05-09 |
+| 22 | Sean Strickland | 1906 | 25 | 1 | 2026-05-09 |
+| 23 | Gabriel Bonfim | 1905 | 8 | 1 | 2026-06-06 |
+| 24 | Caio Borralho | 1903 | 9 | 0 | 2026-03-07 |
+| 25 | Petr Yan | 1900 | 16 | 1 | 2025-12-06 |
+| 26 | Ian Machado Garry | 1897 | 11 | 3 | 2025-11-22 |
+| 27 | Brendan Allen | 1893 | 19 | 0 | 2026-06-06 |
+| 28 | Paddy Pimblett | 1893 | 9 | 0 | 2026-07-11 |
+| 29 | Carlos Prates | 1891 | 8 | 0 | 2026-05-02 |
+| 30 | Anthony Hernandez | 1890 | 12 | 0 | 2026-02-21 |
+
+<!-- BOARD:CURRENT30:END -->
 
 ## How the ranking is governed
 
@@ -345,7 +440,7 @@ Source ownership, licensing and known gaps are listed in
   fights, because not knowing where a fight happened is not evidence that it was
   a minor event. A career we can only identify from a handful of fights is then
   pulled toward the average of everything we can identify, so it is not credited
-  at full confidence on thin evidence. Jiri Prochazka, 18 of whose 39 fights are
+  at full confidence on thin evidence. Jiri Prochazka, 18 of whose 40 fights are
   unnamed, reads 0.848 against the published men's top-100 median of 0.919. The
   limitation that remains is that a barely-identifiable career still receives an
   estimate rather than an admission that we cannot tell.
@@ -367,6 +462,12 @@ Source ownership, licensing and known gaps are listed in
   Whitehead–Tim Sylvia — and both rows are retained because the source names
   successive events and no available evidence establishes a duplicate. Neither
   ambiguous pair changes the contender-win count.
+- **The Current board's idle-year discount is a judgement, not a measurement.**
+  Charging 20% of a fighter's edge per idle year is a statement about what
+  "current" should claim, chosen because the alternative — the measured age prior
+  alone — charged Ronda Rousey 36 points for a decade away and seated a 2015
+  rating 3rd. The discount is applied to a rating, not to evidence: it does not
+  make the model know what a fighter looks like after a layoff.
 - **No model can recover fights missing from every source.** Coverage gaps stay
   part of every release decision.
 
