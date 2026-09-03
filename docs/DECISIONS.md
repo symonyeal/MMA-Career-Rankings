@@ -174,7 +174,7 @@ refused.
 The rating charges elapsed time at an age rate and nothing else, so ageing while
 competing and ageing while idle cost the same. Stipe Miocic was 35 and active
 when Daniel Cormier fought him and 42 with 44 months away when Jon Jones did;
-the published trajectory separates those two Stipes by 39 rating points, and
+the published trajectory separates those two Stipes by 34 rating points, and
 prices the two wins as near-equivalents.
 
 `ratings/layoff.py` now discounts the opponent's price by how far past a normal

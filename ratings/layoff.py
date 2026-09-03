@@ -4,7 +4,7 @@ The rating model prices an opponent by their rating as at the bout. That rating
 charges elapsed time at an age rate and nothing else, so ageing while competing
 and ageing while idle cost the same. Stipe Miocic was 35 and active when Daniel
 Cormier fought him and 42 with 44 months away when Jon Jones did; the published
-trajectory separates those two Stipes by 39 rating points, and the two wins are
+trajectory separates those two Stipes by 34 rating points, and the two wins are
 priced as near-equivalents.
 
 **This corrects the price of the win, not the opponent's rating.** Putting the

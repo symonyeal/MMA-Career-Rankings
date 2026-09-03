@@ -3,13 +3,16 @@
 The rating charges elapsed time at an age rate and nothing else, so ageing while
 competing and ageing while idle cost the same: the published trajectory
 separates the Stipe Miocic that Daniel Cormier fought (35, active) from the one
-Jon Jones fought (42, 44 months out) by 39 rating points.
+Jon Jones fought (42, 44 months out) by 34 rating points.
 
 This corrects the price of the win, never the opponent's rating. Putting the
 charge in the WHR transition prior was measured and refused -- see
 ``docs/DECISIONS.md`` and the module docstring.
 """
 from __future__ import annotations
+
+import re
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -170,3 +173,63 @@ def test_the_charge_is_not_written_back_to_the_opponents_rating():
     })
     attach_opponent_layoff(priced, appearances)
     pd.testing.assert_frame_equal(appearances, before)
+
+
+# --- the quoted Stipe figures, held to the snapshot ------------------------
+
+SNAPSHOT = Path(__file__).resolve().parents[1] / "data" / "snapshots" / "2026-08-13"
+RANKINGS = Path(__file__).resolve().parents[1] / "RANKINGS.md"
+
+CORMIER_WIN = pd.Timestamp("2018-07-07")
+JONES_WIN = pd.Timestamp("2024-11-16")
+
+
+def _whr_history():
+    path = SNAPSHOT / "ratings_history_whr.parquet"
+    if not path.exists():
+        pytest.skip("snapshot artifact not present: ratings_history_whr.parquet")
+    return pd.read_parquet(path)
+
+
+def _priced_at(mu: pd.Series, when: pd.Timestamp) -> float:
+    """The rating the ledger prices a bout at: the last one strictly before it."""
+    before = mu[mu.index < when]
+    return float(before.iloc[-1])
+
+
+def test_the_quoted_stipe_figures_match_the_snapshot():
+    """RANKINGS.md quotes both halves of the Stipe example.
+
+    Neither is generated, and both went stale once already: the rating gap was
+    published as 39 and the discount as 232 after a refit had moved them. The
+    expected values are read from the document, so a refit fails here rather
+    than in the prose.
+    """
+    if not RANKINGS.exists():
+        pytest.skip("RANKINGS.md not present")
+    text = RANKINGS.read_text(encoding="utf-8")
+
+    quoted_discount = re.search(r"priced (\d+) points below", text)
+    quoted_gap = re.search(r"beat from the one Jones beat by (\d+)", text)
+    assert quoted_discount, "RANKINGS.md no longer quotes the layoff discount"
+    assert quoted_gap, "RANKINGS.md no longer quotes the rating gap"
+
+    history = _whr_history()
+    excess = appearance_layoff_excess(history[["fighter", "event_date"]])
+    excess = excess[excess["fighter"].eq("Stipe Miocic")].set_index("event_date")
+    charged = float(excess.loc[JONES_WIN, "layoff_excess"])
+    discount = charged * -OPPONENT_LAYOFF_ELO_PER_TURNAROUND
+
+    mu = (
+        history[history["fighter"].eq("Stipe Miocic")]
+        .sort_values("event_date")
+        .set_index("event_date")["mu_whr"]
+    )
+    gap = _priced_at(mu, CORMIER_WIN) - _priced_at(mu, JONES_WIN)
+
+    assert round(discount) == int(quoted_discount.group(1))
+    assert round(gap) == int(quoted_gap.group(1))
+    assert discount > gap, (
+        "the example only makes its point if the layoff charge exceeds what the "
+        "rating trajectory charged on its own"
+    )

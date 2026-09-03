@@ -338,9 +338,9 @@ returning from a long absence is not the fighter their rating describes, so the
 price of beating them is discounted by how far past the era's own normal
 turnaround they had been idle, capped at four turnarounds. It reaches every
 ledger that prices a win — the title ledger, the contender résumé and the Prime
-gate alike. Jon Jones's win over Stipe Miocic is priced 232 points below Stipe's
-rating, where the rating alone separates the Stipe that Daniel Cormier fought
-from the one Jones fought by 39.
+gate alike. Jon Jones's win over Stipe Miocic is priced 227 points below the
+rating it would otherwise be measured against, where the rating alone separates
+the Stipe that Daniel Cormier beat from the one Jones beat by 34.
 
 Nothing is written back to a fighter's own rating. Charging the layoff inside
 the rating was built, measured on the full corpus and refused: a symmetric prior
