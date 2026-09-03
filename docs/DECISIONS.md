@@ -167,6 +167,95 @@ Where the data comes from is [Source Matrix](../data/SOURCE_MATRIX.md).
    resolved improvement and there is none. Harness:
    `Claude Func Folder\ufc_whr_drift_recalibration.py`.
 
+**A win over a fighter returning from a long absence is priced lower.** Shipped
+2026-09-03, in the ledgers, after the rating-layer version was built and
+refused.
+
+The rating charges elapsed time at an age rate and nothing else, so ageing while
+competing and ageing while idle cost the same. Stipe Miocic was 35 and active
+when Daniel Cormier fought him and 42 with 44 months away when Jon Jones did;
+the published trajectory separates those two Stipes by 39 rating points, and
+prices the two wins as near-equivalents.
+
+`ratings/layoff.py` now discounts the opponent's price by how far past a normal
+turnaround they had been idle, at `OPPONENT_LAYOFF_ELO_PER_TURNAROUND = -90`,
+capped at 4 turnarounds. One function, used by the title ledger, the contender
+resume and the elite-Prime gate, so all three agree about what beating a
+returning fighter is worth. It changes no rating: a fighter's own number
+continues to say what their fights say.
+
+**The unit is an era-normal turnaround, not a year.** A fixed number of days
+cannot mean "a layoff" across this corpus. The 75th-percentile gap between bouts
+runs 112 days in 1995 and 392 in 2020 — fighters used to compete five times a
+year and now fight twice — so charged in days past a fixed 270-day grace, a
+2020-era transition is charged 0.416 idle years against 0.087 for a 1995-era
+one, 4.8x. Divided by the era's own normal, mean charged excess runs 0.298
+turnarounds in 1995 against 0.369 in 2025.
+
+## Tested and refused: the layoff charge does not belong in the rating
+
+Charging the layoff inside the WHR transition prior was implemented, measured on
+the full corpus and reverted the same day. **Do not propose it again.**
+
+A transition prior constrains the *difference* between consecutive nodes, while
+a fighter's level is pinned by their record. "You declined across this gap" is
+therefore equally satisfiable as "you used to be better", and for gap-heavy
+careers the fit chooses the second:
+
+| fighter | early career | late career | peak |
+|---|---:|---:|---:|
+| Sean Sherk | 1927 → **2124** | −36 | **+197** |
+| Mark Coleman | 1768 → **1948** | −170 | **+179** |
+| Stipe Miocic | −19 | 1936 → 1615 | −14 |
+| Movsar Evloev | −14 | −103 | −30 |
+
+Sean Sherk's 1999 rating rising to 2125 would make him one of the highest-rated
+fighters in the corpus. Career Skill Mass sums rating above a per-year bar, so
+inflated early peaks inflate the all-time score, and erratic careers concentrate
+in the old era: rank agreement with the previous board fell to **0.813**, with
+Sean Sherk +59 places, Mark Coleman +44 and Josh Barnett +42 against Movsar
+Evloev −35, Ciryl Gane −31 and Sean Strickland −24. That is the era skew this
+project has already fought once, re-entering through a side door.
+
+It is structural, not a tuning failure. Re-running it in era-normal units rather
+than days made the skew **worse** (0.895 → 0.813), because normalising the unit
+does not stop a symmetric prior from raising the earlier node. The only
+rating-layer fix would be a one-sided force on the post-layoff node, which is
+not a valid joint prior and was not adopted.
+
+**The fitted age curve is estimated on survivors, and says a 42-year-old
+declines more slowly than a 37-year-old.** Open, and the reason the layoff term
+below is supplied rather than fitted.
+
+The curve is built from *observed transitions* — the change between one
+appearance and the next. A fighter needs a next appearance to contribute one, so
+a decline steep enough to end a career is never in the sample. The censoring
+rate rises exactly where the decline should be steepest:
+
+| age bucket | appearances | career-ending | censored |
+|---|---:|---:|---:|
+| <24 | 20,541 | 162 | 0.8% |
+| 30-33 | 17,465 | 1,263 | 7.2% |
+| 33-36 | 10,920 | 1,237 | 11.3% |
+| 36-39 | 5,488 | 933 | 17.0% |
+| 39-42 | 2,183 | 441 | 20.2% |
+| 42+ | 1,295 | 363 | 28.0% |
+
+and the fitted curve turns the wrong way at the same point:
+
+| bucket | <24 | 24-27 | 27-30 | 30-33 | 33-36 | 36-39 | 39-42 | 42+ |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| Elo/year | 0.00 | -1.55 | -3.78 | -5.48 | -6.43 | **-6.83** | **-5.86** | **-3.87** |
+
+Ageing does not slow down at 39. The fighters who kept appearing after 39 are
+the ones it had not yet caught. Correcting this needs a censoring model — the
+decline has to be inferred from the fact that the career stopped, which is
+survival analysis, not a bucket mean — so it is recorded here rather than
+patched with a hand-drawn curve. Until it is done, the age term understates
+decline in exactly the buckets where a published board is most likely to be
+questioned, and no measured rate from this estimator should be quoted as the
+cost of aging.
+
 ## Remaining data work
 
 7. **Four eligible fighter careers are still unmerged, and all four are identity

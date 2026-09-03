@@ -394,6 +394,17 @@ def run_whr(
             else:
                 transition_bins[fighter] = np.zeros(0, dtype=int)
 
+    # Gaps are a property of the schedule, not of the current ratings, so they
+    # are built once instead of being rebuilt for every fighter on every pass.
+    # The inner loop runs about 34,000 x 2 x iterations times, and rebuilding
+    # them there dominated the fit.
+    fighter_gaps: dict[object, np.ndarray] = {}
+    for fighter, nodes in fighter_node_arrays.items():
+        if len(nodes) > 1:
+            fighter_gaps[fighter] = np.maximum(
+                app_day[nodes][1:] - app_day[nodes][:-1], 1.0
+            )
+
     fit_passes = int(iterations)
     total_passes = fit_passes * (2 if age_drift else 1)
     for pass_index in range(total_passes):
@@ -429,7 +440,7 @@ def run_whr(
 
             # Wiener-process prior between consecutive appearances — unweighted.
             if k > 1:
-                gaps = np.maximum(app_day[nodes][1:] - app_day[nodes][:-1], 1.0)
+                gaps = fighter_gaps[fighter]
                 inv_v = 1.0 / (w2_per_day * gaps)
                 residual = r[1:] - r[:-1]
                 if age_drift:
@@ -465,7 +476,7 @@ def run_whr(
                 if len(nodes) < 2:
                     continue
                 bins = transition_bins[fighter]
-                gaps = np.maximum(app_day[nodes][1:] - app_day[nodes][:-1], 1.0)
+                gaps = fighter_gaps[fighter]
                 changes = ratings[nodes][1:] - ratings[nodes][:-1]
                 for bucket in range(len(AGE_BIN_LABELS)):
                     take = bins == bucket
@@ -512,7 +523,7 @@ def run_whr(
         # WHR Hessian also couples opponents, so this is deliberately not called
         # a marginal posterior variance.
         variances = np.zeros(n_app, dtype=float)
-        for nodes in fighter_node_arrays.values():
+        for fighter, nodes in fighter_node_arrays.items():
             k = len(nodes)
             if k == 0:
                 continue
@@ -525,7 +536,7 @@ def run_whr(
                 p0 = 1.0 / (1.0 + np.exp(-r))
                 h_diag -= (vg_total / k) * p0 * (1.0 - p0)
             if k > 1:
-                gaps = np.maximum(app_day[nodes][1:] - app_day[nodes][:-1], 1.0)
+                gaps = fighter_gaps[fighter]
                 inv_v = 1.0 / (w2_per_day * gaps)
                 h_diag[:-1] -= inv_v
                 h_diag[1:] -= inv_v

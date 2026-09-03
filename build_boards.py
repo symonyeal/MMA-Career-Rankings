@@ -42,6 +42,7 @@ from ratings.boards import (
     integrity_ledger,
 )
 from ratings.constants import SUSTAINED_PEAK_MIN_FIGHTS  # board eligibility floor
+from ratings.layoff import attach_opponent_layoff
 from ratings.gender import (
     GENDER_GAUGE_NOTE,
     GENDER_LABEL,
@@ -131,29 +132,24 @@ CURRENT_MIN_UFC_BOUTS = MIN_OPPONENT_UFC_BOUTS
 CURRENT_SCORE_COL = "current_board_score"
 CURRENT_TESTED_LABEL = "UFC bouts"
 
-# Time away compounds, and the recency bar alone does not charge it.
+# Time away is charged where a win is PRICED, not here.
 #
-# The bar asks when a fighter last competed. It cannot see a layoff that ENDED
-# recently, so one comeback bout re-admits a rating built a decade earlier at
-# nearly full value. Ronda Rousey last fought in the UFC in 2016 and returned in
-# May 2026: the ten-year gap cost her 36 rating points inside WHR, because the
-# age prior is a measured per-year population rate applied once across the gap,
-# and she then re-entered the women's board 3rd on a 2015 rating.
+# An earlier version of this board discounted idle years itself. That was the
+# right diagnosis in the wrong place: a layoff does not only make a fighter's
+# current standing doubtful, it makes a win over them worth less, and every
+# ledger that prices one needs to know. It lives in ratings/layoff.py as
+# OPPONENT_LAYOFF_ELO_PER_TURNAROUND, reached through attach_opponent_layoff --
+# the all-time title ledger, the contender resume and the Prime gate alike, not
+# only here.
 #
-# A year out does not cost a fixed number of points; it costs a fraction of what
-# a fighter has left, and the fractions multiply. So idle time is charged
-# geometrically: each year in the freshness window with no bout retains
-# CURRENT_ANNUAL_RETENTION of the fighter's edge over the contender line. Eight
-# idle years leave 17% of it.
+# It is NOT in the rating. Putting it in the WHR transition prior was built,
+# measured and refused the same day: a symmetric prior satisfies "declined
+# across this gap" by raising the earlier node, which lifted Sean Sherk's 1999
+# rating from 1927 to 2124 and made the era skew worse (0.895 -> 0.813). See
+# docs/DECISIONS.md.
 #
-# Both numbers are stated policy, set by the project owner on 2026-09-03 in the
-# same sense as CONTENDER_LINE_MU: they say what "current" is willing to claim.
-# Neither is fitted, and no accuracy measure selected them -- there is no
-# comeback sample in this corpus large enough to estimate a return-from-layoff
-# effect, and pretending otherwise would be the kind of measurement claim this
-# project does not make.
-CURRENT_FRESHNESS_WINDOW_YEARS = 10
-CURRENT_ANNUAL_RETENTION = 0.80
+# Charging it again on this board would post the same fact twice. Do not
+# reinstate it.
 
 # Prime answers a different question from the all-time board: not "what did this
 # career amount to" but "how good was this fighter at their best". It is a
@@ -374,6 +370,9 @@ def _elite_decade_map(snapshot_dir: Path) -> pd.DataFrame | None:
     if len(rated) != len(appearances) or rated.duplicated(["fight_url", "fighter"]).any():
         raise ValueError("elite Prime evidence must contain one row per fight and fighter")
 
+    # The same layoff discount the score's ledgers apply, so the Prime gate and
+    # the published score agree about what beating a returning fighter is worth.
+    rated = attach_opponent_layoff(rated, history)
     tested = rated[rated["opponent"].map(ufc_bouts).fillna(0) >= MIN_OPPONENT_UFC_BOUTS]
     wins = quality_win_record(tested, min_opponent_mu=CONTENDER_LINE_MU)
     if wins.empty:
@@ -388,44 +387,6 @@ def _elite_decade_map(snapshot_dir: Path) -> pd.DataFrame | None:
     )
     decade = best_elite_decade(qualifying, own)
     return decade if not decade.empty else None
-
-
-def recent_idle_years(snapshot_dir: Path, *, window_years: int = CURRENT_FRESHNESS_WINDOW_YEARS) -> pd.Series:
-    """Fighter -> calendar years in the recent window holding no bout.
-
-    Counted in calendar years rather than as a single longest gap because a
-    career is lived in seasons: a fighter who fought once in 2019 and once in
-    2025 was away for the years in between whichever way the gap is sliced, and
-    a fighter with a bout in every year has no idle time however uneven the
-    spacing. The window ends at the last event in the corpus, so the measure
-    moves with the snapshot rather than with the day it is read.
-
-    A fighter absent from the window is idle for all of it, which is what
-    withholds a rating that no recent bout supports.
-    """
-    path = Path(snapshot_dir) / "combined_fights.parquet"
-    if not path.exists():
-        return pd.Series(dtype="float64")
-    fights = pd.read_parquet(
-        path, columns=["fighter_a", "fighter_b", "event_date", "is_model_bout"]
-    )
-    fights = fights[fights["is_model_bout"].fillna(False).astype(bool)]
-    sides = pd.concat(
-        [
-            fights[["fighter_a", "event_date"]].rename(columns={"fighter_a": "fighter"}),
-            fights[["fighter_b", "event_date"]].rename(columns={"fighter_b": "fighter"}),
-        ],
-        ignore_index=True,
-        sort=False,
-    )
-    sides["event_date"] = pd.to_datetime(sides["event_date"], errors="coerce")
-    sides = sides.dropna(subset=["fighter", "event_date"])
-    if sides.empty:
-        return pd.Series(dtype="float64")
-    as_of = sides["event_date"].max()
-    window = sides[sides["event_date"] >= as_of - pd.Timedelta(days=round(365.25 * window_years))]
-    active = window.groupby("fighter")["event_date"].apply(lambda dates: dates.dt.year.nunique())
-    return (float(window_years) - active).clip(lower=0.0)
 
 
 def write_board_artifacts(
@@ -567,14 +528,11 @@ def write_board_artifacts(
         indexed = current.set_index("fighter")
         months_idle = indexed["months_inactive"] if "months_inactive" in current.columns else None
         ufc_bouts = indexed["public_legacy_ufc_bouts"]
-        idle_years = recent_idle_years(snap)
         for gender, population in partition.items():
             if population is None or population.empty:
                 continue
-            # Two discounts, both on the fighter's edge over the contender line
-            # and therefore composed as one factor: how much of the career the
-            # corpus can identify, and how much of the freshness window the
-            # fighter actually competed in.
+            # One discount here: how much of the career the corpus can
+            # identify. Time away is already inside the rating.
             exposure = pd.to_numeric(
                 population.get(
                     "public_legacy_exposure_factor",
@@ -582,15 +540,11 @@ def write_board_artifacts(
                 ),
                 errors="coerce",
             ).fillna(1.0)
-            idle = pd.to_numeric(
-                population["fighter"].map(idle_years), errors="coerce"
-            ).fillna(float(CURRENT_FRESHNESS_WINDOW_YEARS))
             scored = population.assign(
-                current_idle_years=idle.to_numpy(),
                 **{
                     CURRENT_SCORE_COL: exposure_shrunk_level(
                         pd.to_numeric(population[current_col], errors="coerce"),
-                        exposure * (CURRENT_ANNUAL_RETENTION ** idle),
+                        exposure,
                         anchor=CONTENDER_LINE_MU,
                     )
                 }
@@ -607,11 +561,6 @@ def write_board_artifacts(
             )
             if frame.empty:
                 continue
-            # The idle-year count is why a rating was discounted, so it is
-            # published beside the score rather than left inside the build.
-            frame = frame.merge(
-                scored[["fighter", "current_idle_years"]], on="fighter", how="left"
-            )
             current_boards[gender] = frame
             frame.to_parquet(
                 target / f"current_board{BOARD_GENDER_SUFFIX[gender]}.parquet", index=False
@@ -657,7 +606,6 @@ def write_board_artifacts(
             CURRENT_MAX_MONTHS_INACTIVE if current_boards else None
         ),
         "current_min_ufc_bouts": CURRENT_MIN_UFC_BOUTS if current_boards else None,
-        "current_annual_retention": CURRENT_ANNUAL_RETENTION if current_boards else None,
         "current_ranked_by_gender": {
             gender: int(frame["status"].eq("ranked").sum())
             for gender, frame in current_boards.items()
@@ -780,13 +728,11 @@ def current_board_markdown(
         else pd.Series(pd.NaT, index=ranked.index)
     )
     bouts = pd.to_numeric(ranked.get("tested_opponent_wins"), errors="coerce")
-    idle = pd.to_numeric(ranked.get("current_idle_years"), errors="coerce")
     return _markdown_table(pd.DataFrame({
         "#": ranked["rank"].astype(int).to_numpy(),
         "Fighter": ranked["fighter"].str.replace("|", "\\|", regex=False).to_numpy(),
         "Rating": ranked[rating_col].round(0).astype(int).to_numpy(),
         "UFC bouts": ["" if pd.isna(v) else f"{v:.0f}" for v in bouts],
-        "Idle yrs": ["" if pd.isna(v) else f"{v:.0f}" for v in idle],
         "Last bout": ["" if pd.isna(d) else d.strftime("%Y-%m-%d") for d in last],
     }))
 

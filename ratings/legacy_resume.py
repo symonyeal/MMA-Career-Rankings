@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 
 from loaders.fightmatrix_organizations import normalize_organization
+from ratings.layoff import attach_opponent_layoff
 from ratings.opponent_quality import CONTENDER_LINE_MU, MIN_OPPONENT_UFC_BOUTS
 from ratings.performance_adjustment import (
     is_real_ufc_title_bout,
@@ -1061,6 +1062,10 @@ def title_quality_ledger(
     priced["opponent_mu"] = priced["opponent_mu"] + _pool_offset(
         priced["opponent"], priced["event_date"], ufc_debut_dates, pool_offset_elo
     )
+    # Beating a champion returning from a long absence is not beating the
+    # champion their rating describes. Priced here for the same reason it is
+    # priced on the contender resume, and by the same function.
+    priced = attach_opponent_layoff(priced, h)
     # A title bout can fall in a year with no rated appearances -- the bar has
     # no entry for it. Dropping those rows would silently zero a real title win,
     # so fall back to the nearest rated year, then to the whole-sample level.
@@ -1253,6 +1258,11 @@ def contender_resume_ledger(
     ).dropna(subset=["opponent_mu"])
     if priced.empty:
         return _empty_resume_ledger()
+
+    # An opponent returning from a long absence is not the fighter their rating
+    # says they are. Discount the price before the contender screen, so a win
+    # over a fighter who no longer clears the line does not count as one.
+    priced = attach_opponent_layoff(priced, h)
 
     tested = ufc_bout_counts(fights)
     priced = priced[

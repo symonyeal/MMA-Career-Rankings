@@ -163,83 +163,36 @@ def test_the_current_board_is_not_a_re_sort_of_the_all_time_board():
     assert top_current != top_all_time
 
 
-# --- time away compounds ----------------------------------------------------
+# --- time away is charged in the rating, not on this board ------------------
 
-def _fight_snapshot(tmp_path, rows):
-    snap = tmp_path / "snap"
-    snap.mkdir()
-    pd.DataFrame(rows).to_parquet(snap / "combined_fights.parquet", index=False)
-    return snap
+def test_the_board_does_not_charge_idle_time_itself():
+    """A layoff is priced once, where a win is priced.
 
-
-def test_a_fighter_active_every_year_has_no_idle_time(tmp_path):
-    rows = [
-        {"fighter_a": "busy", "fighter_b": "other",
-         "event_date": pd.Timestamp(f"{year}-06-01"), "is_model_bout": True}
-        for year in range(2017, 2027)
-    ]
-    idle = build_boards.recent_idle_years(_fight_snapshot(tmp_path, rows))
-    assert idle["busy"] == pytest.approx(0.0)
-
-
-def test_a_decade_gap_ending_in_a_comeback_is_still_idle_time(tmp_path):
-    """The case the discount exists for: the layoff ended, so the recency bar
-    sees an active fighter and the idle years are what charge the decade."""
-    rows = [
-        {"fighter_a": "comeback", "fighter_b": "other",
-         "event_date": pd.Timestamp("2016-12-30"), "is_model_bout": True},
-        {"fighter_a": "comeback", "fighter_b": "other",
-         "event_date": pd.Timestamp("2026-05-16"), "is_model_bout": True},
-    ]
-    idle = build_boards.recent_idle_years(_fight_snapshot(tmp_path, rows))
-    assert idle["comeback"] == pytest.approx(8.0)
-
-
-def test_unrated_bouts_do_not_count_as_activity(tmp_path):
-    rows = [
-        {"fighter_a": "a", "fighter_b": "b",
-         "event_date": pd.Timestamp("2026-05-16"), "is_model_bout": True},
-        {"fighter_a": "a", "fighter_b": "b",
-         "event_date": pd.Timestamp("2023-05-16"), "is_model_bout": False},
-    ]
-    idle = build_boards.recent_idle_years(_fight_snapshot(tmp_path, rows))
-    assert idle["a"] == pytest.approx(9.0)
-
-
-def test_the_discount_compounds_rather_than_accruing_a_fixed_charge():
-    """Two idle years must cost more than twice one, on the remaining edge."""
-    rate = build_boards.CURRENT_ANNUAL_RETENTION
-    edge = 200.0
-    one = edge * (1 - rate)
-    two = edge * (1 - rate ** 2)
-    assert two < 2 * one
-    assert two > one
-
-
-def test_eight_idle_years_leave_a_small_fraction_of_the_edge():
-    """The Rousey case: a decade away must not be a rounding error."""
-    retained = build_boards.CURRENT_ANNUAL_RETENTION ** 8
-    assert retained < 0.20
-
-
-def test_the_published_board_charges_idle_years_monotonically():
-    """Equal ratings and exposure: more idle years can never score higher."""
+    An earlier version of this board discounted idle years here. Charging it
+    both places would post the same fact twice, and would leave every other
+    board pricing a win over a returning fighter as if no layoff had happened.
+    """
+    assert not hasattr(build_boards, "CURRENT_ANNUAL_RETENTION")
+    assert not hasattr(build_boards, "recent_idle_years")
     board = _published()
-    ranked = board[board["status"].eq("ranked")]
-    assert "current_idle_years" in ranked.columns
-    assert (ranked["current_idle_years"] >= 0).all()
-    assert ranked["current_idle_years"].max() > 0, "no idle time is being measured"
+    assert "current_idle_years" not in board.columns
 
 
-def test_the_comeback_fighter_is_below_the_published_womens_top_ten():
-    path = SNAPSHOT / "current_board_women.parquet"
-    if not path.exists():
-        pytest.skip("snapshot artifact not present")
-    women = pd.read_parquet(path).set_index("fighter")
-    if "Ronda Rousey" not in women.index:
-        pytest.skip("fighter not in this snapshot")
-    row = women.loc["Ronda Rousey"]
-    assert row["current_idle_years"] >= 8
-    assert row["rank"] > 10, (
-        "a decade-old rating is back inside the published women's top ten"
+def test_the_layoff_charge_lives_in_the_pricing_layer():
+    """Not in the rating, and not on this board.
+
+    The rating-layer version was built, measured on the full corpus and
+    refused: a transition prior is symmetric, so it raises the earlier node
+    instead of lowering the later one (Sean Sherk 1927 -> 2124, rank agreement
+    0.895 -> 0.813). See docs/DECISIONS.md.
+    """
+    from ratings import whr
+    from ratings.layoff import (
+        MAX_EXCESS_TURNAROUNDS,
+        OPPONENT_LAYOFF_ELO_PER_TURNAROUND,
     )
+
+    assert OPPONENT_LAYOFF_ELO_PER_TURNAROUND < 0
+    assert MAX_EXCESS_TURNAROUNDS > 0
+    assert not hasattr(whr, "LAYOFF_GRACE_DAYS")
+    assert not hasattr(whr, "LAYOFF_MAX_IDLE_YEARS")
