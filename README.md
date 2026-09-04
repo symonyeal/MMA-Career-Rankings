@@ -1,53 +1,63 @@
 # Symon UFC Rank Engine
 
-Rankings are arguments. This one argues in code: every placement traces to
-recorded fights and a declared rule, never a hidden reputation bonus.
+Every all-time list is an argument. This one makes its argument in code, so you
+can check it. If you do not like where somebody landed, you can point at a fight
+or at a rule and say why. There is no reputation bonus buried in here.
 
 ## A ranking is a set of decisions
 
 ### Weight classes are different competitive worlds
 
-Most divisions rarely meet, so raw rating gaps between them are not reliable
-pound-for-pound evidence. Career division is where most effective appearances
-occurred; recency only breaks a tie. Current division changes after a UFC title
-win, not after a cameo or title loss. Each active year is judged against its
-division's top ten percent, capped at roughly the fifth-best fighter once the
-class matures; divisions with fewer than 30 fighter-years use the sport-wide
-line. Men's and women's boards stay separate because no results connect them.
+Fighters from different divisions almost never meet, so putting a flyweight's
+rating next to a heavyweight's does not tell you much, because there is no chain
+of results connecting them. A fighter's division is wherever they did most of their
+real work, and recency only matters when that is a tie. Moving up counts once they
+have won a UFC title at the new weight, not when they take a one-off fight
+upstairs or lose the belt. Every year of a career is measured against the top
+ten percent of its own division that year, which is about the fifth-best fighter
+once a class has filled out, and divisions with fewer than 30 fighter-years on
+record borrow the sport-wide line instead. Men and women get separate boards,
+because nothing in the results connects the two.
 
 ### The UFC is the anchor, not the whole sport
 
-The fit includes early UFC and major-promotion careers and gives no promotion a
-bonus inside the rating -- crossover results locate them, and promotion enters
-afterward only as confidence in where a career was proved. The UFC is `1.00`,
-PRIDE `0.95`, Affliction `0.90`, WEC and Strikeforce `0.88`, Bellator `0.65`, and
-PFL, RIZIN, ONE and DREAM `0.60`. The exposure factor blends the career average
-with its strongest quarter and pulls thin evidence toward the pooled average.
-An unknown promotion is missing evidence, not a weak show.
+The rating itself does not care which banner you fought under. A win is a win,
+and it is the crossover fights, the fighters who fought in both places, that let the
+model put PRIDE or Bellator on the same scale as the UFC. Promotion only shows
+up afterwards, as a read on how well tested a career really was. The UFC is
+`1.00`, PRIDE `0.95`, Affliction `0.90`, WEC and Strikeforce `0.88`, Bellator
+`0.65`, and PFL, RIZIN, ONE and DREAM `0.60`. That number blends a fighter's
+career average with their strongest stretch and pulls thin records back toward the
+middle. And when we do not know who ran the show, that is missing information,
+not proof it was a small one.
 
 ### The result is not just win or loss
 
-A knockout or submission scores `1.00`, a unanimous decision `0.95`, a split or
-majority decision `0.90`, a disqualification `0.85`, and a draw `0.50` for each
-fighter. No-contests, overturned results and bouts that could not continue are
-excluded.
+How you won counts, because it tells us more or less about you. A knockout or
+submission scores `1.00`, a unanimous decision `0.95`, a split or majority
+decision `0.90`, a disqualification `0.85`, and a draw `0.50` for each fighter.
+No-contests, overturned wins and fights stopped by something nobody controls do
+not count at all.
 
 ### A later career can change the meaning of an earlier fight
 
-The rating fits every career together, so later evidence can revalue an earlier
-win. Scores are displayed around 1,500, and every fighter carries one neutral
-virtual bout—half a win and half a loss—so 1–0 does not outrank 10–0 merely
-because both are unbeaten. Skill can change with time and age; there is no
-hand-written era bonus.
+Every career is fitted together at once, so what a win was worth can change
+years after the fact. Beat someone who turns out to be an all-timer and that win
+grows. Beat one who never does anything again and it quietly shrinks. Ratings
+are displayed around 1,500, and everybody carries one neutral virtual
+bout—half a win and half a loss—which is why a 1–0 fighter does not leapfrog a
+10–0 fighter just because neither of them has lost yet. Fighters get better and
+then worse with age, and none of that comes from a hand-typed era bonus.
 
 ### One fight gets one entry, and one idea gets one payment
 
-One authoritative row survives when sources repeat a bout, and publication
-stops if a duplicate remains. Whole careers are required because missing losses
-bias ratings upward. Opponent
-strength is paid in the rating, each active year enters career skill once, and
-the contender résumé is capped once per year. Titles are priced through the
-opponent beaten, not a flat belt or multi-division bonus.
+When two sources carry the same fight, one row survives, and the build refuses
+to publish if a duplicate slips through. We need whole careers rather than just
+the UFC run, because a fighter whose losses are missing looks better than they
+were. And every idea gets paid exactly once. How good the opponent was already
+lives in that opponent's rating, each active year counts once toward career
+skill, the contender résumé takes one win per year, and a title is priced by who
+you actually beat for it, not by a flat bonus for holding one, or two.
 
 ## Three questions, three boards
 
@@ -57,27 +67,29 @@ opponent beaten, not a flat belt or multi-division bonus.
 All-time = 30% championships + 17.5% career skill + 52.5% contender résumé
 ```
 
-Each component is divided by the mean of its own top 100 before combining.
-Career skill sums each active year above its division-year line. The résumé
-prices wins over opponents rated at least 1,750 before the bout and tested by at
-least eight UFC fights, capped at one contribution per year. Returning opponents
-lose 90 points per excess era-normalized turnaround, capped at four. Title wins
-are priced against the opponent; recognized major titles carry a `0.05` floor.
+Each piece is divided by the average of its own top 100 first, so those
+percentages mean what they say. Career skill adds up every year a fighter spent
+above their division's line for that year. The résumé counts wins over opponents
+rated at least 1,750 going in and tested by at least eight UFC fights, one win
+per year. If the fighter you beat was coming back off a long layoff, the win is
+worth less: opponents lose 90 points per excess turnaround, capped at four.
+Title wins are priced by the opponent you beat for the belt, though the
+recognized major titles carry a `0.05` floor.
 
 ### Prime: how high was the proven peak?
 
-Prime selects the ten-year stretch with the most qualifying contender wins, ties
-broken by average rating, then ranks on both that average and the count. Five
-wins are required.
+Prime looks for the ten-year stretch with the most qualifying contender wins,
+settles ties on average rating, then ranks on both how high they were and how many
+times they proved it. Five wins are required.
 
 ### Current: who can still be described now?
 
-Current carries the latest rating through the age curve, then pulls thinly
-established careers toward 1,750. A fighter needs 13 rated appearances, eight
-UFC bouts and a fight within 18 months.
+Current takes the last rating we have, ages it forward, and pulls thin records
+back toward 1,750. To make this board a fighter needs 13 rated appearances,
+eight UFC bouts and a fight within 18 months.
 
-PED, disqualification and missed-weight deductions remain a separate Integrity
-audit and never alter a published board.
+PED, disqualification and missed-weight deductions sit in a separate Integrity
+audit. They never move a published board.
 
 ## What is published
 
@@ -316,15 +328,17 @@ The table prints both inputs instead of the internal ordering index.
 
 ## Where the numbers stop
 
-All-time is retrospective: later evidence changes an opponent's value. Elite-win
-counts still reward opportunity, and the age curve underrepresents decline in
-fighters who never returned.
+All-time is a look back, so it uses everything we know about an opponent now,
+not only what was known on the night. Elite-win counts still reward the fighters
+who got more chances at them. And the age curve understates decline in fighters
+who never came back to show it.
 
-Promotion labels are missing from 57% of rated fights. Held-out checks suggest
-11% of filled weight classes are wrong, and four eligible careers cannot be
-matched uniquely. Missing data is shrunk or excluded, never guessed at full
-confidence. See the [decision register](docs/DECISIONS.md) for evidence and
-rejected changes.
+Promotion labels are missing from 57% of rated fights. Held-out checks put about
+11% of the filled weight classes on the wrong fight, and four eligible careers
+cannot be pinned to one fighter with confidence. Where something is missing we
+shrink it or leave it out, rather than guessing and then acting certain. The
+[decision register](docs/DECISIONS.md) has the evidence, including the changes
+we tested and turned down.
 
 ## Project map
 

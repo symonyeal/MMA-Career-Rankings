@@ -84,16 +84,22 @@ def test_readme_explains_the_rules_that_change_the_rankings():
     ):
         assert heading in article
 
+    # Pin the rule, never the sentence. Wording is the author's; the decisive
+    # numbers belong to the code, and those are asserted against the constants
+    # themselves in test_readme_policy_constants_are_the_ones_the_code_uses.
+    # An earlier version pinned whole prose sentences and failed on a rewrite
+    # that dropped no rule at all.
     for implemented_rule in (
-        "Career division is where most effective appearances occurred",
         "The UFC is `1.00`",
-        "one neutral virtual bout—half a win and half a loss",
+        "virtual bout",
         "All-time = 30% championships + 17.5% career skill + 52.5% contender résumé",
         "Five wins are required",
         "eight UFC bouts",
         "within 18 months",
+        "fifth-best",
+        "fewer than 30 fighter-years",
     ):
-        assert implemented_rule in flat
+        assert implemented_rule in flat, f"the overview no longer states: {implemented_rule}"
 
 
 def test_readme_policy_constants_are_the_ones_the_code_uses():
