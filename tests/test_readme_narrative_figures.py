@@ -150,13 +150,13 @@ def test_readme_policy_constants_are_the_ones_the_code_uses():
         "split score": f"majority decision `{METHOD_SCORE_NON_UNANIMOUS_DECISION:.2f}`",
         "dq score": f"disqualification `{METHOD_SCORE_DQ:.2f}`",
         "draw score": "a draw `0.50` for each fighter",
-        "contender line": f"rated at least {CONTENDER_LINE_MU:,.0f}"[:-2],
+        "contender line": f"at least {CONTENDER_LINE_MU:,.0f}",
         "layoff charge": f"lose {abs(OPPONENT_LAYOFF_ELO_PER_TURNAROUND):.0f} points per excess",
         "title floor": f"carry a `{TITLE_QUALITY_MAJOR_FLOOR:.2f}` floor",
         "rated appearances": f"needs {SUSTAINED_PEAK_MIN_FIGHTS} rated appearances",
         "current window": f"within {CURRENT_MAX_MONTHS_INACTIVE:.0f} months",
         "division floor": f"fewer than {DEFAULT_DIVISION_MIN_POPULATION} fighter-years",
-        "elo anchor": f"displayed around {_ELO_ANCHOR:,.0f}"[:-2],
+        "elo anchor": f"around {_ELO_ANCHOR:,.0f}",
     }
     missing = {k: v for k, v in expected.items() if v not in readme}
     assert not missing, f"README no longer states these as the code defines them: {missing}"
