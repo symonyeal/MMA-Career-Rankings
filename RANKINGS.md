@@ -25,10 +25,9 @@ the release facts and all six tables, and refuses a partial update.
 ## All-time rankings
 
 All-time answers what the full career added up to by combining sustained
-fighting level, title achievement and the quality of wins. **Prime** is the average level in the ten-year period with the most
-contender wins, **Prime rank** is the position on the Prime board below and
-**Elite wins** is the evidence behind that position; a blank rank means the
-fighter did not qualify.
+fighting level, title achievement and the quality of wins. **Prime** and **Prime rank** come from the Prime board below, and **Elite
+wins** is the evidence behind that rank. A blank rank means the fighter did not
+qualify, not that they placed last.
 
 ### Men — top 100
 
@@ -314,7 +313,6 @@ the two career rankings.
 
 ## Reading the tables
 
-- A blank rank means the evidence rule was not met; it does not mean last place.
 - A rank is the best current estimate, while published uncertainty applies to
   the underlying skill rating rather than the final board score.
 - Prime screens for proven wins but cannot certify that every surviving

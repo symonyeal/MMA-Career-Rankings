@@ -90,7 +90,7 @@ def test_readme_explains_the_rules_that_change_the_rankings():
     # An earlier version pinned whole prose sentences and failed on a rewrite
     # that dropped no rule at all.
     for implemented_rule in (
-        "The UFC is `1.00`",
+        "UFC is `1.00`",  # article varies with the sentence; the value does not
         "virtual bout",
         "All-time = 30% championships + 17.5% career skill + 52.5% contender résumé",
         "Five wins are required",

@@ -132,15 +132,15 @@ def test_the_inferred_weight_class_error_rate_is_quoted_consistently():
 def test_the_board_column_glossary_is_one_sentence_in_both_documents():
     """The two documents show the same table, so they must explain it the same.
 
-    They had drifted to "the next board" against "the Prime board below". The
-    wording belongs in the generated block at the next publish; until then this
-    keeps the two copies from separating again.
+    They had drifted to "the next board" against "the Prime board below", and
+    both then re-defined Prime a few lines under the section that defines it.
+    This is a column guide now. The wording belongs in the generated block at
+    the next publish; until then this keeps the two copies from separating.
     """
     glossary = (
-        "**Prime** is the average level in the ten-year period with the most\n"
-        "contender wins, **Prime rank** is the position on the Prime board below and\n"
-        "**Elite wins** is the evidence behind that position; a blank rank means the\n"
-        "fighter did not qualify."
+        "**Prime** and **Prime rank** come from the Prime board below, and **Elite\n"
+        "wins** is the evidence behind that rank. A blank rank means the fighter did not\n"
+        "qualify, not that they placed last."
     )
     for name in ("README.md", "RANKINGS.md"):
         text = (PROJECT_ROOT / name).read_text(encoding="utf-8")
