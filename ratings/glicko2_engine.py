@@ -440,14 +440,3 @@ def predict_win_prob_from_ratings(
         return 1.0 / (1.0 + math.exp(-logit))
     exp_logit = math.exp(logit)
     return exp_logit / (1.0 + exp_logit)
-
-
-def matchup_quality_from_ratings(
-    mu_a: float, phi_a: float,
-    mu_b: float, phi_b: float,
-    tau: float = DEFAULT_TAU,
-) -> float:
-    env = Glicko2(tau=tau)
-    ra = env.create_rating(mu_a, phi_a)
-    rb = env.create_rating(mu_b, phi_b)
-    return env.quality_1vs1(ra, rb)

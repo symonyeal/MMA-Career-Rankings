@@ -1,12 +1,12 @@
 # How the ratings and the score are built — 2026-08-28
 
-**Status: current.** Where an older document disagrees with this one about the
-settings, about method of victory, or about whether a promotion discount can be
-measured, this document is right. Dataset `2026-08-13`, published scope
+**Status: current.** Where an older document disagrees about model settings,
+method of victory or promotion treatment, this document takes precedence.
+Dataset `2026-08-13`, data through 2026-08-30, published scope
 `majors,pre_unified`.
 
-Five changes were made, in this order, because each one changes the scale the
-next is measured on.
+The original refit made five changes in this order because each one changed the
+scale used to assess the next; later amendments are labelled where they apply.
 
 | # | Change | Result |
 |---|---|---|
@@ -306,8 +306,9 @@ The Freire half of the complaint is addressed. **The Pantoja half is not.** He i
 gives him, and the reason is not the promotion question. The résumé raises each
 title win to the fourth power before adding them up, so five wins over opponents
 sitting near their own division's bar cannot catch ten wins over opponents the
-model rates well above theirs. What is left is the open rating problem in §6 —
-lightly-tested careers rated too high — amplified by that fourth power. A
+model rates well above theirs. What remains is the rating problem in
+[Open decisions](DECISIONS.md) — lightly tested careers rated too high —
+amplified by that fourth power. A
 promotion term does not fix it, and was never claimed to.
 
 **Amended 2026-09-02.** A win in a recognised major championship is now floored
@@ -349,9 +350,10 @@ surface goes through it.
   "Prime" without a gender means the men's one.
 - `completeness_gated_board_women.parquet` is the women's board, ranked within
   its own network.
-- All four tables in `RANKINGS.md` are written by the same
+- All six public tables in `RANKINGS.md` are written by the same
   `build_boards.py --write-readme` run. Every marker is checked before a single
-  file is written, and the explanatory note travels with each women's table.
+  file is written, and the reason for separate boards is stated once above the
+  first women's table.
 - A fighter whose gender could not be determined stays on the default board
   rather than being asserted into the women's one. A dataset with no gender
   information gets one mixed board rather than a false claim to have separated
@@ -372,10 +374,8 @@ surface goes through it.
   are now the men's filenames. They were archived, because leaving them would
   hand a reader a stale mixed board under the men's name.
 
-Result: 3,481 men ranked and 271 women. The women's top ten is Nunes,
-Shevchenko, Zhang, Namajunas, Rousey, Justino, Andrade, Jedrzejczyk, Suarez,
-Izawa. Twelve women had held top-100 places on the mixed board, so twelve men
-move up. Nothing about either ranking's internal order changed.
+The current counts and tables are published in `RANKINGS.md`; nothing about a
+board's internal order changes when the unrelated board is removed.
 
 ---
 
@@ -402,18 +402,26 @@ they fought** — exactly what the project forbids — and it was a third of the
 published score. Across the top 150 it correlated **+0.53** with a fighter's
 UFC fight count, against **−0.25** for skill and **+0.01** for title.
 
-**The fix.** `fill_division_from_career` lets an unlabelled fight borrow the
-weight class of that fighter's **nearest labelled fight in time**. A fight keeps
-its own label wherever it has one. Tested by hiding one label at a time across
-20,640 labelled records, nearest-in-time predicted the true weight class **83.0%**
-of the time, against 80.1% for using the fighter's most common weight class.
-Coverage goes from 16.2% to **90.8%**; a fighter the data never weighed keeps no
-weight class and stays out of every ranked field, which is the honest answer.
+**The fix.** `fill_division_from_career` lets an unlabelled fight borrow from
+the fighters' own labelled fights. Each of the two contributes up to **four**
+nearest labelled fights, the majority weight class wins, and the closest one
+breaks a tie. A fight keeps its own label wherever it has one, and a fighter the
+data never weighed keeps no weight class and stays out of every ranked field,
+which is the honest answer. Coverage goes from 16.9% to **91.1%** of fights.
 
-It is not free: about **17%** of the filled labels will be wrong for that
+Tested by hiding one label at a time, the vote predicts the true weight class
+**89.0%** of the time, against 84.4% for the single nearest fight it replaced,
+both at 98.2% prediction coverage. Accuracy peaks at four neighbours and falls
+again at six. Requiring the two fighters to agree scores 92.1% but predicts only
+79.3% of the population, which reopens the coverage gap this repair exists to
+close.
+
+It is not free: about **11%** of the filled labels will be wrong for that
 particular fight — a fighter moving up or down, or a catchweight. Fedor resolves
 to heavyweight on 44 of 47 fights; Wanderlei Silva keeps a genuine 33/14/2 split
-across light heavy, middle and heavy.
+across light heavy, middle and heavy. Every label records whether it was
+reported, voted or missing, and exact event-card evidence supersedes the vote
+wherever the card can be read.
 
 **What it affects.** Only the score, not the ratings. The published rating fit
 does not read this table at all, so ratings, Prime and career skill are
@@ -464,6 +472,19 @@ What it does support: the whole-career model beats both the fight-by-fight model
 and the coin flip on the published data, and its AUC of 0.7032 lands where the
 settings refit put it independently (0.7067 on 7,641 fights). Two different
 harnesses agreeing on the same model.
+
+## 5d. Wins over returning opponents are priced lower
+
+**Amended 2026-09-03.** A long absence does not change the returning fighter's
+rating, but it lowers the value of beating that fighter in the title, contender
+and Prime achievement calculations. One shared function removes 90 rating
+points for each idle period beyond the normal turnaround for that era, capped at
+four periods.
+
+The rate is declared policy because the available comeback data cannot estimate
+it reliably. Applying the adjustment inside the rating was tested and rejected
+because it inflated earlier career ratings; the evidence and exact Stipe Miocic
+example are maintained in [Open decisions](DECISIONS.md).
 
 ## 6. Open work
 

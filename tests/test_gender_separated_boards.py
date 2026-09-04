@@ -21,6 +21,7 @@ import refresh
 from analysis.viz import top_n_table
 from ratings.gender import (
     DEFAULT_GENDER,
+    GENDER_GAUGE_NOTE,
     GENDER_SUFFIX,
     GENDERS,
     female_mask,
@@ -114,7 +115,7 @@ def test_snapshot_headline_boards_print_the_reason_beside_them(capsys):
         _current(), rating_col="public_legacy_score", extra_cols=[],
         title="Legacy", n=10, min_fights=0,
     )
-    assert "never fight" in capsys.readouterr().out
+    assert GENDER_GAUGE_NOTE in capsys.readouterr().out
 
 
 def test_a_snapshot_without_gender_prints_one_unlabelled_board(capsys):

@@ -89,6 +89,15 @@ def test_the_org_link_not_the_slug_decides_the_promotion():
     event, bouts = sol.parse_event(foreign, "/events/Pride-Looking-Slug-1")
     assert event is None and bouts == []
 
+    event, bouts = sol.parse_event(
+        foreign,
+        "/events/Pride-Looking-Slug-1",
+        allow_unlisted_organization=True,
+    )
+    assert event["org_id"] == 99999
+    assert event["org"] == "Regional"
+    assert len(bouts) == 2
+
 
 def test_a_reset_connection_skips_the_page_instead_of_killing_the_crawl(monkeypatch, tmp_path):
     """One unreachable page must not discard hours of completed crawling."""

@@ -1,96 +1,114 @@
 # Symon UFC Rank Engine
 
-I wanted to know whether a sport this chaotic could be pinned down from first
-principles. So I set out a small number of principles that do not contradict
-each other, turned each one into arithmetic, and let the ranking fall wherever
-it fell. The test was never whether the method was clever. It was whether the
-list that came out the other end looked like the sport we actually watched.
+Rankings are arguments. This one makes its argument in code: start with recorded
+fights, then state how divisions, promotions, titles and incomplete evidence are
+treated. A disputed placement should lead to a fight or a declared rule, never
+a hidden reputation bonus.
 
-Mostly it does. Jon Jones, Islam Makhachev, Georges St-Pierre, Daniel Cormier
-and Alexander Volkanovski arrive at the top without being put there. The places
-where the list argues with received opinion are the interesting part, and each
-one traces back to a principle rather than to a thumb on the scale.
+## A ranking is a set of decisions
 
-## The principles
+### Weight classes are different competitive worlds
 
-Each of these does work none of the others do. Take one away and something in
-the ranking stops being defensible.
+Most divisions rarely meet, so raw rating gaps between them are not reliable
+pound-for-pound evidence. Career division is where most effective appearances
+occurred; recency only breaks a tie. Current division changes after a UFC title
+win, not after a cameo or title loss. Each active year is judged against its
+division's top ten percent, capped at roughly the fifth-best fighter once the
+class matures; divisions with fewer than 30 fighter-years use the sport-wide
+line. Men's and women's boards stay separate because no results connect them.
 
-1. **A fighter is only as good as the people they beat.** The only things that
-   go in are who fought whom and what happened. Not reputation, not popularity,
-   not highlights.
-2. **A career is judged whole, not fight by fight.** What a win was worth is
-   often unclear for years, so every fight in the sport is settled together, at
-   once, rather than each result nudging a running total.
-3. **Every fight counts exactly once.** The same bout turns up in several
-   records. It is kept once, in its most reliable version, and the build stops
-   if two copies survive.
-4. **Half a record is a wrong record.** A fighter who rarely loses has no
-   ceiling here: the fewer of their fights we hold, the more unbeatable they
-   look. Their whole career comes in, or their number is wrong.
-5. **How a fight ended counts, not only who won.** Finishing someone and
-   squeaking a decision are not the same evidence.
-6. **A win is worth what the opponent was worth that night.** Not what they
-   were at their best, and not what they were before three years away.
-7. **What you won and how good you were are different questions.** Titles and
-   defences are an achievement. Beating strong people is a level. They are
-   counted apart and never folded into a single idea.
-8. **Only credit what can be seen.** Where a career can be identified only in
-   part, it is pulled toward the ordinary rather than credited in full on thin
-   evidence.
-9. **No fact is ever counted twice.** Each fact enters in exactly one place. If
-   time away has already lowered what a win is worth, it is not charged a
-   second time on the board.
-10. **When the evidence is not there, do not rank.** Leaving a fighter out is a
-    refusal to judge them. It is not a last place.
-11. **Men and women are ranked separately.** They never fight each other, so
-    nothing links the two groups and a combined list would be guesswork.
-12. **Say which numbers were measured and which were chosen.** Some come out of
-    the fights. Some are my judgement. They are never dressed up as one another,
-    and the chosen ones are listed in [Open decisions](docs/DECISIONS.md).
+### The UFC is the anchor, not the whole sport
+
+The fit includes early UFC and major-promotion careers, but gives no promotion a
+bonus inside the fight rating; crossover results locate them. Promotion enters
+only afterward as confidence in where the career was proved. The UFC is `1.00`,
+PRIDE `0.95`, Affliction `0.90`, WEC and Strikeforce `0.88`, Bellator `0.65`, and
+PFL, RIZIN, ONE and DREAM `0.60`. The exposure factor blends the career average
+with its strongest quarter and pulls thin evidence toward the pooled average.
+An unknown promotion is missing evidence, not a weak show.
+
+### The result is not just win or loss
+
+A knockout or submission scores `1.00`, a unanimous decision `0.95`, a split or
+majority decision `0.90`, a disqualification `0.85`, and a draw `0.50` for each
+fighter. These are fractional outcomes, not résumé bonuses. No-contests,
+overturned results and bouts that could not continue are excluded.
+
+### A later career can change the meaning of an earlier fight
+
+The rating fits every career together, so later evidence can revalue an earlier
+win. Scores are displayed around 1,500, and every fighter carries one neutral
+virtual bout—half a win and half a loss—so 1–0 does not outrank 10–0 merely
+because both are unbeaten. Skill can change with time and age; there is no
+hand-written era bonus.
+
+### One fight gets one entry, and one idea gets one payment
+
+One authoritative row survives when sources repeat a bout, and publication
+stops if a duplicate remains. Whole careers are required because missing losses
+bias ratings upward; 1,821 of 1,825 eligible careers are merged. Opponent
+strength is paid in the rating, each active year enters career skill once, and
+the contender résumé is capped once per year. Titles are priced through the
+opponent beaten, not a flat belt or multi-division bonus.
+
+## Three questions, three boards
+
+### All-time: what did the career add up to?
+
+```text
+All-time = 30% championships + 17.5% career skill + 52.5% contender résumé
+```
+
+Each component is divided by the mean of its own top 100 before combining.
+Career skill sums each active year above its division-year line. The résumé
+prices wins over opponents rated at least 1,750 before the bout and tested by at
+least eight UFC fights, capped at one contribution per year. Returning opponents
+lose 90 points per excess era-normalized turnaround, capped at four. Title wins
+are priced against the opponent; recognized major titles carry a `0.05` floor.
+
+### Prime: how high was the proven peak?
+
+Prime selects the ten-year stretch with the most qualifying contender wins,
+breaking ties by average rating. Five wins are required. Ranking rewards both
+the average level and the number of qualifying wins.
+
+### Current: who can still be described now?
+
+Current carries the latest rating through the age curve, then pulls thinly
+established careers toward 1,750. A fighter needs 13 rated appearances, eight
+UFC bouts and a fight within 18 months.
+
+PED, disqualification and missed-weight deductions remain a separate Integrity
+audit and never alter a published board.
 
 ## What is published
 
-| Ranking | The question it answers |
-| --- | --- |
-| All-time | What did the whole career add up to? |
-| Prime | How good were they at their best, and how often did they prove it? |
-| Current | How good are they now? |
-| Integrity | How would the published conduct deductions change the order? |
-
-These are three views of one fight history. They are not meant to be added
-together, and Integrity is a separate audit that never touches the ratings.
-
-Every table, including the women's boards, is in
-[Published UFC Rankings](RANKINGS.md). Both documents are written by a single
-run from one dataset, and every table is checked before either file is saved.
-
-## Published rankings
+The full [Published UFC Rankings](RANKINGS.md) adds the three women's boards. One
+build updates and validates both documents.
 
 <!-- PUBLICATION:RELEASE:BEGIN -->
 
 | Release fact | Value |
 | --- | ---: |
-| Snapshot | 2026-08-13 |
-| Published scope | majors,pre_unified |
-| Published score | public_legacy_score |
-| Rated bouts | 81,281 |
+| Dataset | 2026-08-13 |
+| Data through | 2026-08-30 |
+| Included records | UFC, early UFC and major-promotion careers |
+| All-time basis | All-time career score |
+| Rated fights | 81,281 |
 | Rated fighters | 34,085 |
-| Maximum-coverage fight rows | 82,675 |
-| Contender line | 1,750 — reached by 19.5% of established fighters |
+| Available fight records | 82,675 |
+| Whole-career coverage | 1,821 of 1,825 eligible fighters (99.8%) |
+| Prime contender threshold | 1,750 — reached by 19.5% of established fighters |
+| Prime qualifiers | 65 men; 1 woman |
 
 <!-- PUBLICATION:RELEASE:END -->
 
 ### All-time — men, top 100
 
-What the whole career added up to: how good they were over time, what they won,
-and how strong the opposition was. **Prime** is their level in their best ten
-years, **Prime rank** is where that puts them on the next board (blank if they
-did not qualify), and **Elite wins** counts the top opponents they beat in those
-years.
-
-Prime and Prime rank disagree on purpose. Prime is how high a fighter got. The
-Prime board is about how often they proved it.
+**Prime** is the average level in the ten-year period with the most
+contender wins, **Prime rank** is the position on the Prime board below and
+**Elite wins** is the evidence behind that position; a blank rank means the
+fighter did not qualify.
 
 <!-- BOARD:TOP100:BEGIN -->
 
@@ -201,24 +219,7 @@ Prime board is about how often they proved it.
 
 ### Prime, elite-tested — men, top 50
 
-How good was a fighter at their best, counting only the peaks they actually
-proved? To qualify they need **five wins over contenders inside one ten-year
-stretch**, where a contender is an opponent rated 1,750 or better on the night
-who also had a tested record of their own: at least eight UFC bouts.
-
-The ten years chosen are the ones holding the most contender wins, not the
-highest average. Picking by average rewards the years a fighter lost least — it
-made Daniel Cormier's peak his undefeated Strikeforce run and left his UFC title
-reign out of it. A peak is a peak because of who was beaten in it.
-
-The order multiplies the two printed columns: how many contenders they beat, by
-how far their level stood above the lowest on the board. A great peak proved
-once and a good peak proved eleven times are not the same achievement. The wins
-are never added to the level — they decide how much of it is credited — so
-nothing is counted twice and there is no dial to tune.
-
-65 men qualify, so this top 50 is full. Only 1 woman does. That is a statement
-about how few women in the data have a long UFC record, not about the fighters.
+The table prints both inputs instead of the internal ordering index.
 
 <!-- BOARD:ELITEPRIME50:BEGIN -->
 
@@ -279,22 +280,7 @@ about how few women in the data have a long UFC record, not about the fighters.
 
 ### Current — men, top 30
 
-How good is the fighter now. Two screens decide who appears at all, both
-borrowed from the boards above rather than invented for this one: they must have
-**fought within the last 18 months**, and they must have **at least eight UFC
-bouts**.
-
-The recency bar is strict enough to withhold fighters who have not retired. Jon
-Jones last fought on 2024-11-16 and Shavkat Rakhmonov on 2024-12-07, so both are
-out. The bout count matters because nothing in this kind of model caps an
-unbeaten record from above; without it the board seated six Bellator and PFL
-fighters in the top thirty. That is not a verdict on those fighters. It is the
-model saying it cannot place them, and saying so is more honest than ranking
-them anyway.
-
-Time away is charged where a win is priced, not here — that is principle 9 doing
-its job. Do not read this board against the two above it: those are backward
-looking and a career does not expire, while this one is a claim about today.
+Only Current has an activity cutoff.
 
 <!-- BOARD:CURRENT30:BEGIN -->
 
@@ -333,120 +319,43 @@ looking and a career does not expire, while this one is a claim about today.
 
 <!-- BOARD:CURRENT30:END -->
 
-## What the numbers cannot do
+## Where the numbers stop
 
-- **The all-time score is backward looking.** An opponent is priced on
-  everything now known about them, so it measures how good a win turned out to
-  be, not how good it looked on the night.
-- **The contender resume favours long careers**, though it counts at most one
-  win per active year. Read it as context, not as a separate measure of skill.
-- **How much of a career we can see is my judgement, not a finding.** It is a
-  declared ranking of promotions. 64% of rated fights carry no promotion name,
-  and those are left out rather than counted as small shows, because not knowing
-  where a fight happened is not evidence that it was minor. A career
-  identifiable from only a handful of fights is then pulled toward the average,
-  so thin evidence is not credited at full confidence.
-- **Time away is charged at a rate I chose, not one the data gave up.** It
-  cannot be measured here: a fighter who returns badly often does not fight
-  again, so the decline never becomes an observed change. The same survivorship
-  makes the measured ageing curve claim a 42-year-old declines more slowly than
-  a 37-year-old, which is not true.
-- **A gap in the schedule is not proof of absence.** It is equally the shape of
-  a fight the sources do not hold, which is why the charge is capped. Coverage
-  is 99.8% complete for the fighters who can move a published board, and
-  thinner outside them.
-- **Weight class and fighter identity are partly inferred.** About 17% of
-  filled weight classes are wrong for that particular fight, and four fighters
-  cannot be told apart from namesakes at all, so only their UFC record is held.
-- **No model can recover fights missing from every source.**
+All-time is retrospective: later evidence changes an opponent's value. Elite-win
+counts still reward opportunity, and the age curve underrepresents decline in
+fighters who never returned.
 
-The full detail, and the changes already tested and refused, are in the
-[decision register](docs/DECISIONS.md).
-
-## Data
-
-Three sources feed the published rankings: the UFC's own fight record, recovered
-early UFC bouts that pre-date the unified rules, and major-promotion history
-from Sherdog — PRIDE, Bellator, Strikeforce, WEC, RIZIN and Affliction. A
-fourth, a limited FightMatrix sample, is kept for comparison and is never mixed
-in unless it is asked for by name.
-
-Every fight is stored once, with a note of which sources carried it, which is
-what lets a narrower release be published without quietly dropping fights a
-wider source also held. Whole-career records are now held for 1,821 of the 1,825
-fighters this can affect.
-
-Ownership, licensing and known gaps are in
-[Source Matrix](data/SOURCE_MATRIX.md). Release history is in
-[Data Changelog](data/CHANGELOG.md).
-
-## Use the project
-
-Install the pinned Python dependencies with the machine's system Python:
-
-```text
-C:\Python314\python.exe -m pip install -r requirements.txt
-```
-
-Run the verification suite:
-
-```text
-C:\Python314\python.exe -m pytest -q
-C:\Python314\python.exe -m ruff check .
-```
-
-Rebuild the generated public ranking publication from the current snapshot.
-One run refreshes `RANKINGS.md` and the headline boards in this README
-together, and every marked block is validated before either file is written:
-
-```text
-C:\Python314\python.exe build_boards.py data/snapshots/2026-08-13 --scope majors,pre_unified --write-readme
-```
-
-Build the local query database safely. The builder assembles a sibling file and
-promotes it only after all required tables and indexes succeed, preserving the
-last known-good database if a rebuild fails.
-
-```text
-C:\Python314\python.exe build_database.py --snapshot-dir data/snapshots/2026-08-13
-```
-
-Regenerate the interactive notebook after source changes:
-
-```text
-C:\Python314\python.exe analysis/build_notebook.py
-```
-
-The full `refresh.py` workflow rebuilds source data, ratings, boards, release
-notes, and the notebook. Review its source and scope arguments before use;
-external retrieval and a new release build are deliberate operations.
+Promotion labels are missing from 64% of rated fights. Held-out checks suggest
+11% of filled weight classes are wrong, and four eligible careers cannot be
+matched uniquely. Missing data is shrunk or excluded, never guessed at full
+confidence. See the [decision register](docs/DECISIONS.md) for evidence and
+rejected changes.
 
 ## Project map
 
-| Path | Purpose |
+| Path | Use it for |
 | --- | --- |
-| `ratings/` | Rating engines, public score, board policy, uncertainty diagnostics |
-| `loaders/` | Source ingestion, identity handling, and authoritative fight-table construction |
-| `analysis/` | Charts and the generated interactive notebook |
-| `tests/` | Behavioral, regression, consistency, and smoke tests |
-| `data/snapshots/<date>/` | Immutable-style release inputs and generated artifacts |
-| `data/external/<source>/` | Ingested source data, and one `pages.sqlite` holding that source's cached pages |
-| `data/model_tuning/` | Held-out comparisons and top-100 audit evidence |
-| `docs/` | Current methodology, coverage, and decision records |
-| `_archive/` | Recoverable historical research, retired code, and stale generated material |
+| [`RANKINGS.md`](RANKINGS.md) | The complete men's and women's All-time, Prime and Current release |
+| `ratings/` | Ratings, divisions, résumés and board policy |
+| `loaders/` | Source ingestion, identity and fight-table construction |
+| `data/snapshots/<date>/` | Release inputs, outputs and manifests |
+| [`data/SOURCE_MATRIX.md`](data/SOURCE_MATRIX.md) and [`data/CHANGELOG.md`](data/CHANGELOG.md) | Source coverage and release history |
+| [`docs/`](docs/) | Method, coverage and decision records |
+| `analysis/` | Charts and notebook |
+| `tests/` | Verification |
+| `_archive/` | Retired work |
 
-## Current technical records
+The supported runtime is the machine's system Python. These are the ordinary
+entry points:
 
-Four documents, each answering one question.
+```text
+C:\Python314\python.exe -m pip install -r requirements.txt
+C:\Python314\python.exe -m pytest -q
+C:\Python314\python.exe -m ruff check .
+C:\Python314\python.exe build_boards.py data/snapshots/2026-08-13 --scope majors,pre_unified --write-readme
+C:\Python314\python.exe build_database.py --snapshot-dir data/snapshots/2026-08-13
+C:\Python314\python.exe analysis/build_notebook.py
+```
 
-- [How the ratings and the score are built](docs/RATING_LAYER_AND_LEDGER_2026-08-28.md)
-  — the method: how a rating is fitted and what goes into the all-time score.
-- [Open decisions](docs/DECISIONS.md) — unresolved model choices, remaining
-  data work, accepted limitations, and changes already refused.
-- [Career coverage](docs/CAREER_COVERAGE_2026-08-27.md) — how a gap in the data
-  turned into rating points, and the rule that stops it returning.
-- [Published UFC Rankings](RANKINGS.md) — every generated table.
-
-Historical design notes and retired experiments are preserved under
-[`_archive/`](_archive/) with restoration instructions. They are evidence of
-past work, not current operating guidance.
+`refresh.py` runs the complete source-to-publication workflow. Never hand-edit a
+generated table; `build_boards.py` updates both publications.

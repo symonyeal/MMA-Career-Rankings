@@ -14,6 +14,8 @@ snapshot is finalized):
   elite-tested board answers the same question behind an evidence floor
 * ``prime_elite_board.parquet`` and ``prime_elite_board_women.parquet`` — the
   same Prime score behind the elite-tested evidence floor
+* ``current_board.parquet`` and ``current_board_women.parquet`` — current
+  ratings for active fighters with a tested UFC record
 
 "All-time" without a gender means the men's board. See ``GENDER_GAUGE_NOTE``.
 
@@ -45,7 +47,6 @@ from ratings.constants import SUSTAINED_PEAK_MIN_FIGHTS  # board eligibility flo
 from ratings.layoff import attach_opponent_layoff
 from ratings.gender import (
     GENDER_GAUGE_NOTE,
-    GENDER_LABEL,
     GENDER_SUFFIX,
     partition_by_gender,
 )
@@ -106,9 +107,8 @@ README_RELEASE_END = "<!-- PUBLICATION:RELEASE:END -->"
 # 2026-09-03. It is not fitted, and no accuracy measure selected it: it is the
 # answer to "how long can a fighter be away before a rating stops describing
 # them", which is a judgement about what the word "current" claims, not a
-# quantity in the data. It sits well inside ACTIVITY_MU_PENALTY_FULL_MONTHS (30),
-# the point at which the separate inactivity penalty is fully charged, so a
-# fighter is withheld from this board before that penalty saturates.
+# quantity in the data. The board withholds fighters beyond the bar; it does
+# not manufacture a lower rating for them.
 # A third property, and the one that decides who is on it. A rating alone is
 # the wrong quantity to rank "best right now": nothing in a Bradley-Terry model
 # caps an unbeaten record from above, so a fighter who has not lost in a weak
@@ -193,10 +193,8 @@ ELITE_LEVEL_COL = "elite_level"
 
 # The men's and women's boards are built and published SEPARATELY. The rule and
 # the measurements behind it live in ``ratings/gender.py``, which every ranking
-# surface in the project shares -- these names are re-exported so this module's
-# existing callers keep working.
+# surface in the project shares.
 BOARD_GENDER_SUFFIX = GENDER_SUFFIX
-BOARD_GENDER_LABEL = GENDER_LABEL
 
 
 def _normalized_scope(scope: str) -> str:
@@ -798,14 +796,54 @@ def publication_release_markdown(
         if combined_path.exists()
         else {}
     )
+    scope = str(summary.get("scope", "not recorded"))
+    scope_label = {
+        DEFAULT_PUBLISHED_SCOPE: "UFC, early UFC and major-promotion careers",
+        "ufc": "UFC only",
+        "fightmatrix": "UFC and the FightMatrix comparison sample",
+    }.get(scope, scope)
+    score = str(summary.get("core_rating_col", "not recorded"))
+    score_label = {
+        "public_legacy_score": "All-time career score",
+        "symon_career_skill_mass": "Career skill",
+        "mu_whr": "Fight-based skill rating",
+        "mu_canonical": "Fight-by-fight skill rating",
+    }.get(score, score)
+
+    run_fights = rating_run.get("combined_fights", {})
+    date_range = run_fights.get("date_range", []) if isinstance(run_fights, dict) else []
+    data_through = str(date_range[-1]) if date_range else "not recorded"
+
+    coverage = rating_run.get("career_coverage", {})
+    if isinstance(coverage, dict) and coverage.get("eligible"):
+        eligible = int(coverage["eligible"])
+        merged = int(coverage.get("whole_career_merged", 0))
+        coverage_label = f"{merged:,} of {eligible:,} eligible fighters ({merged / eligible:.1%})"
+    else:
+        coverage_label = "not recorded"
+
+    qualifiers = summary.get("elite_prime_ranked_by_gender", {})
+    if isinstance(qualifiers, dict) and qualifiers:
+        men = int(qualifiers.get("M", 0))
+        women = int(qualifiers.get("F", 0))
+        qualifier_label = (
+            f"{men:,} {'man' if men == 1 else 'men'}; "
+            f"{women:,} {'woman' if women == 1 else 'women'}"
+        )
+    else:
+        qualifier_label = "not recorded"
+
     values = (
-        ("Snapshot", snapshot.name),
-        ("Published scope", str(summary.get("scope", "not recorded"))),
-        ("Published score", str(summary.get("core_rating_col", "not recorded"))),
-        ("Rated bouts", f"{int(rating_run.get('rated_bouts', 0)):,}"),
+        ("Dataset", snapshot.name),
+        ("Data through", data_through),
+        ("Included records", scope_label),
+        ("All-time basis", score_label),
+        ("Rated fights", f"{int(rating_run.get('rated_bouts', 0)):,}"),
         ("Rated fighters", f"{len(current):,}"),
-        ("Maximum-coverage fight rows", f"{int(combined.get('rows', 0)):,}"),
-        ("Contender line", _contender_line_label(snapshot, current)),
+        ("Available fight records", f"{int(combined.get('rows', 0)):,}"),
+        ("Whole-career coverage", coverage_label),
+        ("Prime contender threshold", _contender_line_label(snapshot, current)),
+        ("Prime qualifiers", qualifier_label),
     )
     rows = [f"| {label} | {value} |" for label, value in values]
     return "\n".join(["| Release fact | Value |", "| --- | ---: |", *rows])
@@ -1037,8 +1075,7 @@ def main() -> None:
                 (
                     README_CURRENT_WOMEN_BEGIN,
                     README_CURRENT_WOMEN_END,
-                    f"{GENDER_GAUGE_NOTE}\n\n"
-                    + current_board_markdown(
+                    current_board_markdown(
                         pd.read_parquet(out / "current_board_women.parquet"),
                         current,
                         rating_col=str(current_col),
@@ -1051,8 +1088,7 @@ def main() -> None:
                 (
                     README_ELITE_PRIME_WOMEN_BEGIN,
                     README_ELITE_PRIME_WOMEN_END,
-                    f"{GENDER_GAUGE_NOTE}\n\n"
-                    + top_board_markdown(
+                    top_board_markdown(
                         pd.read_parquet(elite_women_path),
                         current,
                         rating_col=ELITE_PRIME_RATING_COL,
@@ -1063,7 +1099,7 @@ def main() -> None:
         plans: list[tuple[Path, tuple[tuple[str, str, str], ...]]] = [
             (Path(args.write_readme), tuple(replacements))
         ]
-        # The overview carries the two headline boards. Both bodies are the
+        # The overview carries the three headline boards. Their bodies are the
         # ones already published above, so the documents cannot disagree.
         overview: list[tuple[str, str, str]] = [
             (README_RELEASE_BEGIN, README_RELEASE_END, release_table),
@@ -1083,9 +1119,15 @@ def main() -> None:
         if overview_path is not None and overview_path != Path(args.write_readme):
             plans.append((overview_path, tuple(overview)))
         update_publication_files(tuple(plans))
-        print(f"published {len(replacements)} ranking tables to {args.write_readme}")
+        print(
+            f"published release facts and {len(replacements) - 1} ranking tables "
+            f"to {args.write_readme}"
+        )
         if len(plans) > 1:
-            print(f"published {len(overview)} headline tables to {overview_path}")
+            print(
+                f"published release facts and {len(overview) - 1} headline tables "
+                f"to {overview_path}"
+            )
 
 
 if __name__ == "__main__":

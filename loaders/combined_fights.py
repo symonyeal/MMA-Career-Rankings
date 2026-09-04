@@ -113,6 +113,10 @@ def _canonical_base(snapshot_dir: Path) -> pd.DataFrame:
     if "org" not in fights.columns:
         fights["org"] = "UFC"
     fights["org"] = fights["org"].fillna("UFC")
+    if "org_evidence" not in fights.columns:
+        fights["org_evidence"] = "ufcstats"
+    if "weight_class_evidence" not in fights.columns:
+        fights["weight_class_evidence"] = "ufcstats"
     if "org_weight" not in fights.columns:
         fights["org_weight"] = 1.0
     fights["org_weight"] = pd.to_numeric(fights["org_weight"], errors="coerce").fillna(1.0)
@@ -129,6 +133,15 @@ def _tag_combined(fights: pd.DataFrame, *, scope: str) -> pd.DataFrame:
         out["org"] = pd.NA
 
     source_key = out["source"].str.casefold()
+    for field, evidence in (
+        ("org", "org_evidence"),
+        ("weight_class", "weight_class_evidence"),
+    ):
+        if evidence not in out.columns:
+            out[evidence] = pd.NA
+        reported = out.get(field, pd.Series(pd.NA, index=out.index)).notna()
+        missing_evidence = out[evidence].isna() | out[evidence].astype("string").str.strip().eq("")
+        out.loc[reported & missing_evidence, evidence] = source_key[reported & missing_evidence]
     out["source_priority"] = source_key.map(SOURCE_PRIORITY).fillna(90).astype(int)
     out["source_corpus"] = source_key.map(SOURCE_CORPUS).fillna(out["source"])
 

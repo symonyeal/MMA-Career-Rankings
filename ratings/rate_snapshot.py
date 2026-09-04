@@ -33,12 +33,7 @@ if __package__ is None or __package__ == "":
 
 from ratings.glicko2_engine import DEFAULT_TAU, RatingEngine
 from ratings.dominance import per_fight_dominance, per_fighter_dominance
-from ratings.constants import (
-    ACTIVITY_MU_PENALTY_CAP,
-    ACTIVITY_MU_PENALTY_FULL_MONTHS,
-    ACTIVITY_MU_PENALTY_START_MONTHS,
-    rename_rating_columns,
-)
+from ratings.constants import rename_rating_columns
 from ratings.diagnostics import (
     calibration_residual_rows,
     division_entropy_rows,
@@ -123,9 +118,6 @@ def _run_canonical_engine(fights: pd.DataFrame, tau: float) -> RatingEngine:
     for event_date, event_name, bouts in _iter_event_bouts(fights, columns):
         engine.process_event(event_date, event_name, bouts)
     return engine
-
-
-CROSSORG_ARTIFACT = SCOPE_ARTIFACT["fightmatrix"]
 
 
 def _career_columns(table: pd.DataFrame) -> pd.DataFrame:
@@ -313,24 +305,14 @@ def attach_bout_weights(
 _attach_org_only_weights = attach_bout_weights
 
 
-def _attach_activity_adjusted_mu(current: pd.DataFrame, snapshot_max_date: pd.Timestamp) -> pd.DataFrame:
-    """Add current-view inactivity penalties without mutating rating history."""
+def _attach_months_inactive(
+    current: pd.DataFrame, snapshot_max_date: pd.Timestamp
+) -> pd.DataFrame:
+    """Measure recency for the Current eligibility rule."""
     out = current.copy()
     last = pd.to_datetime(out.get("last_event_date"), errors="coerce")
     months = (pd.Timestamp(snapshot_max_date) - last).dt.days / 30.4375
-    months = months.clip(lower=0.0)
-    denom = max(ACTIVITY_MU_PENALTY_FULL_MONTHS - ACTIVITY_MU_PENALTY_START_MONTHS, 1.0)
-    level = ((months - ACTIVITY_MU_PENALTY_START_MONTHS) / denom).clip(lower=0.0, upper=1.0)
-    # Lower-confidence fighters should not be over-penalized; high phi already
-    # warns the reader. A 350-phi debut has near-zero structural penalty.
-    phi = pd.to_numeric(out.get("phi_canonical"), errors="coerce").fillna(350.0)
-    confidence = (1.0 - (phi / 350.0).clip(lower=0.0, upper=1.0))
-    out["months_inactive"] = months.round(2)
-    out["activity_mu_penalty"] = (ACTIVITY_MU_PENALTY_CAP * (level ** 2) * confidence).round(6)
-    for col in [c for c in out.columns if c.startswith("mu_") and not c.endswith("_activity_adjusted")]:
-        out[f"{col}_activity_adjusted"] = (
-            pd.to_numeric(out[col], errors="coerce") - out["activity_mu_penalty"]
-        )
+    out["months_inactive"] = months.clip(lower=0.0).round(2)
     return out
 
 
@@ -694,7 +676,7 @@ def run(
         how="left",
     )
 
-    current = _attach_activity_adjusted_mu(current, snapshot_max_date)
+    current = _attach_months_inactive(current, snapshot_max_date)
 
     # Opponent context per appearance. Division boards score a fighter inside
     # one weight class from it; the latent skill model does not read it.

@@ -47,6 +47,7 @@ def normalize_organization(
     event_date=None,
     *,
     rules: pd.DataFrame | None = None,
+    verified_label: bool = False,
 ) -> dict:
     """Return an auditable organization match; unknowns stay unknown."""
     raw = " ".join(str(raw_label or "").split())
@@ -84,6 +85,24 @@ def normalize_organization(
             "organization_rule_id": row.rule_id,
             "organization_ruleset_version": RULESET_VERSION,
             "organization_notes": row.notes or None,
+        }
+    if verified_label and raw and raw.casefold() != "unknown":
+        # An event page proves the promotion's identity even when the tier
+        # vocabulary has no named rule for it. Preserve that evidence and use
+        # the declared catch-all tier instead of treating a known label as
+        # missing data.
+        return {
+            "raw_organization": raw,
+            "canonical_organization": raw,
+            "promotion_family": raw,
+            "organization_region": None,
+            "organization_tier": 4,
+            "organization_match_method": "verified_unclassified",
+            "organization_confidence": 1.0,
+            "organization_manual_override": False,
+            "organization_rule_id": None,
+            "organization_ruleset_version": RULESET_VERSION,
+            "organization_notes": "Verified source label; no named tier rule matched.",
         }
     return {
         "raw_organization": raw or "Unknown",

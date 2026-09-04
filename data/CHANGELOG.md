@@ -1,6 +1,38 @@
 # Snapshot Changelog
 
+## 2026-09-03 - Publication contract reconciled
+
+No published score or rank changed. The public documents now state the current
+rules once and draw changing release facts from the generated block shared by
+`README.md` and `RANKINGS.md`.
+
+- Consolidated twelve overlapping README principles into eight single-sentence
+  rules and removed the false claim that fight outcomes were the only inputs.
+- Removed stale Prime prose from `RANKINGS.md`, including the 70/2 qualifier
+  counts, the use of a ten-year average as a peak and a reference to a fighter
+  absent from the cited table. Prime qualifiers are now generated as 65 men and
+  1 woman.
+- Added the data-through date and whole-career coverage to the generated release
+  facts, so the `2026-08-13` dataset name is no longer presented as its data
+  cut-off.
+- Recorded the final same-day layoff design: the discarded annual-retention
+  penalty does not apply to Current; the shared layoff rule lowers the value of
+  beating a returning opponent in all three achievement calculations.
+- Removed the unused post-rating inactivity calculation and its fallback path;
+  Current now retains only the age projection, coverage adjustment and stated
+  eligibility rules.
+- Corrected the active Source Matrix to the implemented integrity factors:
+  PED 0.90, disqualification 0.96 and missed weight 0.94.
+
+The suite now checks release volume, data-through date, whole-career coverage
+and Prime qualifier counts in both public documents, checks each README
+principle is one sentence, and checks the Source Matrix against the code.
+
 ## 2026-09-03 - Current board published, drifted figures repaired
+
+This entry records the first Current-board design. Its 80% annual-retention
+rule was replaced later the same day by the opponent-pricing rule recorded
+above; the 18-month and eight-UFC-bout eligibility rules remain current.
 
 **A third board is published.** The overview had promised a Current ranking —
 "how good are they now" — since the four-row summary was written, and never

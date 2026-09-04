@@ -544,7 +544,7 @@ def _organization_context(fights: pd.DataFrame) -> pd.DataFrame:
     for org_label, year, sample_date in keys[
         ["_org_label", "_year", "sample_date"]
     ].itertuples(index=False, name=None):
-        rec = normalize_organization(org_label, sample_date)
+        rec = normalize_organization(org_label, sample_date, verified_label=True)
         records.append(
             {
                 "_org_label": org_label,

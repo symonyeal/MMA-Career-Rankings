@@ -800,6 +800,36 @@ def test_the_closer_labelled_bout_wins_when_the_two_sides_disagree():
     assert out.loc["u/3", "division"] == "Flyweight"
 
 
+def test_repeated_nearby_evidence_outvotes_one_anomalous_label():
+    frame = pd.DataFrame([
+        {"fight_url": "u/1", "event_date": "2007-01-01", "event_name": "A",
+         "fighter_a": "Big", "fighter_b": "A", "weight_class": "Heavyweight"},
+        {"fight_url": "u/2", "event_date": "2008-01-01", "event_name": "B",
+         "fighter_a": "Big", "fighter_b": "B", "weight_class": "Heavyweight"},
+        {"fight_url": "u/3", "event_date": "2009-01-01", "event_name": "C",
+         "fighter_a": "Big", "fighter_b": "C", "weight_class": "Heavyweight"},
+        {"fight_url": "u/4", "event_date": "2010-01-01", "event_name": "D",
+         "fighter_a": "Big", "fighter_b": "D", "weight_class": "Heavyweight"},
+        {"fight_url": "u/5", "event_date": "2011-01-01", "event_name": "E",
+         "fighter_a": "Small", "fighter_b": "E", "weight_class": "Flyweight"},
+        {"fight_url": "u/6", "event_date": "2011-02-01", "event_name": "F",
+         "fighter_a": "Big", "fighter_b": "Small", "weight_class": None},
+    ])
+    out = _with_division(frame).set_index("fight_url")
+    assert out.loc["u/6", "division"] == "Heavyweight"
+
+
+def test_division_context_distinguishes_reported_and_inferred_labels():
+    frame = _career_fights()
+    frame["weight_class_evidence"] = [
+        "sherdog_event", "missing", "missing", "sherdog_event", "missing"
+    ]
+    context = prefight_ranking_context(frame, pd.DataFrame()).set_index("fight_url")
+    assert context.loc["u/1", "division_evidence"] == "sherdog_event"
+    assert context.loc["u/2", "division_evidence"] == "career_vote"
+    assert context.loc["u/5", "division_evidence"] == "missing"
+
+
 def test_fill_is_a_no_op_when_every_bout_is_already_labelled():
     frame = _career_fights()
     frame["weight_class"] = "Heavyweight"

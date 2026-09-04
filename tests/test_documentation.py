@@ -4,6 +4,13 @@ import re
 from pathlib import Path
 from urllib.parse import unquote
 
+from ratings.constants import (
+    INTEGRITY_DQ_WIN_FACTOR,
+    INTEGRITY_MISSED_WEIGHT_WIN_FACTOR,
+    INTEGRITY_PED_FACTOR,
+)
+from ratings.gender import GENDER_GAUGE_NOTE
+
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 CURRENT_DOCS = [
@@ -81,3 +88,60 @@ def test_overview_boards_are_the_published_release_not_a_copy_that_drifted():
             f"{marker} differs between README.md and RANKINGS.md; republish both "
             "with build_boards.py --write-readme"
         )
+
+
+def test_gender_explanation_is_stated_once_in_the_publication():
+    rankings = (PROJECT_ROOT / "RANKINGS.md").read_text(encoding="utf-8")
+    assert rankings.count(GENDER_GAUGE_NOTE) == 1
+
+
+def test_source_matrix_integrity_factors_match_the_code():
+    matrix = (PROJECT_ROOT / "data" / "SOURCE_MATRIX.md").read_text(encoding="utf-8")
+    expected = {
+        "PED-confirmed": INTEGRITY_PED_FACTOR,
+        "DQ winner": INTEGRITY_DQ_WIN_FACTOR,
+        "Missed-weight winner": INTEGRITY_MISSED_WEIGHT_WIN_FACTOR,
+    }
+
+    for label, factor in expected.items():
+        discount = 1.0 - factor
+        pattern = (
+            rf"{re.escape(label)}[^\n]*factor `{factor:.2f}`[^\n]*"
+            rf"\(-{discount:.0%}"
+        )
+        assert re.search(pattern, matrix), f"Source Matrix has a stale {label} factor"
+
+
+def test_the_inferred_weight_class_error_rate_is_quoted_consistently():
+    """One rate, three documents.
+
+    The rate moved when the rule became a four-neighbour vote and only one of
+    the three places that quote it was updated, so the docs disagreed with each
+    other and with the code.
+    """
+    quoted = re.compile(r"(\d+)%\*{0,2} of (?:the )?filled (?:weight classes|labels)")
+    found = {
+        document.name: set(quoted.findall(document.read_text(encoding="utf-8")))
+        for document in CURRENT_DOCS
+    }
+    stated = {name: rates for name, rates in found.items() if rates}
+    assert stated, "no document states the inferred weight-class error rate"
+    assert set().union(*stated.values()) == {"11"}, stated
+
+
+def test_the_board_column_glossary_is_one_sentence_in_both_documents():
+    """The two documents show the same table, so they must explain it the same.
+
+    They had drifted to "the next board" against "the Prime board below". The
+    wording belongs in the generated block at the next publish; until then this
+    keeps the two copies from separating again.
+    """
+    glossary = (
+        "**Prime** is the average level in the ten-year period with the most\n"
+        "contender wins, **Prime rank** is the position on the Prime board below and\n"
+        "**Elite wins** is the evidence behind that position; a blank rank means the\n"
+        "fighter did not qualify."
+    )
+    for name in ("README.md", "RANKINGS.md"):
+        text = (PROJECT_ROOT / name).read_text(encoding="utf-8")
+        assert text.count(glossary) == 1, f"{name} does not state the glossary exactly once"

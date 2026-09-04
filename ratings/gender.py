@@ -29,17 +29,14 @@ import pandas as pd
 # Ordered so that iterating a partition puts the published default first.
 GENDERS: tuple[str, ...] = ("M", "F")
 GENDER_LABEL = {"M": "men's", "F": "women's"}
-GENDER_HEADING = {"M": "Men", "F": "Women"}
 # Artifact/column suffix. The men's board keeps the unsuffixed name because it
 # is the default anyone asking for "the board" means.
 GENDER_SUFFIX = {"M": "", "F": "_women"}
 DEFAULT_GENDER = "M"
 
 GENDER_GAUGE_NOTE = (
-    "Men and women never fight each other, so no result places the two "
-    "groups on one scale. Ranking them in a single list would be guesswork. "
-    "The boards are kept separate, and a rank means something only within "
-    "its own board."
+    "Men and women do not compete against each other, so the engine publishes "
+    "separate boards and each rank applies only within its own board."
 )
 
 

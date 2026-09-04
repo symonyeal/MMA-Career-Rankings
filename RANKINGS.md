@@ -1,8 +1,7 @@
 # Published UFC Rankings
 
-These are the latest ranking tables from the Symon UFC Rank Engine. The release
-facts and every table below are refreshed together from one dataset — a partial
-update is refused, so nothing here can be out of step with anything else.
+These are the current All-time, Prime and Current rankings. One build refreshes
+the release facts and all six tables, and refuses a partial update.
 
 ## Release
 
@@ -10,41 +9,26 @@ update is refused, so nothing here can be out of step with anything else.
 
 | Release fact | Value |
 | --- | ---: |
-| Snapshot | 2026-08-13 |
-| Published scope | majors,pre_unified |
-| Published score | public_legacy_score |
-| Rated bouts | 81,281 |
+| Dataset | 2026-08-13 |
+| Data through | 2026-08-30 |
+| Included records | UFC, early UFC and major-promotion careers |
+| All-time basis | All-time career score |
+| Rated fights | 81,281 |
 | Rated fighters | 34,085 |
-| Maximum-coverage fight rows | 82,675 |
-| Contender line | 1,750 — reached by 19.5% of established fighters |
+| Available fight records | 82,675 |
+| Whole-career coverage | 1,821 of 1,825 eligible fighters (99.8%) |
+| Prime contender threshold | 1,750 — reached by 19.5% of established fighters |
+| Prime qualifiers | 65 men; 1 woman |
 
 <!-- PUBLICATION:RELEASE:END -->
 
 ## All-time rankings
 
-All-time answers one question: **what did the fighter's career add up to?** The
-score combines how good they were over time, what they won, and who they beat.
-
-Three columns are printed beside it:
-
-- **Prime** — their rating in their best ten years.
-- **Prime rank** — where they sit on the Prime board further down. A blank means
-  they did not qualify for it.
-- **Elite wins** — how many top opponents they beat in those ten years.
-
-**What the contender line is worth.** Prime uses the same scale as the contender
-line in the release facts above, so you can see what that line means in real
-names. Be careful how much you read into it: about a fifth of established
-fighters clear it at some point. A fighter sitting near the line is a solid
-regular, not a title challenger. The real work on the Prime board is done by the
-requirement to have beaten five of them within ten years, not by the height of
-the line.
-
-**Prime and Prime rank will not always agree**, and that is why both are shown.
-Prime is how high a fighter rated. The Prime board ranks how often they proved
-it against top opposition, which rewards doing it repeatedly. So a fighter can
-rate higher than someone placed above them. A blank Prime rank means that board
-did not have enough qualifying wins to rank them — it is not a low Prime.
+All-time answers what the full career added up to by combining sustained
+fighting level, title achievement and the quality of wins. **Prime** is the average level in the ten-year period with the most
+contender wins, **Prime rank** is the position on the Prime board below and
+**Elite wins** is the evidence behind that position; a blank rank means the
+fighter did not qualify.
 
 ### Men — top 100
 
@@ -159,7 +143,7 @@ did not have enough qualifying wins to rank them — it is not a low Prime.
 
 <!-- BOARD:WOMEN10:BEGIN -->
 
-Men and women never fight each other, so no result places the two groups on one scale. Ranking them in a single list would be guesswork. The boards are kept separate, and a rank means something only within its own board.
+Men and women do not compete against each other, so the engine publishes separate boards and each rank applies only within its own board.
 
 | # | Fighter | Score | Prime | Prime rank | Elite wins |
 | ---: | --- | ---: | ---: | ---: | ---: |
@@ -178,69 +162,15 @@ Men and women never fight each other, so no result places the two groups on one 
 
 ## Elite-tested Prime rankings
 
-This board uses the same Prime rating, with one added requirement about **who
-the fighter actually beat, and when**: at least **5 wins over contenders within
-one ten-year stretch**. A contender is an opponent rated **1,750 or higher at
-the time of the fight** who also had a tested record of their own — at least 8
-UFC bouts. That number reads better as names than as a figure. On the all-time
-table above, Anthony Pettis peaked at 1,759 and Randy Couture at 1,763, just over
-the line; Frank Mir at 1,737 and Mark Coleman at 1,722 sit just under it. A
-contender is therefore not a title challenger but a fighter of roughly that
-standing, and the work is done by the requirement to beat five of them rather
-than by the height of the line. Both figures come from the same ten years, so a
-win cannot prove a peak it falls outside of.
+Prime uses the ten-year period with the most wins over contenders. Qualification
+requires five wins over opponents rated at least 1,750 on the night who each had
+at least eight UFC bouts.
 
-**Which ten years.** We take the stretch with the most wins over contenders, not
-the one with the highest average rating. Picking by rating rewards the years a
-fighter lost least. It made Daniel Cormier's peak his undefeated Strikeforce
-run and left his whole UFC title reign out of it — 2 qualifying wins counted
-where he has 8 — and it credited Mirko Filipovic with none at all. A peak is a
-peak because of who was beaten in it.
-
-**How the order is decided.** Not by the Prime rating itself. A rating does not
-rise with the number of hard fights behind it, so ranking on it alone puts a
-fighter who barely qualified above one who cleared the bar many times over. The
-**Score** multiplies the two: how many contenders the fighter beat, by how far
-their peak stood above the lowest on this board. A great peak proved once and a
-good peak proved eleven times are not the same achievement.
-
-**Prime** and **Elite wins** are printed beside the score, so any placement can
-be read straight off the row. The wins are never added to the rating — they
-decide how much of it is credited — so nothing is counted twice, and there is no
-dial to tune.
-
-Two other orderings were tried and rejected on named fighters:
-
-- **Ranking the rating alone** put Ilia Topuria, with 5 qualifying wins, above
-  Georges St-Pierre, with 11.
-- **Discounting the rating by evidence** instead of multiplying flattens out: no
-  setting separated Anderson Silva (11 wins) from Vadim Nemkov (5) by anything
-  meaningful — 1.2 points apart at the closest setting tried — and anchoring
-  that discount to the group average was worse, lifting weaker fighters as their
-  evidence thinned.
-
-Both halves of the contender test are needed, and each was checked against named
-fighters before it was adopted:
-
-- **Rating alone is not enough.** The top of the rating scale includes fighters
-  whose records were built against weak opposition, so screening on rating
-  flatters exactly the careers this board exists to catch.
-- **Opponent strength without results measures the wrong thing.** Ranking on the
-  quality of a fighter's ten toughest opponents rewards gatekeepers, because
-  losing to ten elite fighters scores the same as beating them. It put Roy
-  Nelson — 0–10 against his toughest ten — above Khabib Nurmagomedov and Georges
-  St-Pierre, and at a high enough bar it excluded Jon Jones altogether.
-
-The contender line and the five-win minimum are **set as policy, not fitted to
-the data**. They were chosen by reading the qualifying names at several
-candidate lines. Raising the minimum to 6 removes Topuria, Chimaev and Gane;
-lowering it to 4 admits Khabib Nurmagomedov, who has 4 wins over the line.
-
-**70 men qualify**, so the top 50 is full. **Only 2 women qualify** — Amanda
-Nunes and Valentina Shevchenko. That is a statement about the data, not the
-fighters: 95 women in it have 8 or more UFC bouts, against 699 men, so there are
-far fewer opponents who can meet the tested-opponent half of the rule. The same
-rule is applied to both boards rather than being softened for one.
+Rank is determined by qualifying wins multiplied by the fighter's average level
+above the lowest qualifying Prime level. Each table shows those two inputs and
+omits the internal ordering value because its unit has no practical meaning.
+The thresholds are declared policy, the same rule applies to both boards and
+current qualifier counts are in the release facts above.
 
 ### Men — top 50
 
@@ -305,8 +235,6 @@ rule is applied to both boards rather than being softened for one.
 
 <!-- BOARD:ELITEPRIMEWOMEN10:BEGIN -->
 
-Men and women never fight each other, so no result places the two groups on one scale. Ranking them in a single list would be guesswork. The boards are kept separate, and a rank means something only within its own board.
-
 | # | Fighter | Prime | Elite wins |
 | ---: | --- | ---: | ---: |
 | 1 | Valentina Shevchenko | 1938 | 7 |
@@ -315,52 +243,16 @@ Men and women never fight each other, so no result places the two groups on one 
 
 ## Current rankings
 
-Current answers the third question: **how good is this fighter now?** It starts
-from the fighter's last fitted rating, carried forward to the snapshot date
-through the measured age-drift curve, so a layoff costs what a layoff has
-historically cost fighters of that age.
+Current starts with the latest fitted rating, updates it for age and reduces
+confidence where career coverage is thin. A fighter must also have at least
+eight UFC bouts and a fight within the last 18 months; failing either rule means
+no rank, not last place.
 
-Two screens decide who appears, both taken from the boards above:
-
-- **Fought within the last 18 months.** The projection is shallow — it charges
-  Khabib Nurmagomedov 37 points for five years away and Georges St-Pierre 48 for
-  nine — so without this the board would seat retired champions near the top and
-  quietly answer "how good were they" for a third time.
-- **At least 8 UFC bouts**, the same bar the Prime board applies to an opponent
-  before a win over them counts. Nothing in this kind of model caps an unbeaten
-  record from above, so a fighter who rarely loses in a weak field rates
-  alongside one who has beaten contenders. Without this screen the top thirty
-  held six Bellator and PFL fighters, Usman Nurmagomedov 2nd. The screen is the
-  model declining to place them, not a verdict on them.
-
-**Time away is charged where a win is priced, not on this board.** A fighter
-returning from a long absence is not the fighter their rating describes, so the
-price of beating them is discounted by how far past the era's own normal
-turnaround they had been idle, capped at four turnarounds. It reaches every
-ledger that prices a win — the title ledger, the contender résumé and the Prime
-gate alike. Jon Jones's win over Stipe Miocic is priced 227 points below the
-rating it would otherwise be measured against, where the rating alone separates
-the Stipe that Daniel Cormier beat from the one Jones beat by 34.
-
-Nothing is written back to a fighter's own rating. Charging the layoff inside
-the rating was built, measured on the full corpus and refused: a symmetric prior
-satisfies "declined across this gap" by raising the earlier number instead,
-which lifted Sean Sherk's 1999 rating from 1927 to 2124.
-
-The surviving rating is then discounted by the exposure factor — how much of the
-career the corpus can identify — shrunk toward the contender line rather than
-multiplied, because a rating has no meaningful zero to multiply against.
-
-The 18-month bar and the layoff rate are stated policy about what "current"
-claims. Neither is fitted: no comeback sample here is large enough to estimate a
-return-from-layoff effect.
-
-Fighters who fail either screen are withheld with the reason recorded, not
-ranked last. The rating is on the same scale as the contender line in the release
-facts above; the columns beside it are the two screens.
-
-This board is not comparable with the two above it. All-time and Prime are
-retrospective and a career does not expire; Current is a claim about today.
+The board applies no second layoff penalty. A long absence lowers the value of a
+win over a returning opponent wherever achievements are priced, while Current
+uses age, coverage and the two eligibility rules above. The thresholds are
+declared policy, and this forward-looking view is not directly comparable with
+the two career rankings.
 
 ### Men — top 30
 
@@ -405,8 +297,6 @@ retrospective and a career does not expire; Current is a claim about today.
 
 <!-- BOARD:CURRENTWOMEN10:BEGIN -->
 
-Men and women never fight each other, so no result places the two groups on one scale. Ranking them in a single list would be guesswork. The boards are kept separate, and a rank means something only within its own board.
-
 | # | Fighter | Rating | UFC bouts | Last bout |
 | ---: | --- | ---: | ---: | ---: |
 | 1 | Valentina Shevchenko | 1933 | 19 | 2025-11-15 |
@@ -424,36 +314,19 @@ Men and women never fight each other, so no result places the two groups on one 
 
 ## Reading the tables
 
-- **A fighter with too little evidence is left out.** That is us declining to
-  rank them, not ranking them last.
-- **A rank is a single best estimate**, not a range. The uncertainty figures
-  published elsewhere in the project measure the underlying skill estimate, not
-  this score.
-- **The Prime board is only as good as the opponent ratings it screens on.** It
-  removes records that were never tested, which is a weaker claim than
-  certifying the ones that survive.
-- **The layoff charge is a judgement, not a measurement**, and it is applied
-  where a win is priced rather than on this board. It cannot be fitted: a fighter who returns badly
-  often does not fight again, so the decline never becomes an observed change.
-  The same survivorship makes the measured age curve say a 42-year-old declines
-  more slowly than a 37-year-old.
-- **A gap in the schedule is not proof of absence** — it is equally a fight the
-  sources do not hold, which is why the charge is capped at four normal turnarounds per
-  absence.
-- **The Current board ages a rating; it does not watch a fighter.** Inside the
-  18-month window a fighter is ranked on what they last proved, discounted only
-  by what age costs the population and by how much of their career is
-  identified. It cannot know about an injury, a retirement not yet in the fight
-  record, or a camp change. Its UFC-bout screen also means it is silent about
-  every fighter outside the UFC, however good — silence, not a low placement.
-- **An undefeated record is rated above everyone it has beaten**, because
-  nothing in the method caps it from above. Seika Izawa is rated 320 points above
-  the strongest opponent she has ever faced. This is a known open problem,
-  recorded in [Open decisions](docs/DECISIONS.md), and it is why the Prime board
-  counts wins over a stated line rather than trusting the rating alone. It is
-  also why completing a fighter's record matters: the same gap for Khabib
-  Nurmagomedov fell from 206 to 160 once the dataset held all 30 of his fights
-  instead of 14.
+- A blank rank means the evidence rule was not met; it does not mean last place.
+- A rank is the best current estimate, while published uncertainty applies to
+  the underlying skill rating rather than the final board score.
+- Prime screens for proven wins but cannot certify that every surviving
+  opponent rating is correct.
+- Current cannot observe injuries, unannounced retirements or camp changes, and
+  its UFC experience rule deliberately makes no claim about fighters outside
+  the UFC.
+- Undefeated records have no natural upper limit in this model, so complete
+  careers and the Prime evidence rule remain essential safeguards.
+
+Known limits and rejected alternatives are maintained once in
+[Open decisions](docs/DECISIONS.md).
 
 Return to the [overview](README.md), or read the
 [how the ratings and the score are built](docs/RATING_LAYER_AND_LEDGER_2026-08-28.md).

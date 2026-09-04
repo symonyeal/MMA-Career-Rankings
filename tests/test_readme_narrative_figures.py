@@ -1,17 +1,7 @@
-"""Pin the README's hand-typed figures to the snapshot they describe.
-
-The generated tables cannot drift -- ``build_boards.py`` rewrites them between
-markers and refuses a partial update. The prose around them can, and did: on
-2026-09-03 the overview quoted resume scores of 1,170 and 1,000 against actual
-values of 1,139 and 1,009, and said 70 men qualified for a board 65 had
-qualified for.
-
-The 2026-09-03 rewrite replaced the long comparative narrative with the
-principles it was illustrating, so the assertions that pinned that narrative
-went with it. What is here covers every quantity the overview still states.
-"""
+"""Keep business-facing release facts tied to the artifacts they describe."""
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 
@@ -20,11 +10,7 @@ import pytest
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SNAPSHOT = PROJECT_ROOT / "data" / "snapshots" / "2026-08-13"
-README = PROJECT_ROOT / "README.md"
-
-
-def _readme() -> str:
-    return README.read_text(encoding="utf-8")
+PUBLICATIONS = (PROJECT_ROOT / "README.md", PROJECT_ROOT / "RANKINGS.md")
 
 
 def _require(path: Path) -> pd.DataFrame:
@@ -38,56 +24,147 @@ def _ranked(name: str) -> pd.DataFrame:
     return board[board["status"].eq("ranked")]
 
 
-def _loose(name: str) -> str:
-    """A name pattern that survives the README's line wrapping."""
-    return r"\s+".join(re.escape(part) for part in name.split())
+def _release_value(document: Path, label: str) -> str:
+    text = document.read_text(encoding="utf-8")
+    match = re.search(rf"^\| {re.escape(label)} \| (.+) \|$", text, re.MULTILINE)
+    assert match, f"{document.name} has no {label!r} release fact"
+    return match.group(1)
 
 
-def test_the_stated_prime_qualifier_counts_match_the_boards():
-    text = _readme()
-    men = re.search(r"(\d+) men qualify", text)
-    assert men, "README no longer states how many men qualify for the Prime board"
-    assert int(men.group(1)) == len(_ranked("prime_elite_board.parquet"))
+def test_prime_qualifier_counts_match_both_boards():
+    men = len(_ranked("prime_elite_board.parquet"))
+    women = len(_ranked("prime_elite_board_women.parquet"))
+    expected = f"{men:,} {'man' if men == 1 else 'men'}; {women:,} "
+    expected += "woman" if women == 1 else "women"
 
-    women = re.search(r"Only (\d+) wom(?:a|e)n do(?:es)?", text)
-    assert women, "README no longer states how many women qualify"
-    assert int(women.group(1)) == len(_ranked("prime_elite_board_women.parquet"))
+    for document in PUBLICATIONS:
+        assert _release_value(document, "Prime qualifiers") == expected
 
 
-def test_the_career_coverage_figures_match_the_coverage_ledger():
+def test_career_coverage_matches_both_publications():
     from loaders.career_coverage import coverage_summary
 
     summary = coverage_summary(_require(SNAPSHOT / "career_coverage.parquet"))
-    match = re.search(
-        r"held for ([\d,]+) of the\s+([\d,]+)\s+fighters this can affect", _readme()
+    merged = summary["whole_career_merged"]
+    eligible = summary["eligible"]
+    expected = f"{merged:,} of {eligible:,} eligible fighters ({merged / eligible:.1%})"
+
+    for document in PUBLICATIONS:
+        assert _release_value(document, "Whole-career coverage") == expected
+
+
+def test_release_volume_and_date_match_the_manifests():
+    rating_run = json.loads((SNAPSHOT / "rating_run.json").read_text(encoding="utf-8"))
+    combined = json.loads(
+        (SNAPSHOT / "combined_fights_summary.json").read_text(encoding="utf-8")
     )
-    assert match, "README no longer states the career-coverage figures"
-    assert int(match.group(1).replace(",", "")) == summary["whole_career_merged"]
-    assert int(match.group(2).replace(",", "")) == summary["eligible"]
+    expected = {
+        "Data through": rating_run["combined_fights"]["date_range"][-1],
+        "Rated fights": f"{rating_run['rated_bouts']:,}",
+        "Rated fighters": f"{rating_run['current_fighters']:,}",
+        "Available fight records": f"{combined['rows']:,}",
+    }
+
+    for document in PUBLICATIONS:
+        for label, value in expected.items():
+            assert _release_value(document, label) == value
 
 
-def test_the_recency_bar_examples_last_fought_when_the_readme_says():
-    """The overview names the two fighters the 18-month bar withholds.
+def test_readme_explains_the_rules_that_change_the_rankings():
+    text = (PROJECT_ROOT / "README.md").read_text(encoding="utf-8")
+    article = text.split("## What is published", 1)[0]
+    flat = " ".join(article.split())
 
-    Both the dates and the exclusion are checkable, and both are the reason the
-    paragraph is persuasive, so both are held here.
+    for heading in (
+        "### Weight classes are different competitive worlds",
+        "### The UFC is the anchor, not the whole sport",
+        "### The result is not just win or loss",
+        "### A later career can change the meaning of an earlier fight",
+        "## Three questions, three boards",
+    ):
+        assert heading in article
+
+    for implemented_rule in (
+        "Career division is where most effective appearances occurred",
+        "The UFC is `1.00`",
+        "one neutral virtual bout—half a win and half a loss",
+        "All-time = 30% championships + 17.5% career skill + 52.5% contender résumé",
+        "Five wins are required",
+        "eight UFC bouts",
+        "within 18 months",
+    ):
+        assert implemented_rule in flat
+
+
+def test_readme_policy_constants_are_the_ones_the_code_uses():
+    """Every tuned number the overview quotes, read back from the source.
+
+    The overview states the promotion factors, method scores, score weights and
+    board thresholds outright. Those are the numbers a refit moves, so each is
+    asserted against its constant rather than trusted to stay current. Words
+    that spell a number out are checked against the constant's value too, so
+    changing either half breaks this.
     """
-    fights = _require(SNAPSHOT / "combined_fights.parquet")
-    fights = fights[fights["is_model_bout"].astype(bool)]
-    ranked = set(_ranked("current_board.parquet")["fighter"])
-    text = _readme()
+    from build_boards import CURRENT_MAX_MONTHS_INACTIVE
+    from ratings.constants import (
+        METHOD_SCORE_DQ,
+        METHOD_SCORE_FINISH,
+        METHOD_SCORE_NON_UNANIMOUS_DECISION,
+        METHOD_SCORE_UNANIMOUS,
+        SUSTAINED_PEAK_MIN_FIGHTS,
+    )
+    from ratings.layoff import (
+        MAX_EXCESS_TURNAROUNDS,
+        OPPONENT_LAYOFF_ELO_PER_TURNAROUND,
+    )
+    from ratings.legacy_resume import (
+        LEGACY_ACHIEVEMENT_WEIGHT,
+        LEGACY_QUALITY_SKILL_SHARE,
+        ORG_FACTOR_BY_CANONICAL,
+        TITLE_QUALITY_MAJOR_FLOOR,
+    )
+    from ratings.opponent_quality import (
+        CONTENDER_LINE_MU,
+        MIN_OPPONENT_UFC_BOUTS,
+        MIN_QUALITY_WINS,
+    )
+    from ratings.symon_score import DEFAULT_DIVISION_MIN_POPULATION
+    from ratings.whr import _ELO_ANCHOR
 
-    for fighter in ("Jon Jones", "Shavkat Rakhmonov"):
-        found = re.search(rf"{_loose(fighter)}[^.]*?(\d{{4}}-\d{{2}}-\d{{2}})", text)
-        assert found, f"README no longer dates {fighter}'s last bout"
-        rows = fights[
-            fights["fighter_a"].eq(fighter) | fights["fighter_b"].eq(fighter)
-        ]
-        last = pd.to_datetime(rows["event_date"]).max().strftime("%Y-%m-%d")
-        assert found.group(1) == last, (
-            f"README says {fighter} last fought {found.group(1)}; "
-            f"the snapshot says {last}"
-        )
-        assert fighter not in ranked, (
-            f"README cites {fighter} as withheld, but the board ranks them"
-        )
+    # Wrapped prose puts line breaks mid-phrase, so match on one flat line.
+    readme = " ".join((PROJECT_ROOT / "README.md").read_text(encoding="utf-8").split())
+    quality = 1.0 - LEGACY_ACHIEVEMENT_WEIGHT
+
+    expected = {
+        "achievement weight": f"{LEGACY_ACHIEVEMENT_WEIGHT:.0%} championships",
+        "career skill share": f"{quality * LEGACY_QUALITY_SKILL_SHARE:.1%} career skill",
+        "resume share": f"{quality * (1 - LEGACY_QUALITY_SKILL_SHARE):.1%} contender résumé",
+        "finish score": f"submission scores `{METHOD_SCORE_FINISH:.2f}`",
+        "unanimous score": f"unanimous decision `{METHOD_SCORE_UNANIMOUS:.2f}`",
+        "split score": f"majority decision `{METHOD_SCORE_NON_UNANIMOUS_DECISION:.2f}`",
+        "dq score": f"disqualification `{METHOD_SCORE_DQ:.2f}`",
+        "draw score": "a draw `0.50` for each fighter",
+        "contender line": f"rated at least {CONTENDER_LINE_MU:,.0f}"[:-2],
+        "layoff charge": f"lose {abs(OPPONENT_LAYOFF_ELO_PER_TURNAROUND):.0f} points per excess",
+        "title floor": f"carry a `{TITLE_QUALITY_MAJOR_FLOOR:.2f}` floor",
+        "rated appearances": f"needs {SUSTAINED_PEAK_MIN_FIGHTS} rated appearances",
+        "current window": f"within {CURRENT_MAX_MONTHS_INACTIVE:.0f} months",
+        "division floor": f"fewer than {DEFAULT_DIVISION_MIN_POPULATION} fighter-years",
+        "elo anchor": f"displayed around {_ELO_ANCHOR:,.0f}"[:-2],
+    }
+    missing = {k: v for k, v in expected.items() if v not in readme}
+    assert not missing, f"README no longer states these as the code defines them: {missing}"
+
+    # Spelled out in prose; pin the word and the constant behind it together.
+    spelled = [
+        (MIN_OPPONENT_UFC_BOUTS, 8, "at least eight UFC fights"),
+        (MIN_QUALITY_WINS, 5, "Five wins are required"),
+        (MAX_EXCESS_TURNAROUNDS, 4, "capped at four"),
+    ]
+    for constant, value, phrase in spelled:
+        assert constant == value, f"{phrase!r} spells out {value}, code now says {constant}"
+        assert phrase in readme, f"README no longer says {phrase!r}"
+
+    for org, factor in ORG_FACTOR_BY_CANONICAL.items():
+        assert org in readme, f"README omits promotion {org}"
+        assert f"`{factor:.2f}`" in readme, f"README omits the {org} factor {factor:.2f}"

@@ -171,11 +171,11 @@ Where the data comes from is [Source Matrix](../data/SOURCE_MATRIX.md).
 2026-09-03, in the ledgers, after the rating-layer version was built and
 refused.
 
-The rating charges elapsed time at an age rate and nothing else, so ageing while
-competing and ageing while idle cost the same. Stipe Miocic was 35 and active
-when Daniel Cormier fought him and 42 with 44 months away when Jon Jones did;
-the published trajectory separates those two Stipes by 34 rating points, and
-prices the two wins as near-equivalents.
+The rating charges age but cannot distinguish active time from idle time. Stipe
+Miocic was 35 and active when Daniel Cormier fought him, then 42 and 44 months
+out when Jon Jones did; the rating alone separates the Stipe Cormier beat from
+the one Jones beat by 34 points, while the Jones win is priced 227 points below
+its unadjusted value.
 
 `ratings/layoff.py` now discounts the opponent's price by how far past a normal
 turnaround they had been idle, at `OPPONENT_LAYOFF_ELO_PER_TURNAROUND = -90`,
@@ -285,8 +285,10 @@ cost of aging.
    it. Its measured ceiling — the factor does nothing on 94.02% of 161,196
    appearances — was therefore a ceiling on an audit column. Changing the window
    cannot move a rating or a board, so do not budget a re-rate against it.
-9. **About 17% of filled weight classes are wrong for that particular fight.**
-   That is the price of the 2026-08-28 schedule repair, paid knowingly.
+9. **About 11% of filled weight classes are wrong for that particular fight.**
+   That is the price of the 2026-08-28 schedule repair, paid knowingly. The
+   2026-09-03 four-neighbour vote cut it from 17%; event-page evidence retires
+   the inference wherever a card can be read.
 10. **Three close-date repeat cases are recorded, not guessed away.** Canonical
     UFC URLs establish Sakuraba against Silveira at UFC Ultimate Japan as a
     genuine same-night tournament rematch, so both fights remain distinct. Two

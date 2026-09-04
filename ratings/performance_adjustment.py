@@ -106,6 +106,7 @@ PERFORMANCE_APPEARANCE_COLUMNS = (
     "fighter",
     "opponent",
     "division",
+    "division_evidence",
     "is_draw",
     "is_winner",
     "actual_score",
@@ -205,36 +206,28 @@ def scheduled_rounds(time_format: object) -> int:
     return max(1, int(match.group(1))) if match else 3
 
 
+DIVISION_INFERENCE_NEIGHBOURS = 4
+_NS_PER_DAY = 86_400_000_000_000
+
+
 def fill_division_from_career(fights: pd.DataFrame) -> pd.Series:
     """Fill a missing bout division from the same fighters' labelled bouts.
 
-    **This is a coverage repair, and the thing it repairs was a third of the
-    published score.** ``weight_class`` is present on 100% of UFC rows and
-    **6%** of the Sherdog majors rows, so mapping it straight to a division left
-    94% of non-UFC bouts with no division -- and a bout with no division cannot
-    enter its division's ranked field. Measured on the 2026-08-13 snapshot
-    before this function existed, a pre-fight division rank was computable on
-    73.8% of UFC appearances, 22.6% of pre-unified ones and **2.2%** of majors
-    ones, so the "wins over ranked opposition" component was reading UFC tenure
-    rather than schedule quality: it correlated **+0.53** with a fighter's UFC
-    bout count across the published top 150, against -0.25 for the skill
-    component and +0.01 for the title one. Fedor Emelianenko's entire PRIDE
-    prime -- Nogueira twice, Cro Cop, Coleman, Randleman, Herring, Schilt --
-    scored exactly nothing on it.
+    ``weight_class`` is on 100% of UFC rows and 6% of the Sherdog majors rows,
+    and a bout with no division cannot enter its division's ranked field. Left
+    unrepaired that made "wins over ranked opposition" read UFC tenure rather
+    than schedule quality: it correlated +0.53 with a fighter's UFC bout count
+    across the published top 150, against -0.25 for skill and +0.01 for titles,
+    and Fedor Emelianenko's whole PRIDE prime scored nothing on it.
 
-    The rule: a bout keeps its own label wherever it has one, and only an
-    unlabelled bout borrows. It borrows from that fighter's **nearest labelled
-    bout in time**, which beat borrowing their career-modal division on a
-    leave-one-out check over 20,640 labelled sides -- 83.0% against 80.1%. A
-    fighter with no labelled bout anywhere keeps ``None`` and stays out of every
-    ranked field, which is the honest answer for a career the corpus never
-    weighed.
-
-    Coverage goes from 16.2% of bout-sides to 60.1%. The remaining 40% are
-    fighters the corpus never labelled at all, and 17% of what is filled will be
-    the wrong division for that particular bout -- a fighter moving weight, or a
-    catchweight. That error is not free, and it is the price of the component
-    measuring schedule instead of measuring promotion.
+    A bout keeps its own label wherever it has one and only an unlabelled bout
+    borrows. Each participant contributes up to four nearest labelled bouts,
+    the majority division wins, and the closest evidence breaks a tie: 89.0%
+    accurate at 98.2% coverage held out over labelled sides. A fighter the
+    corpus never labelled contributes no vote and the bout keeps ``None``. The
+    11% filled wrong for their particular bout -- weight movers, catchweights
+    -- are the price of measuring schedule instead of promotion, and exact
+    event-page evidence supersedes the inference wherever it exists.
     """
     if fights is None or fights.empty:
         return pd.Series(dtype="object")
@@ -262,63 +255,73 @@ def fill_division_from_career(fights: pd.DataFrame) -> pd.Series:
         ignore_index=True,
     ).dropna(subset=["fighter", "event_date"])
     labelled = sides.dropna(subset=["division"])
-    if labelled.empty:
+    unknown = sides[sides["division"].isna()]
+    if labelled.empty or unknown.empty:
         return division
 
-    # Nearest labelled bout in time, per fighter, via a two-sided as-of join.
-    known = (
-        labelled[["fighter", "event_date", "division"]]
-        .drop_duplicates(["fighter", "event_date"])
-        .sort_values("event_date")
+    known = labelled[["fighter", "event_date", "division"]].drop_duplicates(
+        ["fighter", "event_date"]
     )
-    # merge_asof consumes the right frame's key, so the matched date has to be
-    # carried as an ordinary column or every gap comes out as zero.
-    known["known_date"] = known["event_date"]
-    unknown = sides[sides["division"].isna()].sort_values("event_date")
-    if unknown.empty:
+    roster = pd.Index(known["fighter"].unique())
+    u_fighter = roster.get_indexer(unknown["fighter"]).astype("int64")
+    seen = u_fighter >= 0
+    if not seen.any():
         return division
-    backward = pd.merge_asof(
-        unknown, known, on="event_date", by="fighter",
-        direction="backward", suffixes=("", "_known"),
-    )
-    forward = pd.merge_asof(
-        unknown, known, on="event_date", by="fighter",
-        direction="forward", suffixes=("", "_known"),
-    )
-    far = pd.Timedelta.max
-    back_gap = (
-        unknown["event_date"].to_numpy() - backward["known_date"].to_numpy()
-    )
-    fwd_gap = (
-        forward["known_date"].to_numpy() - unknown["event_date"].to_numpy()
-    )
-    back_gap = pd.Series(back_gap).fillna(far)
-    fwd_gap = pd.Series(fwd_gap).fillna(far)
-    back_gap = back_gap.mask(backward["division_known"].isna().to_numpy(), far)
-    fwd_gap = fwd_gap.mask(forward["division_known"].isna().to_numpy(), far)
-    take_forward = (fwd_gap < back_gap).to_numpy()
-    filled = np.where(
-        take_forward,
-        forward["division_known"].to_numpy(),
-        backward["division_known"].to_numpy(),
-    )
-    gap = np.where(take_forward, fwd_gap.to_numpy(), back_gap.to_numpy())
+    u_fighter = u_fighter[seen]
+    u_date = unknown["event_date"].to_numpy("datetime64[ns]").astype("int64")[seen]
+    u_row = unknown["row"].to_numpy()[seen]
 
-    # A bout has two sides and they can disagree -- one fighter's nearest
-    # labelled bout says heavyweight, the other's says middleweight. The
-    # CLOSER-IN-TIME inference wins, because it is the one the corpus supports
-    # better; taking whichever side happened to be listed first put two of
-    # Fedor's 47 bouts in the wrong division. Never overwrite a label the bout
-    # already carried.
-    resolved = pd.DataFrame(
-        {"row": unknown["row"].to_numpy(), "division": filled, "gap": gap}
-    ).dropna(subset=["division"])
-    resolved = (
-        resolved.sort_values("gap", kind="stable")
-        .drop_duplicates("row", keep="first")
-        .set_index("row")["division"]
+    # One appearance table sorted by (fighter, date), so a single searchsorted
+    # places every unlabelled bout inside its own fighter's block and the
+    # window either side of that position holds the nearest labelled bouts.
+    k_fighter = roster.get_indexer(known["fighter"]).astype("int64")
+    k_date = known["event_date"].to_numpy("datetime64[ns]").astype("int64")
+    order = np.lexsort((k_date, k_fighter))
+    k_fighter, k_date = k_fighter[order], k_date[order]
+    k_division = known["division"].to_numpy(dtype=object)[order]
+    block = np.arange(len(roster))
+    first = np.searchsorted(k_fighter, block, "left")
+    last = np.searchsorted(k_fighter, block, "right") - 1
+
+    # Dates enter the composite sort key as a dense rank, not as nanoseconds,
+    # so fighter * stride + date cannot overflow int64.
+    day = np.unique(np.concatenate([k_date, u_date]))
+    stride = len(day) + 1
+    position = np.searchsorted(
+        k_fighter * stride + np.searchsorted(day, k_date),
+        u_fighter * stride + np.searchsorted(day, u_date),
     )
-    return division.fillna(resolved)
+
+    n = DIVISION_INFERENCE_NEIGHBOURS
+    window = position[:, None] + np.arange(-n, n)
+    lo, hi = first[u_fighter][:, None], last[u_fighter][:, None]
+    inside = (window >= lo) & (window <= hi)
+    window = np.clip(window, lo, hi)
+    gap = np.abs(k_date[window] - u_date[:, None]) // _NS_PER_DAY
+    # A stable sort keeps the earlier bout ahead of a later one at equal gap.
+    nearest = np.argsort(
+        np.where(inside, gap, np.iinfo("int64").max), axis=1, kind="stable"
+    )[:, :n]
+    rows = np.arange(len(u_row))[:, None]
+    keep = inside[rows, nearest]
+    if not keep.any():
+        return division
+
+    choices = pd.DataFrame({
+        "row": np.broadcast_to(u_row[:, None], (len(u_row), n))[keep],
+        "division": k_division[window[rows, nearest]][keep],
+        "gap_days": gap[rows, nearest][keep],
+    })
+    tally = (
+        choices.groupby(["row", "division"], as_index=False)
+        .agg(votes=("division", "size"), closest_gap=("gap_days", "min"))
+        .sort_values(
+            ["row", "votes", "closest_gap", "division"],
+            ascending=[True, False, True, True],
+            kind="stable",
+        )
+    )
+    return division.fillna(tally.drop_duplicates("row").set_index("row")["division"])
 
 
 def normalize_division_label(weight_class: object) -> str | None:
@@ -684,6 +687,7 @@ def _empty_prefight_context() -> pd.DataFrame:
     return pd.DataFrame(columns=[
         "fight_url",
         "division",
+        "division_evidence",
         "is_championship_bout",
         "is_interim_title_bout",
         "fighter_a_prefight_division_rank",
@@ -714,14 +718,28 @@ def prefight_ranking_context(canonical_fights: pd.DataFrame, ratings_history: pd
     f = canonical_fights.copy()
     f["event_date"] = pd.to_datetime(f["event_date"], errors="coerce")
     f["division"] = f.get("weight_class", pd.Series(index=f.index)).map(normalize_division_label)
+    reported_division = f["division"].notna()
+    source_evidence = f.get(
+        "weight_class_evidence", pd.Series("reported", index=f.index, dtype="object")
+    )
     f["division"] = fill_division_from_career(f)
+    f["division_evidence"] = source_evidence.where(reported_division, "missing")
+    f.loc[~reported_division & f["division"].notna(), "division_evidence"] = "career_vote"
     weight_class = f.get("weight_class", pd.Series(index=f.index))
     f["is_championship_bout"] = weight_class.map(is_real_ufc_title_bout)
     f["is_interim_title_bout"] = weight_class.map(is_interim_title_bout)
     f = f.sort_values(["event_date", "event_name"]).reset_index(drop=True)
 
     if ratings_history is None or ratings_history.empty or "mu_canonical" not in ratings_history.columns:
-        neutral = f[["fight_url", "division", "is_championship_bout", "is_interim_title_bout"]].copy()
+        neutral = f[
+            [
+                "fight_url",
+                "division",
+                "division_evidence",
+                "is_championship_bout",
+                "is_interim_title_bout",
+            ]
+        ].copy()
         for col in [
             "fighter_a_prefight_division_rank",
             "fighter_b_prefight_division_rank",
@@ -879,6 +897,7 @@ def prefight_ranking_context(canonical_fights: pd.DataFrame, ratings_history: pd
     return pd.DataFrame({
         "fight_url": f["fight_url"].to_numpy() if "fight_url" in f.columns else np.full(n, None),
         "division": divisions,
+        "division_evidence": f["division_evidence"].to_numpy(),
         "is_championship_bout": is_title,
         "is_interim_title_bout": is_interim,
         "fighter_a_prefight_division_rank": div_rank_a,
@@ -1283,7 +1302,7 @@ def build_performance_appearances(
         "dominance_score_winner",
         "scheduled_rounds", "scheduled_seconds", "end_round", "end_time_seconds",
         "bout_duration_seconds", "decisiveness_score",
-        "is_finish", "division", "is_championship_bout", "is_interim_title_bout",
+        "is_finish", "division", "division_evidence", "is_championship_bout", "is_interim_title_bout",
         "fighter_current_weight_limit_lb",
     ]
     a = f[common + [

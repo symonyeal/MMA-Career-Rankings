@@ -2185,22 +2185,11 @@ PEAK_VIEWS: tuple[tuple[str, str], ...] = (
     ("Now", "current"),
 )
 
-SCORING_METHODS: tuple[tuple[str, str], ...] = (
-    ("Wins", "canonical"),
-    ("Finishes", "method"),
-)
-
 PUBLIC_RANKING_VIEWS: tuple[tuple[str, str], ...] = (
     ("All-time", "all_time"),
     ("Prime · best 10 years / 13+ bouts", "prime"),
     ("Current skill", "current"),
 )
-
-# Compatibility aliases for callers that imported the old public constants.
-# They deliberately expose the new one-dimensional choices, never retired
-# weighted/sleeved streams.
-PUBLIC_RATING_LENSES = PUBLIC_RANKING_VIEWS
-PUBLIC_TIME_VIEWS: tuple[tuple[str, str], ...] = ()
 
 _PUBLIC_VIEW_LABELS = {
     "all_time": "All-time",

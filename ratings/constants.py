@@ -37,7 +37,6 @@ SLEEVE_FACTOR_MAX: float = 1.10   # +10% roof — best performance bonus hits th
 FIVE_YEAR_PEAK_WINDOW_DAYS: int = 1825  # 5 years
 FIVE_YEAR_PEAK_WINDOW_LABEL: str = "5-Yr Period"
 FIVE_YEAR_PEAK_MIN_FIGHTS: int = 8
-SUSTAINED_PEAK_WINDOW_LABEL: str = "10-Yr Period"
 SUSTAINED_PEAK_MIN_FIGHTS: int = 13
 
 
@@ -403,15 +402,6 @@ PERF_WEIGHT_CLASS_UP_LOSS_DAMP: float = 0.05
 ACTIVITY_GAP_NORMAL: int = 270
 ACTIVITY_GAP_FULL_PENALTY: int = 730
 ACTIVITY_LOSS_AMPLITUDE: float = 0.06
-
-# Current-ranking inactivity penalty. This is a post-rating current-view
-# column, not a mutation of the historical Glicko state. It exists for active
-# P4P/rank-camping diagnostics; all-time/period greatness should keep using
-# the unpenalized peak surfaces.
-ACTIVITY_MU_PENALTY_START_MONTHS: float = 15.0
-ACTIVITY_MU_PENALTY_FULL_MONTHS: float = 30.0
-ACTIVITY_MU_PENALTY_CAP: float = 75.0
-
 
 # ---------------------------------------------------------------------------
 # Headline proven-resume adjustment.

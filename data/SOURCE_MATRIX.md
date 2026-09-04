@@ -189,12 +189,12 @@ one-off whole-career ingest driver is preserved in
 
 `loaders/fightmatrix_loader.py` stages the ranking and all-time tables.
 `loaders/fightmatrix_profiles.py` then follows only the profile links in those
-tables (no recursive opponent crawl), caches the HTML under
-`data/external/fightmatrix/profiles/`, and emits profile, raw-bout, canonical
-cross-org, and provenance-summary artifacts. The 2026-08-14 local run contains
-302 profiles, 6,644 unique public bouts and 4,023 model-ready cross-org bouts.
-The HTML cache holds exactly those 302 pages: it is trimmed to what the live
-artifacts reference, so its size states the bound rather than hiding it.
+tables (no recursive opponent crawl), caches them in
+`data/external/fightmatrix/profiles/pages.sqlite`, and emits profile, raw-bout,
+canonical cross-org, and provenance-summary artifacts. The 2026-08-14 local run
+contains 302 profiles, 6,644 unique public bouts and 4,023 model-ready cross-org
+bouts. The cache holds exactly those 302 profiles, so its size states the bound
+rather than hiding it.
 FightMatrix ranks, points, quality percentages, 540 metrics and combat age are
 diagnostic only. Only result/method/round/event/date fields enter the optional
 rating input. The standard snapshot uses `majors,pre_unified`; the explicit
@@ -253,7 +253,7 @@ source-specific fighter/division fields where those columns exist.
 
 All excluded bouts are persisted to `_excluded_bouts.csv` for audit.
 
-## Rating and policy architecture (current through 2026-08-31)
+## Rating and policy architecture (current through 2026-09-03)
 
 The public rating uses method-aware WHR. Binary Glicko-2 and binary WHR remain
 comparison models:
@@ -263,9 +263,11 @@ comparison models:
 | `mu_canonical` | causal skill filter | Strict W/L/D Glicko-2. |
 | `mu_whr` | retrospective skill smoother | Method-aware Whole-History Rating, one shared likelihood weight per bout, era-neutral. `WHR_WINNER_SCORE_COL = None` restores the binary comparison. Prior mass is fixed per fighter, so an undefeated record's rating rises with the evidence behind it. |
 | `mu_method` | research diagnostic | Glicko-2 stream scored with `method_score_winner` in the canonical pass; not public/core evidence. |
-| `public_legacy_score` | public All-time board | Exposure-adjusted skill plus title and schedule résumé ledgers. Components are published separately and sum exactly to the score. |
+| `public_legacy_score` | public All-time board | Exposure-adjusted skill plus title and opponent-quality ledgers. Wins over returning opponents use the shared layoff price; components are published separately and sum exactly to the score. |
 | `symon_career_skill_mass` | diagnostic career functional | Annual field-relative WHR skill mass. It is retained for audit and is not the public board. |
 | `symon_prime_score` | period diagnostic | Fixed 10y/13-appearance EB-shrunk WHR mean. `symon_peak_score` is no longer produced by the rating snapshot. |
+| `elite_prime_score` | public Prime board | Wins over tested contenders multiplied by the fighter's average level above the lowest qualifying Prime level. The published table shows those two inputs rather than this internal ordering value. |
+| `current_board_score` | public Current board | Latest age-adjusted WHR level, pulled toward the contender threshold when career coverage is thin; limited to fighters active within 18 months who have at least 8 UFC bouts. |
 | `wins` / `losses` / `draws` | rated record | Counted from the rated fight table; the evidence behind a rating, not an input to it. |
 | `career_mass_uncertainty.parquet` | diagnostic intervals | Career Skill Mass and its diagnostic rank re-estimated under gender-isolated, Dirichlet-reweighted events. These are not Public Legacy intervals. |
 
@@ -284,11 +286,11 @@ carries them; the public controls ignore them and resolve to base WHR instead.
 
 Three authoritative signals are OR-merged into per-fight audit flags:
 
-* PED-confirmed (from `loaders/ped_flags.py`): factor `0.80` (-20% floor —
+* PED-confirmed (from `loaders/ped_flags.py`): factor `0.90` (-10% floor —
   the most severe integrity penalty). Confirmed cases also exported to
   `ped_confirmed_bouts.csv`.
-* DQ winner (Greco `method_class == "DQ"`): factor `0.92` (-8%).
-* Missed-weight winner: factor `0.88` (-12%). Detected from Greco
+* DQ winner (Greco `method_class == "DQ"`): factor `0.96` (-4%).
+* Missed-weight winner: factor `0.94` (-6%). Detected from Greco
   `details_text` ("missed weight" phrase + winner name) and, when
   available, mdabbert `R_Weight_lbs`/`B_Weight_lbs` vs `weight_class`
   divergence (cross-check). Audit export: `missed_weight_bouts.csv`.
@@ -393,11 +395,12 @@ redistributed. Cross-org / pre-UFC odds remain entirely out of scope.
 
 ### Where cached pages live
 
-Every scraped page sits in one store per source: `pages.sqlite`, in that
-source's cache directory, holding gzipped page text under a kind and a key.
-`loaders/page_cache.py` is the only thing that reads or writes it, and
-`open_cache(cache_dir)` is how a reader opens it, so `--cache-dir` still names a
-directory.
+Large scraped-page collections sit in `pages.sqlite` inside their source cache
+directory, with gzipped page text stored by kind and key.
+`loaders/page_cache.py` is the only code that reads or writes those stores, and
+`open_cache(cache_dir)` is how a reader opens one, so `--cache-dir` still names
+a directory. The 13 reviewed FightMatrix ranking pages are the documented
+exception below.
 
 Before 2026-09-01 each reader dropped one file per page into its own directory in
 its own layout — 6,972 files, 254 MB, three naming schemes. The store holds the

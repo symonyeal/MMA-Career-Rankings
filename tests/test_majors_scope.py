@@ -61,6 +61,7 @@ def test_card_rows_become_canonical_rows_keyed_to_ufc_identities():
     assert silva["winner"] == "Wanderlei Silva"
     assert silva["method_class"] == "Submission"
     assert silva["source"] == "sherdog_majors"
+    assert silva["org_evidence"] == "sherdog_event"
     # No organisation weight, ever. Promotion strength is an output.
     assert (fights["org_weight"] == 1.0).all()
 
@@ -95,6 +96,7 @@ def test_fighter_page_event_name_recovers_a_known_organization():
     fights = to_canonical_fights(bouts, resolve_identities(bouts, _canonical()))
 
     assert fights.iloc[0]["org"] == "UFC"
+    assert fights.iloc[0]["org_evidence"] == "event_name_rule"
     assert fights.iloc[0]["event_name"] == "UFC 147 - Silva vs. Franklin 2"
 
 

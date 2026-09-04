@@ -178,6 +178,34 @@ def test_the_board_does_not_charge_idle_time_itself():
     assert "current_idle_years" not in board.columns
 
 
+def test_current_never_falls_back_to_the_retired_inactivity_penalty():
+    current = pd.DataFrame({
+        "mu_whr_activity_adjusted": [2200.0],
+        "mu_whr": [2100.0],
+        "mu_canonical_activity_adjusted": [2000.0],
+        "mu_canonical": [1900.0],
+    })
+    assert build_boards.select_current_rating_col(current) == "mu_whr"
+
+    from ratings import constants, rate_snapshot
+
+    assert not hasattr(rate_snapshot, "_attach_activity_adjusted_mu")
+    assert not hasattr(constants, "ACTIVITY_MU_PENALTY_CAP")
+
+
+def test_current_recency_metadata_does_not_create_a_second_rating():
+    from ratings.rate_snapshot import _attach_months_inactive
+
+    current = pd.DataFrame({
+        "last_event_date": [pd.Timestamp("2025-01-01")],
+        "mu_whr": [2100.0],
+    })
+    got = _attach_months_inactive(current, pd.Timestamp("2026-01-01"))
+    assert got.loc[0, "months_inactive"] == pytest.approx(11.99)
+    assert got.loc[0, "mu_whr"] == 2100.0
+    assert "activity_mu_penalty" not in got.columns
+
+
 def test_the_layoff_charge_lives_in_the_pricing_layer():
     """Not in the rating, and not on this board.
 

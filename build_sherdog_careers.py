@@ -86,41 +86,12 @@ from loaders.majors_scope import (  # noqa: E402
 from loaders.sherdog_loader import resolve_fighter_url  # noqa: E402
 from loaders.sherdog_org_loader import (  # noqa: E402
     _session,
+    align_bout_schema,
     crawl_careers,
     merge_careers,
 )
 
 COVERAGE_REPORT = "career_coverage.json"
-
-# ``load_majors_bouts`` parses ``event_date`` to datetime for its own use, while
-# the stored artifact and a freshly parsed fighter page both carry an ISO date
-# string. Concatenating the two gives an object column that parquet refuses to
-# write, and a few numeric columns arrive as int where the artifact holds float.
-# So the merged frame is cast back to the schema already on disk rather than
-# whatever the concatenation happened to produce.
-_DATE_COLUMNS = ("event_date",)
-_FLOAT_COLUMNS = ("end_round", "end_time_seconds", "match_order", "org_id")
-
-
-def align_to_stored_schema(merged: pd.DataFrame, stored: pd.DataFrame) -> pd.DataFrame:
-    """Cast a merged bout table back to the dtypes the artifact already uses."""
-    out = merged.copy()
-    for column in _DATE_COLUMNS:
-        if column in out.columns:
-            out[column] = pd.to_datetime(out[column], errors="coerce").dt.strftime("%Y-%m-%d")
-    for column in _FLOAT_COLUMNS:
-        if column in out.columns:
-            out[column] = pd.to_numeric(out[column], errors="coerce").astype("float64")
-    for column, dtype in stored.dtypes.items():
-        if column not in out.columns or column in _DATE_COLUMNS or column in _FLOAT_COLUMNS:
-            continue
-        if pd.api.types.is_bool_dtype(dtype):
-            out[column] = out[column].fillna(False).astype(bool)
-        elif str(dtype) in {"str", "object", "string"}:
-            out[column] = out[column].astype("object").where(out[column].notna(), None)
-    ordered = [c for c in stored.columns if c in out.columns]
-    return out[ordered + [c for c in out.columns if c not in ordered]]
-
 
 def coverage_table(
     canonical_fights: pd.DataFrame,
@@ -230,7 +201,7 @@ def main() -> dict:
 
     if not careers.empty:
         path = majors_dir / MAJORS_CAREERS
-        merged = align_to_stored_schema(merge_careers(bouts, careers), pd.read_parquet(path))
+        merged = align_bout_schema(merge_careers(bouts, careers), pd.read_parquet(path))
         merged.to_parquet(path, index=False)
         parsed_ids = set(careers["fighter_a_id"].dropna().astype(str))
         record_incorporated_page_ids(majors_dir, merged_ids | parsed_ids)

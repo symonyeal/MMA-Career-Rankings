@@ -72,14 +72,12 @@ PRIME_RATING_CANDIDATES = (
     "mu_whr",
     "mu_canonical",
 )
-# "How good are they now": the last fitted rating carried forward to the
-# snapshot date through the measured age-drift curve, so time out of
-# competition is charged at the population's own rate rather than a guess.
+# "How good are they now": the last fitted rating projected to the snapshot
+# date through the measured age-drift curve. The leading column name is
+# legacy -- it charges age, not the retired explicit inactivity penalty.
 CURRENT_RATING_CANDIDATES = (
     "mu_whr_age_activity_adjusted",
-    "mu_whr_activity_adjusted",
     "mu_whr",
-    "mu_canonical_activity_adjusted",
     "mu_canonical",
 )
 

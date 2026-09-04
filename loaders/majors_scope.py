@@ -100,9 +100,9 @@ CANONICAL_COLUMNS = [
     "fight_url", "event_url", "event_name", "event_date", "event_location",
     "fighter_a", "fighter_b", "fighter_a_outcome", "fighter_b_outcome",
     "winner", "loser", "is_draw", "is_nc", "is_excluded", "exclusion_reason",
-    "weight_class", "is_title_fight", "method_raw", "method_class",
+    "weight_class", "weight_class_evidence", "is_title_fight", "method_raw", "method_class",
     "method_score_winner", "end_round", "end_time_seconds", "referee",
-    "details_text", "org", "source", "org_weight",
+    "details_text", "org", "org_evidence", "source", "org_weight",
 ]
 
 
@@ -197,6 +197,14 @@ def to_canonical_fights(bouts: pd.DataFrame, identity: pd.DataFrame) -> pd.DataF
     # rules; an unresolved event stays unknown rather than being guessed.
     organizations = joined["org"].astype("object").copy()
     missing_org = organizations.isna()
+    row_source = joined.get(
+        "source", pd.Series("event", index=joined.index, dtype="object")
+    ).fillna("event")
+    org_evidence = pd.Series(
+        np.where(organizations.notna(), "sherdog_event", "missing"),
+        index=joined.index,
+        dtype="object",
+    )
     if missing_org.any():
         events = (
             joined.loc[missing_org, ["event_id", "event_name", "event_date"]]
@@ -208,6 +216,21 @@ def to_canonical_fights(bouts: pd.DataFrame, identity: pd.DataFrame) -> pd.DataF
             if match["canonical_organization"] != "Unknown":
                 inferred[event_id] = match["canonical_organization"]
         organizations.loc[missing_org] = joined.loc[missing_org, "event_id"].map(inferred)
+        inferred_mask = missing_org & organizations.notna()
+        org_evidence.loc[inferred_mask] = "event_name_rule"
+
+    weight_class = joined.get(
+        "weight_class", pd.Series(pd.NA, index=joined.index, dtype="object")
+    )
+    weight_class_evidence = pd.Series(
+        np.where(
+            weight_class.notna() & row_source.astype(str).eq("event"),
+            "sherdog_event",
+            np.where(weight_class.notna(), "source_reported", "missing"),
+        ),
+        index=joined.index,
+        dtype="object",
+    )
 
     event_names = joined["event_name"].astype("object").copy()
     declared_org = joined["org"].notna()
@@ -231,7 +254,8 @@ def to_canonical_fights(bouts: pd.DataFrame, identity: pd.DataFrame) -> pd.DataF
         "loser": loser,
         "is_draw": is_draw,
         "is_nc": is_nc,
-        "weight_class": joined.get("weight_class"),
+        "weight_class": weight_class,
+        "weight_class_evidence": weight_class_evidence,
         "is_title_fight": joined.get("is_title_fight", False),
         "method_raw": joined["method_raw"],
         "method_class": method_class,
@@ -241,6 +265,7 @@ def to_canonical_fights(bouts: pd.DataFrame, identity: pd.DataFrame) -> pd.DataF
         "referee": joined.get("referee"),
         "details_text": "",
         "org": organizations,
+        "org_evidence": org_evidence,
         "source": "sherdog_majors",
         # Never an organisation weight. See the module docstring.
         "org_weight": 1.0,

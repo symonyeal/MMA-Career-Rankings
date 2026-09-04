@@ -845,6 +845,16 @@ def test_a_stored_promotion_label_is_priced_at_the_tier_it_was_given():
     assert context["public_legacy_org_factor"] == pytest.approx(ORG_FACTOR_BY_TIER[3])
 
 
+def test_a_verified_unclassified_promotion_is_evidence_not_a_missing_label():
+    fights = pd.DataFrame(
+        [{"fight_url": "1", "event_date": "2025-01-01", "org": "Local MMA"}]
+    )
+    context = _organization_context(fights).iloc[0]
+    assert context["canonical_organization"] == "Local MMA"
+    assert context["organization_tier"] == 4
+    assert context["public_legacy_org_factor"] == pytest.approx(ORG_FACTOR_BY_TIER[4])
+
+
 def test_source_title_resume_ledger_infers_defenses_with_blank_org():
     fights = pd.DataFrame(
         [

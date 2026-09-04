@@ -178,7 +178,7 @@ def test_the_charge_is_not_written_back_to_the_opponents_rating():
 # --- the quoted Stipe figures, held to the snapshot ------------------------
 
 SNAPSHOT = Path(__file__).resolve().parents[1] / "data" / "snapshots" / "2026-08-13"
-RANKINGS = Path(__file__).resolve().parents[1] / "RANKINGS.md"
+DECISIONS = Path(__file__).resolve().parents[1] / "docs" / "DECISIONS.md"
 
 CORMIER_WIN = pd.Timestamp("2018-07-07")
 JONES_WIN = pd.Timestamp("2024-11-16")
@@ -198,21 +198,19 @@ def _priced_at(mu: pd.Series, when: pd.Timestamp) -> float:
 
 
 def test_the_quoted_stipe_figures_match_the_snapshot():
-    """RANKINGS.md quotes both halves of the Stipe example.
+    """The decision register quotes both halves of the Stipe example.
 
-    Neither is generated, and both went stale once already: the rating gap was
-    published as 39 and the discount as 232 after a refit had moved them. The
-    expected values are read from the document, so a refit fails here rather
-    than in the prose.
+    This is the one canonical explanation of the policy. Both figures went stale
+    once already, so a refit must fail here rather than in the prose.
     """
-    if not RANKINGS.exists():
-        pytest.skip("RANKINGS.md not present")
-    text = RANKINGS.read_text(encoding="utf-8")
+    if not DECISIONS.exists():
+        pytest.skip("docs/DECISIONS.md not present")
+    text = DECISIONS.read_text(encoding="utf-8")
 
     quoted_discount = re.search(r"priced (\d+) points below", text)
-    quoted_gap = re.search(r"beat from the one Jones beat by (\d+)", text)
-    assert quoted_discount, "RANKINGS.md no longer quotes the layoff discount"
-    assert quoted_gap, "RANKINGS.md no longer quotes the rating gap"
+    quoted_gap = re.search(r"beat\s+from\s+the one Jones beat by (\d+)", text)
+    assert quoted_discount, "DECISIONS.md no longer quotes the layoff discount"
+    assert quoted_gap, "DECISIONS.md no longer quotes the rating gap"
 
     history = _whr_history()
     excess = appearance_layoff_excess(history[["fighter", "event_date"]])

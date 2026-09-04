@@ -171,7 +171,24 @@ def _clean(node) -> str:
     return re.sub(r"\s+", " ", node.get_text(" ", strip=True)).strip()
 
 
-def parse_event(html: str, href: str) -> tuple[dict | None, list[dict]]:
+def _organization(links, *, accept_unlisted: bool) -> tuple[int, str] | None:
+    """First ``/organizations/`` link the scan accepts, as (id, label)."""
+    for a in links:
+        m = _ORG_HREF_RE.match(a["href"].split("?")[0])
+        if not m:
+            continue
+        org_id = int(m.group(1))
+        if accept_unlisted or org_id in ORG_BY_ID:
+            return org_id, _clean(a)
+    return None
+
+
+def parse_event(
+    html: str,
+    href: str,
+    *,
+    allow_unlisted_organization: bool = False,
+) -> tuple[dict | None, list[dict]]:
     """Return (event metadata, bout rows) for one Sherdog event page.
 
     The event page's own ``/organizations/`` link is the authority on which
@@ -182,14 +199,20 @@ def parse_event(html: str, href: str) -> tuple[dict | None, list[dict]]:
     if detail is None:
         return None, []
 
-    org_id = None
-    for a in s.find_all("a", href=True):
-        m = _ORG_HREF_RE.match(a["href"].split("?")[0])
-        if m and int(m.group(1)) in ORG_BY_ID:
-            org_id = int(m.group(1))
-            break
-    if org_id is None:
+    # The link inside event_detail is the event's own organization. Navigation
+    # and sidebars carry organization links too, so the whole page is a
+    # fallback for the legacy layouts that put the link outside event_detail,
+    # and there only a known major id is safe to believe.
+    detail_links = detail.find_all("a", href=True)
+    found = _organization(
+        detail_links or s.find_all("a", href=True),
+        accept_unlisted=allow_unlisted_organization,
+    )
+    if found is None and detail_links:
+        found = _organization(s.find_all("a", href=True), accept_unlisted=False)
+    if found is None:
         return None, []
+    org_id, org_label = found
 
     meta_date = s.find("meta", itemprop="startDate")
     date = (meta_date.get("content") or "")[:10] if meta_date else None
@@ -204,7 +227,7 @@ def parse_event(html: str, href: str) -> tuple[dict | None, list[dict]]:
         "event_date": date,
         "event_location": _clean(loc) or None,
         "org_id": org_id,
-        "org": ORG_BY_ID[org_id].label,
+        "org": ORG_BY_ID[org_id].label if org_id in ORG_BY_ID else org_label,
     }
 
     bouts: list[dict] = []
@@ -446,6 +469,38 @@ def merge_careers(event_bouts: pd.DataFrame, career_bouts: pd.DataFrame) -> pd.D
         _pair=[_pair_key(a, b) for a, b in zip(extra["fighter_a_id"], extra["fighter_b_id"])]
     ).drop_duplicates(subset=["event_id", "_pair"]).drop(columns="_pair")
     return pd.concat([event_bouts, extra], ignore_index=True)
+
+
+_DATE_COLUMNS = ("event_date",)
+_FLOAT_COLUMNS = ("end_round", "end_time_seconds", "match_order", "org_id")
+
+
+def align_bout_schema(merged: pd.DataFrame, stored: pd.DataFrame) -> pd.DataFrame:
+    """Cast merged Sherdog bouts back to the schema already on disk.
+
+    A freshly parsed page carries an ISO date string and ints where a loaded
+    artifact carries datetime and floats, so concatenating the two yields object
+    columns parquet refuses to write. The stored dtypes are the authority, never
+    whatever the concatenation happened to produce.
+    """
+    out = merged.copy()
+    for column in _DATE_COLUMNS:
+        if column in out.columns:
+            out[column] = pd.to_datetime(out[column], errors="coerce").dt.strftime(
+                "%Y-%m-%d"
+            )
+    for column in _FLOAT_COLUMNS:
+        if column in out.columns:
+            out[column] = pd.to_numeric(out[column], errors="coerce").astype("float64")
+    for column, dtype in stored.dtypes.items():
+        if column not in out.columns or column in _DATE_COLUMNS or column in _FLOAT_COLUMNS:
+            continue
+        if pd.api.types.is_bool_dtype(dtype):
+            out[column] = out[column].fillna(False).astype(bool)
+        elif str(dtype) in {"str", "object", "string"}:
+            out[column] = out[column].astype("object").where(out[column].notna(), None)
+    ordered = [column for column in stored.columns if column in out.columns]
+    return out[ordered + [column for column in out.columns if column not in ordered]]
 
 
 def crawl_careers(

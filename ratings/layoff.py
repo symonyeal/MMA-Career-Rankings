@@ -1,36 +1,10 @@
-"""What a win is worth against an opponent who had been away.
+"""Price a win over an opponent returning from a long absence.
 
-The rating model prices an opponent by their rating as at the bout. That rating
-charges elapsed time at an age rate and nothing else, so ageing while competing
-and ageing while idle cost the same. Stipe Miocic was 35 and active when Daniel
-Cormier fought him and 42 with 44 months away when Jon Jones did; the published
-trajectory separates those two Stipes by 34 rating points, and the two wins are
-priced as near-equivalents.
-
-**This corrects the price of the win, not the opponent's rating.** Putting the
-charge in the WHR transition prior was built and measured on 2026-09-03 and
-refused: a transition prior constrains the difference between consecutive
-nodes, while a fighter's level is pinned by their record, so "you declined
-across this gap" is equally satisfiable as "you used to be better". It chose
-the latter for gap-heavy careers -- Sean Sherk's 1999 rating rose from 1927 to
-2124, Mark Coleman's 1996 peak from 1768 to 1948 -- and because erratic careers
-concentrate in the old era it made the all-time board's era skew worse, not
-better (Spearman against the previous board 0.895 -> 0.813). That is structural
-and cannot be tuned away. See ``docs/DECISIONS.md``.
-
-Applied here instead, the same judgement reaches every published number that
-prices a win -- the title ledger, the contender resume, the elite-Prime gate --
-and reaches nothing that does not. A fighter's own rating continues to say what
-their fights say.
-
-**The unit is an era-normal turnaround, not a year, and that is deliberate.**
-A fixed number of days cannot mean "a layoff" across this corpus, because the
-sport's rhythm changed underneath it: the 75th-percentile gap between bouts runs
-112 days in 1995 and 392 in 2020, since fighters used to compete five times a
-year and now fight twice. Charged in days past a fixed grace, a 2020-era gap is
-charged 4.8x what a 1995-era one is, which is an era penalty wearing a layoff
-costume. Divided by the era's own normal, mean charged excess runs 0.298
-turnarounds in 1995 against 0.369 in 2025.
+The adjustment lowers the opponent value used by the title, contender and
+Prime achievement calculations; it never changes either fighter's rating. Its
+unit is the era's normal turnaround rather than a fixed number of days, which
+keeps the rule comparable as fight schedules change. The policy evidence and
+rejected rating-layer alternative are recorded in ``docs/DECISIONS.md``.
 """
 from __future__ import annotations
 
