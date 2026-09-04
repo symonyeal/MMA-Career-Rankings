@@ -1,9 +1,7 @@
 # Symon UFC Rank Engine
 
-Rankings are arguments. This one makes its argument in code: start with recorded
-fights, then state how divisions, promotions, titles and incomplete evidence are
-treated. A disputed placement should lead to a fight or a declared rule, never
-a hidden reputation bonus.
+Rankings are arguments. This one argues in code: every placement traces to
+recorded fights and a declared rule, never a hidden reputation bonus.
 
 ## A ranking is a set of decisions
 
@@ -19,9 +17,9 @@ line. Men's and women's boards stay separate because no results connect them.
 
 ### The UFC is the anchor, not the whole sport
 
-The fit includes early UFC and major-promotion careers, but gives no promotion a
-bonus inside the fight rating; crossover results locate them. Promotion enters
-only afterward as confidence in where the career was proved. The UFC is `1.00`,
+The fit includes early UFC and major-promotion careers and gives no promotion a
+bonus inside the rating -- crossover results locate them, and promotion enters
+afterward only as confidence in where a career was proved. The UFC is `1.00`,
 PRIDE `0.95`, Affliction `0.90`, WEC and Strikeforce `0.88`, Bellator `0.65`, and
 PFL, RIZIN, ONE and DREAM `0.60`. The exposure factor blends the career average
 with its strongest quarter and pulls thin evidence toward the pooled average.
@@ -31,8 +29,8 @@ An unknown promotion is missing evidence, not a weak show.
 
 A knockout or submission scores `1.00`, a unanimous decision `0.95`, a split or
 majority decision `0.90`, a disqualification `0.85`, and a draw `0.50` for each
-fighter. These are fractional outcomes, not résumé bonuses. No-contests,
-overturned results and bouts that could not continue are excluded.
+fighter. No-contests, overturned results and bouts that could not continue are
+excluded.
 
 ### A later career can change the meaning of an earlier fight
 
@@ -46,7 +44,7 @@ hand-written era bonus.
 
 One authoritative row survives when sources repeat a bout, and publication
 stops if a duplicate remains. Whole careers are required because missing losses
-bias ratings upward; 1,821 of 1,825 eligible careers are merged. Opponent
+bias ratings upward. Opponent
 strength is paid in the rating, each active year enters career skill once, and
 the contender résumé is capped once per year. Titles are priced through the
 opponent beaten, not a flat belt or multi-division bonus.
@@ -68,9 +66,9 @@ are priced against the opponent; recognized major titles carry a `0.05` floor.
 
 ### Prime: how high was the proven peak?
 
-Prime selects the ten-year stretch with the most qualifying contender wins,
-breaking ties by average rating. Five wins are required. Ranking rewards both
-the average level and the number of qualifying wins.
+Prime selects the ten-year stretch with the most qualifying contender wins, ties
+broken by average rating, then ranks on both that average and the count. Five
+wins are required.
 
 ### Current: who can still be described now?
 
@@ -83,8 +81,7 @@ audit and never alter a published board.
 
 ## What is published
 
-The full [Published UFC Rankings](RANKINGS.md) adds the three women's boards. One
-build updates and validates both documents.
+The full [Published UFC Rankings](RANKINGS.md) adds the three women's boards.
 
 <!-- PUBLICATION:RELEASE:BEGIN -->
 
@@ -280,8 +277,6 @@ The table prints both inputs instead of the internal ordering index.
 
 ### Current — men, top 30
 
-Only Current has an activity cutoff.
-
 <!-- BOARD:CURRENT30:BEGIN -->
 
 | # | Fighter | Rating | UFC bouts | Last bout |
@@ -345,8 +340,7 @@ rejected changes.
 | `tests/` | Verification |
 | `_archive/` | Retired work |
 
-The supported runtime is the machine's system Python. These are the ordinary
-entry points:
+The supported runtime is the machine's system Python:
 
 ```text
 C:\Python314\python.exe -m pip install -r requirements.txt
