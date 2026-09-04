@@ -12,12 +12,21 @@ probe700/
 .venv/
 .env
 
-# Data: raw scrapes and snapshots are large/reproducible.
+# Data: page caches and SQLite exports are large AND genuinely regenerable.
+# The two derived tables below are neither -- they are the output of multi-day
+# crawls whose own inputs are ignored here, so ignoring them too would leave the
+# published boards versioned and the evidence behind them on one disk.
 data/raw/
-data/snapshots/
 data/model_tuning/
-data/external/sherdog/
 data/external/fightmatrix/profiles/
+
+data/external/sherdog/*
+!data/external/sherdog/crossorg_bouts.parquet
+
+data/snapshots/*
+!data/snapshots/*/
+data/snapshots/*/*
+!data/snapshots/*/combined_fights.parquet
 data/ufc_rank_engine.sqlite
 data/ufc_rank_engine_fightmatrix_public.sqlite
 data/ufc_rank_engine_fightmatrix_depth_one.sqlite
