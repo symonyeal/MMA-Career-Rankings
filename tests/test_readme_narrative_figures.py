@@ -168,3 +168,28 @@ def test_readme_policy_constants_are_the_ones_the_code_uses():
     for org, factor in ORG_FACTOR_BY_CANONICAL.items():
         assert org in readme, f"README omits promotion {org}"
         assert f"`{factor:.2f}`" in readme, f"README omits the {org} factor {factor:.2f}"
+
+
+def test_the_promotion_gap_matches_the_rated_scope():
+    """The one coverage figure stated in prose, read back from the table.
+
+    It moved 64% -> 57% when event-card hydration landed, and nothing would
+    have caught it: the release block regenerates itself, this sentence does
+    not.
+    """
+    from loaders.combined_fights import load_combined_fights
+
+    readme = (PROJECT_ROOT / "README.md").read_text(encoding="utf-8")
+    match = re.search(r"Promotion labels are missing from (\d+)% of rated fights", readme)
+    assert match, "README no longer states the promotion gap"
+
+    if not (SNAPSHOT / "combined_fights.parquet").exists():
+        pytest.skip("combined_fights.parquet not present")
+    fights, _ = load_combined_fights(SNAPSHOT, scope="majors,pre_unified", label="test")
+    rated = fights[fights["is_model_bout"].astype(bool)]
+    org = rated["org"].notna() & rated["org"].astype("string").str.strip().ne("")
+    measured = round((~org).mean() * 100)
+    assert int(match.group(1)) == measured, (
+        f"README says {match.group(1)}% of rated fights lack a promotion; "
+        f"the table says {measured}%"
+    )

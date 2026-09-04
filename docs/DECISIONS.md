@@ -174,7 +174,7 @@ refused.
 The rating charges age but cannot distinguish active time from idle time. Stipe
 Miocic was 35 and active when Daniel Cormier fought him, then 42 and 44 months
 out when Jon Jones did; the rating alone separates the Stipe Cormier beat from
-the one Jones beat by 34 points, while the Jones win is priced 227 points below
+the one Jones beat by 34 points, while the Jones win is priced 232 points below
 its unadjusted value.
 
 `ratings/layoff.py` now discounts the opponent's price by how far past a normal

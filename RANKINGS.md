@@ -13,12 +13,12 @@ the release facts and all six tables, and refuses a partial update.
 | Data through | 2026-08-30 |
 | Included records | UFC, early UFC and major-promotion careers |
 | All-time basis | All-time career score |
-| Rated fights | 81,281 |
-| Rated fighters | 34,085 |
-| Available fight records | 82,675 |
+| Rated fights | 81,479 |
+| Rated fighters | 34,108 |
+| Available fight records | 82,961 |
 | Whole-career coverage | 1,821 of 1,825 eligible fighters (99.8%) |
 | Prime contender threshold | 1,750 — reached by 19.5% of established fighters |
-| Prime qualifiers | 65 men; 1 woman |
+| Prime qualifiers | 66 men; 1 woman |
 
 <!-- PUBLICATION:RELEASE:END -->
 
@@ -36,106 +36,106 @@ fighter did not qualify.
 
 | # | Fighter | Score | Prime | Prime rank | Elite wins |
 | ---: | --- | ---: | ---: | ---: | ---: |
-| 1 | Jon Jones | 3688.5 | 2210 | 1 | 12 |
-| 2 | Islam Makhachev | 2415.7 | 2180 | 3 | 7 |
-| 3 | Georges St-Pierre | 2105.4 | 2073 | 2 | 10 |
-| 4 | Daniel Cormier | 2020.6 | 2080 | 5 | 8 |
-| 5 | Alexander Volkanovski | 1946.6 | 2048 | 4 | 9 |
-| 6 | Jose Aldo | 1895.6 | 1930 | 15 | 9 |
-| 7 | Demetrious Johnson | 1871.1 | 1982 | 22 | 6 |
-| 8 | Stipe Miocic | 1784.6 | 1994 | 20 | 6 |
-| 9 | Anderson Silva | 1690.6 | 1922 | 17 | 9 |
-| 10 | Francis Ngannou | 1603.9 | 2037 | 7 | 7 |
-| 11 | Israel Adesanya | 1498.7 | 1935 | 14 | 9 |
-| 12 | Dominick Cruz | 1472.8 | 1941 | 33 | 5 |
-| 13 | Max Holloway | 1453.1 | 1963 | 8 | 9 |
-| 14 | Ilia Topuria | 1441.8 | 2119 | 11 | 5 |
-| 15 | Khabib Nurmagomedov | 1418.9 | 2172 |  | 4 |
-| 16 | Merab Dvalishvili | 1406.8 | 1974 | 10 | 8 |
-| 17 | Sean Strickland | 1324.6 | 1921 | 12 | 10 |
-| 18 | Matt Hughes | 1223.2 | 1830 |  | 3 |
-| 19 | Justin Gaethje | 1207.7 | 1994 | 21 | 6 |
-| 20 | Lyoto Machida | 1204.0 | 1966 | 23 | 6 |
-| 21 | Alex Pereira | 1176.2 | 1962 | 25 | 6 |
-| 22 | Fedor Emelianenko | 1126.7 | 2014 | 24 | 5 |
-| 23 | Kamaru Usman | 1101.2 | 1968 | 6 | 10 |
-| 24 | Benson Henderson | 1087.4 | 1869 | 40 | 6 |
-| 25 | Aljamain Sterling | 1085.4 | 1945 | 27 | 6 |
-| 26 | Charles Oliveira | 1042.6 | 1978 | 18 | 7 |
-| 27 | Dricus Du Plessis | 1010.6 | 2044 | 13 | 6 |
-| 28 | Dustin Poirier | 972.3 | 1922 | 37 | 5 |
-| 29 | Khamzat Chimaev | 952.8 | 2089 | 16 | 5 |
-| 30 | Ciryl Gane | 952.3 | 2060 | 9 | 6 |
-| 31 | Frankie Edgar | 914.2 | 1905 | 31 | 7 |
-| 32 | Cain Velasquez | 897.5 | 1959 |  | 3 |
-| 33 | Junior Dos Santos | 896.3 | 1914 |  | 4 |
-| 34 | Patricio Freire | 851.0 | 1933 |  | 3 |
-| 35 | Petr Yan | 850.3 | 1951 | 26 | 6 |
-| 36 | Mauricio Rua | 830.0 | 1833 | 49 | 6 |
-| 37 | Dan Henderson | 828.3 | 1869 | 48 | 5 |
-| 38 | Anthony Pettis | 820.4 | 1759 | 62 | 6 |
-| 39 | Chris Weidman | 816.7 | 1871 | 35 | 7 |
-| 40 | Vadim Nemkov | 811.5 | 2067 | 19 | 5 |
-| 41 | Henry Cejudo | 796.9 | 1873 |  | 4 |
-| 42 | Ryan Bader | 776.1 | 1926 | 36 | 5 |
-| 43 | Conor McGregor | 772.5 | 1840 |  | 4 |
-| 44 | Randy Couture | 757.3 | 1763 |  | 4 |
-| 45 | Tito Ortiz | 735.0 | 1786 |  | 4 |
-| 46 | BJ Penn | 708.3 | 1793 | 57 | 5 |
-| 47 | Robert Whittaker | 706.9 | 1893 | 32 | 7 |
-| 48 | Movsar Evloev | 699.0 | 2103 |  | 4 |
-| 49 | Wanderlei Silva | 694.3 | 1812 |  | 4 |
-| 50 | Chuck Liddell | 676.1 | 1815 | 54 | 5 |
-| 51 | Antonio Rodrigo Nogueira | 664.1 | 1889 |  | 4 |
-| 52 | Eddie Alvarez | 661.5 | 1763 |  | 4 |
-| 53 | Anthony Johnson | 654.4 | 1938 | 29 | 6 |
-| 54 | Sean O'Malley | 652.0 | 1953 |  | 4 |
-| 55 | Gegard Mousasi | 651.7 | 1919 |  | 4 |
-| 56 | Alexander Volkov | 636.1 | 1906 | 30 | 7 |
-| 57 | Jan Blachowicz | 626.0 | 1801 | 56 | 5 |
-| 58 | Tom Aspinall | 625.2 | 1934 |  | 4 |
-| 59 | Vitor Belfort | 623.7 | 1781 | 61 | 5 |
-| 60 | Leon Edwards | 621.0 | 1888 |  | 4 |
-| 61 | Luke Rockhold | 609.1 | 1863 | 44 | 6 |
-| 62 | Rafael Dos Anjos | 607.6 | 1772 | 59 | 7 |
-| 63 | Quinton Jackson | 607.0 | 1832 | 52 | 5 |
-| 64 | Shavkat Rakhmonov | 600.6 | 2146 |  | 2 |
-| 65 | Phil Davis | 589.6 | 1956 |  | 4 |
-| 66 | Tyron Woodley | 563.6 | 1803 | 55 | 5 |
-| 67 | Matt Serra | 559.8 | 1688 |  | 1 |
-| 68 | Rashad Evans | 552.5 | 1814 |  | 4 |
-| 69 | Derrick Lewis | 535.0 | 1771 |  | 4 |
-| 70 | Beneil Dariush | 532.1 | 1850 | 46 | 6 |
-| 71 | Fabricio Werdum | 529.6 | 1894 |  | 4 |
-| 72 | Belal Muhammad | 529.2 | 1901 | 34 | 6 |
-| 73 | Deiveson Figueiredo | 526.2 | 1828 | 53 | 5 |
-| 74 | Curtis Blaydes | 525.7 | 1910 | 38 | 5 |
-| 75 | Nassourdine Imavov | 518.1 | 1941 | 28 | 6 |
-| 76 | Glover Teixeira | 509.7 | 1867 | 41 | 6 |
-| 77 | TJ Dillashaw | 507.9 | 1849 |  | 3 |
-| 78 | Arman Tsarukyan | 503.2 | 2014 |  | 4 |
-| 79 | Joshua Van | 501.6 | 1944 |  | 3 |
-| 80 | Jake Shields | 498.9 | 1820 | 51 | 6 |
-| 81 | Mirko Filipovic | 497.2 | 1831 |  | 4 |
-| 82 | Demian Maia | 485.2 | 1853 | 45 | 6 |
-| 83 | Urijah Faber | 472.7 | 1800 |  | 3 |
-| 84 | Umar Nurmagomedov | 472.2 | 2027 |  | 4 |
-| 85 | Mark Coleman | 453.1 | 1722 |  | 2 |
-| 86 | Sean Sherk | 444.6 | 1891 | 43 | 5 |
-| 87 | Carlos Condit | 433.9 | 1721 |  | 4 |
-| 88 | Alexandre Pantoja | 429.0 | 1869 | 47 | 5 |
-| 89 | Matt Hamill | 426.9 | 1652 |  | 2 |
-| 90 | Renan Barao | 426.8 | 1648 |  | 3 |
-| 91 | Andrei Arlovski | 424.8 | 1780 |  | 4 |
-| 92 | Magomed Ankalaev | 419.8 | 1968 |  | 2 |
-| 93 | Robbie Lawler | 415.6 | 1705 |  | 3 |
-| 94 | Michael Chandler | 414.1 | 1812 |  | 1 |
-| 95 | Ian Machado Garry | 412.7 | 2071 |  | 4 |
-| 96 | Alistair Overeem | 412.1 | 1810 |  | 4 |
-| 97 | Yaroslav Amosov | 411.9 | 2047 |  | 2 |
-| 98 | Joseph Benavidez | 411.4 | 1847 |  | 2 |
-| 99 | Josh Barnett | 409.0 | 1903 |  | 2 |
-| 100 | Yoel Romero | 407.0 | 1867 | 42 | 6 |
+| 1 | Jon Jones | 3723.4 | 2211 | 1 | 12 |
+| 2 | Islam Makhachev | 2892.2 | 2198 | 2 | 9 |
+| 3 | Georges St-Pierre | 2109.6 | 2074 | 3 | 10 |
+| 4 | Demetrious Johnson | 2056.2 | 1982 | 22 | 6 |
+| 5 | Daniel Cormier | 2041.3 | 2080 | 5 | 8 |
+| 6 | Jose Aldo | 1933.1 | 1930 | 15 | 9 |
+| 7 | Alexander Volkanovski | 1902.0 | 2051 | 4 | 9 |
+| 8 | Stipe Miocic | 1767.3 | 1994 | 21 | 6 |
+| 9 | Anderson Silva | 1627.4 | 1922 | 17 | 9 |
+| 10 | Francis Ngannou | 1573.1 | 2037 | 7 | 7 |
+| 11 | Dominick Cruz | 1512.3 | 1941 | 34 | 5 |
+| 12 | Israel Adesanya | 1484.6 | 1935 | 14 | 9 |
+| 13 | Max Holloway | 1473.3 | 1963 | 8 | 9 |
+| 14 | Ilia Topuria | 1435.8 | 2120 | 12 | 5 |
+| 15 | Khabib Nurmagomedov | 1410.6 | 2172 |  | 4 |
+| 16 | Merab Dvalishvili | 1393.7 | 1974 | 10 | 8 |
+| 17 | Sean Strickland | 1319.2 | 1921 | 11 | 10 |
+| 18 | Lyoto Machida | 1213.2 | 1966 | 23 | 6 |
+| 19 | Alex Pereira | 1155.4 | 1964 | 25 | 6 |
+| 20 | Matt Hughes | 1148.3 | 1831 |  | 3 |
+| 21 | Justin Gaethje | 1130.8 | 1995 | 20 | 6 |
+| 22 | Fedor Emelianenko | 1108.8 | 2014 | 24 | 5 |
+| 23 | Kamaru Usman | 1083.2 | 1968 | 6 | 10 |
+| 24 | Charles Oliveira | 1078.8 | 1980 | 18 | 7 |
+| 25 | Aljamain Sterling | 1073.9 | 1945 | 27 | 6 |
+| 26 | Benson Henderson | 1069.7 | 1869 | 39 | 6 |
+| 27 | Dricus Du Plessis | 1003.6 | 2044 | 13 | 6 |
+| 28 | Dustin Poirier | 973.2 | 1927 | 32 | 6 |
+| 29 | Ciryl Gane | 947.0 | 2059 | 9 | 6 |
+| 30 | Frankie Edgar | 930.9 | 1906 | 30 | 7 |
+| 31 | Khamzat Chimaev | 925.1 | 2089 | 16 | 5 |
+| 32 | Cain Velasquez | 889.5 | 1959 |  | 3 |
+| 33 | Petr Yan | 887.9 | 1952 | 26 | 6 |
+| 34 | Junior Dos Santos | 869.3 | 1913 |  | 4 |
+| 35 | Dan Henderson | 859.8 | 1868 | 48 | 5 |
+| 36 | Anthony Pettis | 825.2 | 1759 | 63 | 6 |
+| 37 | Chris Weidman | 817.8 | 1871 | 35 | 7 |
+| 38 | Patricio Freire | 813.8 | 1927 |  | 3 |
+| 39 | Henry Cejudo | 806.2 | 1873 |  | 4 |
+| 40 | Mauricio Rua | 804.4 | 1833 | 49 | 6 |
+| 41 | Ryan Bader | 778.1 | 1926 | 36 | 5 |
+| 42 | Randy Couture | 776.1 | 1767 | 62 | 5 |
+| 43 | Conor McGregor | 771.8 | 1838 |  | 4 |
+| 44 | Vadim Nemkov | 762.6 | 2066 | 19 | 5 |
+| 45 | Movsar Evloev | 726.9 | 2104 |  | 4 |
+| 46 | Robert Whittaker | 713.1 | 1893 | 33 | 7 |
+| 47 | BJ Penn | 710.0 | 1793 | 58 | 5 |
+| 48 | Tito Ortiz | 692.0 | 1787 |  | 4 |
+| 49 | Gegard Mousasi | 668.3 | 1920 |  | 4 |
+| 50 | Antonio Rodrigo Nogueira | 664.0 | 1890 |  | 4 |
+| 51 | Sean O'Malley | 649.3 | 1954 |  | 4 |
+| 52 | Anthony Johnson | 647.4 | 1941 | 28 | 6 |
+| 53 | Chuck Liddell | 646.5 | 1815 | 54 | 5 |
+| 54 | Vitor Belfort | 641.1 | 1781 | 61 | 5 |
+| 55 | Alexander Volkov | 636.5 | 1905 | 31 | 7 |
+| 56 | Eddie Alvarez | 632.4 | 1763 |  | 4 |
+| 57 | Leon Edwards | 627.0 | 1887 |  | 4 |
+| 58 | Luke Rockhold | 620.5 | 1863 | 43 | 6 |
+| 59 | Rafael Dos Anjos | 618.7 | 1771 | 59 | 7 |
+| 60 | Wanderlei Silva | 608.1 | 1812 |  | 4 |
+| 61 | Tom Aspinall | 605.7 | 1933 |  | 4 |
+| 62 | Jan Blachowicz | 587.1 | 1801 | 56 | 5 |
+| 63 | Phil Davis | 585.2 | 1956 |  | 4 |
+| 64 | Tyron Woodley | 573.0 | 1802 | 55 | 5 |
+| 65 | Shavkat Rakhmonov | 572.2 | 2140 |  | 2 |
+| 66 | Deiveson Figueiredo | 562.9 | 1830 | 53 | 5 |
+| 67 | Beneil Dariush | 551.9 | 1850 | 46 | 6 |
+| 68 | Quinton Jackson | 545.1 | 1832 | 52 | 5 |
+| 69 | Rashad Evans | 540.9 | 1814 |  | 4 |
+| 70 | Derrick Lewis | 539.0 | 1771 |  | 4 |
+| 71 | TJ Dillashaw | 535.7 | 1850 |  | 3 |
+| 72 | Joshua Van | 531.3 | 1963 |  | 3 |
+| 73 | Curtis Blaydes | 526.2 | 1909 | 37 | 5 |
+| 74 | Fabricio Werdum | 526.0 | 1892 |  | 4 |
+| 75 | Belal Muhammad | 517.3 | 1898 | 40 | 5 |
+| 76 | Nassourdine Imavov | 513.8 | 1940 | 29 | 6 |
+| 77 | Matt Serra | 511.6 | 1689 |  | 1 |
+| 78 | Mirko Filipovic | 502.9 | 1831 |  | 4 |
+| 79 | Glover Teixeira | 496.0 | 1868 | 41 | 6 |
+| 80 | Demian Maia | 487.5 | 1853 | 45 | 6 |
+| 81 | Umar Nurmagomedov | 477.8 | 2027 |  | 4 |
+| 82 | Arman Tsarukyan | 475.8 | 2012 |  | 4 |
+| 83 | Usman Nurmagomedov | 470.2 |  |  |  |
+| 84 | Jake Shields | 465.2 | 1820 | 51 | 6 |
+| 85 | Alexandre Pantoja | 464.6 | 1873 | 47 | 5 |
+| 86 | Joseph Benavidez | 464.3 | 1848 |  | 2 |
+| 87 | Michael Chandler | 453.3 | 1811 |  | 1 |
+| 88 | Mark Coleman | 442.5 | 1722 |  | 2 |
+| 89 | Urijah Faber | 438.6 | 1800 |  | 3 |
+| 90 | Robbie Lawler | 437.8 | 1705 |  | 3 |
+| 91 | Sean Sherk | 433.4 | 1891 | 44 | 5 |
+| 92 | Brandon Moreno | 430.2 | 1775 |  | 3 |
+| 93 | Magomed Ankalaev | 427.3 | 1969 |  | 2 |
+| 94 | Renan Barao | 424.8 | 1648 |  | 3 |
+| 95 | Andrei Arlovski | 423.2 | 1781 |  | 4 |
+| 96 | Carlos Condit | 421.9 | 1720 |  | 4 |
+| 97 | Rich Franklin | 420.5 | 1801 |  | 2 |
+| 98 | Matt Hamill | 419.0 | 1651 |  | 2 |
+| 99 | Donald Cerrone | 409.3 | 1849 | 50 | 5 |
+| 100 | Raphael Assuncao | 408.0 | 1724 | 65 | 5 |
 
 <!-- BOARD:TOP100:END -->
 
@@ -147,16 +147,16 @@ Men and women do not compete against each other, so the engine publishes separat
 
 | # | Fighter | Score | Prime | Prime rank | Elite wins |
 | ---: | --- | ---: | ---: | ---: | ---: |
-| 1 | Amanda Nunes | 1672.5 | 1965 |  | 4 |
-| 2 | Valentina Shevchenko | 1579.1 | 1938 | 1 | 7 |
-| 3 | Rose Namajunas | 800.4 | 1781 |  | 4 |
-| 4 | Cristiane Justino | 794.3 | 2018 |  | 1 |
-| 5 | Zhang Weili | 736.7 | 1870 |  | 1 |
-| 6 | Ronda Rousey | 698.3 | 1989 |  | 3 |
-| 7 | Alexa Grasso | 482.8 | 1831 |  | 3 |
-| 8 | Joanna Jedrzejczyk | 425.4 | 1808 |  | 2 |
-| 9 | Tatiana Suarez | 408.5 | 1931 |  | 2 |
-| 10 | Julianna Pena | 400.7 | 1741 |  | 1 |
+| 1 | Amanda Nunes | 1737.6 | 1965 |  | 4 |
+| 2 | Valentina Shevchenko | 1527.3 | 1937 | 1 | 7 |
+| 3 | Cristiane Justino | 872.7 | 2013 |  | 1 |
+| 4 | Rose Namajunas | 752.7 | 1781 |  | 4 |
+| 5 | Ronda Rousey | 736.9 | 1989 |  | 3 |
+| 6 | Zhang Weili | 688.8 | 1870 |  | 1 |
+| 7 | Alexa Grasso | 446.5 | 1831 |  | 3 |
+| 8 | Julianna Pena | 420.2 | 1741 |  | 1 |
+| 9 | Joanna Jedrzejczyk | 401.6 | 1808 |  | 2 |
+| 10 | Tatiana Suarez | 400.7 | 1931 |  | 2 |
 
 <!-- BOARD:WOMEN10:END -->
 
@@ -178,54 +178,54 @@ current qualifier counts are in the release facts above.
 
 | # | Fighter | Prime | Elite wins |
 | ---: | --- | ---: | ---: |
-| 1 | Jon Jones | 2210 | 12 |
-| 2 | Georges St-Pierre | 2073 | 10 |
-| 3 | Islam Makhachev | 2180 | 7 |
-| 4 | Alexander Volkanovski | 2048 | 9 |
+| 1 | Jon Jones | 2211 | 12 |
+| 2 | Islam Makhachev | 2198 | 9 |
+| 3 | Georges St-Pierre | 2074 | 10 |
+| 4 | Alexander Volkanovski | 2051 | 9 |
 | 5 | Daniel Cormier | 2080 | 8 |
 | 6 | Kamaru Usman | 1968 | 10 |
 | 7 | Francis Ngannou | 2037 | 7 |
 | 8 | Max Holloway | 1963 | 9 |
-| 9 | Ciryl Gane | 2060 | 6 |
+| 9 | Ciryl Gane | 2059 | 6 |
 | 10 | Merab Dvalishvili | 1974 | 8 |
-| 11 | Ilia Topuria | 2119 | 5 |
-| 12 | Sean Strickland | 1921 | 10 |
+| 11 | Sean Strickland | 1921 | 10 |
+| 12 | Ilia Topuria | 2120 | 5 |
 | 13 | Dricus Du Plessis | 2044 | 6 |
 | 14 | Israel Adesanya | 1935 | 9 |
 | 15 | Jose Aldo | 1930 | 9 |
 | 16 | Khamzat Chimaev | 2089 | 5 |
 | 17 | Anderson Silva | 1922 | 9 |
-| 18 | Charles Oliveira | 1978 | 7 |
-| 19 | Vadim Nemkov | 2067 | 5 |
-| 20 | Stipe Miocic | 1994 | 6 |
-| 21 | Justin Gaethje | 1994 | 6 |
+| 18 | Charles Oliveira | 1980 | 7 |
+| 19 | Vadim Nemkov | 2066 | 5 |
+| 20 | Justin Gaethje | 1995 | 6 |
+| 21 | Stipe Miocic | 1994 | 6 |
 | 22 | Demetrious Johnson | 1982 | 6 |
 | 23 | Lyoto Machida | 1966 | 6 |
 | 24 | Fedor Emelianenko | 2014 | 5 |
-| 25 | Alex Pereira | 1962 | 6 |
-| 26 | Petr Yan | 1951 | 6 |
+| 25 | Alex Pereira | 1964 | 6 |
+| 26 | Petr Yan | 1952 | 6 |
 | 27 | Aljamain Sterling | 1945 | 6 |
-| 28 | Nassourdine Imavov | 1941 | 6 |
-| 29 | Anthony Johnson | 1938 | 6 |
-| 30 | Alexander Volkov | 1906 | 7 |
-| 31 | Frankie Edgar | 1905 | 7 |
-| 32 | Robert Whittaker | 1893 | 7 |
-| 33 | Dominick Cruz | 1941 | 5 |
-| 34 | Belal Muhammad | 1901 | 6 |
+| 28 | Anthony Johnson | 1941 | 6 |
+| 29 | Nassourdine Imavov | 1940 | 6 |
+| 30 | Frankie Edgar | 1906 | 7 |
+| 31 | Alexander Volkov | 1905 | 7 |
+| 32 | Dustin Poirier | 1927 | 6 |
+| 33 | Robert Whittaker | 1893 | 7 |
+| 34 | Dominick Cruz | 1941 | 5 |
 | 35 | Chris Weidman | 1871 | 7 |
 | 36 | Ryan Bader | 1926 | 5 |
-| 37 | Dustin Poirier | 1922 | 5 |
-| 38 | Curtis Blaydes | 1910 | 5 |
-| 39 | Brendan Allen | 1908 | 5 |
-| 40 | Benson Henderson | 1869 | 6 |
-| 41 | Glover Teixeira | 1867 | 6 |
+| 37 | Curtis Blaydes | 1909 | 5 |
+| 38 | Brendan Allen | 1908 | 5 |
+| 39 | Benson Henderson | 1869 | 6 |
+| 40 | Belal Muhammad | 1898 | 5 |
+| 41 | Glover Teixeira | 1868 | 6 |
 | 42 | Yoel Romero | 1867 | 6 |
-| 43 | Sean Sherk | 1891 | 5 |
-| 44 | Luke Rockhold | 1863 | 6 |
+| 43 | Luke Rockhold | 1863 | 6 |
+| 44 | Sean Sherk | 1891 | 5 |
 | 45 | Demian Maia | 1853 | 6 |
 | 46 | Beneil Dariush | 1850 | 6 |
-| 47 | Alexandre Pantoja | 1869 | 5 |
-| 48 | Dan Henderson | 1869 | 5 |
+| 47 | Alexandre Pantoja | 1873 | 5 |
+| 48 | Dan Henderson | 1868 | 5 |
 | 49 | Mauricio Rua | 1833 | 6 |
 | 50 | Donald Cerrone | 1849 | 5 |
 
@@ -237,7 +237,7 @@ current qualifier counts are in the release facts above.
 
 | # | Fighter | Prime | Elite wins |
 | ---: | --- | ---: | ---: |
-| 1 | Valentina Shevchenko | 1938 | 7 |
+| 1 | Valentina Shevchenko | 1937 | 7 |
 
 <!-- BOARD:ELITEPRIMEWOMEN10:END -->
 
@@ -260,36 +260,36 @@ the two career rankings.
 
 | # | Fighter | Rating | UFC bouts | Last bout |
 | ---: | --- | ---: | ---: | ---: |
-| 1 | Islam Makhachev | 2147 | 18 | 2025-11-15 |
-| 2 | Ilia Topuria | 2050 | 10 | 2026-06-14 |
-| 3 | Movsar Evloev | 2050 | 10 | 2026-03-21 |
-| 4 | Ian Machado Garry | 2036 | 11 | 2025-11-22 |
-| 5 | Ciryl Gane | 2036 | 13 | 2026-06-14 |
-| 6 | Francis Ngannou | 2029 | 14 | 2026-05-16 |
-| 7 | Khamzat Chimaev | 2018 | 10 | 2026-05-09 |
-| 8 | Dricus Du Plessis | 2005 | 11 | 2026-07-18 |
-| 9 | Arman Tsarukyan | 2003 | 12 | 2025-11-22 |
-| 10 | Alexander Volkanovski | 1992 | 18 | 2026-01-31 |
-| 11 | Umar Nurmagomedov | 1989 | 9 | 2026-01-24 |
-| 12 | Justin Gaethje | 1985 | 16 | 2026-06-14 |
-| 13 | Merab Dvalishvili | 1967 | 17 | 2025-12-06 |
-| 14 | Carlos Ulberg | 1967 | 11 | 2026-04-11 |
-| 15 | Charles Oliveira | 1961 | 36 | 2026-03-07 |
-| 16 | Sean Strickland | 1945 | 25 | 2026-05-09 |
-| 17 | Gabriel Bonfim | 1944 | 8 | 2026-06-06 |
-| 18 | Nassourdine Imavov | 1939 | 11 | 2025-09-06 |
-| 19 | Petr Yan | 1938 | 16 | 2025-12-06 |
-| 20 | Magomed Ankalaev | 1936 | 16 | 2026-07-25 |
-| 21 | Max Holloway | 1932 | 33 | 2026-07-11 |
-| 22 | Sean O'Malley | 1932 | 15 | 2026-06-14 |
-| 23 | Joshua Van | 1929 | 11 | 2026-05-09 |
-| 24 | Corey Anderson | 1923 | 15 | 2025-10-03 |
-| 25 | Mario Bautista | 1922 | 15 | 2026-07-11 |
-| 26 | Sean Brady | 1920 | 11 | 2026-05-09 |
-| 27 | Lerone Murphy | 1918 | 11 | 2026-03-21 |
-| 28 | Sergei Pavlovich | 1917 | 12 | 2026-05-30 |
-| 29 | Alex Pereira | 1916 | 13 | 2026-06-14 |
-| 30 | Aljamain Sterling | 1915 | 23 | 2026-04-25 |
+| 1 | Islam Makhachev | 2156 | 18 | 2026-08-15 |
+| 2 | Movsar Evloev | 2041 | 10 | 2026-03-21 |
+| 3 | Ilia Topuria | 2034 | 10 | 2026-06-14 |
+| 4 | Ciryl Gane | 2025 | 13 | 2026-06-14 |
+| 5 | Francis Ngannou | 2019 | 14 | 2026-05-16 |
+| 6 | Khamzat Chimaev | 2001 | 10 | 2026-05-09 |
+| 7 | Ian Machado Garry | 1991 | 11 | 2026-08-15 |
+| 8 | Arman Tsarukyan | 1990 | 12 | 2025-11-22 |
+| 9 | Dricus Du Plessis | 1986 | 11 | 2026-07-18 |
+| 10 | Alexander Volkanovski | 1981 | 18 | 2026-01-31 |
+| 11 | Umar Nurmagomedov | 1978 | 9 | 2026-01-24 |
+| 12 | Justin Gaethje | 1962 | 16 | 2026-06-14 |
+| 13 | Merab Dvalishvili | 1958 | 17 | 2025-12-06 |
+| 14 | Carlos Ulberg | 1958 | 11 | 2026-04-11 |
+| 15 | Charles Oliveira | 1956 | 36 | 2026-03-07 |
+| 16 | Sean Strickland | 1938 | 25 | 2026-05-09 |
+| 17 | Joshua Van | 1931 | 11 | 2026-05-09 |
+| 18 | Nassourdine Imavov | 1931 | 11 | 2025-09-06 |
+| 19 | Gabriel Bonfim | 1929 | 8 | 2026-06-06 |
+| 20 | Max Holloway | 1929 | 33 | 2026-07-11 |
+| 21 | Magomed Ankalaev | 1928 | 16 | 2026-07-25 |
+| 22 | Sean O'Malley | 1925 | 15 | 2026-06-14 |
+| 23 | Petr Yan | 1923 | 16 | 2025-12-06 |
+| 24 | Corey Anderson | 1919 | 15 | 2025-10-03 |
+| 25 | Lerone Murphy | 1915 | 11 | 2026-03-21 |
+| 26 | Mario Bautista | 1915 | 15 | 2026-07-11 |
+| 27 | Alex Pereira | 1911 | 13 | 2026-06-14 |
+| 28 | Aljamain Sterling | 1908 | 23 | 2026-04-25 |
+| 29 | Sean Brady | 1906 | 11 | 2026-05-09 |
+| 30 | Sergei Pavlovich | 1905 | 12 | 2026-05-30 |
 
 <!-- BOARD:CURRENT30:END -->
 
@@ -299,16 +299,16 @@ the two career rankings.
 
 | # | Fighter | Rating | UFC bouts | Last bout |
 | ---: | --- | ---: | ---: | ---: |
-| 1 | Valentina Shevchenko | 1933 | 19 | 2025-11-15 |
-| 2 | Manon Fiorot | 1890 | 9 | 2025-10-18 |
-| 3 | Ronda Rousey | 1882 | 8 | 2026-05-16 |
-| 4 | Erin Blanchfield | 1882 | 9 | 2025-11-15 |
-| 5 | Tatiana Suarez | 1878 | 10 | 2026-04-11 |
-| 6 | Liz Carmouche | 1852 | 10 | 2026-06-27 |
-| 7 | Zhang Weili | 1849 | 13 | 2025-11-15 |
-| 8 | Natalia Silva | 1846 | 8 | 2026-01-24 |
-| 9 | Alexa Grasso | 1811 | 15 | 2026-03-28 |
-| 10 | Jasmine Jasudavicius | 1793 | 12 | 2026-04-18 |
+| 1 | Valentina Shevchenko | 1925 | 19 | 2025-11-15 |
+| 2 | Manon Fiorot | 1884 | 9 | 2025-10-18 |
+| 3 | Ronda Rousey | 1877 | 8 | 2026-05-16 |
+| 4 | Erin Blanchfield | 1875 | 9 | 2025-11-15 |
+| 5 | Tatiana Suarez | 1870 | 10 | 2026-04-11 |
+| 6 | Liz Carmouche | 1849 | 10 | 2026-06-27 |
+| 7 | Zhang Weili | 1845 | 13 | 2025-11-15 |
+| 8 | Natalia Silva | 1842 | 8 | 2026-01-24 |
+| 9 | Alexa Grasso | 1809 | 15 | 2026-03-28 |
+| 10 | Jasmine Jasudavicius | 1791 | 12 | 2026-04-18 |
 
 <!-- BOARD:CURRENTWOMEN10:END -->
 
