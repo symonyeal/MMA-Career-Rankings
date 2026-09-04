@@ -629,6 +629,24 @@ def board_rank_map(path: Path) -> pd.Series:
     return positions
 
 
+# Text reads left, figures read right.
+_LEFT_ALIGNED_COLUMNS = {"Fighter", "Division"}
+
+# The career boards answer what a career was worth, so they name the division
+# the career was fought in; Current answers who is good now, so it names the
+# division they are in now. The two disagree for anyone who moved up.
+CAREER_DIVISION_COL = "career_division"
+CURRENT_DIVISION_COL = "current_division"
+
+
+def _division_column(fighters: pd.Series, lookup: object, column: str) -> list[str]:
+    """Each fighter's division, blank where the corpus never weighed them."""
+    if column not in getattr(lookup, "columns", []):
+        return ["" for _ in fighters]
+    values = fighters.map(lookup[column])
+    return ["" if pd.isna(value) else str(value) for value in values]
+
+
 def top_board_markdown(
     gated: pd.DataFrame,
     current: pd.DataFrame,
@@ -647,19 +665,20 @@ def top_board_markdown(
     if ranked.empty:
         raise ValueError("the gated board has no ranked fighters to publish")
 
+    lookup = current.set_index("fighter") if "fighter" in current.columns else current
     columns: dict[str, object] = {
         "#": ranked["rank"].astype(int).to_numpy(),
         # A pipe in a name would end the Markdown cell. The replacement is literal
         # (regex=False), so it must be ONE backslash: the previous two escaped
         # the backslash instead of the pipe and still broke the row.
         "Fighter": ranked["fighter"].str.replace("|", r"\|", regex=False).to_numpy(),
+        "Division": _division_column(ranked["fighter"], lookup, CAREER_DIVISION_COL),
     }
     # The elite board is ordered by elite-win mass, whose unit is rating points
     # times wins. Printing that adds a number nothing can be read against; the
     # two figures it is built from are printed instead.
     if rating_col != ELITE_PRIME_RATING_COL:
         columns["Score"] = ranked[rating_col].round(1).to_numpy()
-    lookup = current.set_index("fighter") if "fighter" in current.columns else current
     for label, source in (("Prime", ELITE_LEVEL_COL), ("Elite wins", "elite_wins")):
         values = None
         if source in ranked.columns:
@@ -687,9 +706,12 @@ def top_board_markdown(
 
 
 def _markdown_table(table: pd.DataFrame) -> str:
-    """Render a prepared frame as a Markdown table: rank left, figures right."""
+    """Render a prepared frame as a Markdown table: text left, figures right."""
     header = "| " + " | ".join(table.columns) + " |"
-    align = "| ---: | --- |" + " ---: |" * (len(table.columns) - 2)
+    align = "|" + "|".join(
+        " --- " if name in _LEFT_ALIGNED_COLUMNS else " ---: "
+        for name in table.columns
+    ) + "|"
     rows = [
         "| " + " | ".join(str(value) for value in row) + " |"
         for row in table.itertuples(index=False)
@@ -729,6 +751,9 @@ def current_board_markdown(
     return _markdown_table(pd.DataFrame({
         "#": ranked["rank"].astype(int).to_numpy(),
         "Fighter": ranked["fighter"].str.replace("|", "\\|", regex=False).to_numpy(),
+        "Division": _division_column(
+            ranked["fighter"], lookup, CURRENT_DIVISION_COL
+        ),
         "Rating": ranked[rating_col].round(0).astype(int).to_numpy(),
         "UFC bouts": ["" if pd.isna(v) else f"{v:.0f}" for v in bouts],
         "Last bout": ["" if pd.isna(d) else d.strftime("%Y-%m-%d") for d in last],

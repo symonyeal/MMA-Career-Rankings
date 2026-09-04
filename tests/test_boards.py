@@ -228,6 +228,17 @@ def test_integrity_rank_change_is_zero_when_nothing_was_debited():
     assert sorted(board["rank"]) == [1, 2, 2]
 
 
+def _row_by_column(table: str, fighter: str) -> dict[str, str]:
+    """One published row as {column name: cell}, so position never matters."""
+    lines = table.splitlines()
+    names = [cell.strip() for cell in lines[0].strip("|").split("|")]
+    for line in lines[2:]:
+        cells = [cell.strip() for cell in line.strip("|").split("|")]
+        if len(cells) == len(names) and dict(zip(names, cells))["Fighter"] == fighter:
+            return dict(zip(names, cells))
+    raise AssertionError(f"{fighter} is not published in this table")
+
+
 def _published_board() -> tuple[pd.DataFrame, pd.DataFrame]:
     gated = pd.DataFrame(
         {
@@ -245,6 +256,11 @@ def _published_board() -> tuple[pd.DataFrame, pd.DataFrame]:
             "public_legacy_skill_score": [40.0, 20.0, 4.0],
             "public_legacy_title_score": [8.0, 16.0, 0.0],
             "public_legacy_resume_score": [50.0, 0.0, 10.0],
+            # The career boards name the division the career was fought in;
+            # Current names the one they are in now, and they disagree for
+            # anyone who moved up.
+            "career_division": ["Lightweight", "Welterweight", None],
+            "current_division": ["Welterweight", "Welterweight", None],
         }
     )
     return gated, current
@@ -265,17 +281,18 @@ def test_published_table_prints_the_level_and_the_evidence_not_components():
     )
     lines = table.splitlines()
 
-    assert lines[0] == "| # | Fighter | Score | Prime | Elite wins |"
+    assert lines[0] == "| # | Fighter | Division | Score | Prime | Elite wins |"
+    assert "| 1 | Alice | Lightweight | 2500.0 |" in table
     for retired in ("Skill", "Title", "Schedule"):
         assert f"| {retired} " not in lines[0]
     # Carl is withheld by the completeness gate and must not be published.
     assert len(lines) == 4
     assert "Carl" not in table
 
-    alice = [cell.strip() for cell in lines[2].split("|")[1:-1]]
-    assert alice[:2] == ["1", "Alice"]
-    assert alice[3] == "2100"
-    assert alice[4] == "9"
+    alice = _row_by_column(table, "Alice")
+    assert [alice["#"], alice["Fighter"]] == ["1", "Alice"]
+    assert alice["Prime"] == "2100"
+    assert alice["Elite wins"] == "9"
 
 
 def test_a_fighter_with_no_elite_decade_prints_an_empty_cell():
@@ -327,12 +344,13 @@ def test_all_time_table_prints_the_prime_board_position():
     )
     lines = table.splitlines()
 
-    assert lines[0] == "| # | Fighter | Score | Prime | Prime rank | Elite wins |"
-    alice = [cell.strip() for cell in lines[2].split("|")[1:-1]]
-    bob = [cell.strip() for cell in lines[3].split("|")[1:-1]]
-    assert alice[3:] == ["2100", "7", "9"]
+    assert lines[0] == (
+        "| # | Fighter | Division | Score | Prime | Prime rank | Elite wins |"
+    )
+    alice = _row_by_column(table, "Alice")
+    assert [alice["Prime"], alice["Prime rank"], alice["Elite wins"]] == ["2100", "7", "9"]
     # Withheld from the Prime board is an abstention, not rank zero or last.
-    assert bob[4] == ""
+    assert _row_by_column(table, "Bob")["Prime rank"] == ""
 
 
 def test_board_rank_map_reads_only_ranked_rows(tmp_path: Path):
@@ -372,8 +390,8 @@ def test_elite_prime_table_publishes_the_evidence_count():
 
     # The mass the board is ordered by is not printed: its unit is rating points
     # times wins, which reads against nothing.
-    assert table.splitlines()[0] == "| # | Fighter | Prime | Elite wins |"
-    assert "| 1 | Proven Fighter | 2050 | 6 |" in table
+    assert table.splitlines()[0] == "| # | Fighter | Division | Prime | Elite wins |"
+    assert "| 1 | Proven Fighter |  | 2050 | 6 |" in table
 
 
 def test_readme_board_block_is_replaced_in_place(tmp_path: Path):
@@ -654,3 +672,45 @@ def test_a_missing_overview_marker_leaves_the_publication_untouched(tmp_path: Pa
 
     assert rankings.read_text(encoding="utf-8") == original
     assert overview.read_text(encoding="utf-8") == "# Overview\n\nno markers here\n"
+
+
+def test_the_career_boards_and_current_name_different_divisions():
+    """A fighter who moved up is published under both divisions, correctly.
+
+    All-time and Prime say what a career was worth, so they name where it was
+    fought. Current says who is good now, so it names where they are now. Taking
+    one column for both would misfile every fighter who changed weight.
+    """
+    gated, current = _published_board()
+
+    career = build_boards.top_board_markdown(
+        gated, current, rating_col="public_legacy_score", top=100
+    )
+    now = build_boards.current_board_markdown(
+        gated.assign(tested_opponent_wins=[12, 9, 1]),
+        current,
+        rating_col="public_legacy_score",
+        top=30,
+    )
+
+    assert "| 1 | Alice | Lightweight |" in career
+    assert "| 1 | Alice | Welterweight |" in now
+    # Carl has no division recorded and must publish an empty cell, never a guess.
+    assert "Division" in career.splitlines()[0]
+
+
+def test_text_columns_read_left_and_figures_read_right():
+    """Markdown alignment follows the column's content, not its position."""
+    gated, current = _published_board()
+    table = build_boards.top_board_markdown(
+        gated, current, rating_col="public_legacy_score", top=100
+    )
+    header, align = table.splitlines()[:2]
+    alignment = dict(zip(
+        [name.strip() for name in header.strip("|").split("|")],
+        [cell.strip() for cell in align.strip("|").split("|")],
+    ))
+    assert alignment["Fighter"] == "---"
+    assert alignment["Division"] == "---"
+    assert alignment["#"] == "---:"
+    assert alignment["Score"] == "---:"
