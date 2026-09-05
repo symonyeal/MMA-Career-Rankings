@@ -1,91 +1,52 @@
 # Symon UFC Rank Engine
 
-Every all-time list is an argument. This one argues in code, so you can point at
-a fight or a rule. Nothing here is reputation.
+This project fits recorded MMA careers together, then answers three different
+questions: career, peak and current strength.
 
-## A ranking is a set of decisions
+## The argument
 
-### Weight classes are different competitive worlds
+Weight classes are separate pools. Career division is where a fighter competed
+most; current division changes only after a UFC title win. Each year is measured
+against its division's top ten percent, roughly the fifth-best fighter; classes
+with fewer than 30 fighter-years use the sport-wide line. Men and women remain
+separate.
 
-- Flyweights and heavyweights never fight, so their ratings do not compare.
-- Your division is where you did most of your work; recency only breaks ties.
-- Moving up counts when you win a UFC title there, not on a one-off.
-- Each year is judged against its division's top ten percent, about the
-  fifth-best fighter in a full class.
-- Divisions with fewer than 30 fighter-years borrow the sport-wide line.
-- Men and women get separate boards because no results connect them.
+The fight rating ignores promotion. Exposure is applied later: UFC is `1.00`,
+PRIDE `0.95`, Affliction `0.90`, WEC and Strikeforce `0.88`, Bellator `0.65`, and
+PFL, RIZIN, ONE and DREAM `0.60`. Thin evidence shrinks toward the average.
 
-### The UFC is the anchor, not the whole sport
+A knockout or submission scores `1.00`, a unanimous decision `0.95`, a split or
+majority decision `0.90`, a disqualification `0.85`, and a draw `0.50` for each
+fighter; no-contests are excluded. Careers are fitted together, so later results
+can revalue earlier fights. Ratings sit around 1,500, and a neutral virtual bout
+checks tiny unbeaten records. Duplicate fights are removed and whole careers
+are required.
 
-- Crossover fights put PRIDE and Bellator on the UFC's scale, so the rating
-  ignores the banner.
-- Promotion counts only afterwards, as how well tested you were: the UFC is
-  `1.00`, PRIDE `0.95`, Affliction `0.90`, WEC and Strikeforce `0.88`, Bellator
-  `0.65`, PFL, RIZIN, ONE and DREAM `0.60`.
-- That blends your career average with your best stretch and pulls thin records
-  toward the middle.
-- An unknown promotion is missing information, not a small show.
-
-### The result is not just win or loss
-
-- A knockout or submission scores `1.00`, a unanimous decision `0.95`, a split
-  or majority decision `0.90`, a disqualification `0.85`, and a draw `0.50` for
-  each fighter.
-- No-contests, overturned wins and fights nobody could finish do not count.
-
-### A later career can change the meaning of an earlier fight
-
-- Careers are fitted together, so beat a guy who becomes an all-timer and that
-  win grows years later.
-- Ratings sit around 1,500 and everyone carries one neutral virtual bout—half a
-  win and half a loss—so 1–0 does not leapfrog 10–0.
-- Fighters improve and decline with age, and none of it is a hand-typed era
-  bonus.
-
-### One fight gets one entry, and one idea gets one payment
-
-- One row per fight survives, and the build refuses to publish if a duplicate
-  gets through.
-- Whole careers, not just the UFC run: a fighter missing losses looks better
-  than they were.
-- Opponent quality already lives in the opponent's rating.
-- Each year counts once toward career skill, and the résumé takes one win per
-  year.
-- A title is priced by who you beat for it, never a flat bonus for holding one.
-
-## Three questions, three boards
-
-### All-time: what did the career add up to?
+## Three answers
 
 ```text
 All-time = 30% championships + 17.5% career skill + 52.5% contender résumé
 ```
 
-- Each piece is divided by the average of its own top 100, so the percentages
-  mean what they say.
-- Career skill adds up every year you spent above your division's line.
-- The résumé counts wins over opponents rated at least 1,750 going in with at
-  least eight UFC fights, one per year.
-- Opponents coming off a layoff lose 90 points per excess turnaround, capped at
-  four.
-- Titles are priced by who you beat, though major belts carry a `0.05` floor.
+Each component is normalized against its top 100. Career skill sums years above
+the division line. The résumé prices wins over opponents rated at least 1,750
+before the bout with at least eight UFC fights, one per year. Returning
+opponents lose 90 points per excess turnaround, capped at four. Major titles
+carry a `0.05` floor.
 
-### Prime: how high was the proven peak?
-
-- Prime takes your best ten-year stretch and ranks on qualifying contender wins
-  and the average rating behind them.
-- Five wins are required.
-
-### Current: who can still be described now?
-
-- Current ages your last rating forward and pulls thin records toward 1,750.
-- It needs 13 rated appearances, eight UFC bouts and a fight within 18 months.
-- PED, disqualification and missed-weight deductions sit in a separate Integrity
-  audit and never move a published board.
+Prime ranks the ten-year stretch with the most qualifying contender wins, then
+its average rating; Five wins are required. Current ages the latest rating
+forward and shrinks thin records toward 1,750; it needs 13 rated appearances,
+eight UFC bouts and a fight within 18 months. Integrity deductions never alter a
+published board.
 
 ## What is published
 
 The full [Published UFC Rankings](RANKINGS.md) adds the three women's boards.
+
+<details>
+<summary>Release facts and men's headline boards</summary>
+
 
 <!-- PUBLICATION:RELEASE:BEGIN -->
 
@@ -317,44 +278,29 @@ The table prints both inputs instead of the internal ordering index.
 
 <!-- BOARD:CURRENT30:END -->
 
+</details>
+
 ## Where the numbers stop
 
-- All-time uses what we know about an opponent now, not what was known on the
-  night.
-- Elite-win counts still reward whoever got more chances.
-- The age curve understates decline in fighters who never came back to show it.
-- Promotion labels are missing from 57% of rated fights, about 11% of the filled
-  weight classes are on the wrong fight, and four careers cannot be pinned to
-  one fighter.
-- Missing data gets shrunk or dropped, never guessed.
-
-The [decision register](docs/DECISIONS.md) has the evidence, including what we
-tested and turned down.
+All-time is retrospective, elite wins reward opportunity, and the age curve
+misses decline in fighters who never returned. Promotion labels are missing from 57% of rated fights;
+11% of filled weight classes are estimated wrong, and four careers remain
+ambiguous. See the [decision register](docs/DECISIONS.md).
 
 ## Project map
 
 | Path | Use it for |
 | --- | --- |
-| [`RANKINGS.md`](RANKINGS.md) | The complete men's and women's All-time, Prime and Current release |
-| `ratings/` | Ratings, divisions, résumés and board policy |
-| `loaders/` | Source ingestion, identity and fight-table construction |
-| `data/snapshots/<date>/` | Release inputs, outputs and manifests |
-| [`data/SOURCE_MATRIX.md`](data/SOURCE_MATRIX.md) and [`data/CHANGELOG.md`](data/CHANGELOG.md) | Source coverage and release history |
-| [`docs/`](docs/) | Method, coverage and decision records |
-| `analysis/` | Charts and notebook |
+| [`RANKINGS.md`](RANKINGS.md) | Full rankings |
+| `ratings/` / `loaders/` | Model / data assembly |
+| `data/snapshots/<date>/` | Release artifacts |
+| [`docs/`](docs/) | Method and decisions |
 | `tests/` | Verification |
-| `_archive/` | Retired work |
 
-The supported runtime is the machine's system Python:
+Use the system Python:
 
 ```text
 C:\Python314\python.exe -m pip install -r requirements.txt
 C:\Python314\python.exe -m pytest -q
-C:\Python314\python.exe -m ruff check .
 C:\Python314\python.exe build_boards.py data/snapshots/2026-08-13 --scope majors,pre_unified --write-readme
-C:\Python314\python.exe build_database.py --snapshot-dir data/snapshots/2026-08-13
-C:\Python314\python.exe analysis/build_notebook.py
 ```
-
-`refresh.py` runs the complete source-to-publication workflow. Never hand-edit a
-generated table; `build_boards.py` updates both publications.

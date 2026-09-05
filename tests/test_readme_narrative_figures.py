@@ -75,13 +75,7 @@ def test_readme_explains_the_rules_that_change_the_rankings():
     article = text.split("## What is published", 1)[0]
     flat = " ".join(article.split())
 
-    for heading in (
-        "### Weight classes are different competitive worlds",
-        "### The UFC is the anchor, not the whole sport",
-        "### The result is not just win or loss",
-        "### A later career can change the meaning of an earlier fight",
-        "## Three questions, three boards",
-    ):
+    for heading in ("## The argument", "## Three answers"):
         assert heading in article
 
     # Pin the rule, never the sentence. Wording is the author's; the decisive
