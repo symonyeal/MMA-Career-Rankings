@@ -78,6 +78,7 @@ def test_all_cells_execute_and_render(nb_ns):
 
 def test_new_sections_render(nb_ns):
     # 2026-06-23 chart additions: every new section drew something on first load.
+    assert _rendered(nb_ns["anatomy_fw"])          # score receipt or legacy-snapshot state
     assert _n_traces(nb_ns["dom_fw"]) > 0          # Most Dominant
     assert _n_traces(nb_ns["lp_fw"]) > 0           # Legacy vs Prime
     assert _n_traces(nb_ns["divx_entropy"]) > 0    # Division parity
@@ -124,7 +125,10 @@ def test_public_notebook_is_evidence_first_and_read_only():
     code_text = "\n".join(
         "".join(cell["source"]) for cell in nb["cells"] if cell["cell_type"] == "code"
     )
-    assert markdown.index("## What earned its place") > markdown.index("## The Rankings")
+    assert markdown.index("## Why the All-time leaders rank here") > markdown.index("## The Rankings")
+    assert markdown.index("## Does the rating model hold up?") > markdown.index(
+        "## Why the All-time leaders rank here"
+    )
     assert "## What Moved a Fighter's Rating" not in markdown
     assert "## Under the Hood" not in markdown
     assert "## 🛠️ Model Tuning" not in markdown

@@ -69,6 +69,7 @@ PROJECT_ROOT = find_project_root(Path.cwd())
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from analysis.viz import (  # noqa: E402
+    all_time_score_anatomy_chart,
     all_time_benchmark_chart,
     all_time_benchmark_table,
     DIV_SHORT,
@@ -625,6 +626,32 @@ display(lb_html)
 draw_leaderboard()
 subscribe("leaderboard", draw_leaderboard,
           {"rank_view", "gender", "division", "top_n", "min_fights"})
+"""
+
+
+RANKING_ANATOMY = r"""
+anatomy_fw = chart_widget(height=650)
+
+
+def draw_ranking_anatomy():
+    show_fig(anatomy_fw, all_time_score_anatomy_chart(
+        rc,
+        n=min(20, int(g_top_n.value)),
+        min_fights=int(g_min_fights.value),
+        gender=g_gender.value,
+        division=g_division.value,
+    ))
+
+
+display(anatomy_fw)
+display(html_box(note(
+    "Bar length is the published All-time total; colour shows the exact weighted contribution "
+    "from championships, career skill, and wins over tested contenders. Hover exposes the raw "
+    "evidence behind each component. Choose Men or Women because the two pools never fight."
+)))
+draw_ranking_anatomy()
+subscribe("ranking_anatomy", draw_ranking_anatomy,
+          {"gender", "division", "top_n", "min_fights"})
 """
 
 
@@ -1511,9 +1538,9 @@ CELLS = [
 
 The **Control Room** picks one ranking question — All-time, Prime, or
 Current skill — plus weight class and board depth. The opening board defaults
-to **All-time**, the engine's career-accomplishment view. An
-evidence section immediately below it reports held-out predictive scores and
-paired intervals, including unresolved results.
+to **All-time**, the engine's career-accomplishment view. A score receipt then
+explains the ranking, followed by held-out predictive scores and paired
+intervals, including unresolved results.
 
 > Run the cells top to bottom once, then drive everything from the top. View
 > toggles update instantly; the public notebook is read-only over built artifacts.
@@ -1526,14 +1553,23 @@ paired intervals, including unresolved results.
 ## The Rankings
 
 The pound-for-pound board for the single **Ranking** selected above. **All-time**
-is Public Legacy Score (career skill, championship results, and schedule);
+is Public Legacy Score (career skill, championship results, and contender résumé);
 **Prime** is the fixed 10-year/13-appearance window; **Current skill** is the
 latest base WHR estimate.
 Division, last fight, and rated-bout count keep short or stale résumés visible.
 """),
     code(LEADERBOARD),
     md("""
-## What earned its place
+## Why the All-time leaders rank here
+
+The leaderboard gives the order; this score receipt explains it. Every bar
+reconstructs the published All-time total from the three stated terms, while
+hover text keeps the underlying title, career-year, and contender-win evidence
+visible. The chart follows the roster, division, depth, and evidence controls.
+"""),
+    code(RANKING_ANATOMY),
+    md("""
+## Does the rating model hold up?
 
 The engine is judged one fight at a time before seeing the result. The first
 chart compares held-out forecast quality; the second removes or swaps one

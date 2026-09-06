@@ -96,6 +96,25 @@ def test_readme_explains_the_rules_that_change_the_rankings():
         assert implemented_rule in flat, f"the overview no longer states: {implemented_rule}"
 
 
+def test_readme_headline_rankings_are_visible_without_expanding_details():
+    """The front page must show the board rather than hide it in a disclosure.
+
+    The generated markers can keep replacing the table in place, but wrapping
+    them in a collapsed ``details`` block makes GitHub's overview look as if it
+    contains no rankings at all.
+    """
+    from build_boards import README_BOARD_BEGIN, README_BOARD_END
+
+    text = (PROJECT_ROOT / "README.md").read_text(encoding="utf-8")
+    board_start = text.index(README_BOARD_BEGIN)
+    board_end = text.index(README_BOARD_END, board_start)
+
+    assert "| # | Fighter | Division | Score |" in text[board_start:board_end]
+    assert text.rfind("<details>", 0, board_start) <= text.rfind(
+        "</details>", 0, board_start
+    ), "the headline rankings are hidden inside a collapsed details block"
+
+
 def test_readme_policy_constants_are_the_ones_the_code_uses():
     """Every tuned number the overview quotes, read back from the source.
 

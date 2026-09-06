@@ -33,6 +33,12 @@ from ratings.constants import (
     rename_rating_columns,
 )
 from ratings.gender import DEFAULT_GENDER, select_gender
+from ratings.legacy_resume import (
+    LEGACY_ACHIEVEMENT_WEIGHT,
+    LEGACY_NORMALISER_TOP_N,
+    LEGACY_QUALITY_SKILL_SHARE,
+    PUBLIC_LEGACY_DISPLAY_SCALE,
+)
 
 # ---------------------------------------------------------------------------
 # Visual identity — single source of truth (ESPN-style dark analytics theme).
@@ -1926,6 +1932,187 @@ def top100_division_density_chart(
         showlegend=False,
     )
     fig.update_xaxes(ticksuffix="%")
+    return fig
+
+
+def all_time_score_anatomy_chart(
+    ratings_current: pd.DataFrame,
+    *,
+    n: int = 15,
+    min_fights: int = 3,
+    gender: str | None = DEFAULT_GENDER,
+    division: str | None = None,
+) -> go.Figure:
+    """Reconstruct the published All-time score as auditable contributions.
+
+    The score combines three columns after normalising each by the mean of its
+    top ``LEGACY_NORMALISER_TOP_N`` positive values. This chart repeats that
+    exact arithmetic and stacks the resulting display points. Bar length says
+    *how much* a career earned; colour says *where it came from*. Raw title,
+    career-year, and contender-win counts remain in hover text so the figure is
+    an evidence receipt rather than a second unexplained leaderboard.
+    """
+    title = "Why the All-time leaders rank here"
+    if ratings_current is None or ratings_current.empty:
+        return _empty_figure("ratings unavailable", title=title)
+    if gender not in (None, "M", "F"):
+        return _empty_figure(
+            "Choose Men or Women to keep disconnected rating pools separate.",
+            title=title,
+        )
+
+    components = {
+        "title": "public_legacy_title_score",
+        "skill": "public_legacy_skill_score",
+        "resume": "public_legacy_resume_score",
+    }
+    required = {"fighter", "public_legacy_score", *components.values()}
+    missing = sorted(required.difference(ratings_current.columns))
+    if missing:
+        return _empty_figure(
+            "This snapshot predates the three-part All-time score receipt.",
+            title=title,
+        )
+
+    population = ratings_current.copy()
+    for column in ("public_legacy_score", *components.values()):
+        population[column] = pd.to_numeric(population[column], errors="coerce").fillna(0.0)
+
+    def _normalise(values: pd.Series) -> pd.Series:
+        positive = values[values > 0]
+        if positive.empty:
+            return values * 0.0
+        top = positive.nlargest(min(LEGACY_NORMALISER_TOP_N, len(positive)))
+        scale = float(top.mean())
+        return values / scale if scale > 0 else values * 0.0
+
+    quality_weight = 1.0 - LEGACY_ACHIEVEMENT_WEIGHT
+    population["_title_points"] = (
+        PUBLIC_LEGACY_DISPLAY_SCALE
+        * LEGACY_ACHIEVEMENT_WEIGHT
+        * _normalise(population[components["title"]])
+    )
+    population["_skill_points"] = (
+        PUBLIC_LEGACY_DISPLAY_SCALE
+        * quality_weight
+        * LEGACY_QUALITY_SKILL_SHARE
+        * _normalise(population[components["skill"]])
+    )
+    population["_resume_points"] = (
+        PUBLIC_LEGACY_DISPLAY_SCALE
+        * quality_weight
+        * (1.0 - LEGACY_QUALITY_SKILL_SHARE)
+        * _normalise(population[components["resume"]])
+    )
+
+    df = population
+    if gender is not None:
+        if "gender" not in df.columns:
+            return _empty_figure("gender labels unavailable", title=title)
+        df = df[df["gender"].astype("string").str.upper().str.startswith(gender)]
+    periods = pd.to_numeric(
+        df.get("rating_periods", pd.Series(0, index=df.index)), errors="coerce"
+    ).fillna(0)
+    df = df[periods.ge(int(min_fights))].copy()
+    if division and division != "All divisions":
+        career = df.get("career_division", pd.Series(pd.NA, index=df.index))
+        recent = df.get("recent_division", pd.Series(pd.NA, index=df.index))
+        df = df[career.fillna(recent).astype("string").eq(str(division))]
+    df = (
+        df[df["public_legacy_score"].gt(0)]
+        .sort_values("public_legacy_score", ascending=False)
+        .head(max(1, int(n)))
+        .copy()
+    )
+    if df.empty:
+        return _empty_figure("no fighters match the current filters", title=title)
+
+    df["_rank"] = np.arange(1, len(df) + 1)
+    df["_label"] = "#" + df["_rank"].astype(str) + "  " + df["fighter"].astype(str)
+    df = df.sort_values("public_legacy_score", ascending=True)
+
+    title_wins = pd.to_numeric(
+        df.get("public_legacy_qualifying_title_wins", pd.Series(0, index=df.index)),
+        errors="coerce",
+    ).fillna(0).astype(int)
+    career_years = pd.to_numeric(
+        df.get("symon_career_contributing_years", pd.Series(0, index=df.index)),
+        errors="coerce",
+    ).fillna(0).astype(int)
+    contender_wins = pd.to_numeric(
+        df.get("public_legacy_contender_wins", pd.Series(0, index=df.index)),
+        errors="coerce",
+    ).fillna(0).astype(int)
+    total = df["public_legacy_score"]
+    achievement_pct = 100.0 * LEGACY_ACHIEVEMENT_WEIGHT
+    skill_pct = 100.0 * quality_weight * LEGACY_QUALITY_SKILL_SHARE
+    resume_pct = 100.0 * quality_weight * (1.0 - LEGACY_QUALITY_SKILL_SHARE)
+
+    fig = go.Figure()
+    trace_specs = [
+        (
+            f"Championships · {achievement_pct:g}%",
+            "_title_points",
+            THEME["accent"],
+            title_wins,
+            "qualifying title wins",
+        ),
+        (
+            f"Career skill · {skill_pct:g}%",
+            "_skill_points",
+            THEME["primary"],
+            career_years,
+            "contributing career years",
+        ),
+        (
+            f"Contender résumé · {resume_pct:g}%",
+            "_resume_points",
+            THEME["positive"],
+            contender_wins,
+            "contender wins",
+        ),
+    ]
+    for label, column, color, evidence, evidence_label in trace_specs:
+        custom = np.stack(
+            [total.round(1).astype("string"), evidence.astype("string")], axis=-1
+        )
+        fig.add_trace(go.Bar(
+            x=df[column],
+            y=df["_label"],
+            orientation="h",
+            name=label,
+            marker_color=color,
+            customdata=custom,
+            hovertemplate=(
+                "<b>%{y}</b><br>" + label + ": %{x:.1f} points"
+                "<br>All-time total: %{customdata[0]}"
+                f"<br>%{{customdata[1]}} {evidence_label}<extra></extra>"
+            ),
+        ))
+    fig.add_trace(go.Scatter(
+        x=total,
+        y=df["_label"],
+        mode="text",
+        text=total.map(lambda value: f"  {value:,.0f}"),
+        textposition="middle right",
+        textfont=dict(color=THEME["text"], size=11),
+        hoverinfo="skip",
+        showlegend=False,
+        cliponaxis=False,
+    ))
+
+    _apply_chart_layout(fig, height=max(470, 31 * len(df) + 185))
+    fig.update_layout(
+        title=title,
+        barmode="stack",
+        xaxis_title="Weighted points in the published All-time score",
+        yaxis_title="",
+        legend=dict(orientation="h", y=-0.20, x=0),
+        margin=dict(t=68, r=84, b=105, l=190),
+        hovermode="closest",
+    )
+    fig.update_xaxes(rangemode="tozero", range=[0, max(float(total.max()) * 1.16, 1.0)])
+    fig.update_yaxes(automargin=True)
     return fig
 
 

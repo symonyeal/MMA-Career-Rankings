@@ -42,11 +42,9 @@ published board.
 
 ## What is published
 
-The full [Published UFC Rankings](RANKINGS.md) adds the three women's boards.
-
-<details>
-<summary>Release facts and men's headline boards</summary>
-
+The men's headline boards are published below so the rankings are visible on
+the repository front page. The full [Published UFC Rankings](RANKINGS.md) adds
+the three women's boards.
 
 <!-- PUBLICATION:RELEASE:BEGIN -->
 
@@ -277,8 +275,6 @@ The table prints both inputs instead of the internal ordering index.
 | 30 | Sergei Pavlovich | Heavyweight | 1905 | 12 | 2026-05-30 |
 
 <!-- BOARD:CURRENT30:END -->
-
-</details>
 
 ## Where the numbers stop
 
