@@ -31,6 +31,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from loaders.crossorg_identity import align_identities
 from project_helpers import bout_fingerprint, date_range
 from ratings.scope import (
     DEFAULT_PUBLISHED_SCOPE,
@@ -45,6 +46,7 @@ from ratings.scope import (
     staged_scope,
 )
 
+# p : staged majors artifact used to align resolved identities
 
 COMBINED_FIGHTS_ARTIFACT = "combined_fights.parquet"
 COMBINED_FIGHTS_SUMMARY_ARTIFACT = "combined_fights_summary.json"
@@ -266,6 +268,10 @@ def build_combined_fights(
     """Return the unified fight table and a compact audit summary."""
     snapshot_dir = Path(snapshot_dir)
     base = _canonical_base(snapshot_dir)
+    if "majors" in scope_sources(scope):
+        p = snapshot_dir / SCOPE_ARTIFACT["majors"]
+        if p.exists():
+            base = align_identities(base, pd.read_parquet(p))
     merged = merge_scope(base, snapshot_dir, scope=scope, label=label)
     combined = _tag_combined(merged, scope=scope)
     combined = _tag_availability(combined, snapshot_dir, scope=scope)

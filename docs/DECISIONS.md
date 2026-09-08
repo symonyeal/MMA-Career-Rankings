@@ -92,7 +92,7 @@ Where the data comes from is [Source Matrix](../data/SOURCE_MATRIX.md).
    prices at 0.119 against Bellator's 0.059, difference +0.061, CI95 [+0.044,
    +0.078] — but the table itself was never justified.
 
-   **What an unlabelled bout is worth is now settled.** Shipped 2026-09-02. 64.5%
+   **What an unlabelled bout is worth is now settled.** Shipped 2026-09-02. 54.0%
    of rated bouts carry no promotion, and the rule this replaced read every one of
    them as the lowest tier, 0.20 — the same number a genuinely small show gets.
    An unlabelled bout is missing evidence, not evidence of a weak promotion, so it
@@ -102,6 +102,13 @@ Where the data comes from is [Source Matrix](../data/SOURCE_MATRIX.md).
    that estimator with the floor as its prior; dropping them outright is `k = 0`,
    which reads a career identified on two bouts at those two bouts' level with
    full confidence.
+
+   Re-measured on 2026-09-08 after the promotion vocabulary was completed, since
+   the arms had first been compared while a rule-table gap was reading 13.5% of
+   labelled bouts as unlabelled. `k = 5` still wins: it holds the guard that
+   top-100 fighters with no UFC bout stays at three, and reads 0.6459 against
+   elite wins where the tier-4 rule reads 0.6297. `k = 10` breaks that guard at
+   four and is the bound above.
 
    Measured on one fixed population against the shipped board:
 
@@ -258,18 +265,28 @@ cost of aging.
 
 ## Remaining data work
 
-7. **Four eligible fighter careers are still unmerged, and all four are identity
-   failures.** Leonardo Mafra, Thiago Perpetuo, Marcos Vinicius and Ozzy Diaz
-   have three or four UFC bouts each and no resolvable Sherdog id, so the corpus
-   holds only their UFC record. Merged coverage is 1,821 of 1,825 eligible
-   careers, 99.8%. Sherdog's fightfinder search cannot separate these names from
-   other fighters carrying them, and the builder has no way to be handed an id:
-   it uses ids that already appear in the corpus, or ids its own search finds.
-   Fixing these four therefore means adding a hand-checked-id entry point, not
-   crawling harder. `identity_overrides.csv` does not help — it maps a Sherdog
-   *name* to a canonical name, which presupposes the page was already found.
-   Four careers of 1,825 cannot move a published rank, which is why this is the
-   point at which crawling stopped.
+7. **Eleven eligible fighter careers are unmerged, and every one of them is now
+   a missing career page rather than an unresolved identity.** Stevie Ray, Bruno
+   Silva (sherdog:118601), Zach Reese, Joe Duffy, Jesus Aguilar, Chris Beal,
+   Leonardo Mafra, Alex Da Silva, Robert Sanchez, Thiago Perpetuo and Marcos
+   Vinicius each have three or more UFC bouts and a resolved Sherdog id, but no
+   page in the store, so the corpus holds only the cards it crawled by event.
+   Merged coverage is 1,816 of 1,827 eligible careers, 99.4%.
+
+   The count rose from four because the cross-source identity repair separated
+   careers a name-only join had merged. `Bruno Silva (sherdog:118601)` and
+   `Joe Duffy` are eligible identities that did not exist before, because their
+   bouts were sitting inside another fighter's record. The measured number got
+   worse as the data got better, which is what the gate is for.
+
+   One consequence is still visible on a board: with 118601's page unmerged, the
+   2021-05-22 flyweight bout against Victor Rodriguez has no Sherdog counterpart
+   to align against, so it stays on the middleweight `Bruno Silva`, whose other
+   eleven UFC bouts are all at middleweight.
+
+   Closing all eleven is one crawl through the existing cached loader, then a
+   restage and a refit. It was not run here because it changes the rated corpus,
+   so every published board would have to be rebuilt with it.
 
 ## Accepted limitations and clarifications
 

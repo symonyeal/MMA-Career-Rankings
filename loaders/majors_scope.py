@@ -56,8 +56,10 @@ from loaders.career_coverage import (
     is_coverage_symmetric,
 )
 from loaders.crossorg_identity import (
+    align_identities,
     apply_identity_map,
     build_identity_map,
+    id_conflicts,
     resolve_by_bout_evidence,
     resolve_collisions,
 )
@@ -65,6 +67,10 @@ from loaders.fightmatrix_organizations import normalize_organization
 from loaders.page_cache import open_cache
 from loaders.sherdog_loader import classify_method
 from project_helpers import normalize_name_key
+
+# cn   : UFC rows after stable Sherdog-id disambiguation
+# C_id : unresolved canonical identity claims
+# b    : raw Sherdog bout rows
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_MAJORS_DIR = PROJECT_ROOT / "data" / "external" / "sherdog"
@@ -366,6 +372,13 @@ def stage_majors_scope(
     fights, report, identity, merged_ids = _build_majors_fights(
         canonical, majors_dir=majors_dir
     )
+    cn = align_identities(canonical, fights)
+    report["canonical_identity_alignments"] = int(
+        sum(
+            cn[c].astype(str).ne(canonical[c].astype(str)).sum()
+            for c in ("fighter_a", "fighter_b")
+        )
+    )
     fights.to_parquet(snapshot_dir / SNAPSHOT_ARTIFACT, index=False)
     cache_dir = Path(majors_dir)
     births = sherdog_birth_dates(identity, cache_dir=cache_dir)
@@ -376,16 +389,22 @@ def stage_majors_scope(
     # Whether the corpus applies one coverage rule to every fighter is a
     # property of what was staged, so it is measured here, next to the staging,
     # rather than inferred later from ratings that already contain the defect.
-    resolved = identity[identity["join_method"].ne("unjoined")]
+    # A disambiguated namesake is not joined to the original core name, but its
+    # suffixed identity is still one source id and must remain visible to the
+    # coverage gate. Only a genuinely unresolved collision is unsafe to map.
+    resolved = identity[~identity["join_method"].eq("collision")]
+    b = load_majors_bouts(majors_dir)
+    C_id = id_conflicts(identity, b, canonical)
     coverage = coverage_rows(
-        canonical,
-        pd.concat([canonical, fights], ignore_index=True, sort=False),
+        cn,
+        pd.concat([cn, fights], ignore_index=True, sort=False),
         sherdog_ids=(
             resolved.assign(_id=resolved["sherdog_id"].astype(str))
             .drop_duplicates("canonical_name")
             .set_index("canonical_name")["_id"]
         ),
         merged_ids=merged_ids,
+        identity_conflicts=C_id,
     )
     coverage.to_parquet(snapshot_dir / CAREER_COVERAGE_ARTIFACT, index=False)
     summary = coverage_summary(coverage)

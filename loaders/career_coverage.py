@@ -39,6 +39,8 @@ import pandas as pd
 
 from loaders.page_cache import open_cache
 
+# C_id : unresolved source-id claims against UFC identities
+
 COVERAGE_COLUMNS = [
     "fighter",
     "ufc_bouts",
@@ -46,6 +48,7 @@ COVERAGE_COLUMNS = [
     "pre_ufc_bouts",
     "sherdog_id",
     "whole_career_merged",
+    "identity_conflict",
 ]
 
 # Share of the eligible roster whose whole-career rows must have been merged
@@ -116,6 +119,7 @@ def coverage_rows(
     *,
     sherdog_ids: pd.Series | dict | None = None,
     merged_ids: set[str] | None = None,
+    identity_conflicts: set[str] | None = None,
 ) -> pd.DataFrame:
     """One row per UFC fighter: what the corpus holds of their career.
 
@@ -163,6 +167,7 @@ def coverage_rows(
     out["sherdog_id"] = out["fighter"].map(ids) if len(ids) else None
     known = out["sherdog_id"].astype("string").fillna("")
     out["whole_career_merged"] = known.isin(merged_ids or set()) & known.ne("")
+    out["identity_conflict"] = out["fighter"].isin(identity_conflicts or set())
     return out[COVERAGE_COLUMNS]
 
 
@@ -178,16 +183,26 @@ def coverage_summary(
     whole-career rows were merged and fighters whose rows were not. Under one
     coverage rule it has nothing to measure, because there is no second group.
     """
-    empty = {"eligible": 0, "whole_career_share": 1.0, "pre_ufc_bouts_gap": 0.0}
+    empty = {
+        "eligible": 0,
+        "whole_career_share": 1.0,
+        "pre_ufc_bouts_gap": 0.0,
+        "identity_conflicts": 0,
+    }
     if rows is None or rows.empty:
         return empty
     if "whole_career_merged" not in rows.columns:
         raise ValueError(
             "career coverage predates the merged-row audit; restage the majors scope"
         )
+    if "identity_conflict" not in rows.columns:
+        raise ValueError(
+            "career coverage predates the source-id collision audit; restage the majors scope"
+        )
+    c_id = rows["identity_conflict"].fillna(False).astype(bool)
     eligible = rows[rows["ufc_bouts"] >= int(min_ufc_bouts)]
     if eligible.empty:
-        return empty
+        return {**empty, "identity_conflicts": int(c_id.sum())}
     merged = eligible[eligible["whole_career_merged"]]
     unmerged = eligible[~eligible["whole_career_merged"]]
     gap = (
@@ -196,6 +211,7 @@ def coverage_summary(
     )
     return {
         "eligible": int(len(eligible)),
+        "identity_conflicts": int(c_id.sum()),
         "whole_career_merged": int(len(merged)),
         "whole_career_share": float(len(merged) / len(eligible)),
         "median_pre_ufc_bouts_merged":
@@ -216,9 +232,16 @@ def is_coverage_symmetric(
     min_share: float = MIN_WHOLE_CAREER_SHARE,
 ) -> bool:
     """Whether the corpus applies one coverage rule to the eligible roster."""
-    if not summary or not summary.get("eligible"):
+    if not summary:
         return True
-    return float(summary.get("whole_career_share", 0.0)) >= float(min_share)
+    if int(summary.get("identity_conflicts", 0)):
+        return False
+    if not summary.get("eligible"):
+        return True
+    return (
+        float(summary.get("whole_career_share", 0.0)) >= float(min_share)
+        and int(summary.get("identity_conflicts", 0)) == 0
+    )
 
 
 def describe(summary: dict) -> str:
@@ -228,6 +251,7 @@ def describe(summary: dict) -> str:
         "career coverage: "
         f"{summary['whole_career_merged']:,}/{summary['eligible']:,} eligible fighters "
         f"({summary['whole_career_share']:.1%}) have whole-career rows merged; "
+        f"unresolved source-id conflicts {summary.get('identity_conflicts', 0):,}; "
         f"median recorded pre-UFC bouts {summary['median_pre_ufc_bouts_merged']:.0f} merged "
         f"vs {summary['median_pre_ufc_bouts_unmerged']:.0f} unmerged "
         f"(gap {summary['pre_ufc_bouts_gap']:+.0f})"

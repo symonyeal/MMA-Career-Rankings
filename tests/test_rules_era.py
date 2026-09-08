@@ -95,8 +95,12 @@ def test_pre_unified_scope_recovers_the_dropped_bouts(tmp_path):
 
     pre = load_pre_unified_fights(tmp_path)
 
-    assert pre["fight_url"].tolist() == ["u/1", "u/2"]
-    assert pre.set_index("fight_url")["is_excluded"].to_dict() == {"u/1": False, "u/2": True}
+    assert pre["fight_url"].head(2).tolist() == ["u/1", "u/2"]
+    assert len(pre[pre["event_name"].eq("UFC 1: The Beginning")]) == 8
+    assert pre.set_index("fight_url").loc[["u/1", "u/2"], "is_excluded"].to_dict() == {
+        "u/1": False,
+        "u/2": True,
+    }
     assert (pre["rules_era"] == RULES_ERA_PRE).all()
     assert (pre["org_weight"] == 1.0).all()
 

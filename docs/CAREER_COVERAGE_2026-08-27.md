@@ -143,9 +143,15 @@ identifiable.
 | fighters rated | 28,867 | 33,692 | **34,085** |
 | eligible roster with whole-career rows merged | 547 (30.0%) | 1,743 (95.5%) | **1,821 (99.8%)** |
 
-The four careers that remain unmerged are named in
-[Open decisions](DECISIONS.md); each is a Sherdog identity that cannot be
+The four careers that remained unmerged at that point are named in
+[Open decisions](DECISIONS.md); each was a Sherdog identity that could not be
 resolved, not a page that failed to download.
+
+That last row was overtaken on 2026-09-08. The cross-source identity repair
+separated careers a name-only join had merged, which added eligible identities
+that had been hidden inside another fighter's record, and coverage now reads
+1,816 of 1,827 (99.4%) with eleven pages left to crawl. The figures in this
+table are the 2026-09-02 measurement and are kept as the record of it.
 
 **What the last 4.3 points of coverage were worth.** Khabib Nurmagomedov is the
 clean test, because his was one of the truncated records. His rating sat 206

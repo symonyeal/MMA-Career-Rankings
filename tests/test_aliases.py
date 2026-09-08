@@ -21,3 +21,14 @@ def test_alias_disabled_when_requested():
 def test_unknown_name_passes_through():
     assert normalize_name_key("Israel Adesanya") == "israel adesanya"
     assert normalize_name_key("  Israel Adesanya  ") == "israel adesanya"
+
+
+def test_a_sherdog_disambiguation_suffix_is_not_part_of_a_bout_identity():
+    assert normalize_name_key("Bruno Silva (sherdog:118601)") == "bruno silva"
+    assert normalize_name_key(
+        "Bruno Silva (sherdog:118601)", compact=True
+    ) == "brunosilva"
+
+
+def test_a_project_owned_global_alias_joins_canonical_name_drift():
+    assert normalize_name_key("Patricio Pitbull") == normalize_name_key("Patricio Freire")

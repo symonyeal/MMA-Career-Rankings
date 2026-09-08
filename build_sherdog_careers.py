@@ -44,10 +44,14 @@ Run of 2026-08-27: 1,278 targets, 1,057 ids already known from the corpus and
 
 Completion pass of 2026-09-02: the careers merged in the first pass named most
 of those 77 as opponents, which made them identifiable, so repeated runs closed
-all but four. Coverage of the eligible roster is 1,821 of 1,825, 99.8%. The four
-that remain -- Leonardo Mafra, Thiago Perpetuo, Marcos Vinicius, Ozzy Diaz --
-are names the search cannot separate from other fighters carrying them, and
-this builder has no way to be handed an id by hand.
+all but four.
+
+The cross-source identity repair of 2026-09-08 then separated careers a
+name-only join had merged, which put identities like ``Bruno Silva
+(sherdog:118601)`` and ``Joe Duffy`` on the eligible roster for the first time.
+Coverage reads 1,816 of 1,827, 99.4%, and the eleven that remain each have a
+resolved Sherdog id and no page in the store -- so unlike the earlier four, they
+are a crawl this builder can do rather than an identity it cannot resolve.
 
 Usage::
 

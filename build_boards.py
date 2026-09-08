@@ -58,7 +58,11 @@ from ratings.opponent_quality import (
     quality_win_record,
 )
 from ratings.scope import DEFAULT_PUBLISHED_SCOPE, scope_sources
+from ratings.performance_adjustment import womens_division_label
 
+# d : published division label
+# g : fighter gender label
+# f : female-row mask
 
 # The integrity debit is denominated in rating points, so keep that judgement
 # on a base WHR point scale. This one is not shared: no other consumer applies a
@@ -643,8 +647,11 @@ def _division_column(fighters: pd.Series, lookup: object, column: str) -> list[s
     """Each fighter's division, blank where the corpus never weighed them."""
     if column not in getattr(lookup, "columns", []):
         return ["" for _ in fighters]
-    values = fighters.map(lookup[column])
-    return ["" if pd.isna(value) else str(value) for value in values]
+    d = fighters.map(lookup[column])
+    g = fighters.map(lookup["gender"]) if "gender" in getattr(lookup, "columns", []) else ""
+    f = pd.Series(g, index=fighters.index).astype(str).str.upper().str.startswith("F")
+    d.loc[f] = d.loc[f].map(womens_division_label).fillna("W " + d.loc[f].astype(str))
+    return ["" if pd.isna(value) else str(value) for value in d]
 
 
 def top_board_markdown(

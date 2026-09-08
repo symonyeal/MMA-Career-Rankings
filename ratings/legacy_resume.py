@@ -20,6 +20,9 @@ from ratings.performance_adjustment import (
     womens_division_label,
 )
 
+# pid : promotion identity used for championship lineage
+# er  : organization match inferred from the event label
+
 
 LEGACY_SCORE_COLUMNS = [
     "fighter",
@@ -371,7 +374,7 @@ ORG_FACTOR_BY_TIER = {
     4: 0.20,
 }
 
-# Pseudo-count for the exposure factor, in bouts. 64.5% of rated bouts carry no
+# Pseudo-count for the exposure factor, in bouts. 54.0% of rated bouts carry no
 # promotion label, and an unlabelled bout is missing evidence, not evidence of a
 # weak promotion -- so it is left out of the average rather than scored at the
 # tier-4 floor. Dropping it outright would then read a career identified on two
@@ -379,13 +382,17 @@ ORG_FACTOR_BY_TIER = {
 # factor is shrunk back toward the pooled identified mean by ``n / (n + k)``.
 #
 # Reading unlabelled bouts as tier 4 is the ``k -> inf`` limit of this estimator
-# with the floor as its prior; dropping them is ``k = 0``. Measured 2026-09-02 on
-# one fixed population against the shipped board, k = 5 held the 2026-08-27 guard
-# (top-100 fighters with no UFC bout stays at 2), moved top-100 fighters scoring
-# zero on titles 14 -> 13, and read 0.6132 against elite wins where the tier-4
-# rule read 0.6067. k = 10 broke the guard at 3 and is the bound above. No
-# outside list resolved any arm -- every sign test came back p >= 0.23 -- so this
-# ships on mechanism, and the outside check could not detect it either way.
+# with the floor as its prior; dropping them is ``k = 0``. Selected 2026-09-02 and
+# re-measured 2026-09-08 on the repaired corpus, because the arms were first
+# compared while a vocabulary gap was reading 13.5% of labelled bouts as
+# unlabelled. On one fixed population against the shipped board, k = 5 reproduces
+# the written exposure ledger exactly, holds the guard (top-100 fighters with no
+# UFC bout stays at 3), leaves top-100 fighters scoring zero on titles at 12 --
+# what the tier-4 rule also reads -- and reads 0.6459 against elite wins where the
+# tier-4 rule reads 0.6297, the best of every arm tried. k = 10 breaks the guard
+# at 4 and is the bound above. No outside list resolved any arm -- every sign test
+# came back p >= 0.08 -- so this ships on mechanism, and the outside check could
+# not detect it either way.
 EXPOSURE_SHRINKAGE_PSEUDO_COUNT = 5.0
 
 
@@ -521,6 +528,7 @@ def _organization_context(fights: pd.DataFrame) -> pd.DataFrame:
     columns = [
         "fight_url",
         "canonical_organization",
+        "promotion_identity",
         "organization_tier",
         "public_legacy_org_factor",
     ]
@@ -530,33 +538,53 @@ def _organization_context(fights: pd.DataFrame) -> pd.DataFrame:
     work = fights[["fight_url", "event_date"]].copy()
     work["source"] = fights.get("source", pd.Series("", index=fights.index))
     work["org"] = fights.get("org", pd.Series(pd.NA, index=fights.index))
+    work["event_name"] = fights.get("event_name", pd.Series(pd.NA, index=fights.index))
     work["event_date"] = pd.to_datetime(work["event_date"], errors="coerce")
     work["_org_label"] = work["org"].fillna("Unknown").astype(str)
     ufc_source = work["source"].astype(str).eq("ufc") & work["org"].isna()
     work.loc[ufc_source, "_org_label"] = "UFC"
+    work["_event_label"] = work["event_name"].fillna(
+        "bout::" + work["fight_url"].astype(str)
+    ).astype(str)
     work["_year"] = work["event_date"].dt.year.fillna(0).astype(int)
 
     keys = (
-        work.groupby(["_org_label", "_year"], dropna=False, as_index=False)
+        work.groupby(["_org_label", "_event_label", "_year"], dropna=False, as_index=False)
         .agg(sample_date=("event_date", "median"))
     )
     records = []
-    for org_label, year, sample_date in keys[
-        ["_org_label", "_year", "sample_date"]
+    for org_label, event_label, year, sample_date in keys[
+        ["_org_label", "_event_label", "_year", "sample_date"]
     ].itertuples(index=False, name=None):
         rec = normalize_organization(org_label, sample_date, verified_label=True)
+        pid = rec["canonical_organization"]
+        if pid in {"Unknown", "Major Regional"}:
+            er = normalize_organization(event_label, sample_date)
+            if er["canonical_organization"] not in {"Unknown", "Major Regional"}:
+                rec = er
+                pid = er["canonical_organization"]
+            elif org_label not in {"", "Unknown", "Major Regional"}:
+                pid = org_label
+            else:
+                pid = "Unresolved::" + event_label
         records.append(
             {
                 "_org_label": org_label,
+                "_event_label": event_label,
                 "_year": year,
                 "canonical_organization": rec["canonical_organization"],
+                "promotion_identity": pid,
                 "organization_tier": rec["organization_tier"],
                 "public_legacy_org_factor": _organization_factor(
                     rec["canonical_organization"], rec["organization_tier"]
                 ),
             }
         )
-    mapped = work.merge(pd.DataFrame(records), on=["_org_label", "_year"], how="left")
+    mapped = work.merge(
+        pd.DataFrame(records),
+        on=["_org_label", "_event_label", "_year"],
+        how="left",
+    )
     return mapped[columns].drop_duplicates("fight_url")
 
 
@@ -758,7 +786,7 @@ def source_title_resume_ledger(fights: pd.DataFrame) -> pd.DataFrame:
     if "org" not in f.columns:
         f["org"] = ""
     f["_org_division"] = (
-        f["canonical_organization"].fillna("Unknown").astype(str)
+        f["promotion_identity"].fillna("Unknown").astype(str)
         + "::"
         + f["_division"].fillna("").astype(str)
     )
@@ -793,6 +821,7 @@ def source_title_resume_ledger(fights: pd.DataFrame) -> pd.DataFrame:
                 "_is_draw",
                 "_title_factor",
                 "canonical_organization",
+                "promotion_identity",
             ]
         ].rename(
             columns={
@@ -818,10 +847,11 @@ def source_title_resume_ledger(fights: pd.DataFrame) -> pd.DataFrame:
             "fighter",
             "event_date",
             "canonical_organization",
+            "promotion_identity",
         ]].copy()
         fallback["_win_number"] = (
-            fallback.sort_values(["fighter", "canonical_organization", "event_date", "fight_url"])
-            .groupby(["fighter", "canonical_organization"])
+            fallback.sort_values(["fighter", "promotion_identity", "event_date", "fight_url"])
+            .groupby(["fighter", "promotion_identity"])
             .cumcount()
         )
         fallback_defenses = {

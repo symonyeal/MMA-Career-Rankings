@@ -212,3 +212,19 @@ def test_the_promotion_gap_matches_the_rated_scope():
         f"README says {match.group(1)}% of rated fights lack a promotion; "
         f"the table says {measured}%"
     )
+
+    # The same figure justifies the exposure estimator, and it is written out
+    # twice more. Those two copies read 64.5% while this one read 57%, so the
+    # repository argued with itself in three places. Pin them to the table.
+    # Both are wrapped prose, so match on one flat line.
+    for path, phrase in (
+        ("docs/DECISIONS.md", "of rated bouts carry no promotion"),
+        ("ratings/legacy_resume.py", "of rated bouts carry no # promotion label"),
+    ):
+        flat = " ".join((PROJECT_ROOT / path).read_text(encoding="utf-8").split())
+        found = re.search(r"([\d.]+)% " + re.escape(phrase), flat)
+        assert found, f"{path} no longer states the unlabelled-bout share"
+        assert round(float(found.group(1))) == measured, (
+            f"{path} says {found.group(1)}% of rated bouts carry no promotion; "
+            f"the table says {measured}%"
+        )

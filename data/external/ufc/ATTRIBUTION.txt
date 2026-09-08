@@ -1,0 +1,13 @@
+ufc1_fights.csv is OUR OWN hand-entered file, not vendored from anywhere.
+
+It holds the eight bouts of UFC 1: The Beginning (1993-11-12, Denver), taken
+from the official UFC event record at https://www.ufc.com/event/ufc-1 and shaped
+to the canonical fight columns so it joins the pre-unified scope directly.
+
+It exists because the upstream results table this project scrapes starts at
+UFC 2. Without this file the sport's first event reaches the model only through
+the cross-org crawl -- five of the eight bouts, under a promotion label that the
+normalization rules did not recognise.
+
+Do not add other events here. Anything the upstream table already carries must
+come from the scrape, so that one source stays authoritative for it.

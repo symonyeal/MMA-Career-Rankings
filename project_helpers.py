@@ -1,23 +1,34 @@
 """Small shared helpers used across loaders, database, and analysis."""
 from __future__ import annotations
 
+import re
 import unicodedata
 from functools import lru_cache
 from pathlib import Path
 
 import pandas as pd
 
+# P_ID_ALIAS : project-owned source-id/name override table
+# RE_SID     : terminal Sherdog-id display suffix
 
 _ALIAS_CACHE_PATH = Path(__file__).resolve().parent / "data" / "external" / "aliases" / "fighter_aliases.csv"
+P_ID_ALIAS = (
+    Path(__file__).resolve().parent
+    / "data" / "external" / "crossorg" / "identity_overrides.csv"
+)
+RE_SID = re.compile(r"\s*\(sherdog:\d+\)\s*$", flags=re.IGNORECASE)
 
 
 @lru_cache(maxsize=1)
 def _load_alias_map() -> dict[str, str]:
-    """Load fighter alias map from the staged tiger-millionaire export.
+    """Load safe global aliases without weakening source-id disambiguation.
 
     Mapping is ``normalized_alias -> normalized_canonical``. Returns an
     empty mapping if the CSV is missing so the rest of the codebase keeps
-    working before the aliases are staged.
+    working before the aliases are staged. The Tiger Millionaire aliases are
+    name-level by design. Project-owned cross-source overrides join globally
+    only when their Sherdog id is blank; id-specific rows stay id-specific so
+    a namesake cannot inherit another fighter's career.
     """
     if not _ALIAS_CACHE_PATH.exists():
         return {}
@@ -36,13 +47,34 @@ def _load_alias_map() -> dict[str, str]:
         if not canonical_key or not alias_key or canonical_key == alias_key:
             continue
         mapping[alias_key] = canonical_key
+
+    if P_ID_ALIAS.exists():
+        try:
+            df = pd.read_csv(
+                P_ID_ALIAS,
+                dtype={"sherdog_id": "string"},
+                keep_default_na=False,
+            )
+        except (FileNotFoundError, ValueError, KeyError):
+            df = pd.DataFrame()
+        if {"sherdog_id", "sherdog_name", "canonical_name"} <= set(df.columns):
+            sid = df["sherdog_id"].astype("string").fillna("").str.strip()
+            for _, row in df[sid.eq("")].iterrows():
+                canonical = row.get("canonical_name")
+                alias = row.get("sherdog_name")
+                if not isinstance(canonical, str) or not isinstance(alias, str):
+                    continue
+                canonical_key = _basic_name_key(canonical)
+                alias_key = _basic_name_key(alias)
+                if canonical_key and alias_key and canonical_key != alias_key:
+                    mapping[alias_key] = canonical_key
     return mapping
 
 
 def _basic_name_key(name: str | None, *, compact: bool = False) -> str:
     if not isinstance(name, str):
         return ""
-    text = unicodedata.normalize("NFKD", name)
+    text = unicodedata.normalize("NFKD", RE_SID.sub("", name))
     text = "".join(ch for ch in text if not unicodedata.combining(ch))
     text = text.strip().lower()
     if compact:

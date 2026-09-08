@@ -4,6 +4,7 @@ from __future__ import annotations
 import pandas as pd
 
 from loaders.crossorg_identity import (
+    align_identities,
     apply_identity_map,
     build_identity_map,
     resolve_by_bout_evidence,
@@ -45,6 +46,86 @@ def test_a_ring_name_joins_only_through_a_verified_override():
     row = with_override.set_index("sherdog_id").loc["7448"]
     assert row["canonical_name"] == "Jacare Souza"
     assert row["join_method"] == "override"
+
+
+def test_an_id_override_beats_an_unrelated_exact_namesake():
+    bouts = _bouts([
+        ("true", "Christopher Mario Beal", "500", "Chris Kelades", "2015-08-23"),
+        ("other", "Chris Beal", "501", "Regional Guy", "2018-01-01"),
+    ])
+    identity = build_identity_map(
+        bouts,
+        ["Chris Beal", "Chris Kelades"],
+        overrides={"sherdog:true": "Chris Beal"},
+    ).set_index("sherdog_id")
+
+    assert identity.loc["true", "canonical_name"] == "Chris Beal"
+    assert identity.loc["true", "join_method"] == "override_id"
+    assert identity.loc["other", "join_method"] == "collision_disambiguated"
+    assert identity.loc["other", "canonical_name"] == "Chris Beal (sherdog:other)"
+
+
+def test_disambiguated_source_id_is_carried_onto_the_matching_ufc_row():
+    ufc = pd.DataFrame([
+        {
+            "fighter_a": "Bruno Silva",
+            "fighter_b": "Joshua Van",
+            "winner": "Joshua Van",
+            "loser": "Bruno Silva",
+            "event_date": "2025-06-07",
+        }
+    ])
+    sherdog = pd.DataFrame([
+        {
+            "fighter_a": "Bruno Silva (sherdog:118601)",
+            "fighter_b": "Joshua Van",
+            "winner": "Joshua Van",
+            "loser": "Bruno Silva (sherdog:118601)",
+            "event_date": "2025-06-07",
+        }
+    ])
+
+    got = align_identities(ufc, sherdog).iloc[0]
+
+    assert got["fighter_a"] == "Bruno Silva (sherdog:118601)"
+    assert got["loser"] == "Bruno Silva (sherdog:118601)"
+
+
+def test_verified_alias_is_carried_by_a_unique_date_and_opponent_anchor():
+    ufc = pd.DataFrame([{
+        "fighter_a": "Rafael Cerquiera", "fighter_b": "Ibo Aslan",
+        "winner": "Ibo Aslan", "loser": "Rafael Cerquiera",
+        "event_date": "2024-10-26",
+    }])
+    sherdog = pd.DataFrame([{
+        "fighter_a": "Rafael Cerqueira", "fighter_b": "Ibo Aslan",
+        "winner": "Ibo Aslan", "loser": "Rafael Cerqueira",
+        "event_date": "2024-10-26",
+    }])
+
+    got = align_identities(ufc, sherdog).iloc[0]
+
+    assert got["fighter_a"] == "Rafael Cerqueira"
+    assert got["loser"] == "Rafael Cerqueira"
+
+
+def test_same_day_tournament_anchor_abstains():
+    ufc = pd.DataFrame([
+        {"fighter_a": "Ken Shamrock", "fighter_b": "Felix Lee Mitchell",
+         "event_date": "1994-09-09"},
+        {"fighter_a": "Ken Shamrock", "fighter_b": "Christophe Leninger",
+         "event_date": "1994-09-09"},
+    ])
+    sherdog = pd.DataFrame([
+        {"fighter_a": "Ken Shamrock", "fighter_b": "Felix Mitchell",
+         "event_date": "1994-09-09"},
+        {"fighter_a": "Ken Shamrock", "fighter_b": "Christophe Leninger",
+         "event_date": "1994-09-09"},
+    ])
+
+    got = align_identities(ufc, sherdog)
+
+    assert list(got["fighter_b"]) == ["Felix Lee Mitchell", "Christophe Leninger"]
 
 
 def test_two_ids_claiming_one_name_are_both_refused():

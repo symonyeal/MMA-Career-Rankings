@@ -105,6 +105,21 @@ def test_fighters_below_the_ufc_floor_do_not_decide_the_gate():
     assert is_coverage_symmetric(summary)
 
 
+def test_a_source_id_conflict_fails_even_below_the_career_floor():
+    canonical = _ufc_bouts(["Split fragment"], per_fighter=1)
+    rows = coverage_rows(
+        canonical,
+        canonical,
+        identity_conflicts={"Split fragment"},
+    )
+
+    summary = coverage_summary(rows, min_ufc_bouts=3)
+
+    assert summary["eligible"] == 0
+    assert summary["identity_conflicts"] == 1
+    assert not is_coverage_symmetric(summary)
+
+
 def test_missing_extension_reports_no_careers_merged_rather_than_raising():
     canonical = _ufc_bouts(["Covered"])
     rows = coverage_rows(canonical, canonical)
@@ -147,6 +162,7 @@ def test_majors_rating_requires_a_passing_coverage_audit(tmp_path):
             "pre_ufc_bouts": [12, 0],
             "sherdog_id": ["1", "2"],
             "whole_career_merged": [True, False],
+            "identity_conflict": [False, False],
         }
     ).to_parquet(tmp_path / "career_coverage.parquet", index=False)
 

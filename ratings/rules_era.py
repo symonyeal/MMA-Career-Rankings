@@ -1,9 +1,9 @@
 """The UFC pre-unified era: admitted, labelled, and priced by measurement.
 
-``loaders/ufcstats_loader`` drops every UFC bout before UFC 28 (Tito Ortiz vs
-Yuki Kondo, 2000-11-17) -- 253 bouts across 30 events, 1993-11-12 to
-2000-09-22. They are scraped and parsed, then written to ``_excluded_bouts.csv``
-with ``exclusion_reason = "pre_unified_rules"`` and never rated.
+``loaders/ufcstats_loader`` drops every available UFC bout before UFC 28 (Tito
+Ortiz vs Yuki Kondo, 2000-11-17). Its upstream table starts at UFC 2, so the
+official eight-bout UFC 1 card is committed separately and joined here. The
+scope holds 261 bouts across 31 events, 1993-11-12 to 2000-09-22.
 
 That is a defensible rule and nobody costed what it does to the board. It means
 the engine structurally cannot rank the 1993-2000 generation, and it is most of
@@ -44,6 +44,10 @@ from pathlib import Path
 
 import pandas as pd
 
+from project_helpers import bout_fingerprint
+
+# P1 : committed official UFC 1 backfill
+
 # UFC 28, the first event under unified rules. Bouts strictly before are the
 # pre-unified era. Kept here as well as in the loader so the rating layer does
 # not have to import a scraper to know where the boundary is.
@@ -52,6 +56,7 @@ UFC_28_DATE = pd.Timestamp("2000-11-17")
 PRE_UNIFIED_REASON = "pre_unified_rules"
 SNAPSHOT_ARTIFACT = "pre_unified_fights.parquet"
 EXCLUDED_CSV = "_excluded_bouts.csv"
+P1 = Path(__file__).resolve().parent.parent / "data" / "external" / "ufc" / "ufc1_fights.csv"
 
 RULES_ERA_UNIFIED = "unified"
 RULES_ERA_PRE = "ufc_pre_unified"
@@ -113,9 +118,16 @@ def load_pre_unified_fights(snapshot_dir: Path) -> pd.DataFrame:
     if pre.empty:
         raise ValueError(
             f"scope 'pre_unified' requested but {path} holds no "
-            f"{PRE_UNIFIED_REASON!r} rows, so the run would silently rate the "
-            "unified-era table and report it as a whole-history fit."
+            f"{PRE_UNIFIED_REASON!r} rows, so the run would silently rate a partial era"
         )
+    if not P1.exists():
+        raise FileNotFoundError(f"UFC 1 backfill is missing: {P1}")
+    u1 = pd.read_csv(P1)
+    if len(u1) != 8 or u1["event_name"].nunique() != 1:
+        raise ValueError(f"UFC 1 backfill must hold the complete eight-bout event: {P1}")
+    held = set(bout_fingerprint(pre))
+    u1 = u1[~bout_fingerprint(u1).isin(held)]
+    pre = pd.concat([pre, u1], ignore_index=True, sort=False)
     pre["event_date"] = pd.to_datetime(pre["event_date"], errors="coerce")
     # They were excluded for being pre-unified and for nothing else. A bout in
     # here that ALSO ended in a no-contest or an overturned result stays

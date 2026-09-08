@@ -32,20 +32,37 @@ import pandas as pd
 
 from project_helpers import normalize_name_key
 
+# sid : Sherdog fighter id
+# nm  : source display name
+# cn  : canonical rating identity
+# jm  : identity join method
+# cc  : canonical identity originally claimed before collision handling
+# x   : authoritative UFC fight rows
+# y   : Sherdog rows after source-id resolution
+# ix  : unique (date, known-opponent) anchors in x
+# iy  : unique (date, known-opponent) anchors in y
+# C_id: unresolved UFC identity claims with shared-bout evidence
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 OVERRIDES_PATH = PROJECT_ROOT / "data" / "external" / "crossorg" / "identity_overrides.csv"
 
 
 def load_overrides(path: Path = OVERRIDES_PATH) -> dict[str, str]:
-    """``sherdog_name -> canonical_name``, hand-verified only."""
+    """Hand-verified ``Sherdog id/name -> canonical name`` claims."""
     if not path.exists():
         return {}
-    frame = pd.read_csv(path)
-    return {
-        normalize_name_key(str(r.sherdog_name), compact=True): str(r.canonical_name)
-        for r in frame.itertuples()
-        if isinstance(r.sherdog_name, str) and isinstance(r.canonical_name, str)
-    }
+    frame = pd.read_csv(path, dtype={"sherdog_id": "string"}, keep_default_na=False)
+    out: dict[str, str] = {}
+    for r in frame.itertuples():
+        nm = getattr(r, "sherdog_name", None)
+        cn = getattr(r, "canonical_name", None)
+        if not isinstance(nm, str) or not isinstance(cn, str) or not cn.strip():
+            continue
+        sid = str(getattr(r, "sherdog_id", "") or "").strip()
+        k = f"sherdog:{sid}" if sid else normalize_name_key(nm, compact=True)
+        if k:
+            out[k] = cn.strip()
+    return out
 
 
 def sherdog_names(bouts: pd.DataFrame) -> pd.Series:
@@ -74,16 +91,22 @@ def build_identity_map(
     rows = []
     for sherdog_id, name in names.items():
         key = normalize_name_key(name, compact=True)
-        override = overrides.get(key)
+        override = overrides.get(f"sherdog:{sherdog_id}")
+        jm = "override_id" if override is not None else None
+        if override is None:
+            override = overrides.get(key)
+            jm = "override" if override is not None else None
         if override is not None:
-            rows.append((sherdog_id, name, override, "override"))
+            rows.append((sherdog_id, name, override, jm, override))
         elif key in core_by_key:
-            rows.append((sherdog_id, name, core_by_key[key], "name_key"))
+            cn = core_by_key[key]
+            rows.append((sherdog_id, name, cn, "name_key", cn))
         else:
-            rows.append((sherdog_id, name, name, "unjoined"))
+            rows.append((sherdog_id, name, name, "unjoined", name))
 
     out = pd.DataFrame(rows, columns=["sherdog_id", "sherdog_name",
-                                      "canonical_name", "join_method"])
+                                      "canonical_name", "join_method",
+                                      "claimed_canonical_name"])
 
     # Two ids claiming one canonical identity is either a sibling merge or a
     # plain namesake -- Sherdog carries two Eddie Alvarezes and two Anderson
@@ -91,9 +114,14 @@ def build_identity_map(
     joined = out[out["join_method"].ne("unjoined")]
     clashes = joined["canonical_name"].value_counts()
     clashes = set(clashes[clashes > 1].index)
-    collided = out["canonical_name"].isin(clashes) & out["join_method"].ne("unjoined")
-    out.loc[collided, "join_method"] = "collision"
-    out.loc[collided, "canonical_name"] = out.loc[collided, "sherdog_name"]
+    for cn in clashes:
+        g = out["canonical_name"].eq(cn) & out["join_method"].ne("unjoined")
+        exact = g & out["join_method"].eq("override_id")
+        collided = g & ~exact if int(exact.sum()) == 1 else g
+        out.loc[collided, "join_method"] = (
+            "collision_disambiguated" if int(exact.sum()) == 1 else "collision"
+        )
+        out.loc[collided, "canonical_name"] = out.loc[collided, "sherdog_name"]
 
     # Refusing to join is not enough: two different people whose names are the
     # same string would still be rated as one fighter. Anything not joined to a
@@ -107,7 +135,7 @@ def _disambiguate(identity: pd.DataFrame) -> pd.DataFrame:
     ambiguous = out["canonical_name"].value_counts()
     ambiguous = set(ambiguous[ambiguous > 1].index)
     needs_suffix = out["canonical_name"].isin(ambiguous) & out["join_method"].isin(
-        {"unjoined", "collision"}
+        {"unjoined", "collision", "collision_disambiguated"}
     )
     out.loc[needs_suffix, "canonical_name"] = (
         out.loc[needs_suffix, "canonical_name"]
@@ -151,15 +179,10 @@ def resolve_collisions(
         for fid, group in dates.groupby(col):
             by_id.setdefault(fid, set()).update(group["event_date"].dropna())
 
-    # Recover which canonical name each contested id was claiming.
-    core_claim = dict(zip(contested["sherdog_id"], contested["sherdog_name"]))
-    for claimed, group in contested.groupby(
-        contested["sherdog_id"].map(core_claim).map(lambda n: normalize_name_key(n, compact=True))
-    ):
+    for claimed, group in contested.groupby("claimed_canonical_name"):
         candidates = {}
         for fid in group["sherdog_id"]:
-            target = next((n for n in ufc_dates
-                           if normalize_name_key(n, compact=True) == claimed), None)
+            target = next((n for n in ufc_dates if n == claimed), None)
             if target is None:
                 continue
             candidates[fid] = (len(by_id.get(fid, set()) & ufc_dates[target]), target)
@@ -171,6 +194,10 @@ def resolve_collisions(
             mask = out["sherdog_id"].eq(best_id)
             out.loc[mask, "canonical_name"] = target
             out.loc[mask, "join_method"] = "collision_resolved"
+            other = out["claimed_canonical_name"].eq(claimed) & out["join_method"].eq(
+                "collision"
+            )
+            out.loc[other, "join_method"] = "collision_disambiguated"
     return out
 
 
@@ -181,6 +208,48 @@ def apply_identity_map(bouts: pd.DataFrame, identity: pd.DataFrame) -> pd.DataFr
     out["fighter_a"] = out["fighter_a_id"].map(mapping)
     out["fighter_b"] = out["fighter_b_id"].map(mapping)
     return out.dropna(subset=["fighter_a", "fighter_b"])
+
+
+def align_identities(x: pd.DataFrame, y: pd.DataFrame) -> pd.DataFrame:
+    """Carry resolved Sherdog identities onto matching UFC rows.
+
+    A shared date and opponent is stronger evidence than display-name text.
+    The anchor must identify exactly one bout on both sides; that condition
+    deliberately abstains on same-day tournament rematches.
+    """
+    if x is None or x.empty or y is None or y.empty:
+        return x.copy()
+    out = x.copy()
+
+    def anchors(frame: pd.DataFrame) -> dict[tuple, list[tuple]]:
+        dates = pd.to_datetime(frame["event_date"], errors="coerce")
+        found: dict[tuple, list[tuple]] = {}
+        for i in frame.index:
+            if pd.isna(dates.loc[i]):
+                continue
+            day = dates.loc[i].normalize()
+            for side, other in (("a", "b"), ("b", "a")):
+                key = normalize_name_key(frame.at[i, f"fighter_{other}"], compact=True)
+                if key:
+                    found.setdefault((day, key), []).append((i, f"fighter_{side}"))
+        return found
+
+    ix = anchors(out)
+    iy = anchors(y)
+    for key in ix.keys() & iy.keys():
+        if len(ix[key]) != 1 or len(iy[key]) != 1:
+            continue
+        (i, cx), (j, cy) = ix[key][0], iy[key][0]
+        old = str(out.at[i, cx])
+        new = str(y.at[j, cy])
+        if not old or not new or old == new:
+            continue
+        out.at[i, cx] = new
+        old_key = normalize_name_key(old, compact=True)
+        for q in ("winner", "loser"):
+            if q in out.columns and normalize_name_key(out.at[i, q], compact=True) == old_key:
+                out.at[i, q] = new
+    return out
 
 
 def _opponent_key(name: object) -> str:
@@ -285,12 +354,31 @@ def resolve_by_bout_evidence(
     return _disambiguate(out)
 
 
+def id_conflicts(
+    identity: pd.DataFrame,
+    bouts: pd.DataFrame,
+    canonical_fights: pd.DataFrame,
+) -> set[str]:
+    """Unresolved canonical claims that share at least one UFC bout."""
+    pending = identity[identity["join_method"].eq("collision")]
+    if pending.empty:
+        return set()
+    b = _bout_fingerprints(bouts)
+    c = _canonical_fingerprints(canonical_fights)
+    C_id: set[str] = set()
+    for r in pending.itertuples(index=False):
+        if _overlap(b.get(r.sherdog_id, set()), c.get(r.claimed_canonical_name, set())):
+            C_id.add(str(r.claimed_canonical_name))
+    return C_id
+
+
 def summary(identity: pd.DataFrame) -> dict:
     counts = identity["join_method"].value_counts()
+    joined = {"name_key", "override", "override_id", "collision_resolved", "bout_evidence"}
     return {
         "fighters": int(len(identity)),
         "by_method": {str(k): int(v) for k, v in counts.items()},
-        "joined_to_core": int(counts.get("name_key", 0) + counts.get("override", 0)),
+        "joined_to_core": int(sum(int(counts.get(k, 0)) for k in joined)),
         "collisions": identity.loc[identity["join_method"].eq("collision"),
                                    "sherdog_name"].tolist()[:40],
     }

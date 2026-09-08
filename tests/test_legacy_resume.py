@@ -813,16 +813,8 @@ def test_public_legacy_score_uses_source_title_flags_when_appearance_context_is_
     assert scored["public_legacy_skill_score"] == pytest.approx(95.0)
 
 
-def test_a_stored_promotion_label_is_priced_at_the_tier_it_was_given():
-    """The exact shape that silently under-priced 6,081 rated bouts.
-
-    ``majors_scope`` stores the canonical promotion the rules assigned, and the
-    exposure ledger reads that label back through the same rules. A canonical
-    name is not always its own pattern -- "Major Regional" names the family
-    whose pattern lists the promotions in it -- so the round trip used to land
-    on Unknown and price a recognised regional show at the lowest tier, 0.20
-    instead of 0.42. Nothing failed; the score was just wrong.
-    """
+def test_a_stored_regional_family_label_recovers_the_event_promotion():
+    """A legacy catch-all keeps its tier but cannot become one shared belt."""
     fights = pd.DataFrame(
         [
             {
@@ -840,7 +832,8 @@ def test_a_stored_promotion_label_is_priced_at_the_tier_it_was_given():
 
     context = _organization_context(fights).iloc[0]
 
-    assert context["canonical_organization"] == "Major Regional"
+    assert context["canonical_organization"] == "LFA"
+    assert context["promotion_identity"] == "LFA"
     assert context["organization_tier"] == 3
     assert context["public_legacy_org_factor"] == pytest.approx(ORG_FACTOR_BY_TIER[3])
 
@@ -853,6 +846,100 @@ def test_a_verified_unclassified_promotion_is_evidence_not_a_missing_label():
     assert context["canonical_organization"] == "Local MMA"
     assert context["organization_tier"] == 4
     assert context["public_legacy_org_factor"] == pytest.approx(ORG_FACTOR_BY_TIER[4])
+
+
+@pytest.mark.parametrize(
+    ("raw", "canonical", "tier"),
+    [
+        ("Ultimate Fighting Championship (UFC)", "UFC", 1),
+        ("Legacy Fighting Alliance (LFA)", "LFA", 3),
+        ("Absolute Championship Akhmat", "ACA", 2),
+        ("Konfrontacja Sztuk Walki", "KSW", 2),
+        ("World Series of Fighting", "PFL", 2),
+    ],
+)
+def test_sherdog_promotion_vocabulary_reaches_the_declared_tier(raw, canonical, tier):
+    fights = pd.DataFrame(
+        [{"fight_url": "1", "event_date": "2025-01-01", "org": raw}]
+    )
+    context = _organization_context(fights).iloc[0]
+
+    assert context["canonical_organization"] == canonical
+    assert context["organization_tier"] == tier
+
+
+def test_long_form_ufc_label_uses_the_real_title_rule():
+    fights = pd.DataFrame(
+        [
+            {
+                "fight_url": "ufc1",
+                "event_date": "1993-11-12",
+                "event_name": "UFC 1 - The Beginning",
+                "source": "sherdog_majors",
+                "org": "Ultimate Fighting Championship (UFC)",
+                "weight_class": None,
+                "fighter_a": "Royce Gracie",
+                "fighter_b": "Gerard Gordeau",
+                "winner": "Royce Gracie",
+                "is_draw": False,
+                "is_title_fight": True,
+            },
+            {
+                "fight_url": "ufc330",
+                "event_date": "2026-08-15",
+                "event_name": "UFC 330",
+                "source": "sherdog_majors",
+                "org": "Ultimate Fighting Championship (UFC)",
+                "weight_class": "UFC Welterweight Title Bout",
+                "fighter_a": "Islam Makhachev",
+                "fighter_b": "Ian Machado Garry",
+                "winner": "Islam Makhachev",
+                "is_draw": False,
+                "is_title_fight": True,
+            },
+        ]
+    )
+
+    ledger = source_title_resume_ledger(fights).set_index("fighter")
+
+    assert "Royce Gracie" not in ledger.index
+    assert ledger.loc["Islam Makhachev", "public_legacy_title_wins"] == 1
+
+
+def test_regional_family_labels_do_not_share_a_championship_lineage():
+    fights = pd.DataFrame(
+        [
+            {
+                "fight_url": "lfa",
+                "event_date": "2020-01-01",
+                "event_name": "LFA 80",
+                "org": "Major Regional",
+                "weight_class": "Lightweight",
+                "fighter_a": "Champion",
+                "fighter_b": "LFA Challenger",
+                "winner": "Champion",
+                "is_draw": False,
+                "is_title_fight": True,
+            },
+            {
+                "fight_url": "cffc",
+                "event_date": "2021-01-01",
+                "event_name": "CFFC 90",
+                "org": "Major Regional",
+                "weight_class": "Lightweight",
+                "fighter_a": "Champion",
+                "fighter_b": "CFFC Challenger",
+                "winner": "Champion",
+                "is_draw": False,
+                "is_title_fight": True,
+            },
+        ]
+    )
+
+    ledger = source_title_resume_ledger(fights).set_index("fighter")
+
+    assert ledger.loc["Champion", "public_legacy_title_wins"] == 2
+    assert ledger.loc["Champion", "public_legacy_title_defenses"] == 0
 
 
 def test_source_title_resume_ledger_infers_defenses_with_blank_org():

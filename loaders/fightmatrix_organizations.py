@@ -12,7 +12,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_RULES_PATH = (
     PROJECT_ROOT / "data" / "external" / "fightmatrix" / "organization_normalization.csv"
 )
-RULESET_VERSION = "2026-08-14.1"
+RULESET_VERSION = "2026-09-08.1"
 
 
 @lru_cache(maxsize=4)

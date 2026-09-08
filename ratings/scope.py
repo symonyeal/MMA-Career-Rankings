@@ -421,7 +421,12 @@ def merge_scope(
         extra, dropped = scope_guard(extra, merged, source=source)
         merged = pd.concat([merged, extra], ignore_index=True, sort=False)
         orgs = sorted(extra.get("org", pd.Series(dtype=str)).dropna().unique())
-        print(f"[{label}] scope {source}: merged {len(extra):,} bouts (orgs: {orgs})")
+        sample = ", ".join(map(str, orgs[:8]))
+        more = f", +{len(orgs) - 8:,} more" if len(orgs) > 8 else ""
+        print(
+            f"[{label}] scope {source}: merged {len(extra):,} bouts "
+            f"across {len(orgs):,} org labels ({sample}{more})"
+        )
         if dropped:
             print(f"[{label}] scope {source}: guard dropped "
                   f"{sum(dropped.values()):,} rows: {dropped}")

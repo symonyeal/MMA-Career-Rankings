@@ -1,6 +1,75 @@
-sherdog_name,canonical_name,note
-Ronaldo Souza,Jacare Souza,ring name Jacare; Sherdog indexes the legal name
-Antonio Rogerio Nogueira,Rogerio Nogueira,Minotouro; UFC set drops the first given name
-Mike Thomas Brown,Mike Brown,middle name carried by Sherdog only
-Ovince St. Preux,Ovince Saint Preux,abbreviated vs spelled surname
-Rich Crunkilton,Richard Crunkilton,short form of the given name
+sherdog_id,sherdog_name,canonical_name,note
+,Patricio Pitbull,Patricio Freire,global ring-name spelling used by UFCStats in 2026
+40,Christophe Leininger,Christophe Leninger,shared UFC 13 bout with Guy Mezger
+45,Felix Mitchell,Felix Lee Mitchell,shared UFC 3 bout with Ken Shamrock
+109,He-Man Ali Gipson,He-Man Gipson,shared UFC 6 bout with Anthony Macias
+153,Kazuo Takahashi,Yoshiki Takahashi,shared UFC 12 bout with Wallid Ismail
+164,Steven Graham,Steven Graham,shared UFC 13 bouts identify the UFC namesake
+190,Tsuyoshi Kosaka,Tsuyoshi Kohsaka,six shared UFC bouts
+213,Darrell Gholar,Darrel Gholar,shared UFC 18 bout with Evan Tanner
+1542,Rich Crunkilton,Richard Crunkilton,verified long-form given name
+2270,Antonio Rogerio Nogueira,Rogerio Nogueira,verified omitted first given name
+7358,Chris Saunders,Chris Saunders,shared UFC bout identifies the UFC namesake
+2490,Joao Marcos Pierini,Joao Pierini,shared UFC 37 bout with Yves Edwards
+3069,Mike Thomas Brown,Mike Brown,verified middle-name variant
+8394,Ronaldo Souza,Jacare Souza,verified ring name Jacare
+9960,Patricio Freire,Patricio Freire,shared UFC bouts and established career identity
+13270,Josh Schockman,Josh Shockman,shared UFC 65 bout with Jake O'Brien
+15882,Steven Lynch,Stevie Lynch,shared UFC 72 bout with Dustin Hazelett
+17052,Joseph Duffy,Joe Duffy,eight shared UFC bouts
+18184,Douglas Evans,Doug Evans,two shared UFC bouts identify the UFC namesake
+21962,Anistavio Medeiros de Figueiredo,Anistavio Medeiros,shared UFC 147 bout with Rodrigo Damm
+230,John Lewis,John Lewis,shared UFC bout identifies the UFC namesake
+23762,Daniel Barrera,Dan Barrera,shared TUF finale bout with Ben Saunders
+26368,Guan Wang,Wang Guan,shared UFC Shanghai bout with Alex Caceres
+28041,Junie Allen Browning,Junie Browning,shared UFC Fight Night bout with Cole Miller
+31897,Rodolfo Rubio,Rodolfo Rubio Perez,shared UFC 180 bout with Diego Rivas
+38842,Ovince St. Preux,Ovince Saint Preux,verified surname abbreviation
+1950,Mario Neto,Mario Neto,shared UFC bout identifies the UFC namesake
+39485,Dan Spohn,Daniel Spohn,shared TUF finale bout with Patrick Walsh
+44627,Alvaro Herrera,Alvaro Herrera Mendoza,verified compound family name
+45721,Humberto Brown,Humberto Brown Morrison,shared UFC 180 bout with Gabriel Benitez
+46484,Manuel Rodriguez,Manuel Rodriguez,shared UFC bout identifies the UFC namesake
+48631,Vinicius Kappke de Queiroz,Vinicius Queiroz,shared UFC 120 bout with Rob Broughton
+53369,Christopher Mario Beal,Chris Beal,five shared UFC bouts identify the UFC namesake
+37421,Eddie Mendez,Eddie Mendez,shared UFC bout identifies the UFC namesake
+57480,Bruno Mesquita,Bruno Korea,shared TUF Brazil bout with Matheus Nicolau
+59838,Steven Ray,Stevie Ray,nine shared UFC bouts identify the UFC namesake
+61700,Renato Carneiro,Renato Moicano,verified ring name across twenty events
+66304,Bruno Silva,Bruno Silva,shared UFC bouts identify the middleweight namesake
+71390,Mizuki Inoue,Mizuki,verified UFC mononym
+77297,Alberto Emiliano Pereira,Alberto Uda,verified ring name across two events
+83282,Roberto Sanchez,Robert Sanchez,three shared UFC bouts identify the UFC namesake
+50928,Mike King,Mike King,shared UFC bout identifies the UFC namesake
+86855,Bharat Khandare,Bharat Kandare,shared UFC Shanghai bout with Song Yadong
+91345,Maia Kahaunaele,Maia Stevenson,shared UFC Belem bout with Polyana Viana
+100903,Zachary Reese,Zach Reese,seven shared UFC bouts identify the UFC namesake
+100921,Vernon Ramos,Vernon Ramos Ho,shared TUF Latin America bout with Alvaro Herrera
+133527,Victor Valenzuela,Victor Valenzuela,shared UFC bout identifies the UFC namesake
+116389,Dmitriy Sosnovskiy,Dmitry Sosnovskiy,shared UFC London bout with Mark Godbeer
+117585,Kai Kamaka III,Kai Kamaka,four shared UFC bouts identify the UFC namesake
+138223,Amanda Bobby Brundage,Amanda Cooper,verified married name across five events
+153799,Alex da Silva Coelho,Alex Da Silva,four shared UFC bouts
+177975,Victor Rodriguez,Victor Rodriguez,shared UFC bout identifies the UFC namesake
+156965,Osman Diaz,Ozzy Diaz,three shared UFC bouts
+160545,Lijiburen Wu,Wulijiburen,verified transliteration across two events
+175799,Montserrat Ruiz,Montserrat Conejo Ruiz,verified compound family name across five events
+176083,Jingnan Xiong,Xiong Jingnan,shared UFC bout with Angela Hill
+184933,Phil Brooks,CM Punk,shared UFC 203 bout with Mickey Gall
+203965,Jesus Santos Aguilar,Jesus Aguilar,seven shared UFC bouts identify the UFC namesake
+264071,Dean Barry,Dean Barry,shared UFC bout identifies the UFC namesake
+213673,Zach Scroggin,Zachary Scroggin,shared UFC Vegas bout with Elizeu Zaleski dos Santos
+257533,Ming Shi,Shi Ming,shared Road to UFC bout with Bruna Brasil
+270881,Konklak Suphisara,Loma Lookboonmee,verified Thai ring name across eight events
+270755,Christian Edwards,Christian Edwards,shared UFC bout identifies the UFC namesake
+273205,Shaqueme Rock,Shem Rock,shared UFC Shanghai bout with Nurullo Aliev
+284119,Jieleyisi Baergeng,Baergeng Jieleyisi,shared Road to UFC bout with Suyoung You
+330615,Vlastislav Cepo,Vlasto Cepo,shared UFC Vegas bout with Gilbert Urbina
+336819,Maheshate Hayisaer,Maheshate,verified UFC mononym
+344561,Rafael Cerquiera,Rafael Cerqueira,shared UFC Qatar bout with Abdul Rakhman Yakhyaev
+360875,Ty Cole Miller,Ty Miller,two shared UFC bouts
+380968,Nueraji Taiyilake,Taiyilake Nueraji,shared UFC Shanghai bout with Kiefer Crosbie
+38190,Rony Mariano Bezerra,Rony Jason,verified ring name across four events
+395495,Allen Frye,Allen Frye Jr.,shared UFC 323 bout with Guilherme Pat
+398299,Jose Luiz,Jose Montanha,shared UFC Vegas bout with Louie Sutherland
+399822,Nina Nikolija Milosevic,Nina Milosevic,shared UFC Vegas bout with Hailey Cowan

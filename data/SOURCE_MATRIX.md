@@ -144,15 +144,17 @@ without a passing audit. `rating_run.json` publishes the result.
 
 ### Matching a public bout to the canonical UFC table
 
-This is a name problem, not just a key problem. The overlap test scans a one-day
-window — public profiles date some Asian cards a day later than the UFC source —
-and treats a name-order permutation, a generational suffix, a token subset and a
-three-character first-name prefix as the same fighter. Names no rule can derive
-(a ring name replacing a family name, a married name, a mononym) live in
-`data/external/fightmatrix/name_aliases.csv`, which records the reason and the
-number of shared event dates behind each pair. That file is project-owned and
-separate from the vendored `data/external/aliases/fighter_aliases.csv`, whose
-upstream attribution must stay intact.
+This is an identity problem, not just a name problem. Sherdog's numeric fighter
+id is the cross-source key. Exact normalized names join conservatively; a
+source-id claim or a name no rule can derive (ring name, married name, mononym)
+lives in the sole project-owned register,
+`data/external/crossorg/identity_overrides.csv`, with its evidence. Canonical UFC
+rows inherit a resolved spelling only where date plus opponent identifies one
+bout on each source; same-day tournament repeats deliberately abstain. Distinct
+ids claiming one display name remain distinct unless shared-bout evidence or an
+explicit id identifies the UFC fighter. The vendored
+`data/external/aliases/fighter_aliases.csv` remains separate so its upstream
+attribution stays intact.
 
 ### What FightMatrix is never allowed to contribute
 
@@ -244,16 +246,28 @@ source-specific fighter/division fields where those columns exist.
 |-------|------------|--------------------------------------------|-------|
 | any   | mmadecoded | `(event_date, fighter_a, fighter_b)`       | Logged to `data/snapshots/<date>/_fallbacks.log`. |
 
+## 9. Committed UFC 1 backfill
+
+| Field | Source | Shape | Notes |
+|-------|--------|-------|-------|
+| all canonical columns | `data/external/ufc/ufc1_fights.csv` | eight rows, hand-entered from the official UFC event record | The upstream results table starts at UFC 2, so the sport's first event would otherwise reach the model only through a cross-org crawl, incompletely and under a promotion label the rules did not read. |
+
+`ratings/rules_era.load_pre_unified_fights` joins the file on the same bout
+fingerprint the rest of the corpus dedupes on, refuses to run if the file is
+missing, and refuses a file that is not the complete eight-bout card. The
+tournament final carries `weight_class = "UFC Tournament Title Bout"`, which
+`is_real_ufc_title_bout` rejects, so admitting UFC 1 does not credit a title.
+
 ## Exclusion rules (rating engine drops these)
 
-- `event_date < 2000-11-17` → pre-unified-rules era (UFC 1–27). Dropped from the canonical table, then re-admitted only by the named `pre_unified` rating scope.
+- `event_date < 2000-11-17` → pre-unified-rules era (UFC 1–27). Dropped from the canonical table, then re-admitted only by the named `pre_unified` rating scope, which is where the committed UFC 1 card joins.
 - `method_class == "Overturned"` → drug-violation reversal or post-fight overturn.
 - `method_class == "Could Not Continue"` → treated as NC for rating purposes.
 - `is_nc` true → no contest.
 
 All excluded bouts are persisted to `_excluded_bouts.csv` for audit.
 
-## Rating and policy architecture (current through 2026-09-03)
+## Rating and policy architecture (current through 2026-09-08)
 
 The public rating uses method-aware WHR. Binary Glicko-2 and binary WHR remain
 comparison models:
@@ -263,7 +277,7 @@ comparison models:
 | `mu_canonical` | causal skill filter | Strict W/L/D Glicko-2. |
 | `mu_whr` | retrospective skill smoother | Method-aware Whole-History Rating, one shared likelihood weight per bout, era-neutral. `WHR_WINNER_SCORE_COL = None` restores the binary comparison. Prior mass is fixed per fighter, so an undefeated record's rating rises with the evidence behind it. |
 | `mu_method` | research diagnostic | Glicko-2 stream scored with `method_score_winner` in the canonical pass; not public/core evidence. |
-| `public_legacy_score` | public All-time board | Exposure-adjusted skill plus title and opponent-quality ledgers. Wins over returning opponents use the shared layoff price; components are published separately and sum exactly to the score. |
+| `public_legacy_score` | public All-time board | Exposure-adjusted skill plus title and opponent-quality ledgers. A championship lineage is keyed to one promotion, never to a family or to the absence of a label, so two promotions cannot share a belt. Wins over returning opponents use the shared layoff price; components are published separately and sum exactly to the score. |
 | `symon_career_skill_mass` | diagnostic career functional | Annual field-relative WHR skill mass. It is retained for audit and is not the public board. |
 | `symon_prime_score` | period diagnostic | Fixed 10y/13-appearance EB-shrunk WHR mean. `symon_peak_score` is no longer produced by the rating snapshot. |
 | `elite_prime_score` | public Prime board | Wins over tested contenders multiplied by the fighter's average level above the lowest qualifying Prime level. The published table shows those two inputs rather than this internal ordering value. |

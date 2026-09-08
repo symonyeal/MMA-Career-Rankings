@@ -1,5 +1,66 @@
 # Snapshot Changelog
 
+## 2026-09-08 - Cross-source seam repaired: identity, promotion labels, UFC 1
+
+Every defect in this entry sat at the join between the two fight corpora, not in
+the scoring rules. The rated scope moved from 81,479 bouts to 81,365 and from
+34,108 rated fighters to 34,061; both boards were refitted and republished.
+
+**Identity is resolved on Sherdog's fighter id, not on the display name.** The
+join was previously name-only, which merged people, split people and rated some
+bouts twice.
+
+- `data/external/crossorg/identity_overrides.csv` is now the single
+  project-owned register, and it carries a source id per row. The two
+  FightMatrix registers it replaces are archived under
+  `_archive/20260908-cross-source-identity-register/`.
+- `normalize_name_key` strips a terminal `(sherdog:NNNNN)` suffix, so a
+  disambiguated namesake still dedupes against the same person's other rows.
+- Canonical UFC rows inherit a resolved spelling only where a date and an
+  opponent identify exactly one bout on each side; same-day tournament repeats
+  abstain, which is what keeps a card like UFC 13 from merging two fighters.
+- One `Bruno Silva` holding eleven flyweight and eleven middleweight UFC bouts
+  is now two fighters. `Joseph Duffy`/`Joe Duffy`, `Patricio Freire`/`Patricio
+  Pitbull`, `Tsuyoshi Kosaka`/`Tsuyoshi Kohsaka` and `Alex Da Silva`/`Alex da
+  Silva Coelho` are each one fighter.
+- Duplicate bout fingerprints in the rated scope: 0. Duplicate (date, fighter
+  pair) keys under any spelling: 0.
+
+Most of the 47 pairs that a name-similarity probe proposed were not aliases at
+all — a tournament card puts one fighter in two bouts on one day, which the
+probe read as two spellings of one name. They were resolved from shared-bout
+evidence instead, and only genuinely verified cases were written to the register.
+
+**The promotion rule table now speaks the crawl's vocabulary.** The rules were
+written against FightMatrix labels while 90% of the corpus arrives with
+Sherdog's, so 10,989 rated bouts carried a promotion name that read as no name
+at all. That count is now 0.
+
+- `Ultimate Fighting Championship (UFC)` matched no rule and normalized to
+  Unknown at tier 4. That covered all eleven bouts of UFC 330, five of UFC 1 and
+  the Road to UFC series.
+- LFA, ACA, KSW, CFFC, CES MMA, KOTC, Titan FC and WSOF are named and tiered
+  rather than pooled, so no labelled bout falls to the regional family bucket.
+- A championship lineage is keyed to one promotion identity. Unidentified
+  promotions no longer share a single belt per division.
+
+**UFC 1 is in the corpus.** The upstream results table starts at UFC 2, so the
+eight-bout card is committed as `data/external/ufc/ufc1_fights.csv` and joined
+in the pre-unified scope, which now holds 261 bouts across 31 events. The
+tournament final is not counted as a title.
+
+**The coverage gate can fail.** `career_coverage` now reports unresolved
+source-id claims and sees suffixed identities, which the previous version could
+not: it scored a fighter carrying two men's careers as fully covered. Coverage
+reads 1,816 of 1,827 eligible careers, 99.4%, against 1,821 of 1,825 before —
+the number got worse because the repair exposed careers a false merge had hidden.
+
+**Published surfaces.** The women's Prime section is headed as qualifiers rather
+than a top ten it never had; women's boards print women's division labels; and
+the missing-promotion share reads 54%, which is now measured rather than quoted
+from three places that disagreed. The exposure pseudo-count was re-measured on
+the repaired corpus and `k = 5` was retained on the evidence, not on inheritance.
+
 ## 2026-09-03 - Publication contract reconciled
 
 No published score or rank changed. The public documents now state the current
