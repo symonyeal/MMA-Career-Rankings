@@ -374,7 +374,7 @@ ORG_FACTOR_BY_TIER = {
     4: 0.20,
 }
 
-# Pseudo-count for the exposure factor, in bouts. 54.0% of rated bouts carry no
+# Pseudo-count for the exposure factor, in bouts. 54.1% of rated bouts carry no
 # promotion label, and an unlabelled bout is missing evidence, not evidence of a
 # weak promotion -- so it is left out of the average rather than scored at the
 # tier-4 floor. Dropping it outright would then read a career identified on two
@@ -388,8 +388,8 @@ ORG_FACTOR_BY_TIER = {
 # unlabelled. On one fixed population against the shipped board, k = 5 reproduces
 # the written exposure ledger exactly, holds the guard (top-100 fighters with no
 # UFC bout stays at 3), leaves top-100 fighters scoring zero on titles at 12 --
-# what the tier-4 rule also reads -- and reads 0.6459 against elite wins where the
-# tier-4 rule reads 0.6297, the best of every arm tried. k = 10 breaks the guard
+# what the tier-4 rule also reads -- and reads 0.6479 against elite wins where the
+# tier-4 rule reads 0.6337, the best of every arm tried. k = 10 breaks the guard
 # at 4 and is the bound above. No outside list resolved any arm -- every sign test
 # came back p >= 0.08 -- so this ships on mechanism, and the outside check could
 # not detect it either way.

@@ -136,22 +136,23 @@ pass on 2026-09-02 closed all but four of those, because the careers merged in
 the first pass named the missing fighters as opponents and made them
 identifiable.
 
-| | before | after the 2026-08-27 repair | after the 2026-09-02 completion |
-|---|---:|---:|---:|
-| Sherdog fights held | 63,813 | 80,902 | **81,875** |
-| fights used in the model | 67,920 | 80,697 | **81,281** |
-| fighters rated | 28,867 | 33,692 | **34,085** |
-| eligible roster with whole-career rows merged | 547 (30.0%) | 1,743 (95.5%) | **1,821 (99.8%)** |
+| | before | after the 2026-08-27 repair | after the 2026-09-02 pass | after the 2026-09-08 completion |
+|---|---:|---:|---:|---:|
+| Sherdog fights held | 63,813 | 80,902 | 81,875 | **82,028** |
+| fights used in the model | 67,920 | 80,697 | 81,281 | **81,512** |
+| fighters rated | 28,867 | 33,692 | 34,085 | **34,126** |
+| eligible roster with whole-career rows merged | 547 (30.0%) | 1,743 (95.5%) | 1,821 (99.8%) | **1,827 (100.0%)** |
 
 The four careers that remained unmerged at that point are named in
 [Open decisions](DECISIONS.md); each was a Sherdog identity that could not be
 resolved, not a page that failed to download.
 
-That last row was overtaken on 2026-09-08. The cross-source identity repair
-separated careers a name-only join had merged, which added eligible identities
-that had been hidden inside another fighter's record, and coverage now reads
-1,816 of 1,827 (99.4%) with eleven pages left to crawl. The figures in this
-table are the 2026-09-02 measurement and are kept as the record of it.
+The cross-source identity repair on 2026-09-08 separated careers a name-only
+join had merged, exposing eleven additional pages that needed incorporation.
+The completion crawl fetched every one, parsed 252 career rows and added 153
+fights after event-card precedence. The final refit therefore measures 1,827 of
+1,827 eligible careers (100.0%). Earlier columns remain as the record of each
+intermediate pass.
 
 **What the last 4.3 points of coverage were worth.** Khabib Nurmagomedov is the
 clean test, because his was one of the truncated records. His rating sat 206
@@ -216,9 +217,9 @@ the record that owns them rather than being restated here.
   board position under "What it fixed" above predates them: the winner's credit
   now reflects how the fight ended, and the title résumé carries a measured
   promotion correction.
-- Four eligible careers remain unmerged after the 2026-09-02 completion pass,
-  all of them unresolvable Sherdog identities. They are named in
-  [Open decisions](DECISIONS.md).
+- The 2026-09-08 completion crawl closed the residual exposed by the identity
+  repair. All 1,827 eligible careers now have whole-career rows merged, and the
+  final board was refitted on that corpus.
 
 ## Reproduce
 

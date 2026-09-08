@@ -92,7 +92,7 @@ Where the data comes from is [Source Matrix](../data/SOURCE_MATRIX.md).
    prices at 0.119 against Bellator's 0.059, difference +0.061, CI95 [+0.044,
    +0.078] — but the table itself was never justified.
 
-   **What an unlabelled bout is worth is now settled.** Shipped 2026-09-02. 54.0%
+   **What an unlabelled bout is worth is now settled.** Shipped 2026-09-02. 54.1%
    of rated bouts carry no promotion, and the rule this replaced read every one of
    them as the lowest tier, 0.20 — the same number a genuinely small show gets.
    An unlabelled bout is missing evidence, not evidence of a weak promotion, so it
@@ -106,40 +106,41 @@ Where the data comes from is [Source Matrix](../data/SOURCE_MATRIX.md).
    Re-measured on 2026-09-08 after the promotion vocabulary was completed, since
    the arms had first been compared while a rule-table gap was reading 13.5% of
    labelled bouts as unlabelled. `k = 5` still wins: it holds the guard that
-   top-100 fighters with no UFC bout stays at three, and reads 0.6459 against
-   elite wins where the tier-4 rule reads 0.6297. `k = 10` breaks that guard at
+   top-100 fighters with no UFC bout stays at three, and reads 0.6479 against
+   elite wins where the tier-4 rule reads 0.6337. `k = 10` breaks that guard at
    four and is the bound above.
 
    Measured on one fixed population against the shipped board:
 
    | unlabelled bout treated as | top 100 with no UFC bout | top 100 zero on titles | agreement, elite wins | agreement, Prime |
    |---|---:|---:|---:|---:|
-   | lowest tier, 0.20 — the rule replaced | 2 | 14 | 0.6067 | 0.5629 |
-   | left out, no shrinkage (`k = 0`) | 2 | 15 | 0.6075 | **0.5740** |
-   | recognised regional, 0.42 | 2 | 14 | 0.6093 | 0.5732 |
-   | left out, `k = 1` | 2 | 15 | 0.6094 | 0.5722 |
-   | left out, `k = 3` | 2 | **13** | 0.6110 | 0.5707 |
-   | **left out, `k = 5` — shipped** | **2** | **13** | **0.6132** | 0.5678 |
-   | left out, `k = 10` | **3** | 12 | 0.6143 | 0.5628 |
+   | lowest tier, 0.20 — the rule replaced | 3 | 12 | 0.6337 | 0.6153 |
+   | left out, no shrinkage (`k = 0`) | 3 | 13 | 0.6403 | **0.6434** |
+   | recognised regional, 0.42 | 3 | 12 | 0.6304 | 0.6235 |
+   | left out, `k = 1` | 3 | 13 | 0.6423 | 0.6404 |
+   | left out, `k = 3` | 3 | **12** | 0.6445 | 0.6335 |
+   | **left out, `k = 5` — shipped** | **3** | **12** | **0.6479** | 0.6260 |
+   | left out, `k = 10` | **4** | **11** | 0.6455 | 0.6184 |
 
    `k = 10` is the bound above: it breaks the failure that refuted removing
-   exposure altogether on 2026-08-27, putting a third fighter with no UFC bout in
-   the top 100. Every lighter arm holds that guard at 2.
+   exposure altogether on 2026-08-27, putting a fourth fighter with no UFC bout in
+   the top 100. Every lighter arm holds that guard at 3.
 
-   **The outside check could not detect any of this.** For the shipped arm,
-   The 100 Greatest +0.0052 (p 0.36), FightMatrix +0.0090 (p 0.34), Tapology
-   −0.0121 (p 0.64), ESPN unchanged. Every sign test across every arm came back
-   p >= 0.23. This ships on mechanism, which is what a score change ships on, and
-   no claim is made that the outside lists chose it.
+   **The outside check could not detect any of this.** Against the replaced
+   tier-4 arm, the shipped arm reads The 100 Greatest +0.0086 (p 0.17),
+   FightMatrix +0.0031 (p 0.42), Tapology +0.0121 (p 0.58) and ESPN +0.0242
+   (p 0.58). Every sign test across every arm came back p >= 0.12. This ships on
+   mechanism, which is what a score change ships on, and no claim is made that
+   the outside lists chose it.
 
    **Two corrections to what this item used to say.** The three-way table it
    carried was measured against the *pre-floor* board — baseline elite wins
    0.5911, Prime 0.5312 — so its numbers are not comparable with anything
    measured since, and they are replaced above rather than extended. On that
    pre-floor population, leaving unlabelled bouts out moved FightMatrix −0.0272
-   (p 0.052); re-measured against the shipped board the same arm moves it
-   +0.0050. The direction reversed with the population, which is why the earlier
-   run cannot be read as evidence either way.
+   (p 0.052); re-measured against the completed shipped board the same arm moves
+   it +0.0031 (p 0.42). The direction reversed with the population, which is why
+   the earlier run cannot be read as evidence either way.
 
    **What the change does not fix.** Sean Strickland rises 20 to 17, and he is
    this project's named symptom of paying for exposure rather than contention.
@@ -148,9 +149,8 @@ Where the data comes from is [Source Matrix](../data/SOURCE_MATRIX.md).
    it is not answered by it either. A career identified from a handful of bouts
    still receives an estimate rather than an admission that it cannot be told
    apart. Harness:
-   `Claude Func Folder\ufc-rank-engine\py\exposure_unknown_shapes.py`;
-   the shipped ledger is verified equal to the `shrink5` arm by
-   `Claude Func Folder\ufc-rank-engine\py\verify_shrinkage_ship.py`.
+   `Claude Func Folder\ufc-rank-engine\py\exposure_unknown_shapes.py`, which
+   also refuses a run unless the shipped ledger exactly reproduces `shrink5`.
 5. **Two contender bars, not one.** The résumé uses the absolute contender line;
    the title résumé uses a division-year quantile. Unifying them was measured and
    reverted on 2026-08-26 for reasons that still hold: fix the rating first.
@@ -263,30 +263,18 @@ decline in exactly the buckets where a published board is most likely to be
 questioned, and no measured rate from this estimator should be quoted as the
 cost of aging.
 
-## Remaining data work
+## Completed data work
 
-7. **Eleven eligible fighter careers are unmerged, and every one of them is now
-   a missing career page rather than an unresolved identity.** Stevie Ray, Bruno
-   Silva (sherdog:118601), Zach Reese, Joe Duffy, Jesus Aguilar, Chris Beal,
-   Leonardo Mafra, Alex Da Silva, Robert Sanchez, Thiago Perpetuo and Marcos
-   Vinicius each have three or more UFC bouts and a resolved Sherdog id, but no
-   page in the store, so the corpus holds only the cards it crawled by event.
-   Merged coverage is 1,816 of 1,827 eligible careers, 99.4%.
+7. **Whole-career coverage is complete.** Resolved 2026-09-08. The completion
+   crawl fetched all eleven pages exposed by the identity repair, parsed 252
+   career rows and added 153 fights after event-card precedence. Merged coverage
+   is 1,827 of 1,827 eligible careers, 100.0%, with no unresolved source-ID
+   conflict.
 
-   The count rose from four because the cross-source identity repair separated
-   careers a name-only join had merged. `Bruno Silva (sherdog:118601)` and
-   `Joe Duffy` are eligible identities that did not exist before, because their
-   bouts were sitting inside another fighter's record. The measured number got
-   worse as the data got better, which is what the gate is for.
-
-   One consequence is still visible on a board: with 118601's page unmerged, the
-   2021-05-22 flyweight bout against Victor Rodriguez has no Sherdog counterpart
-   to align against, so it stays on the middleweight `Bruno Silva`, whose other
-   eleven UFC bouts are all at middleweight.
-
-   Closing all eleven is one crawl through the existing cached loader, then a
-   restage and a refit. It was not run here because it changes the rated corpus,
-   so every published board would have to be rebuilt with it.
+   The full published scope was restaged, refitted and republished. In particular,
+   the 2021-05-22 flyweight bout against Victor Rodriguez now aligns to
+   `Bruno Silva (sherdog:118601)`: all eleven of his UFC bouts are flyweight, and
+   all eleven UFC bouts belonging to the other `Bruno Silva` are middleweight.
 
 ## Accepted limitations and clarifications
 

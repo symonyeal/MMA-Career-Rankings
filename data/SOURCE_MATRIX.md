@@ -102,7 +102,9 @@ fighter's bouts the corpus happens to hold.
 `loaders/career_coverage.py` states it as a number that a build can assert on;
 the majors staging writes `career_coverage.parquet` and warns when the share
 falls below `MIN_WHOLE_CAREER_SHARE`, and `rate_snapshot` refuses a majors fit
-without a passing audit. `rating_run.json` publishes the result.
+without a passing audit. `rating_run.json` publishes the result. The completed
+2026-09-08 build measures 1,827 of 1,827 eligible careers (100.0%), with no
+unresolved source-ID conflict.
 **When a completeness figure is quoted here, name the axis it was measured on.**
 
 | Field                       | Source     | Notes |

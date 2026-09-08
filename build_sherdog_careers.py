@@ -49,15 +49,25 @@ all but four.
 The cross-source identity repair of 2026-09-08 then separated careers a
 name-only join had merged, which put identities like ``Bruno Silva
 (sherdog:118601)`` and ``Joe Duffy`` on the eligible roster for the first time.
-Coverage reads 1,816 of 1,827, 99.4%, and the eleven that remain each have a
-resolved Sherdog id and no page in the store -- so unlike the earlier four, they
-are a crawl this builder can do rather than an identity it cannot resolve.
+The completion crawl later that day fetched the eleven newly exposed pages and
+closed coverage at 1,827 of 1,827 eligible careers. It added 153 fights to the
+corpus, after event-card precedence, and the full published scope was refitted.
 
 Usage::
 
     python build_sherdog_careers.py --snapshot-dir data/snapshots/2026-08-13
     python build_sherdog_careers.py --report-only      # no network
 """
+
+# C    : canonical UFC fight table
+# M    : staged majors fight table
+# ID   : Sherdog-ID identity table
+# S    : Sherdog IDs already incorporated into the corpus
+# C_id : names carrying unresolved source-ID claims
+# C_a  : canonical table after cross-source identity alignment
+# F    : combined canonical and majors fight table
+# ID_r : usable, non-colliding identity rows
+
 from __future__ import annotations
 
 import argparse
@@ -87,6 +97,7 @@ from loaders.majors_scope import (  # noqa: E402
     resolve_identities,
     to_canonical_fights,
 )
+from loaders.crossorg_identity import align_identities, id_conflicts  # noqa: E402
 from loaders.sherdog_loader import resolve_fighter_url  # noqa: E402
 from loaders.sherdog_org_loader import (  # noqa: E402
     _session,
@@ -98,22 +109,26 @@ from loaders.sherdog_org_loader import (  # noqa: E402
 COVERAGE_REPORT = "career_coverage.json"
 
 def coverage_table(
-    canonical_fights: pd.DataFrame,
-    corpus_fights: pd.DataFrame,
-    identity: pd.DataFrame,
-    merged_ids: set[str],
+    C: pd.DataFrame,
+    M: pd.DataFrame,
+    ID: pd.DataFrame,
+    S: set[str],
+    C_id: set[str] | None = None,
 ) -> pd.DataFrame:
     """One row per UFC fighter: what the corpus holds and has incorporated."""
-    resolved = identity[identity["join_method"].ne("unjoined")]
+    C_a = align_identities(C, M)
+    F = pd.concat([C_a, M], ignore_index=True, sort=False)
+    ID_r = ID[~ID["join_method"].eq("collision")]
     return coverage_rows(
-        canonical_fights,
-        corpus_fights,
+        C_a,
+        F,
         sherdog_ids=(
-            resolved.assign(_id=resolved["sherdog_id"].astype(str))
+            ID_r.assign(_id=ID_r["sherdog_id"].astype(str))
             .drop_duplicates("canonical_name")
             .set_index("canonical_name")["_id"]
         ),
-        merged_ids=merged_ids,
+        merged_ids=S,
+        identity_conflicts=C_id,
     )
 
 
@@ -134,14 +149,14 @@ def main() -> dict:
     bouts = load_majors_bouts(majors_dir)
     identity = resolve_identities(bouts, canonical)
     staged = to_canonical_fights(bouts, identity)
-    corpus = pd.concat([canonical, staged], ignore_index=True, sort=False)
     # "Needs reading" is decided by whether the fighter's career rows are in the
     # CORPUS, not by whether their HTML is on disk. A cached page whose rows were
     # never merged is exactly as truncating as no page at all, and defining the
     # work from the cache makes the builder non-idempotent: a second run would
     # see every page cached and merge nothing.
     merged_ids = incorporated_page_ids(majors_dir, bouts)
-    table = coverage_table(canonical, corpus, identity, merged_ids)
+    C_id = id_conflicts(identity, bouts, canonical)
+    table = coverage_table(canonical, staged, identity, merged_ids, C_id)
     eligible = table[table["ufc_bouts"] >= args.min_ufc_bouts].copy()
     todo = eligible[~eligible["whole_career_merged"]]
     cached_ids = cached_page_ids(majors_dir)

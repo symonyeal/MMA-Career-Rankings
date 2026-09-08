@@ -192,9 +192,8 @@ def test_readme_policy_constants_are_the_ones_the_code_uses():
 def test_the_promotion_gap_matches_the_rated_scope():
     """The one coverage figure stated in prose, read back from the table.
 
-    It moved 64% -> 57% when event-card hydration landed, and nothing would
-    have caught it: the release block regenerates itself, this sentence does
-    not.
+    It moved with event-card hydration and again with the identity repair, but
+    the release block does not regenerate this sentence.
     """
     from loaders.combined_fights import load_combined_fights
 
@@ -214,8 +213,7 @@ def test_the_promotion_gap_matches_the_rated_scope():
     )
 
     # The same figure justifies the exposure estimator, and it is written out
-    # twice more. Those two copies read 64.5% while this one read 57%, so the
-    # repository argued with itself in three places. Pin them to the table.
+    # twice more. Those copies once disagreed, so pin all three to the table.
     # Both are wrapped prose, so match on one flat line.
     for path, phrase in (
         ("docs/DECISIONS.md", "of rated bouts carry no promotion"),

@@ -1,5 +1,28 @@
 # Snapshot Changelog
 
+## 2026-09-08 - Whole-career coverage completed
+
+The eleven pages exposed by the cross-source identity repair were fetched and
+incorporated. All 1,827 eligible careers now pass the whole-career gate, with no
+unresolved source-ID conflict.
+
+- The crawl parsed 252 career rows and added 153 fights after event-card
+  precedence, moving the preserved Sherdog table from 81,875 to 82,028 rows.
+- The crawl driver's report now applies the same source-ID identity alignment as
+  majors staging. Before that fix, its raw-name roster incorrectly reported
+  1,814 of 1,825 covered while the staged gate correctly read 1,816 of 1,827.
+  A regression test pins the two paths together.
+- The published scope was restaged and refitted: available records moved from
+  82,765 to 82,912, rated fights from 81,365 to 81,512 and rated fighters from
+  34,061 to 34,126. Both public boards were regenerated from that fit.
+- All eleven UFC flyweight bouts now belong to
+  `Bruno Silva (sherdog:118601)`; the other `Bruno Silva` retains his eleven UFC
+  middleweight bouts.
+- The exposure comparison was rerun on the final corpus. `k = 5` exactly
+  reproduces the shipped ledger, keeps three non-UFC fighters in the top 100 and
+  reads 0.6479 against elite wins versus 0.6337 under the tier-4 rule. `k = 10`
+  remains outside the guard at four.
+
 ## 2026-09-08 - Cross-source seam repaired: identity, promotion labels, UFC 1
 
 Every defect in this entry sat at the join between the two fight corpora, not in
@@ -23,8 +46,9 @@ bouts twice.
   is now two fighters. `Joseph Duffy`/`Joe Duffy`, `Patricio Freire`/`Patricio
   Pitbull`, `Tsuyoshi Kosaka`/`Tsuyoshi Kohsaka` and `Alex Da Silva`/`Alex da
   Silva Coelho` are each one fighter.
-- Duplicate bout fingerprints in the rated scope: 0. Duplicate (date, fighter
-  pair) keys under any spelling: 0.
+- Duplicate bout-identity keys in the rated scope: 0. One repeated coarse
+  fingerprint is the evidenced same-event Sakuraba/Silveira rematch, not a
+  duplicate row.
 
 Most of the 47 pairs that a name-similarity probe proposed were not aliases at
 all — a tournament card puts one fighter in two bouts on one day, which the

@@ -17,7 +17,7 @@ MIN_TURNAROUND_SAMPLE = 200
 FALLBACK_TURNAROUND_DAYS = 270.0
 
 # The charge is capped, because a gap is not proof of absence: it is equally the
-# shape of a fight the corpus does not hold. Whole-career coverage is 99.4% for
+# shape of a fight the corpus does not hold. Whole-career coverage is 100.0% for
 # the 1,827 fighters with three or more UFC bouts -- the only ones who can move
 # a published board -- and thinner outside them. Under-charging a genuine long
 # absence is the mistake worth making, because it errs toward the rating the

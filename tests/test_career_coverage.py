@@ -5,6 +5,12 @@ promotion and therefore has their pre-UFC regional record in the corpus while
 the other does not. The gate measures rows incorporated, not merely pages
 cached, because a cached but unmerged page still leaves the rated record short.
 """
+
+# C : canonical UFC fight table
+# M : staged majors fight table
+# ID : Sherdog-ID identity table
+# R : computed coverage rows
+
 from __future__ import annotations
 
 import pandas as pd
@@ -20,6 +26,7 @@ from loaders.career_coverage import (
 )
 from loaders.page_cache import open_cache
 from ratings.rate_snapshot import _require_career_coverage
+from build_sherdog_careers import coverage_table
 
 
 def _ufc_bouts(names: list[str], per_fighter: int = 5) -> pd.DataFrame:
@@ -118,6 +125,31 @@ def test_a_source_id_conflict_fails_even_below_the_career_floor():
     assert summary["eligible"] == 0
     assert summary["identity_conflicts"] == 1
     assert not is_coverage_symmetric(summary)
+
+
+def test_crawl_staging_identity_parity():
+    C = pd.DataFrame([
+        {"fighter_a": "Joseph Duffy", "fighter_b": "Dustin Poirier",
+         "event_date": "2016-01-02"},
+        {"fighter_a": "Joseph Duffy", "fighter_b": "Ivan Jorge",
+         "event_date": "2015-07-18"},
+        {"fighter_a": "Joseph Duffy", "fighter_b": "Mitch Clarke",
+         "event_date": "2016-07-07"},
+    ])
+    M = C.copy()
+    M["fighter_a"] = "Joe Duffy"
+    ID = pd.DataFrame([{
+        "sherdog_id": "17052",
+        "canonical_name": "Joe Duffy",
+        "join_method": "override_id",
+    }])
+
+    R = coverage_table(C, M, ID, set())
+
+    r = R.loc[R["fighter"].eq("Joe Duffy")].iloc[0]
+    assert r["ufc_bouts"] == 3
+    assert r["sherdog_id"] == "17052"
+    assert "Joseph Duffy" not in set(R["fighter"])
 
 
 def test_missing_extension_reports_no_careers_merged_rather_than_raising():
