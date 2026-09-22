@@ -155,13 +155,13 @@ def stage_pre_unified_scope(snapshot_dir: Path) -> dict:
     canonical = pd.read_parquet(snapshot_dir / "canonical_fights.parquet")
     unified_fighters = set(canonical["fighter_a"]) | set(canonical["fighter_b"])
     return {
-        "bouts": int(len(pre)),
+        "bouts": len(pre),
         "rateable_bouts": int((~pre["is_excluded"]).sum()),
         "events": int(pre["event_name"].nunique()),
-        "fighters": int(len(fighters)),
+        "fighters": len(fighters),
         # The boundary crossers. A rules-era level shift is identified only
         # through these fighters, which is why it is not attempted.
-        "fighters_also_in_unified_era": int(len(fighters & unified_fighters)),
+        "fighters_also_in_unified_era": len(fighters & unified_fighters),
         "date_span": [str(pre["event_date"].min().date()), str(pre["event_date"].max().date())],
         "artifact": str(snapshot_dir / SNAPSHOT_ARTIFACT),
     }

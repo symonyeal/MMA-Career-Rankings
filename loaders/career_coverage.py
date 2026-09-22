@@ -210,9 +210,9 @@ def coverage_summary(
         if len(merged) and len(unmerged) else 0.0
     )
     return {
-        "eligible": int(len(eligible)),
+        "eligible": len(eligible),
         "identity_conflicts": int(c_id.sum()),
-        "whole_career_merged": int(len(merged)),
+        "whole_career_merged": len(merged),
         "whole_career_share": float(len(merged) / len(eligible)),
         "median_pre_ufc_bouts_merged":
             float(merged["pre_ufc_bouts"].median()) if len(merged) else float("nan"),

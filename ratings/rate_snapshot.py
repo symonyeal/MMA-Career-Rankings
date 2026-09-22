@@ -196,9 +196,7 @@ def refresh_career_columns(
         columns=[
             c for c in current.columns
             if (
-                c.startswith("symon_career_")
-                or c.startswith("symon_peak_")
-                or c.startswith("public_legacy_")
+                c.startswith(("symon_career_", "symon_peak_", "public_legacy_"))
             )
         ],
         errors="ignore",
@@ -243,9 +241,9 @@ def refresh_career_columns(
             "career_reference": str(reference),
             "age_drift": True,
             "rated_bouts": int(metadata.get("rated_bouts", len(source_fights))),
-            "birth_dates": int(len(load_birth_dates(snapshot_dir))),
-            "history_rows": int(len(history)),
-            "current_fighters": int(len(current)),
+            "birth_dates": len(load_birth_dates(snapshot_dir)),
+            "history_rows": len(history),
+            "current_fighters": len(current),
             "events_processed": int(history["event_date"].nunique()),
         }
     )
@@ -578,7 +576,8 @@ def run(
     # Integrity flags (PED + DQ + missed-weight)
     integrity = build_integrity_flags(fights, mdabbert_csv=mdabbert_csv)
     # Merge flags onto the fight rows for the audit layers and exclusions.
-    fights = fights.drop(columns=[c for c in INTEGRITY_COLUMNS if c != "fight_url" and c in fights.columns], errors="ignore")
+    fights = fights.drop(columns=[c for c in INTEGRITY_COLUMNS
+                                  if c != "fight_url" and c in fights.columns], errors="ignore")
     fights = fights.merge(integrity, on="fight_url", how="left")
     fights = _ensure_integrity_columns(fights)
 
@@ -829,7 +828,8 @@ def run(
         f" DQ={int(integrity['is_dq'].fillna(False).sum())} "
         f" missed_weight={int(integrity['missed_weight'].fillna(False).sum())}"
     )
-    cov_rows = int((odds_lines.get('odds_data_quality', pd.Series(dtype=object)).eq('ok')).sum()) if not odds_lines.empty else 0
+    cov_rows = (int((odds_lines.get('odds_data_quality', pd.Series(dtype=object)).eq('ok')).sum())
+                if not odds_lines.empty else 0)
     print(f"odds-covered fights (ok-quality rows): {cov_rows}")
 
     print(
@@ -883,14 +883,14 @@ def run(
         "scope": scope,
         "career_reference": str(career_reference),
         "age_drift": True,
-        "rated_bouts": int(len(rated_fights)),
-        "birth_dates": int(len(birth_dates)),
+        "rated_bouts": len(rated_fights),
+        "birth_dates": len(birth_dates),
         # Keep the metadata invariant across a full fit and ``--career-only``.
         # The public career and board layers read WHR history; recording the
         # diagnostic Glicko row count here made the same snapshot report two
         # different values depending on which rebuild path ran last.
-        "history_rows": int(len(whr_history)),
-        "current_fighters": int(len(current)),
+        "history_rows": len(whr_history),
+        "current_fighters": len(current),
         "events_processed": int(whr_history["event_date"].nunique()),
         "combined_fights": combined_summary,
         # Whether the corpus gave every fighter the same coverage rule. A

@@ -376,7 +376,7 @@ def summary(identity: pd.DataFrame) -> dict:
     counts = identity["join_method"].value_counts()
     joined = {"name_key", "override", "override_id", "collision_resolved", "bout_evidence"}
     return {
-        "fighters": int(len(identity)),
+        "fighters": len(identity),
         "by_method": {str(k): int(v) for k, v in counts.items()},
         "joined_to_core": int(sum(int(counts.get(k, 0)) for k in joined)),
         "collisions": identity.loc[identity["join_method"].eq("collision"),

@@ -40,7 +40,7 @@ def test_implied_strength_recovers_a_known_level():
 def test_a_winless_record_is_shrunk_and_loosely_pinned_not_run_to_the_boundary():
     """Without the prior this had no interior maximum; with it, it is merely vague."""
     thin, thin_se = _implied_strength([(1600.0, 0.0), (1650.0, 0.0)])
-    balanced, balanced_se = _implied_strength([(1600.0, 1.0), (1600.0, 0.0)] * 10)
+    _balanced, balanced_se = _implied_strength([(1600.0, 1.0), (1600.0, 0.0)] * 10)
 
     assert np.isfinite(thin) and np.isfinite(thin_se)
     assert thin < 1600.0                      # winless still reads as weaker

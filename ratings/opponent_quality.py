@@ -135,7 +135,8 @@ def combined_opponent_quality_level(
     index = mu_level.index
     parts = [mu_level]
     if opponent_rank is not None:
-        parts.append(rank_context_quality_level(opponent_rank, opponent_champion, opponent_interim).reindex(index).fillna(0.0))
+        parts.append(rank_context_quality_level(opponent_rank, opponent_champion, opponent_interim)
+                     .reindex(index).fillna(0.0))
     if opponent_p4p_rank is not None:
         parts.append(p4p_quality_level(opponent_p4p_rank).reindex(index).fillna(0.0))
     if is_title is not None:

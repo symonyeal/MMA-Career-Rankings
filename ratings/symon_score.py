@@ -269,9 +269,7 @@ def _best_window(
         if best is None:
             best = candidate
             continue
-        if mean > best[0]:
-            best = candidate
-        elif mean == best[0] and (
+        if mean > best[0] or mean == best[0] and (
             n > best[1] or (n == best[1] and dates[i] < best[2])
         ):
             best = candidate

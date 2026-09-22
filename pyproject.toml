@@ -3,8 +3,33 @@ pythonpath = ["."]
 testpaths = ["tests"]
 addopts = "--basetemp=.test_tmp/pytest_ok -p no:cacheprovider"
 
+[tool.ruff]
+# This project writes to 120 columns. Holding it to ruff's narrower default would
+# reflow 454 lines that read correctly as they stand.
+line-length = 120
 # Archived material is preserved as evidence of past work, not maintained as
 # live code, so it is excluded from linting. Without this, the verification
 # command documented in README.md fails on retired research files.
-[tool.ruff]
-extend-exclude = ["_archive"]
+#
+# analysis/notebook.ipynb is written by analysis/build_notebook.py, so every
+# finding in it is a finding in its generator and would be reported twice.
+# The generator is linted; editing the artifact would be overwritten anyway.
+extend-exclude = ["_archive", "analysis/notebook.ipynb"]
+
+[tool.ruff.lint]
+# E501 is not in ruff's default selection, so line-length above is a formatting
+# setting until it is asked for. Select it so the check enforces what the
+# setting states.
+extend-select = ["E501"]
+# E741 rejects l, I and O as names. Rating code names variables after the
+# symbols in the sources, where single letters are the notation.
+# I001 orders and wraps imports. Ruff's only wrap mode puts one name per line,
+# which fights the compact register the rest of these files are written in.
+ignore = ["E741", "I001"]
+
+[tool.ruff.lint.per-file-ignores]
+# Both files hold long lines inside multi-line string literals, where a `noqa`
+# comment would become part of the string rather than a directive: the notebook
+# builder emits its cell source, and the loader test embeds a captured page.
+"analysis/build_notebook.py" = ["E501"]
+"tests/test_external_loaders.py" = ["E501"]

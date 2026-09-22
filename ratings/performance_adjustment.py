@@ -449,7 +449,7 @@ def decision_quality_score(row: pd.Series) -> float:
     method = row.get("method_class")
     if not isinstance(method, str):
         return METHOD_SCORE_UNANIMOUS
-    if method.startswith("Decision - Split") or method.startswith("Decision - Majority"):
+    if method.startswith(("Decision - Split", "Decision - Majority")):
         return METHOD_SCORE_NON_UNANIMOUS_DECISION
     if not method.startswith("Decision - Unanimous"):
         return METHOD_SCORE_UNANIMOUS
@@ -632,7 +632,8 @@ def pre_fight_win_streaks(fights: pd.DataFrame) -> pd.DataFrame:
     id_b = f["fighter_b"].map(fighter_id).fillna(-1).to_numpy(dtype=np.int64)
     a_won = f["winner"].eq(f["fighter_a"]).to_numpy()
     b_won = f["winner"].eq(f["fighter_b"]).to_numpy()
-    drawn = f["is_draw"].fillna(False).astype(bool).to_numpy() if "is_draw" in f.columns else np.zeros(len(f), dtype=bool)
+    drawn = (f["is_draw"].fillna(False).astype(bool).to_numpy()
+             if "is_draw" in f.columns else np.zeros(len(f), dtype=bool))
 
     streaks = np.zeros(len(names) + 1, dtype=np.int64)  # index -1 parks unnamed sides
     streak_a = np.zeros(len(f), dtype=np.int64)
@@ -785,7 +786,7 @@ def prefight_ranking_context(canonical_fights: pd.DataFrame, ratings_history: pd
     id_a = _ids(f["fighter_a"])
     id_b = _ids(f["fighter_b"])
     divisions = f["division"].to_numpy()
-    division_code, division_values = pd.factorize(f["division"], use_na_sentinel=True)
+    division_code, _division_values = pd.factorize(f["division"], use_na_sentinel=True)
     is_title = f["is_championship_bout"].fillna(False).astype(bool).to_numpy()
     is_interim = f["is_interim_title_bout"].fillna(False).astype(bool).to_numpy()
     winner_id = _ids(f["winner"]) if "winner" in f.columns else np.full(len(f), -1, dtype=np.int64)
@@ -1382,7 +1383,8 @@ def build_performance_appearances(
         [0.5, 1.0],
         default=0.0,
     )
-    out["market_residual"] = pd.to_numeric(out["actual_score"], errors="coerce") - pd.to_numeric(out["market_prob"], errors="coerce")
+    out["market_residual"] = (pd.to_numeric(out["actual_score"], errors="coerce")
+                              - pd.to_numeric(out["market_prob"], errors="coerce"))
     missing_american = pd.to_numeric(out["market_american_odds"], errors="coerce").isna()
     if missing_american.any():
         derived_american = out.loc[missing_american, "market_decimal_odds"].map(_american_from_decimal)

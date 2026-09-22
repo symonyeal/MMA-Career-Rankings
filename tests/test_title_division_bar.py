@@ -126,7 +126,7 @@ def _synthetic_snapshot(snapshot_dir: Path) -> None:
             for i in range(len(pool)):
                 # Round robin inside the division; the higher-rated name wins.
                 a, b = pool[i], pool[(i + 1) % len(pool)]
-                winner, loser = (a, b) if RATING[a] > RATING[b] else (b, a)
+                winner, _loser = (a, b) if RATING[a] > RATING[b] else (b, a)
                 title = division == "Flyweight" and year == 2024 and i == 0
                 # Spread the card across the year; thirty-two bouts no longer
                 # fit one per month.

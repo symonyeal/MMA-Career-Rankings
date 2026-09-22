@@ -14,10 +14,10 @@ def _chain_fights(n_events: int = 15) -> pd.DataFrame:
     rows = []
     for i in range(n_events):
         d = base + pd.Timedelta(days=120 * i)
-        rows.append(dict(fighter_a="A", fighter_b="B", winner="A", is_draw=False,
-                         event_date=d, event_name=f"E{i}a"))
-        rows.append(dict(fighter_a="B", fighter_b="C", winner="B", is_draw=False,
-                         event_date=d, event_name=f"E{i}b"))
+        rows.append({"fighter_a": "A", "fighter_b": "B", "winner": "A", "is_draw": False,
+                         "event_date": d, "event_name": f"E{i}a"})
+        rows.append({"fighter_a": "B", "fighter_b": "C", "winner": "B", "is_draw": False,
+                         "event_date": d, "event_name": f"E{i}b"})
     return pd.DataFrame(rows)
 
 
@@ -99,16 +99,16 @@ def _field(n_events: int = 30) -> list[dict]:
     for i in range(n_events):
         d = base + pd.Timedelta(days=90 * i)
         a, b = f"M{i % 6}", f"M{(i + 3) % 6}"
-        rows.append(dict(fighter_a=a, fighter_b=b, winner=a if i % 2 else b,
-                         is_draw=False, event_date=d, event_name=f"F{i}"))
+        rows.append({"fighter_a": a, "fighter_b": b, "winner": a if i % 2 else b,
+                         "is_draw": False, "event_date": d, "event_name": f"F{i}"})
     return rows
 
 
 def _undefeated(name: str, wins: int) -> list[dict]:
     base = pd.Timestamp("2012-02-01")
     return [
-        dict(fighter_a=name, fighter_b=f"M{i % 6}", winner=name, is_draw=False,
-             event_date=base + pd.Timedelta(days=90 * i), event_name=f"U{name}{i}")
+        {"fighter_a": name, "fighter_b": f"M{i % 6}", "winner": name, "is_draw": False,
+             "event_date": base + pd.Timedelta(days=90 * i), "event_name": f"U{name}{i}"}
         for i in range(wins)
     ]
 
@@ -152,8 +152,8 @@ def test_virtual_games_are_unbiased_for_a_balanced_record():
     """The prior must not push an even record up or down."""
     base = pd.Timestamp("2012-01-01")
     rows = [
-        dict(fighter_a="Even", fighter_b=f"M{i % 6}", winner="Even" if i % 2 else f"M{i % 6}",
-             is_draw=False, event_date=base + pd.Timedelta(days=90 * i), event_name=f"B{i}")
+        {"fighter_a": "Even", "fighter_b": f"M{i % 6}", "winner": "Even" if i % 2 else f"M{i % 6}",
+             "is_draw": False, "event_date": base + pd.Timedelta(days=90 * i), "event_name": f"B{i}"}
         for i in range(10)
     ]
     fights = pd.DataFrame(_field() + rows)

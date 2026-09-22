@@ -5,7 +5,7 @@ import argparse
 import json
 import re
 from pathlib import Path
-from typing import Iterable
+from collections.abc import Iterable
 
 import numpy as np
 import pandas as pd
@@ -494,8 +494,8 @@ def build(snapshot: Path, *, scope: str, out_dir: Path) -> dict[str, object]:
             else None
         ),
         "board": "men (the published default)",
-        "ranked_fighters": int(len(published)),
-        "ranked_fighters_women_board": int(len(published_women)),
+        "ranked_fighters": len(published),
+        "ranked_fighters_women_board": len(published_women),
         "top100_birth_date_coverage": round(float(top["birth_date_known"].mean()), 4),
         "top100_active_2024_plus": int(top["active_2024_plus"].sum()),
         "top100_external_only": int(top["external_only"].sum()),

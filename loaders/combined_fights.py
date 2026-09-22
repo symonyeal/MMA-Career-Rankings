@@ -240,7 +240,7 @@ def combined_fights_summary(fights: pd.DataFrame, *, scope: str) -> dict[str, ob
     return {
         "artifact": COMBINED_FIGHTS_ARTIFACT,
         "scope": str(scope),
-        "rows": int(len(fights)),
+        "rows": len(fights),
         "model_bouts": int(model_bouts.sum()),
         "excluded_or_unrateable_bouts": int(len(fights) - model_bouts.sum()),
         "duplicate_fingerprints": duplicate_fingerprints,

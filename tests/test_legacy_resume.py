@@ -83,13 +83,13 @@ def test_public_legacy_score_lifts_proven_title_resume_above_raw_skill_mass():
     fights = pd.DataFrame(
         [
             {
-                "fight_url": "t%d" % i,
-                "event_date": "202%d-01-01" % i,
+                "fight_url": f"t{i}",
+                "event_date": f"202{i}-01-01",
                 "event_name": "Title",
                 "org": "UFC",
                 "weight_class": "Flyweight",
                 "fighter_a": "Title Reign",
-                "fighter_b": "Contender %d" % i,
+                "fighter_b": f"Contender {i}",
                 "winner": "Title Reign",
                 "is_draw": False,
                 "is_title_fight": True,
@@ -99,7 +99,7 @@ def test_public_legacy_score_lifts_proven_title_resume_above_raw_skill_mass():
     )
     history = pd.DataFrame(
         [
-            {"fighter": "Contender %d" % i, "event_date": "201%d-01-01" % i, "mu_whr": 2000.0}
+            {"fighter": f"Contender {i}", "event_date": f"201{i}-01-01", "mu_whr": 2000.0}
             for i in range(1, 4)
         ]
         + [{"fighter": "Filler", "event_date": "2015-01-01", "mu_whr": 1500.0}]
@@ -146,13 +146,13 @@ def test_title_quality_ledger_prices_a_stacked_reign_over_a_padded_one():
     """
     padded = [
         {
-            "fight_url": "p%d" % i,
-            "event_date": "2020-0%d-01" % i,
+            "fight_url": f"p{i}",
+            "event_date": f"2020-0{i}-01",
             "event_name": "Regional",
             "org": "Bellator",
             "weight_class": "Lightweight",
             "fighter_a": "Padded",
-            "fighter_b": "Weak %d" % i,
+            "fighter_b": f"Weak {i}",
             "winner": "Padded",
             "is_draw": False,
             "is_title_fight": True,
@@ -161,13 +161,13 @@ def test_title_quality_ledger_prices_a_stacked_reign_over_a_padded_one():
     ]
     stacked = [
         {
-            "fight_url": "s%d" % i,
-            "event_date": "2020-0%d-01" % i,
+            "fight_url": f"s{i}",
+            "event_date": f"2020-0{i}-01",
             "event_name": "Major",
             "org": "UFC",
             "weight_class": "Lightweight",
             "fighter_a": "Stacked",
-            "fighter_b": "Elite %d" % i,
+            "fighter_b": f"Elite {i}",
             "winner": "Stacked",
             "is_draw": False,
             "is_title_fight": True,
@@ -176,11 +176,11 @@ def test_title_quality_ledger_prices_a_stacked_reign_over_a_padded_one():
     ]
     history = pd.DataFrame(
         [
-            {"fighter": "Weak %d" % i, "event_date": "2019-01-01", "mu_whr": 1650.0}
+            {"fighter": f"Weak {i}", "event_date": "2019-01-01", "mu_whr": 1650.0}
             for i in range(1, 7)
         ]
         + [
-            {"fighter": "Elite %d" % i, "event_date": "2019-01-01", "mu_whr": 2050.0}
+            {"fighter": f"Elite {i}", "event_date": "2019-01-01", "mu_whr": 2050.0}
             for i in range(1, 3)
         ]
         + [{"fighter": "Bar", "event_date": "2019-01-01", "mu_whr": 1700.0}]

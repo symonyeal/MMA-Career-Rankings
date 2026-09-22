@@ -62,6 +62,7 @@ from loaders.integrity_flags import INTEGRITY_COLUMNS, build_integrity_flags
 from loaders.combined_fights import load_combined_fights
 from loaders.odds_loader import has_odds_artifact, load_odds_lines
 from loaders.ufcstats_loader import METHOD_SCORES
+import itertools
 
 DEFAULT_MIN_PRIOR_FIGHTS = 3
 EPS = 1e-6
@@ -590,7 +591,7 @@ def choose_eval_events(
         years = events["event_date"].dt.year.to_numpy()
         edges = np.linspace(years.min(), years.max() + 1, n_events + 1)
         picks = []
-        for lo, hi in zip(edges[:-1], edges[1:]):
+        for lo, hi in itertools.pairwise(edges):
             block = np.flatnonzero((years >= lo) & (years < hi))
             if block.size:
                 picks.append(int(rng.choice(block)))
@@ -638,7 +639,7 @@ def _metrics(p: np.ndarray, y: np.ndarray) -> dict:
         "brier": float(np.mean((p - y) ** 2)),
         "accuracy": float(np.mean((p >= 0.5) == (y == 1))),
         "auc": roc_auc(p, y),
-        "n": int(len(p)),
+        "n": len(p),
     }
 
 
@@ -845,10 +846,10 @@ def score_predictions(
     prob_col = "p_a_calibrated" if (calibrated and "p_a_calibrated" in predictions.columns) else "p_a"
     rows = []
     for variant, g in predictions.groupby("variant", sort=True):
-        def _row(frame: pd.DataFrame, segment_type: str, segment_value: str) -> dict:
+        def _row(frame: pd.DataFrame, segment_type: str, segment_value: str, _v=variant) -> dict:
             p = frame[prob_col].to_numpy(dtype=float)
             y = frame["y_a"].to_numpy(dtype=float)
-            return {"variant": variant, "segment_type": segment_type,
+            return {"variant": _v, "segment_type": segment_type,
                     "segment_value": segment_value, **_metrics(p, y),
                     "calibration_error": calibration_error(p, y)}
 
@@ -911,7 +912,7 @@ def paired_delta(
     lo, hi = np.percentile(boots, [2.5, 97.5])
     return {
         "baseline": baseline, "challenger": challenger, "metric": metric,
-        "n": int(len(d)), "delta": float(d.mean()), "lo": float(lo), "hi": float(hi),
+        "n": len(d), "delta": float(d.mean()), "lo": float(lo), "hi": float(hi),
         "favours": ("challenger" if hi < 0 else "baseline" if lo > 0 else "neither")
         if metric != "accuracy"
         else ("challenger" if lo > 0 else "baseline" if hi < 0 else "neither"),
@@ -987,7 +988,7 @@ def run_sweep(
 
     if calibration_events is None:
         calibration_events = split_calibration_events(inputs.fights, eval_events)
-    extra["calib"] = int(len(calibration_events))
+    extra["calib"] = len(calibration_events)
 
     def _keys(events: pd.DataFrame) -> set:
         return set(zip(events["event_date"], events["event_name"]))
@@ -1039,7 +1040,7 @@ def run_sweep(
         eval_preds = eval_preds.copy()
         eval_preds["temperature"] = temperature
         eval_preds["p_a_calibrated"] = apply_temperature(eval_preds["p_a"].to_numpy(), temperature)
-        eval_preds["n_calibration_bouts"] = int(len(calib_preds))
+        eval_preds["n_calibration_bouts"] = len(calib_preds)
         eval_preds.to_parquet(path, index=False)
         frames.append(eval_preds)
 

@@ -383,7 +383,7 @@ Loaded odds sources:
 
 | Source | Format | Era | License | Current role |
 |--------|--------|-----|---------|--------------|
-| mdabbert `ultimate_ufc_dataset` — `ufc-master.csv` | CSV American moneyline | 2010-03-21 -> 2026-03-28 (~6,900 bouts with both-side odds) | Apache-2.0 (`F U N/ultimate_ufc_dataset-main/LICENSE`); attribution required, redistributable | Primary ingest backing `odds_lines.parquet` as an external benchmark. Joined via fighter-pair + date. |
+| mdabbert `ultimate_ufc_dataset` — `ufc-master.csv` | CSV American moneyline | 2010-03-21 -> 2026-03-28 (~6,900 bouts with both-side odds) | Apache-2.0 (`data/external/api_sources/ultimate_ufc_dataset/LICENSE`); attribution required, redistributable | Primary ingest backing `odds_lines.parquet` as an external benchmark. Joined via fighter-pair + date. |
 
 **Candidate external sources (not ingested, not redistributed in this repo):**
 

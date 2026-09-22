@@ -28,7 +28,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from loaders.sherdog_org_loader import (  # noqa: E402
+from loaders.sherdog_org_loader import (
     DEFAULT_CACHE_DIR,
     MAJOR_ORGS,
     crawl,
@@ -58,8 +58,8 @@ def coverage(bouts: pd.DataFrame, events: pd.DataFrame) -> dict:
             continue
         years = e["year"].dropna().astype(int)
         out["orgs"][org] = {
-            "events": int(len(e)),
-            "bouts": int(len(b)),
+            "events": len(e),
+            "bouts": len(b),
             "distinct_fighters": int(fighters[fighters["org"] == org]["fid"].nunique()),
             "first_event": str(e["event_date"].min()),
             "last_event": str(e["event_date"].max()),
@@ -68,8 +68,8 @@ def coverage(bouts: pd.DataFrame, events: pd.DataFrame) -> dict:
             "bouts_missing_outcome": int(b["fighter_a_outcome"].isna().sum()),
         }
     out["totals"] = {
-        "events": int(len(ev)),
-        "bouts": int(len(bouts)),
+        "events": len(ev),
+        "bouts": len(bouts),
         "distinct_fighters": int(fighters["fid"].nunique()),
         "date_span": [str(ev["event_date"].min()), str(ev["event_date"].max())],
     }

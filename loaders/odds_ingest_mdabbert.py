@@ -164,9 +164,9 @@ def run(
     )
     return {
         "snapshot_dir": str(snapshot_dir),
-        "mdabbert_rows_loaded": int(len(md)),
-        "mdabbert_rows_joined": int(len(new_rows)),
-        "odds_lines_rows": int(len(enriched)),
+        "mdabbert_rows_loaded": len(md),
+        "mdabbert_rows_joined": len(new_rows),
+        "odds_lines_rows": len(enriched),
         "rows_by_source": {str(k): int(v) for k, v in by_source.items()},
     }
 

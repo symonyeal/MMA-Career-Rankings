@@ -401,12 +401,12 @@ def build_public_profile_snapshot(
                 "seed_divisions": seed.seed_divisions,
                 "seed_sources": seed.seed_sources,
                 "seed_rank_min": seed.seed_rank_min,
-                "profile_bout_count": int(len(bouts)),
+                "profile_bout_count": len(bouts),
             })
             profile_rows.append(profile)
             if not bouts.empty:
                 bout_frames.append(bouts)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - the failure is recorded per profile so one bad page cannot end the crawl
             failures.append({"profile_url": seed.profile_url, "error": f"{type(exc).__name__}: {exc}"})
         if progress and (position == total or position % 25 == 0):
             print(f"[fightmatrix profiles] {position}/{total}; failures={len(failures)}", flush=True)
@@ -443,12 +443,12 @@ def build_public_profile_snapshot(
         "scope": "profiles linked from current division and all-time ranking artifacts; no recursive opponent crawl",
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
         "profile_seeds": int(total),
-        "profiles_loaded": int(len(profiles)),
+        "profiles_loaded": len(profiles),
         "profile_failures": failures,
-        "unique_public_bouts": int(len(bouts)),
+        "unique_public_bouts": len(bouts),
         "public_non_ufc_bouts": int(bouts["org"].ne("UFC").sum()) if not bouts.empty else 0,
-        "rated_crossorg_bouts": int(len(fm_crossorg)),
-        "rated_crossorg_org_count": int(len(org_counts)),
+        "rated_crossorg_bouts": len(fm_crossorg),
+        "rated_crossorg_org_count": len(org_counts),
         "rated_crossorg_by_org_top50": top_org_counts,
         "profile_cache": str(cache_dir.relative_to(PROJECT_ROOT)),
         "tls_verification": bool(verify_tls),

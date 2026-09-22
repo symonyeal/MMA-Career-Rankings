@@ -1,0 +1,17 @@
+ATTRIBUTION
+-----------
+ufc-master.csv is the "Ultimate UFC Dataset" by Matt Dabbert (mdabbert),
+licensed Apache-2.0. The licence is the LICENSE file beside this one.
+
+It is the betting-odds source: American moneyline prices for roughly 6,900
+bouts with both-side odds, 2010-03-21 to 2026-03-28. It backs odds_lines.parquet
+as an external benchmark and the missed-weight cross-check, joined on the
+fighter pair and the event date.
+
+Apache-2.0 requires attribution and permits redistribution, which is why the
+file is carried here rather than fetched.
+
+The dataset is published on Kaggle as "Ultimate UFC Dataset"; the copy vendored
+here arrived as a download named ultimate_ufc_dataset-main. No upstream GitHub
+repository could be confirmed for it on 2026-09-22, so no repository URL is
+claimed.

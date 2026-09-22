@@ -83,7 +83,7 @@ _RAW_SUM_MAX = 2.0
 # ---------------------------------------------------------------------------
 # Pure conversions
 
-def american_to_implied(odds: float | int | None) -> float | None:
+def american_to_implied(odds: float | None) -> float | None:
     """American moneyline -> raw implied probability (with vig).
 
     `+A`  (A > 0): underdog. p = 100 / (A + 100).
@@ -119,7 +119,7 @@ def decimal_to_implied(decimal_odds: float | None) -> float | None:
     return 1.0 / d
 
 
-def american_to_decimal(odds: float | int | None) -> float | None:
+def american_to_decimal(odds: float | None) -> float | None:
     """American moneyline -> decimal odds, for normalization in viz tables."""
     if odds is None:
         return None

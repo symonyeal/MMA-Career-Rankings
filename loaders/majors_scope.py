@@ -298,11 +298,11 @@ def _build_majors_fights(
     joined_names = set(fights["fighter_a"]) | set(fights["fighter_b"])
     by_method = identity["join_method"].value_counts()
     report = {
-        "source_bouts": int(len(bouts)),
+        "source_bouts": len(bouts),
         "rateable_bouts": int((~fights["is_excluded"]).sum()),
         "excluded_bouts": int(fights["is_excluded"].sum()),
-        "fighters": int(len(joined_names)),
-        "fighters_shared_with_ufc": int(len(joined_names & core)),
+        "fighters": len(joined_names),
+        "fighters_shared_with_ufc": len(joined_names & core),
         "identity_join_methods": {str(k): int(v) for k, v in by_method.items()},
         "by_org": fights["org"].value_counts().to_dict(),
         "date_span": [str(fights["event_date"].min().date()),
@@ -383,7 +383,7 @@ def stage_majors_scope(
     cache_dir = Path(majors_dir)
     births = sherdog_birth_dates(identity, cache_dir=cache_dir)
     births.to_parquet(snapshot_dir / SHERDOG_BIRTH_DATES_ARTIFACT, index=False)
-    report["birth_dates"] = int(len(births))
+    report["birth_dates"] = len(births)
     report["artifact"] = str(snapshot_dir / SNAPSHOT_ARTIFACT)
 
     # Whether the corpus applies one coverage rule to every fighter is a

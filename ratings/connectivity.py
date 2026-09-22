@@ -66,8 +66,8 @@ def _max_vertex_disjoint_paths(adj, source: str, core: set[str], cap: int) -> in
         if node != source and node not in core:
             add((node, "in"), (node, "out"), 1)
         for nbr in nbrs:
-            u = (node, "out") if (node == source or node in core) else (node, "out")
-            v = (nbr, "in") if (nbr != source and nbr not in core) else (nbr, "in")
+            u = (node, "out")
+            v = (nbr, "in")
             add(u, v, 1)
     for node in core:
         add((node, "in"), (node, "out"), 1)
