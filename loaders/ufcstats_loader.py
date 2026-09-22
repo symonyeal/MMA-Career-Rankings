@@ -129,7 +129,7 @@ def parse_method(s):
     if not isinstance(s, str):
         return None
     s = s.strip()
-    if s.startswith("KO/TKO") or s.startswith("TKO"):
+    if s.startswith(("KO/TKO", "TKO")):
         return "KO/TKO"
     if s.startswith("Submission") or s == "SUB":
         return "Submission"
@@ -335,7 +335,7 @@ def build_canonical_rounds(stats: pd.DataFrame, fights: pd.DataFrame) -> pd.Data
     s["round_num"] = s["ROUND"].astype("string").str.extract(r"Round\s*(\d+)").astype("Int64")
 
     for col in _PAIR_COLS:
-        landed_att = s[col].apply(lambda v: pd.Series(parse_x_of_y(v), index=_pair_col_names(col)))
+        landed_att = s[col].apply(lambda v, c=col: pd.Series(parse_x_of_y(v), index=_pair_col_names(c)))
         s = pd.concat([s, landed_att], axis=1)
 
     s["kd"] = pd.to_numeric(s["KD"], errors="coerce").astype("Int64")
@@ -409,19 +409,22 @@ SCHEMAS = {
             "loser": "derived; null for draws and NCs",
             "is_draw": "bool",
             "is_nc": "bool",
-            "is_excluded": "true for NC / Overturned / Could Not Continue (these rows live in _excluded_bouts.csv only)",
+            "is_excluded": "true for NC / Overturned / Could Not Continue "
+                           "(these rows live in _excluded_bouts.csv only)",
             "exclusion_reason": "no_contest | method_overturned | could_not_continue | pre_unified_rules | null",
             "weight_class": "Greco WEIGHTCLASS",
             "is_title_fight": "derived; WEIGHTCLASS contains 'Title'",
             "method_raw": "Greco METHOD verbatim",
-            "method_class": "bucketed: KO/TKO | Submission | Decision - Unanimous/Majority/Split | DQ | Could Not Continue | Overturned | Other",
+            "method_class": "bucketed: KO/TKO | Submission | Decision - Unanimous/Majority/Split "
+                            "| DQ | Could Not Continue | Overturned | Other",
             "method_score_winner": "winner score for μ_method rating; null for μ_canonical inputs",
             "end_round": "int",
             "end_time_seconds": "TIME parsed mm:ss",
             "time_format": "Greco TIME FORMAT",
             "referee": "Greco REFEREE",
             "details_text": "Greco DETAILS verbatim (judge scorecards live here)",
-            "ped_confirmed": "derived from details_text; true when Greco confirms a failed drug test or anti-doping violation tied to the bout",
+            "ped_confirmed": "derived from details_text; true when Greco confirms a failed drug test "
+                             "or anti-doping violation tied to the bout",
             "ped_flagged_fighter": "fighter named by the PED confirmation text, when inferable",
             "ped_confirmation_source": "source field used for the PED flag",
             "ped_confirmation_detail": "verbatim details_text used for PED audit",
@@ -552,7 +555,7 @@ def main() -> None:
     parser.add_argument("--greco-dir", default=None,
                         help="Path to a directory containing the six Greco CSVs. "
                              "Defaults to data/raw/<snapshot-date> when present.")
-    parser.add_argument("--snapshot-date", default=str(date.today()),
+    parser.add_argument("--snapshot-date", default=str(date.today()),  # noqa: DTZ011 - the snapshot label is a local calendar date, not an instant
                         help="YYYY-MM-DD label for the snapshot folder.")
     parser.add_argument("--project-root", default=None,
                         help="Override project root (default: parent of this file's directory).")

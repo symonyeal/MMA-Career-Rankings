@@ -122,8 +122,8 @@ def parse_rankings_html(html: str, division: str) -> pd.DataFrame:
             tooltip_values = [value.strip() for value in tooltip.group(1).split("|")]
             last_five_results = [value for value in tooltip.group(2).split("|") if value]
 
-        def tip(index: int):
-            return tooltip_values[index] if index < len(tooltip_values) and tooltip_values[index] else None
+        def tip(index: int, _tv: list[str] = tooltip_values):
+            return _tv[index] if index < len(_tv) and _tv[index] else None
 
         last_fight = None
         next_fight = None
@@ -177,7 +177,7 @@ def build_snapshot(
         html = fetch_division_html(division, cache_dir=cache_dir, refresh=refresh, sleep_seconds=sleep_seconds)
         parsed = parse_rankings_html(html, division)
         frames.append(parsed)
-        fetched.append({"division": division, "rows": int(len(parsed)), "cache": str(_cache_path(cache_dir, division))})
+        fetched.append({"division": division, "rows": len(parsed), "cache": str(_cache_path(cache_dir, division))})
 
     rankings = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
     rankings.to_parquet(snapshot_dir / "fightmatrix_rankings.parquet", index=False)
@@ -188,15 +188,15 @@ def build_snapshot(
         html = fetch_division_html(page, cache_dir=cache_dir, refresh=refresh, sleep_seconds=sleep_seconds)
         parsed = parse_rankings_html(html, page)
         all_time_frames.append(parsed)
-        all_time_fetched.append({"page": page, "rows": int(len(parsed)), "cache": str(_cache_path(cache_dir, page))})
+        all_time_fetched.append({"page": page, "rows": len(parsed), "cache": str(_cache_path(cache_dir, page))})
     all_time = pd.concat(all_time_frames, ignore_index=True) if all_time_frames else pd.DataFrame()
     all_time.to_parquet(snapshot_dir / "fightmatrix_all_time.parquet", index=False)
 
     summary = {
         "source": BASE_URL,
-        "rows": int(len(rankings)),
+        "rows": len(rankings),
         "divisions": fetched,
-        "all_time_rows": int(len(all_time)),
+        "all_time_rows": len(all_time),
         "all_time_pages": all_time_fetched,
         "output": str((snapshot_dir / "fightmatrix_rankings.parquet").relative_to(PROJECT_ROOT)),
         "all_time_output": str((snapshot_dir / "fightmatrix_all_time.parquet").relative_to(PROJECT_ROOT)),

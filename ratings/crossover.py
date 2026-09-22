@@ -95,7 +95,7 @@ def _side_stats(frame: pd.DataFrame, lookup, ratings_by_key) -> dict:
         if np.isfinite(value):
             rated.append(value)
     return {
-        "bouts": int(len(frame)),
+        "bouts": len(frame),
         "wins": wins,
         "losses": losses,
         "win_rate": (wins / (wins + losses)) if (wins + losses) else np.nan,
@@ -256,7 +256,7 @@ def transfer_test(
         out = []
         for opp, when, outcome in zip(frame["opponent"], frame["event_date"],
                                       frame["outcome"].astype(str).str.lower()):
-            if not (outcome.startswith("w") or outcome.startswith("l")):
+            if not (outcome.startswith(("w", "l"))):
                 continue
             canonical = ratings_by_key.get(normalize_name_key(str(opp), compact=True))
             if canonical is None:

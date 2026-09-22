@@ -241,7 +241,7 @@ def main() -> None:
                if len(shared) else pd.Series(dtype=float))
         parity.append({
             "base_variant": variant.name,
-            "n": int(len(shared)),
+            "n": len(shared),
             "max_abs_p_gap": float(gap.max()) if len(gap) else float("nan"),
             "reads_org_weight": bool(len(gap) and gap.max() > 0.0),
         })
@@ -257,8 +257,8 @@ def main() -> None:
         "snapshot": Path(args.snapshot_dir).name,
         "scope": args.scope,
         "arms": {k: {"scope": v[0], "use_org_weight": v[1]} for k, v in arms.items()},
-        "held_out_ufc_bouts": int(len(keep)),
-        "eval_events": int(len(eval_events)),
+        "held_out_ufc_bouts": len(keep),
+        "eval_events": len(eval_events),
         "coverage_counts": allp.drop_duplicates("fight_url")["crossorg_coverage"]
                                .value_counts().to_dict(),
         "cpu_seconds": round(time.process_time() - t0, 1),

@@ -20,20 +20,20 @@ PROJECT_ROOT = Path(__file__).resolve().parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from loaders.ufcstats_loader import (  # noqa: E402
+from loaders.ufcstats_loader import (
     GRECO_FILES,
     build_snapshot,
     default_greco_dir,
 )
-from loaders.datalab_loader import DEFAULT_DATALAB_DIR, build_snapshot as build_datalab_snapshot  # noqa: E402
-from loaders.fightmatrix_loader import build_snapshot as build_fightmatrix_snapshot  # noqa: E402
-from loaders.fightmatrix_profiles import build_public_profile_snapshot  # noqa: E402
-from loaders.odds_ingest_mdabbert import run as ingest_mdabbert_odds  # noqa: E402
-from ratings.glicko2_engine import DEFAULT_TAU  # noqa: E402
-from ratings.rate_snapshot import run as run_ratings  # noqa: E402
-from ratings.rules_era import stage_pre_unified_scope  # noqa: E402
-from ratings.scope import DEFAULT_PUBLISHED_SCOPE  # noqa: E402
-from ratings.symon_score import DEFAULT_CAREER_REFERENCE  # noqa: E402
+from loaders.datalab_loader import DEFAULT_DATALAB_DIR, build_snapshot as build_datalab_snapshot
+from loaders.fightmatrix_loader import build_snapshot as build_fightmatrix_snapshot
+from loaders.fightmatrix_profiles import build_public_profile_snapshot
+from loaders.odds_ingest_mdabbert import run as ingest_mdabbert_odds
+from ratings.glicko2_engine import DEFAULT_TAU
+from ratings.rate_snapshot import run as run_ratings
+from ratings.rules_era import stage_pre_unified_scope
+from ratings.scope import DEFAULT_PUBLISHED_SCOPE
+from ratings.symon_score import DEFAULT_CAREER_REFERENCE
 
 
 def _coverage_line(summary: dict) -> str:
@@ -70,18 +70,19 @@ def stage_scopes(snapshot_dir: Path) -> dict[str, object]:
             staged[name] = f"not staged: {type(exc).__name__}: {exc}"
             print(f"[refresh] scope {name} not staged: {exc}")
     return staged
-from analysis.build_notebook import write as write_notebook  # noqa: E402
-from build_boards import (  # noqa: E402
+from analysis.build_notebook import write as write_notebook
+from build_boards import (
     RATING_FLOOR_IS_UNRANKED,
     select_core_rating_col,
     write_board_artifacts,
 )
-from ratings.boards import completeness_gated_board  # noqa: E402
-from ratings.constants import SUSTAINED_PEAK_MIN_FIGHTS  # noqa: E402
-from ratings.gender import partition_by_gender  # noqa: E402
+from ratings.boards import completeness_gated_board
+from ratings.constants import SUSTAINED_PEAK_MIN_FIGHTS
+from ratings.gender import partition_by_gender
 
 
 _MDABBERT_CANDIDATES = (
+    PROJECT_ROOT / "data" / "external" / "api_sources" / "ultimate_ufc_dataset" / "ufc-master.csv",
     PROJECT_ROOT.parent / "archive" / "ufc-master.csv",
     PROJECT_ROOT.parent.parent / "archive" / "ufc-master.csv",
 )
@@ -110,7 +111,7 @@ def previous_snapshot_dir(project_root: Path, snapshot_date: str) -> Path | None
     for path in snapshots_root.iterdir():
         if path.is_dir() and path.name < snapshot_date and (path / "ratings_current.parquet").exists():
             candidates.append(path)
-    return sorted(candidates, key=lambda p: p.name)[-1] if candidates else None
+    return max(candidates, key=lambda p: p.name) if candidates else None
 
 
 def mover_lines(current_path: Path, previous_path: Path | None, limit: int = 10) -> list[str]:
@@ -180,19 +181,25 @@ def append_changelog(project_root: Path, snapshot_date: str, counts: dict[str, i
     lines = [
         "",
         f"## {snapshot_date} - Refresh run",
-        f"- Canonical snapshot rebuilt from Greco CSVs: events={counts['events_kept']}, fights={counts['fights_kept']}, rounds={counts['rounds_kept']}, excluded={counts['excluded_bouts']}.",
-        f"- Combined model fight table written for scope {ratings_summary.get('scope', 'unknown')}: rows={ratings_summary.get('combined_fights', {}).get('rows', 'unknown')}, model_bouts={ratings_summary.get('combined_fights', {}).get('model_bouts', 'unknown')}.",
-        f"- Ratings and dominance produced: fighters_rated={ratings_summary['current_fighters']}, fighter_event_rows={ratings_summary['history_rows']}, events_processed={ratings_summary['events_processed']}.",
+        (f"- Canonical snapshot rebuilt from Greco CSVs: events={counts['events_kept']}, "
+         f"fights={counts['fights_kept']}, rounds={counts['rounds_kept']}, "
+         f"excluded={counts['excluded_bouts']}."),
+        (f"- Combined model fight table written for scope {ratings_summary.get('scope', 'unknown')}: "
+         f"rows={ratings_summary.get('combined_fights', {}).get('rows', 'unknown')}, "
+         f"model_bouts={ratings_summary.get('combined_fights', {}).get('model_bouts', 'unknown')}."),
+        (f"- Ratings and dominance produced: fighters_rated={ratings_summary['current_fighters']}, "
+         f"fighter_event_rows={ratings_summary['history_rows']}, "
+         f"events_processed={ratings_summary['events_processed']}."),
         # Per-fighter coverage, not per-promotion. A low-loss Bradley-Terry
         # record has no interior maximum, so its rating grows with how many of
         # the fighter's bouts the corpus holds; a run built on two coverage
         # rules reads the crawl's shape as skill.
         f"- Career coverage: {_coverage_line(ratings_summary.get('career_coverage', {}))}",
-        "- Streams: canonical binary Glicko-2 comparison + method-aware WHR smoother; "
-        "binary WHR remains a research comparison.",
-        "- Public scores: Public Legacy Score (the core board) and fixed 10-year Prime. "
+        ("- Streams: canonical binary Glicko-2 comparison + method-aware WHR smoother; "
+        "binary WHR remains a research comparison."),
+        ("- Public scores: Public Legacy Score (the core board) and fixed 10-year Prime. "
         "Career Skill Mass is the skill diagnostic underneath the board; FightMatrix and the "
-        "public anchor lists are sanity checks for top-100 outliers, never tuning targets.",
+        "public anchor lists are sanity checks for top-100 outliers, never tuning targets."),
         "- Audit layers (integrity, dominance, odds, opponent context) do not enter the rating likelihood.",
         f"- Top 10 by {headline_label}: {top_line}",
     ]
@@ -215,7 +222,7 @@ def rebuild_notebook(project_root: Path) -> Path:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Refresh UFC snapshot, ratings, dominance, and changelog.")
-    parser.add_argument("--snapshot-date", default=str(date.today()), help="YYYY-MM-DD snapshot label.")
+    parser.add_argument("--snapshot-date", default=str(date.today()), help="YYYY-MM-DD snapshot label.")  # noqa: DTZ011 - the snapshot label is a local calendar date, not an instant
     parser.add_argument("--project-root", default=str(PROJECT_ROOT), help="Project root path.")
     parser.add_argument("--greco-dir", default=None, help="Path to Greco scrape_ufc_stats CSV directory.")
     parser.add_argument("--tau", type=float, default=DEFAULT_TAU, help=f"Glicko-2 tau; default {DEFAULT_TAU}.")
@@ -231,9 +238,11 @@ def main() -> None:
         ),
     )
     parser.add_argument("--include-external", action="store_true",
-                        help="Also load project-local UFC-DataLab, FightMatrix, and cached odds artifacts into the snapshot.")
+                        help="Also load project-local UFC-DataLab, FightMatrix, and cached odds "
+                             "artifacts into the snapshot.")
     parser.add_argument("--include-odds", action="store_true",
-                        help="Ingest the mdabbert ufc-master.csv before ratings so the performance sleeve's market sub-factor is active.")
+                        help="Ingest the mdabbert ufc-master.csv before ratings so the performance "
+                             "sleeve's market sub-factor is active.")
     parser.add_argument("--mdabbert-csv", default=str(DEFAULT_MDABBERT_CSV),
                         help="Path to mdabbert ufc-master.csv. Used for odds + missed-weight cross-check.")
     parser.add_argument("--refresh-fightmatrix", action="store_true",
@@ -424,9 +433,9 @@ def main() -> None:
             "tier_confidence": 0.95,
             "min_rating_periods": int(args.min_fights),
             "tiers": int(ranked_tiers["tier"].nunique()),
-            "tiered_fighters": int(len(ranked_tiers)),
+            "tiered_fighters": len(ranked_tiers),
             "unranked_at_floor": int(tiers["tier"].isna().sum()),
-            "fighters": int(len(board)),
+            "fighters": len(board),
             "median_rank_width_top50": float(widths),
         }
         (snapshot_dir / "career_mass_uncertainty.json").write_text(

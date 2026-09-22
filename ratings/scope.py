@@ -374,7 +374,7 @@ def scope_guard(
                           ascending=[True, False, False], kind="mergesort")
             redundant_ids = order.index[order["_bout_key"].duplicated(keep="first")]
             if len(redundant_ids):
-                dropped["repeated_in_source_table"] = int(len(redundant_ids))
+                dropped["repeated_in_source_table"] = len(redundant_ids)
                 out = out.drop(index=redundant_ids)
         out = out.drop(columns=["_fp", "_bout_key", "_winner_key"])
 

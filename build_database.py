@@ -15,7 +15,7 @@ from contextlib import ExitStack, closing
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Iterable
+from collections.abc import Iterable
 
 import pandas as pd
 
@@ -131,7 +131,8 @@ TABLE_SPECS = [
     ),
     TableSpec("fight_dominance", "fight_dominance.parquet", "Dominance model", "derived"),
     TableSpec("fighter_dominance", "fighter_dominance.parquet", "Dominance model", "derived"),
-    TableSpec("calibration_residuals", "calibration_residuals.parquet", "Rating diagnostics", "diagnostic", required=False),
+    TableSpec("calibration_residuals", "calibration_residuals.parquet", "Rating diagnostics",
+              "diagnostic", required=False),
     TableSpec("division_entropy", "division_entropy.parquet", "Rating diagnostics", "diagnostic", required=False),
     TableSpec("division_resume", "division_resume.parquet", "Rating diagnostics", "diagnostic", required=False),
     TableSpec("excluded_bouts", "_excluded_bouts.csv", "Greco", "audit"),
@@ -259,7 +260,7 @@ def latest_snapshot_dir(project_root: Path = PROJECT_ROOT) -> Path:
     ]
     if not candidates:
         raise FileNotFoundError(f"no usable snapshots found under {snapshots_root}")
-    return sorted(candidates, key=lambda p: p.name)[-1]
+    return max(candidates, key=lambda p: p.name)
 
 
 def _read_source(path: Path, table_name: str | None = None) -> pd.DataFrame:
@@ -505,8 +506,8 @@ def build_database(
                 "source_name": spec.source_name,
                 "source_kind": spec.source_kind,
                 "source_path": str(source_path.relative_to(PROJECT_ROOT)),
-                "row_count": int(len(df)),
-                "column_count": int(len(df.columns)),
+                "row_count": len(df),
+                "column_count": len(df.columns),
                 "columns_json": json.dumps(list(df.columns)),
                 "min_date": min_date,
                 "max_date": max_date,
@@ -586,7 +587,8 @@ def build_database(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Build data/ufc_rank_engine.sqlite from a snapshot bundle.")
-    parser.add_argument("--snapshot-dir", default=None, help="Snapshot directory. Defaults to newest data/snapshots/<date>.")
+    parser.add_argument("--snapshot-dir", default=None,
+                        help="Snapshot directory. Defaults to newest data/snapshots/<date>.")
     parser.add_argument("--db-path", default=str(DEFAULT_DB_PATH), help="Output SQLite path.")
     parser.add_argument("--no-replace", action="store_true", help="Fail if the SQLite database already exists.")
     args = parser.parse_args()

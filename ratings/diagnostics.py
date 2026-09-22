@@ -209,7 +209,7 @@ def division_entropy_rows(
             "year": int(year),
             "division": division,
             "fighters_in_division": int(g["fighter"].nunique()),
-            "top_n": int(len(mu)),
+            "top_n": len(mu),
             "top_mu_mean": float(mu.mean()),
             "top_mu_std": float(mu.std(ddof=0)),
             "top_mu_range": mu_range,

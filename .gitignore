@@ -27,6 +27,12 @@ data/snapshots/*
 !data/snapshots/*/
 data/snapshots/*/*
 !data/snapshots/*/combined_fights.parquet
+# The two run manifests are a few kilobytes each and carry the figures the README
+# and RANKINGS publish -- rated bouts, rated fighters, the date the data runs to.
+# test_readme_narrative_figures checks the published numbers against them, so
+# ignoring them would leave that check unable to run anywhere but this machine.
+!data/snapshots/*/rating_run.json
+!data/snapshots/*/combined_fights_summary.json
 data/ufc_rank_engine.sqlite
 data/ufc_rank_engine_fightmatrix_public.sqlite
 data/ufc_rank_engine_fightmatrix_depth_one.sqlite

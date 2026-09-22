@@ -158,7 +158,8 @@ def main() -> None:
                         help="Comma-separated Hessian-variance attenuation strengths to score (0 = off).")
     parser.add_argument("--events", type=int, default=25, help="Number of most-recent events to evaluate.")
     parser.add_argument("--iterations", type=int, default=WHR_ITERATIONS, help="WHR coordinate-ascent passes per fit.")
-    parser.add_argument("--min-prior-fights", type=int, default=3, help="Min prior appearances per fighter to score a bout.")
+    parser.add_argument("--min-prior-fights", type=int, default=3,
+                        help="Min prior appearances per fighter to score a bout.")
     args = parser.parse_args()
 
     fights = pd.read_parquet(args.snapshot_dir / "canonical_fights.parquet")

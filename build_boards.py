@@ -59,6 +59,7 @@ from ratings.opponent_quality import (
 )
 from ratings.scope import DEFAULT_PUBLISHED_SCOPE, scope_sources
 from ratings.performance_adjustment import womens_division_label
+import itertools
 
 # d : published division label
 # g : fighter gender label
@@ -899,7 +900,7 @@ def _rendered_publication(
         spans.append((start, stop + len(end), begin, end, body))
 
     ordered = sorted(spans)
-    for previous, current in zip(ordered, ordered[1:]):
+    for previous, current in itertools.pairwise(ordered):
         if previous[1] > current[0]:
             raise ValueError(f"{readme} has overlapping board blocks")
 

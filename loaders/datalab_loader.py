@@ -71,7 +71,7 @@ def build_snapshot(datalab_dir: Path, snapshot_dir: Path) -> dict[str, dict]:
         out_path = snapshot_dir / f"{key}.parquet"
         df.to_parquet(out_path, index=False)
         summary[key] = {
-            "rows": int(len(df)),
+            "rows": len(df),
             "columns": list(df.columns),
             "output": str(out_path.relative_to(PROJECT_ROOT)),
         }

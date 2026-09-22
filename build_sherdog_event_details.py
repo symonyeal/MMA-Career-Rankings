@@ -27,9 +27,9 @@ PROJECT_ROOT = Path(__file__).resolve().parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from loaders.fightmatrix_organizations import normalize_organization  # noqa: E402
-from loaders.page_cache import open_cache  # noqa: E402
-from loaders.sherdog_org_loader import (  # noqa: E402
+from loaders.fightmatrix_organizations import normalize_organization
+from loaders.page_cache import open_cache
+from loaders.sherdog_org_loader import (
     DEFAULT_CACHE_DIR,
     FetchFailed,
     _pair_key,
@@ -109,7 +109,7 @@ def _coverage(frame: pd.DataFrame) -> dict[str, int | float]:
     weight = _present(frame["weight_class"])
     exact = frame.get("source", pd.Series("", index=frame.index)).eq("event")
     return {
-        "bouts": int(len(frame)),
+        "bouts": len(frame),
         "exact_event_rows": int(exact.sum()),
         "promotion_present": int(org.sum()),
         "promotion_share": float(org.mean()) if len(frame) else 0.0,
@@ -202,15 +202,15 @@ def hydrate(
         raise ValueError("event hydration changed the corpus bout identities")
 
     report = {
-        "events_in_corpus": int(len(href_by_event)),
+        "events_in_corpus": len(href_by_event),
         "events_that_can_move_a_tier": int(ranked["priority"].sum()),
         "events_without_usable_link": int(stored["event_id"].isna().sum()),
-        "cached_events_before": int(len(cached_before)),
-        "cached_events_after": int(len(cached_after)),
+        "cached_events_before": len(cached_before),
+        "cached_events_after": len(cached_after),
         "network_requests": int(requested),
         "pages_fetched": int(fetched),
         "events_parsed": int(parsed_events),
-        "exact_bouts_matched": int(len(exact)),
+        "exact_bouts_matched": len(exact),
         "hard_missing_event_ids": hard_missing,
         "unreachable_event_ids": unreachable,
         "unparsed_event_ids": unparsed,

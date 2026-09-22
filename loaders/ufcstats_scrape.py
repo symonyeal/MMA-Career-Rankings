@@ -265,7 +265,7 @@ def scrape_new_events(old_raw: Path, out_raw: Path, *, sleep: float = 0.3,
         if not (a and d):
             continue
         try:
-            ed = dt.datetime.strptime(d.get_text(strip=True), "%B %d, %Y").date()
+            ed = dt.datetime.strptime(d.get_text(strip=True), "%B %d, %Y").date()  # noqa: DTZ007 - an event date carries no time of day, so no zone applies
         except ValueError:
             continue
         if ed > max_date and a.get("href") not in existing_event_urls:

@@ -151,10 +151,10 @@ def main() -> None:
         "tier_confidence": float(args.tier_confidence),
         "min_rating_periods": int(args.min_rating_periods),
         "tiers": int(ranked_tiers["tier"].nunique()),
-        "tiered_fighters": int(len(ranked_tiers)),
+        "tiered_fighters": len(ranked_tiers),
         "unranked_at_floor": int(tiers["tier"].isna().sum()),
         "largest_tier": int(ranked_tiers.groupby("tier").size().max()) if len(ranked_tiers) else 0,
-        "fighters": int(len(board)),
+        "fighters": len(board),
         "wall_seconds": round(wall, 1),
         "median_rank_width_top50": float(
             (board.head(50)["rank_hi"] - board.head(50)["rank_lo"]).median()

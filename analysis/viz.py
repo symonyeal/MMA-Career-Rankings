@@ -122,43 +122,43 @@ def _register_plotly_template() -> None:
 
     if "ufc_dark" not in _pio.templates:
         tpl = _go.layout.Template()
-        axis = dict(
-            gridcolor=THEME["border"],
-            zerolinecolor=THEME["border_strong"],
-            linecolor=THEME["border_strong"],
-            tickcolor=THEME["border_strong"],
-            tickfont=dict(color=THEME["text_2"], size=11),
-            title=dict(font=dict(color=THEME["text_2"], size=12)),
-        )
-        tpl.layout = dict(
-            paper_bgcolor=THEME["bg"],
-            plot_bgcolor=THEME["bg"],
-            font=dict(family=THEME["font"], color=THEME["text"], size=13),
-            title=dict(font=dict(family=THEME["font"], color=THEME["text"], size=16)),
-            colorway=CHART_COLORWAY,
-            xaxis=axis,
-            yaxis=axis,
-            legend=dict(
-                bgcolor="rgba(0,0,0,0)", bordercolor=THEME["border"], borderwidth=0,
-                font=dict(color=THEME["text_2"], size=11),
-            ),
-            hoverlabel=dict(
-                bgcolor=THEME["surface"], bordercolor=THEME["border_strong"],
-                font=dict(family=THEME["font"], color=THEME["text"], size=12),
-            ),
-            margin=dict(t=56, r=36, b=48, l=56),
-        )
+        axis = {
+            "gridcolor": THEME["border"],
+            "zerolinecolor": THEME["border_strong"],
+            "linecolor": THEME["border_strong"],
+            "tickcolor": THEME["border_strong"],
+            "tickfont": {"color": THEME["text_2"], "size": 11},
+            "title": {"font": {"color": THEME["text_2"], "size": 12}},
+        }
+        tpl.layout = {
+            "paper_bgcolor": THEME["bg"],
+            "plot_bgcolor": THEME["bg"],
+            "font": {"family": THEME["font"], "color": THEME["text"], "size": 13},
+            "title": {"font": {"family": THEME["font"], "color": THEME["text"], "size": 16}},
+            "colorway": CHART_COLORWAY,
+            "xaxis": axis,
+            "yaxis": axis,
+            "legend": {
+                "bgcolor": "rgba(0,0,0,0)", "bordercolor": THEME["border"], "borderwidth": 0,
+                "font": {"color": THEME["text_2"], "size": 11},
+            },
+            "hoverlabel": {
+                "bgcolor": THEME["surface"], "bordercolor": THEME["border_strong"],
+                "font": {"family": THEME["font"], "color": THEME["text"], "size": 12},
+            },
+            "margin": {"t": 56, "r": 36, "b": 48, "l": 56},
+        }
         _pio.templates["ufc_dark"] = tpl
     _pio.templates.default = "ufc_dark"
 
 
 _register_plotly_template()
 
-EMPTY_FIGURE_LAYOUT = dict(
-    template=CHART_TEMPLATE,
-    height=360,
-    margin=dict(t=56, r=36, b=48, l=56),
-)
+EMPTY_FIGURE_LAYOUT = {
+    "template": CHART_TEMPLATE,
+    "height": 360,
+    "margin": {"t": 56, "r": 36, "b": 48, "l": 56},
+}
 
 PERFORMANCE_FACTOR_LABELS = {
     "perf_factor_decisiveness": "Decisiveness",
@@ -183,7 +183,7 @@ def _empty_figure(message: str, *, title: str | None = None, height: int = 360) 
         y=0.5,
         xref="paper",
         yref="paper",
-        font=dict(color="#64748b", size=14),
+        font={"color": "#64748b", "size": 14},
     )
     fig.update_layout(**{**EMPTY_FIGURE_LAYOUT, "title": title or "", "height": height})
     fig.update_xaxes(visible=False)
@@ -216,14 +216,14 @@ def _metric_label(column: str) -> str:
 
 def _apply_chart_layout(fig: go.Figure, *, height: int | None = None) -> go.Figure:
     """Apply the shared visual system while leaving caller-specific layout intact."""
-    layout = dict(
-        template=CHART_TEMPLATE,
-        colorway=CHART_COLORWAY,
-        font=dict(family=THEME["font"], color=THEME["text"]),
-        paper_bgcolor=THEME["bg"],
-        plot_bgcolor=THEME["bg"],
-        margin=dict(t=64, r=36, b=56, l=64),
-    )
+    layout = {
+        "template": CHART_TEMPLATE,
+        "colorway": CHART_COLORWAY,
+        "font": {"family": THEME["font"], "color": THEME["text"]},
+        "paper_bgcolor": THEME["bg"],
+        "plot_bgcolor": THEME["bg"],
+        "margin": {"t": 64, "r": 36, "b": 56, "l": 64},
+    }
     if height is not None:
         layout["height"] = height
     fig.update_layout(**layout)
@@ -521,10 +521,10 @@ def heldout_scorecard_chart(
             x=vals,
             y=row_labels,
             mode="markers+text",
-            marker=dict(color=colors, size=11, line=dict(color=THEME["bg"], width=0.7)),
+            marker={"color": colors, "size": 11, "line": {"color": THEME["bg"], "width": 0.7}},
             text=[format(v, number_format) if pd.notna(v) else "" for v in vals],
             textposition="middle right",
-            textfont=dict(color=THEME["text_2"], size=10),
+            textfont={"color": THEME["text_2"], "size": 10},
             customdata=all_hover,
             hovertemplate=(f"<b>%{{customdata[0]}}</b><br>{_label}=%{{x:{number_format}}}"
                            "<br>held-out n=%{customdata[1]}<extra></extra>"),
@@ -541,7 +541,7 @@ def heldout_scorecard_chart(
     _apply_chart_layout(fig, height=chart_height)
     fig.update_layout(
         title=title,
-        margin=dict(t=90, r=76, b=105, l=220),
+        margin={"t": 90, "r": 76, "b": 105, "l": 220},
         hovermode="closest",
     )
     fig.update_yaxes(autorange="reversed", showgrid=False, automargin=True, row=1, col=1)
@@ -550,7 +550,7 @@ def heldout_scorecard_chart(
         text=(f"Dotted lines are uninformative references (coin-flip probability). "
               f"Rows below n={floor:,} are omitted. Each row uses its own available held-out sample; "
               "these are descriptive scores, not paired causal claims."),
-        showarrow=False, align="left", font=dict(color=THEME["text_caption"], size=10),
+        showarrow=False, align="left", font={"color": THEME["text_caption"], "size": 10},
     )
     return fig
 
@@ -629,7 +629,7 @@ def ablation_forest_chart(
 
     df = df.sort_values("delta")
     df["row_label"] = [
-        f"{str(isolates)}<br><span style='font-size:10px;color:{THEME['text_muted']}'>"
+        f"{isolates!s}<br><span style='font-size:10px;color:{THEME['text_muted']}'>"
         f"{_prequential_label(base)} → {_prequential_label(challenger)} · n={int(n):,}</span>"
         for isolates, base, challenger, n in zip(
             df["isolates"], df["baseline"], df["challenger"], df["n"])
@@ -658,13 +658,13 @@ def ablation_forest_chart(
         fig.add_trace(go.Scatter(
             x=group["delta"], y=group["row_label"], mode="markers",
             name=legend,
-            marker=dict(color=color, size=11, line=dict(color=THEME["bg"], width=0.8)),
-            error_x=dict(
-                type="data", symmetric=False,
-                array=(group["hi"] - group["delta"]).clip(lower=0),
-                arrayminus=(group["delta"] - group["lo"]).clip(lower=0),
-                color=color, thickness=1.6, width=4,
-            ),
+            marker={"color": color, "size": 11, "line": {"color": THEME["bg"], "width": 0.8}},
+            error_x={
+                "type": "data", "symmetric": False,
+                "array": (group["hi"] - group["delta"]).clip(lower=0),
+                "arrayminus": (group["delta"] - group["lo"]).clip(lower=0),
+                "color": color, "thickness": 1.6, "width": 4,
+            },
             customdata=customdata,
             hovertemplate=(
                 "<b>%{customdata[0]}</b><br>%{customdata[1]} → %{customdata[2]}"
@@ -680,8 +680,8 @@ def ablation_forest_chart(
         title=title,
         xaxis_title=axis_title,
         yaxis_title="",
-        margin=dict(t=70, r=44, b=112, l=285),
-        legend=dict(orientation="h", y=1.04, x=1, xanchor="right", yanchor="bottom"),
+        margin={"t": 70, "r": 44, "b": 112, "l": 285},
+        legend={"orientation": "h", "y": 1.04, "x": 1, "xanchor": "right", "yanchor": "bottom"},
     )
     fig.update_xaxes(tickformat=tickformat)
     fig.update_yaxes(
@@ -693,7 +693,7 @@ def ablation_forest_chart(
         text=("Points are challenger − baseline; bars are 95% paired bootstrap intervals. "
               "Crossing zero is unresolved. "
               f"Rows below n={floor:,} are omitted. Results describe this held-out sample, not universal value."),
-        showarrow=False, align="left", font=dict(color=THEME["text_caption"], size=10),
+        showarrow=False, align="left", font={"color": THEME["text_caption"], "size": 10},
     )
     return fig
 
@@ -1041,7 +1041,7 @@ def trajectory_chart(
                 y=list(upper) + list(lower)[::-1],
                 fill="toself",
                 fillcolor=_hex_to_rgba(color, 0.12),
-                line=dict(color="rgba(0,0,0,0)"),
+                line={"color": "rgba(0,0,0,0)"},
                 hoverinfo="skip",
                 showlegend=False,
                 name=f"{fighter} uncertainty band",
@@ -1052,7 +1052,7 @@ def trajectory_chart(
             x=h["event_date"], y=h[rating_col],
             mode="lines",
             name=fighter,
-            line=dict(color=color, width=2),
+            line={"color": color, "width": 2},
             hovertemplate=(
                 "<b>%{customdata[0]}</b><br>"
                 "%{x|%Y-%m-%d}<br>"
@@ -1085,8 +1085,8 @@ def trajectory_chart(
                     x=dfm["event_date"], y=dfm[rating_col],
                     mode="markers",
                     name=f"{fighter} – {method}",
-                    marker=dict(size=8, color=METHOD_COLOR.get(method, "#000000"),
-                                line=dict(color=color, width=1.5)),
+                    marker={"size": 8, "color": METHOD_COLOR.get(method, "#000000"),
+                                "line": {"color": color, "width": 1.5}},
                     showlegend=False,
                     customdata=dfm["method_class"],
                     hovertemplate=f"{fighter}<br>%{{customdata}}<br>%{{x|%Y-%m-%d}}<br>{rating_name}=%{{y:.1f}}<extra></extra>",
@@ -1106,7 +1106,7 @@ def trajectory_chart(
                 x=peak_row["event_date"], y=peak_row[rating_col],
                 text=f"{FIVE_YEAR_PEAK_WINDOW_LABEL} {peak_value:.0f}",
                 showarrow=True, arrowhead=2, ax=0, ay=-30,
-                font=dict(color=color, size=10),
+                font={"color": color, "size": 10},
             )
 
         end_row = h.iloc[-1]
@@ -1117,7 +1117,7 @@ def trajectory_chart(
             showarrow=False,
             xanchor="left",
             xshift=8,
-            font=dict(color=color, size=11),
+            font={"color": color, "size": 11},
         )
 
     if not fig.data:
@@ -1129,8 +1129,8 @@ def trajectory_chart(
         xaxis_title="Event date",
         yaxis_title=rating_name,
         hovermode="closest",
-        legend=dict(orientation="h", y=1.14, x=0, yanchor="bottom"),
-        margin=dict(r=160),
+        legend={"orientation": "h", "y": 1.14, "x": 0, "yanchor": "bottom"},
+        margin={"r": 160},
     )
     return fig
 
@@ -1256,8 +1256,8 @@ def division_strength_timeline_chart(
             y=dfd["score"],
             mode="lines+markers",
             name=str(division),
-            line=dict(color=CHART_COLORWAY[i % len(CHART_COLORWAY)], width=2.5),
-            marker=dict(size=7),
+            line={"color": CHART_COLORWAY[i % len(CHART_COLORWAY)], "width": 2.5},
+            marker={"size": 7},
             customdata=np.stack([
                 dfd["score_raw"].round(1).astype("string"),
                 dfd["fighters"].astype(int).astype("string"),
@@ -1277,7 +1277,7 @@ def division_strength_timeline_chart(
             showarrow=False,
             xanchor="left",
             xshift=8,
-            font=dict(color=CHART_COLORWAY[i % len(CHART_COLORWAY)], size=11),
+            font={"color": CHART_COLORWAY[i % len(CHART_COLORWAY)], "size": 11},
         )
     _apply_chart_layout(fig, height=560)
     fig.update_layout(
@@ -1285,8 +1285,8 @@ def division_strength_timeline_chart(
         xaxis_title="Year",
         yaxis_title=y_title,
         hovermode="x unified",
-        margin=dict(r=170),
-        legend=dict(orientation="h", y=-0.22),
+        margin={"r": 170},
+        legend={"orientation": "h", "y": -0.22},
     )
     return fig
 
@@ -1388,8 +1388,8 @@ def division_year_top_fighters_chart(
         xaxis_title=rating_name,
         yaxis_title="",
         barmode="stack",
-        legend=dict(orientation="h", y=-0.18, font=dict(size=11)),
-        margin=dict(l=220, r=80, t=70, b=80),
+        legend={"orientation": "h", "y": -0.18, "font": {"size": 11}},
+        margin={"l": 220, "r": 80, "t": 70, "b": 80},
         showlegend=True,
     )
     fig.update_xaxes(range=[1300, 1700])
@@ -1469,12 +1469,12 @@ def striker_grappler_scatter(
             x=g["slpm"], y=g["td_per_15"],
             mode="markers",
             name=str(stance) if not pd.isna(stance) else "Unknown",
-            marker=dict(
-                size=g["size_norm"],
-                color=stance_colors.get(stance, "#7f7f7f"),
-                opacity=0.6,
-                line=dict(width=0.5, color="white"),
-            ),
+            marker={
+                "size": g["size_norm"],
+                "color": stance_colors.get(stance, "#7f7f7f"),
+                "opacity": 0.6,
+                "line": {"width": 0.5, "color": "white"},
+            },
             customdata=np.stack([
                 g["fighter"],
                 g["mu_canonical"].round(0).astype(int).astype(str),
@@ -1541,7 +1541,7 @@ def glicko_fightmatrix_scatter(
             y=g["fightmatrix_points"],
             mode="markers",
             name=str(division),
-            marker=dict(size=9, opacity=0.72),
+            marker={"size": 9, "opacity": 0.72},
             customdata=np.stack([
                 g["fighter_ufc"],
                 g["glicko_rank"].astype("string"),
@@ -1570,7 +1570,7 @@ def glicko_fightmatrix_scatter(
         title="Our current rating vs FightMatrix points",
         xaxis_title="Our UFC rating",
         yaxis_title="FightMatrix points",
-        legend=dict(orientation="h", y=-0.25),
+        legend={"orientation": "h", "y": -0.25},
     )
     return fig
 
@@ -1678,18 +1678,18 @@ def all_time_benchmark_chart(
     fig = go.Figure()
     fig.add_trace(go.Scatter(
         x=line_x, y=line_y, mode="lines", showlegend=False,
-        line=dict(color=THEME["border_strong"], width=2), hoverinfo="skip",
+        line={"color": THEME["border_strong"], "width": 2}, hoverinfo="skip",
     ))
     fig.add_trace(go.Scatter(
         x=df["model_rank"], y=df["fighter"], mode="markers", name="Rank Engine",
-        marker=dict(color=THEME["primary"], size=10),
+        marker={"color": THEME["primary"], "size": 10},
         customdata=np.stack([df["model_rating"].round(1), df["rank_gap"]], axis=-1),
         hovertemplate=("<b>%{y}</b><br>Engine rank %{x:.0f}<br>Rating %{customdata[0]:.1f}"
                        "<br>Gap vs reference %{customdata[1]:+.0f}<extra></extra>"),
     ))
     fig.add_trace(go.Scatter(
         x=df["reference_rank"], y=df["fighter"], mode="markers", name="FightMatrix all-time",
-        marker=dict(color=THEME["accent"], size=10, symbol="diamond"),
+        marker={"color": THEME["accent"], "size": 10, "symbol": "diamond"},
         customdata=df["reference_points"],
         hovertemplate=("<b>%{y}</b><br>FightMatrix rank %{x:.0f}"
                        "<br>Points %{customdata:,.0f}<extra></extra>"),
@@ -1698,7 +1698,7 @@ def all_time_benchmark_chart(
     fig.update_layout(
         title="Where the all-time board disagrees with an external reference",
         xaxis_title="Rank (1 is best)", yaxis_title="",
-        legend=dict(orientation="h", y=1.06, x=0),
+        legend={"orientation": "h", "y": 1.06, "x": 0},
     )
     fig.update_xaxes(autorange="reversed", dtick=5)
     return fig
@@ -1763,7 +1763,7 @@ def division_strength_comparison_chart(
             y=merged["mean_fm_points"],
             name=f"FightMatrix top-{top_n} mean points",
             mode="lines+markers",
-            line=dict(color=STREAM_PALETTE["quality_adjusted"], width=3),
+            line={"color": STREAM_PALETTE["quality_adjusted"], "width": 3},
         ),
         secondary_y=True,
     )
@@ -1771,7 +1771,7 @@ def division_strength_comparison_chart(
     fig.update_layout(
         title="Division strength: our rating vs FightMatrix",
         xaxis_title="Division",
-        legend=dict(orientation="h", y=-0.22),
+        legend={"orientation": "h", "y": -0.22},
     )
     fig.update_yaxes(title_text="Average UFC rating", secondary_y=False)
     fig.update_yaxes(title_text="Average FightMatrix points", secondary_y=True)
@@ -1821,14 +1821,14 @@ def top_fighter_placement_scatter(
             y=g["rating_display"],
             mode="markers",
             name=str(division),
-            marker=dict(
+            marker={
                 # Top-10 markers are bigger so they read at a glance; the long
                 # tail is uniformly small to avoid the old "every dot fights for
                 # space" cluster.
-                size=np.where(g["rank"].le(10), 16, 9),
-                opacity=0.82,
-                line=dict(color="white", width=0.8),
-            ),
+                "size": np.where(g["rank"].le(10), 16, 9),
+                "opacity": 0.82,
+                "line": {"color": "white", "width": 0.8},
+            },
             customdata=np.stack([
                 g["rank"].astype(int).astype(str),
                 g["fighter"],
@@ -1851,7 +1851,7 @@ def top_fighter_placement_scatter(
             y=row.rating_display,
             text=str(int(row.rank)),
             showarrow=False,
-            font=dict(size=10, color=THEME["bg"] if is_leader else THEME["text"]),
+            font={"size": 10, "color": THEME["bg"] if is_leader else THEME["text"]},
             bgcolor=THEME["accent"] if is_leader else THEME["surface"],
             bordercolor=THEME["border_strong"],
             borderpad=2,
@@ -1868,15 +1868,15 @@ def top_fighter_placement_scatter(
             yanchor="middle",
             xshift=14,
             yshift=10 if i % 2 == 0 else -10,
-            font=dict(size=11, color=THEME["text"]),
+            font={"size": 11, "color": THEME["text"]},
         )
     _apply_chart_layout(fig, height=560)
     fig.update_layout(
         title=f"Top {len(df)} placement — {rating_name}",
         xaxis_title="Rated bouts",
         yaxis_title=rating_name,
-        legend=dict(orientation="h", y=-0.22, font=dict(size=11)),
-        margin=dict(l=80, r=40, t=70, b=110),
+        legend={"orientation": "h", "y": -0.22, "font": {"size": 11}},
+        margin={"l": 80, "r": 40, "t": 70, "b": 110},
     )
     fig.update_xaxes(rangemode="tozero")
     return fig
@@ -2095,7 +2095,7 @@ def all_time_score_anatomy_chart(
         mode="text",
         text=total.map(lambda value: f"  {value:,.0f}"),
         textposition="middle right",
-        textfont=dict(color=THEME["text"], size=11),
+        textfont={"color": THEME["text"], "size": 11},
         hoverinfo="skip",
         showlegend=False,
         cliponaxis=False,
@@ -2107,8 +2107,8 @@ def all_time_score_anatomy_chart(
         barmode="stack",
         xaxis_title="Weighted points in the published All-time score",
         yaxis_title="",
-        legend=dict(orientation="h", y=-0.20, x=0),
-        margin=dict(t=68, r=84, b=105, l=190),
+        legend={"orientation": "h", "y": -0.20, "x": 0},
+        margin={"t": 68, "r": 84, "b": 105, "l": 190},
         hovermode="closest",
     )
     fig.update_xaxes(rangemode="tozero", range=[0, max(float(total.max()) * 1.16, 1.0)])
@@ -2240,10 +2240,10 @@ def yearly_rating_delta_scatter(
         title=f"{year} — biggest rating movers",
         xaxis_title=f"Δ {_metric_label(rating_col)} over {year}",
         yaxis_title="",
-        margin=dict(t=64, r=60, b=56, l=180),
+        margin={"t": 64, "r": 60, "b": 56, "l": 180},
         hovermode="closest",
     )
-    fig.update_yaxes(automargin=True, tickfont=dict(size=12))
+    fig.update_yaxes(automargin=True, tickfont={"size": 12})
     return fig
 
 
@@ -2498,13 +2498,13 @@ def odds_coverage_summary(
     if odds_lines is None or odds_lines.empty:
         return {
             "available": False,
-            "total_fights": int(len(fights)) if fights is not None else 0,
+            "total_fights": len(fights) if fights is not None else 0,
             "odds_covered_fights": 0,
             "odds_coverage_rate": 0.0,
             "fighters_with_odds_adjustment": 0,
             "message": "No odds artifact present for this snapshot.",
         }
-    total = int(len(fights)) if fights is not None else 0
+    total = len(fights) if fights is not None else 0
     ok = odds_lines[odds_lines.get("odds_data_quality", "missing") == "ok"]
     covered_urls = set(ok["fight_url"]) & set(fights["fight_url"]) if total else set()
     covered = len(covered_urls)
@@ -2642,8 +2642,8 @@ def fighter_betting_line_chart(
     _apply_chart_layout(fig, height=380)
     fig.update_layout(
         title=title,
-        xaxis=dict(tickmode="array", tickvals=list(range(len(df))),
-                   ticktext=df["_label"].tolist(), tickangle=-45, title_text=""),
+        xaxis={"tickmode": "array", "tickvals": list(range(len(df))),
+                   "ticktext": df["_label"].tolist(), "tickangle": -45, "title_text": ""},
         yaxis_title="Beat (＋) or missed (−) the line",
         hovermode="closest",
     )
@@ -2714,7 +2714,8 @@ def performance_factor_audit_table(
     is_draw = df.get("is_draw", pd.Series(False, index=df.index)).fillna(False).astype(bool)
     is_loss = ~is_winner & ~is_draw
     move = df.get("fighter_weight_class_move", pd.Series("", index=df.index)).fillna("").astype(str).str.lower()
-    change_fight = df.get("fighter_weight_class_change_fight", pd.Series(False, index=df.index)).fillna(False).astype(bool)
+    change_fight = (df.get("fighter_weight_class_change_fight", pd.Series(False, index=df.index))
+                    .fillna(False).astype(bool))
 
     base_cols = [
         "event_date", "event_name", "fighter", "opponent", "outcome",
@@ -2853,7 +2854,7 @@ def favorite_underdog_performance_chart(performance: pd.DataFrame) -> go.Figure:
         yaxis_tickformat=".0%",
         yaxis_range=[0, 1],
         barmode="group",
-        legend=dict(orientation="h", y=1.12, x=0),
+        legend={"orientation": "h", "y": 1.12, "x": 0},
     )
     return fig
 
@@ -2880,7 +2881,8 @@ def fighter_profile_chart(
         x=pd.to_numeric(plot["value"], errors="coerce"),
         y=plot["metric"],
         orientation="h",
-        marker_color=[STREAM_PALETTE["canonical"], STREAM_PALETTE["method"], STREAM_PALETTE["odds_adjusted"]][:len(plot)],
+        marker_color=[STREAM_PALETTE["canonical"], STREAM_PALETTE["method"],
+                      STREAM_PALETTE["odds_adjusted"]][:len(plot)],
         text=pd.to_numeric(plot["value"], errors="coerce").round(1).astype(str),
         textposition="outside",
         hovertemplate="<b>%{y}</b><br>%{x:.1f} rating points<extra></extra>",
@@ -2891,7 +2893,7 @@ def fighter_profile_chart(
         xaxis_title="Rating points",
         yaxis_title="",
         showlegend=False,
-        margin=dict(t=54, r=30, b=42, l=96),
+        margin={"t": 54, "r": 30, "b": 42, "l": 96},
     )
     fig.update_xaxes(rangemode="tozero")
     return fig
@@ -2937,7 +2939,8 @@ def fighter_odds_history_chart(
     # Merge odds where available
     all_fights["market_prob"] = np.nan
     if odds_lines is not None and not odds_lines.empty:
-        needed = {"fight_url", "fighter_a", "fighter_b", "implied_prob_a_no_vig", "implied_prob_b_no_vig", "odds_data_quality"}
+        needed = {"fight_url", "fighter_a", "fighter_b", "implied_prob_a_no_vig",
+                  "implied_prob_b_no_vig", "odds_data_quality"}
         if needed.issubset(odds_lines.columns):
             ok = odds_lines[odds_lines["odds_data_quality"].eq("ok")].copy()
             oa = ok[ok["fighter_a"].eq(fighter)][["fight_url", "implied_prob_a_no_vig"]].rename(
@@ -2963,8 +2966,8 @@ def fighter_odds_history_chart(
             x=has_odds["event_date"],
             y=has_odds["market_prob"] * 100,
             mode="lines+markers",
-            line=dict(color=STREAM_PALETTE["odds_adjusted"], width=2),
-            marker=dict(size=9, color=colors_odds.tolist(), line=dict(color="white", width=0.8)),
+            line={"color": STREAM_PALETTE["odds_adjusted"], "width": 2},
+            marker={"size": 9, "color": colors_odds.tolist(), "line": {"color": "white", "width": 0.8}},
             customdata=np.column_stack([
                 has_odds["opponent"].fillna("").values,
                 has_odds["result"].values,
@@ -2986,8 +2989,8 @@ def fighter_odds_history_chart(
             x=no_odds["event_date"],
             y=[5.0] * len(no_odds),
             mode="markers",
-            marker=dict(size=10, color=colors_no.tolist(), symbol="diamond",
-                        line=dict(color="white", width=0.8)),
+            marker={"size": 10, "color": colors_no.tolist(), "symbol": "diamond",
+                        "line": {"color": "white", "width": 0.8}},
             customdata=np.column_stack([
                 no_odds["opponent"].fillna("").values,
                 no_odds["result"].values,
@@ -3012,7 +3015,7 @@ def fighter_odds_history_chart(
         xaxis_title="Date",
         yaxis_title="Market win probability",
         showlegend=False,
-        margin=dict(t=54, r=30, b=42, l=64),
+        margin={"t": 54, "r": 30, "b": 42, "l": 64},
     )
     fig.update_yaxes(range=[0, 100], ticksuffix="%")
     return fig
@@ -3055,7 +3058,7 @@ def favorite_underdog_performance_table(
         decided = len(rows) - draws
         return {
             "bucket": side,
-            "bouts": int(len(rows)),
+            "bouts": len(rows),
             "wins": wins,
             "draws": draws,
             "win_rate": wins / decided if decided else float("nan"),
@@ -3241,7 +3244,7 @@ def _add_streak_traces(
     fig.add_trace(go.Scatter(
         x=h["event_date"], y=h[rating_col],
         mode="lines",
-        line=dict(color=line_color, width=2.5, shape="spline", smoothing=0.4),
+        line={"color": line_color, "width": 2.5, "shape": "spline", "smoothing": 0.4},
         name=f"{fighter} rating",
         hoverinfo="skip",
         showlegend=True,
@@ -3259,8 +3262,8 @@ def _add_streak_traces(
             x=seg["event_date"], y=seg[rating_col],
             mode="markers",
             name=trace_label,
-            marker=dict(size=10, color=outcome_color[outcome],
-                        line=dict(color=THEME["bg"], width=1.5)),
+            marker={"size": 10, "color": outcome_color[outcome],
+                        "line": {"color": THEME["bg"], "width": 1.5}},
             customdata=seg["opponent"].fillna("").to_numpy()[:, None],
             hovertemplate=(
                 f"<b>{fighter} — {label}</b> vs %{{customdata[0]}}<br>"
@@ -3324,14 +3327,14 @@ def streak_timeline_chart(
         fig.add_annotation(
             x=hs + (he - hs) / 2, y=1.0, yref="paper",
             text=f"{fighter}: {label}", showarrow=False, yanchor="bottom",
-            font=dict(color=THEME["accent"], size=12),
+            font={"color": THEME["accent"], "size": 12},
         )
 
     # Overlay a second fighter — full timeline so the comparison is honest, not
     # just the streak window. Marker outcome colors stay the same so wins still
     # read green / losses red regardless of which fighter the marker belongs to.
-    if overlay_fighter and overlay_fighter != fighter:
-        if not ratings_history[ratings_history["fighter"].eq(overlay_fighter)].empty:
+    if (overlay_fighter and overlay_fighter != fighter
+            and not ratings_history[ratings_history["fighter"].eq(overlay_fighter)].empty):
             _add_streak_traces(
                 fig, overlay_fighter, ratings_history, fights, rating_col,
                 line_color=THEME["secondary"],
@@ -3350,7 +3353,7 @@ def streak_timeline_chart(
                 fig.add_annotation(
                     x=ohs + (ohe - ohs) / 2, y=0.96, yref="paper",
                     text=f"{overlay_fighter}: {olabel}", showarrow=False, yanchor="bottom",
-                    font=dict(color=THEME["secondary"], size=11),
+                    font={"color": THEME["secondary"], "size": 11},
                 )
 
     _apply_chart_layout(fig, height=460)
@@ -3359,7 +3362,7 @@ def streak_timeline_chart(
         xaxis_title="Date",
         yaxis_title=_metric_label(rating_col),
         hovermode="closest",
-        legend=dict(orientation="h", y=1.10, x=0, yanchor="bottom"),
+        legend={"orientation": "h", "y": 1.10, "x": 0, "yanchor": "bottom"},
     )
     return fig
 
@@ -3428,16 +3431,16 @@ def striking_profile_chart(
                 marker_color=colors[name], legendgroup=group, showlegend=True,
                 text=[f"{name} {pct:.0%}" if pct >= 0.08 else ""],
                 textposition="inside", insidetextanchor="middle",
-                textfont=dict(color="#0b1220", size=11),
+                textfont={"color": "#0b1220", "size": 11},
                 hovertemplate=f"<b>{name}</b><br>{group}: %{{x:.1%}}<br>{int(value)} landed<extra></extra>",
             ))
     _apply_chart_layout(fig, height=height)
     fig.update_layout(
         title=title, barmode="stack", bargap=0.35,
         showlegend=False,
-        xaxis=dict(range=[0, 1], tickformat=".0%", title_text="Share of significant strikes landed"),
-        yaxis=dict(title_text=""),
-        margin=dict(t=50, r=24, b=44, l=78),
+        xaxis={"range": [0, 1], "tickformat": ".0%", "title_text": "Share of significant strikes landed"},
+        yaxis={"title_text": ""},
+        margin={"t": 50, "r": 24, "b": 44, "l": 78},
     )
     return fig
 
@@ -3485,9 +3488,9 @@ def dominance_leaderboard_chart(
         showlegend=False,
         # Reserve room on the left and let the axis grow to fit the longest
         # fighter name so labels are never clipped.
-        margin=dict(t=64, r=48, b=56, l=180),
+        margin={"t": 64, "r": 48, "b": 56, "l": 180},
     )
-    fig.update_yaxes(automargin=True, tickfont=dict(size=12))
+    fig.update_yaxes(automargin=True, tickfont={"size": 12})
     fig.update_xaxes(rangemode="tozero")
     return fig
 
@@ -3782,7 +3785,7 @@ def legacy_vs_prime_scatter(
         xs = np.array([df["x"].min(), df["x"].max()])
         fig.add_trace(go.Scatter(
             x=xs, y=slope * xs + intercept, mode="lines",
-            line=dict(color=THEME["text_muted"], dash="dash"), name="typical balance",
+            line={"color": THEME["text_muted"], "dash": "dash"}, name="typical balance",
             hoverinfo="skip", showlegend=False,
         ))
     for division, g in df.groupby(div, sort=False):
@@ -3790,7 +3793,7 @@ def legacy_vs_prime_scatter(
         fig.add_trace(go.Scatter(
             x=g["x"], y=g["y"], mode="markers",
             name=div_label,
-            marker=dict(size=11, opacity=0.8, line=dict(color=THEME["bg"], width=0.6)),
+            marker={"size": 11, "opacity": 0.8, "line": {"color": THEME["bg"], "width": 0.6}},
             customdata=np.stack([
                 g["fighter"].astype("string"),
                 pd.Series([div_label] * len(g), index=g.index).astype("string"),
@@ -3812,7 +3815,7 @@ def legacy_vs_prime_scatter(
                      if x_col == "symon_prime_score" else "Prime score · legacy base-WHR fallback"),
         yaxis_title=("All-time career skill mass"
                      if y_col == "symon_career_skill_mass" else "All-time · legacy base-WHR fallback"),
-        legend=dict(orientation="h", y=-0.22),
+        legend={"orientation": "h", "y": -0.22},
         hovermode="closest",
     )
     return fig
@@ -3866,7 +3869,7 @@ def method_mix_timeline_chart(
         fig.add_trace(go.Scatter(
             x=pivot.index.astype(int), y=pivot[bucket],
             mode="lines", name=bucket, stackgroup="one",
-            line=dict(width=0.5, color=METHOD_MIX_COLORS[bucket]),
+            line={"width": 0.5, "color": METHOD_MIX_COLORS[bucket]},
             fillcolor=_hex_to_rgba(METHOD_MIX_COLORS[bucket], 0.55),
             customdata=n_per_year.reindex(pivot.index).fillna(0).astype(int),
             hovertemplate=f"<b>{bucket}</b><br>%{{x}}: %{{y:.0%}} (of %{{customdata}} bouts)<extra></extra>",
@@ -3874,8 +3877,8 @@ def method_mix_timeline_chart(
     _apply_chart_layout(fig, height=440)
     fig.update_layout(
         title=title, xaxis_title="Year", yaxis_title="Share of fights",
-        yaxis=dict(range=[0, 1], tickformat=".0%"),
-        legend=dict(orientation="h", y=1.12, x=0),
+        yaxis={"range": [0, 1], "tickformat": ".0%"},
+        legend={"orientation": "h", "y": 1.12, "x": 0},
     )
     return fig
 
@@ -3938,10 +3941,10 @@ def title_lineage_chart(
         fig.add_trace(go.Bar(
             x=[r["days"]], y=["belt"], base=[r["start"]],
             orientation="h", marker_color=color_for[r["fighter"]],
-            marker_line=dict(color=THEME["bg"], width=1.5),
+            marker_line={"color": THEME["bg"], "width": 1.5},
             opacity=0.92, showlegend=False,
             text=[tag], textposition="inside", insidetextanchor="middle",
-            textfont=dict(color="white", size=11),
+            textfont={"color": "white", "size": 11},
             customdata=[[r["fighter"], r["won_against"], r["start"].date(),
                          int(r["defenses"]), r["years"]]],
             hovertemplate=("<b>%{customdata[0]}</b><br>"
@@ -3951,8 +3954,8 @@ def title_lineage_chart(
     _apply_chart_layout(fig, height=300)
     fig.update_layout(
         title=title, barmode="stack", bargap=0.45,
-        xaxis=dict(type="date", title_text=""),
-        yaxis=dict(title_text="", showticklabels=False, showgrid=False),
+        xaxis={"type": "date", "title_text": ""},
+        yaxis={"title_text": "", "showticklabels": False, "showgrid": False},
         showlegend=False,
     )
     return fig
@@ -3994,13 +3997,13 @@ def career_rank_interval_chart(
     for low, high, fighter in zip(lo, hi, df["fighter"]):
         fig.add_trace(go.Scatter(
             x=[low, high], y=[fighter, fighter], mode="lines",
-            line=dict(color=THEME["border_strong"], width=8),
+            line={"color": THEME["border_strong"], "width": 8},
             hoverinfo="skip", showlegend=False,
         ))
     fig.add_trace(go.Scatter(
         x=point, y=df["fighter"], mode="markers",
-        marker=dict(color=THEME["accent"], size=11,
-                    line=dict(color=THEME["bg"], width=1)),
+        marker={"color": THEME["accent"], "size": 11,
+                    "line": {"color": THEME["bg"], "width": 1}},
         customdata=np.stack([lo, hi, width, mass], axis=-1),
         hovertemplate=(
             "<b>%{y}</b><br>rank %{x:.0f}"
@@ -4013,7 +4016,7 @@ def career_rank_interval_chart(
     fig.update_layout(
         title=title, height=max(360, 26 * len(df) + 130),
         xaxis_title="rank (lower is better)", yaxis_title="",
-        yaxis=dict(autorange="reversed"),
+        yaxis={"autorange": "reversed"},
     )
     return fig
 
@@ -4049,19 +4052,19 @@ def career_shape_scatter(
     for level in np.quantile(mass.dropna(), [0.25, 0.5, 0.75, 0.95]):
         fig.add_trace(go.Scatter(
             x=grid, y=level / grid, mode="lines",
-            line=dict(color=THEME["border"], width=1, dash="dot"),
+            line={"color": THEME["border"], "width": 1, "dash": "dot"},
             hoverinfo="skip", showlegend=False,
         ))
     fig.add_trace(go.Scatter(
         x=years, y=height, mode="markers+text",
         text=df["fighter"], textposition="top center",
-        textfont=dict(size=9, color=THEME["text_muted"]),
-        marker=dict(
-            size=8 + 14 * (mass - mass.min()) / span,
-            color=mass, colorscale="Cividis", showscale=True,
-            colorbar=dict(title="career<br>mass"),
-            line=dict(color=THEME["bg"], width=1),
-        ),
+        textfont={"size": 9, "color": THEME["text_muted"]},
+        marker={
+            "size": 8 + 14 * (mass - mass.min()) / span,
+            "color": mass, "colorscale": "Cividis", "showscale": True,
+            "colorbar": {"title": "career<br>mass"},
+            "line": {"color": THEME["bg"], "width": 1},
+        },
         customdata=np.stack(
             [mass, pd.to_numeric(df.get("rating_periods", years), errors="coerce")], axis=-1),
         hovertemplate=(
@@ -4113,14 +4116,14 @@ def career_bar_ladder_chart(
         fig.add_trace(go.Scatter(
             x=present, y=[rows.get(r, np.nan) for r in present],
             mode="lines+markers", name=fighter,
-            line=dict(width=2), marker=dict(size=7),
+            line={"width": 2}, marker={"size": 7},
             hovertemplate=f"<b>{fighter}</b><br>bar %{{x}}<br>rank %{{y:.0f}}<extra></extra>",
         ))
     fig.update_layout(
         title=title, height=560,
         xaxis_title="yearly bar: field mean to the 95th percentile of the field",
         yaxis_title="rank (lower is better)",
-        yaxis=dict(autorange="reversed"),
+        yaxis={"autorange": "reversed"},
     )
     return fig
 
@@ -4160,8 +4163,8 @@ def evidence_vs_rating_chart(
             continue
         fig.add_trace(go.Scatter(
             x=part["rating_periods"], y=part[rating_col], mode="markers", name=name,
-            marker=dict(color=color, size=size, opacity=0.75,
-                        line=dict(color=THEME["bg"], width=0.5)),
+            marker={"color": color, "size": size, "opacity": 0.75,
+                        "line": {"color": THEME["bg"], "width": 0.5}},
             text=part["fighter"],
             hovertemplate=("<b>%{text}</b><br>rated bouts %{x:.0f}"
                            "<br>rating %{y:.0f}<extra></extra>"),
@@ -4212,17 +4215,17 @@ def career_contribution_chart(
     fig = go.Figure()
     fig.add_trace(go.Bar(
         x=mine["year"], y=mine["excess"], base=mine["bar"], name="credited excess",
-        marker=dict(color=THEME["primary"], opacity=0.85),
+        marker={"color": THEME["primary"], "opacity": 0.85},
         hovertemplate="year %{x}<br>credited %{y:.0f} rating points<extra></extra>",
     ))
     fig.add_trace(go.Scatter(
         x=mine["year"], y=mine["bar"], mode="lines", name="that year's bar",
-        line=dict(color=THEME["accent"], width=2, dash="dash"),
+        line={"color": THEME["accent"], "width": 2, "dash": "dash"},
         hovertemplate="year %{x}<br>bar %{y:.0f}<extra></extra>",
     ))
     fig.add_trace(go.Scatter(
         x=mine["year"], y=mine["annual_mean"], mode="lines+markers", name="rating that year",
-        line=dict(color=THEME["text"], width=2), marker=dict(size=7),
+        line={"color": THEME["text"], "width": 2}, marker={"size": 7},
         hovertemplate="year %{x}<br>rating %{y:.0f}<extra></extra>",
     ))
     fig.update_layout(

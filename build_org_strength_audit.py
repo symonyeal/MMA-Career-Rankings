@@ -83,12 +83,12 @@ def _top100_metrics(
     severe_over = anchored[anchored["delta_vs_anchor"].le(-40)]
     severe_under = anchored[anchored["delta_vs_anchor"].ge(40)]
     return {
-        "ranked_fighters": int(len(ranked)),
+        "ranked_fighters": len(ranked),
         "top100_public_anchor_count": int(top["has_public_anchor"].sum()),
         "top25_unanchored_count": int((~top.head(25)["has_public_anchor"]).sum()),
         "top100_external_only": int(top["external_only"].sum()),
-        "severe_overplacements": int(len(severe_over)),
-        "severe_underplacements": int(len(severe_under)),
+        "severe_overplacements": len(severe_over),
+        "severe_underplacements": len(severe_under),
         "watch_names_below_40_or_missing": watch_missing_or_low,
         "top10": top.head(10)[["model_rank", "fighter", "career_skill_mass"]].to_dict("records"),
     }
@@ -153,7 +153,7 @@ def build(snapshot_dir: Path, *, scope: str, reference: str | float, out_dir: Pa
         "reference": str(reference),
         "combined_fights": combined_summary,
         "models": rows,
-        "bridge_orgs": int(len(bridge)),
+        "bridge_orgs": len(bridge),
     }
     (out_dir / "org_strength_audit.json").write_text(
         json.dumps(summary, indent=2, default=str) + "\n",

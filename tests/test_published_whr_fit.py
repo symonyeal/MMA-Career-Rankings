@@ -72,7 +72,7 @@ def test_a_finish_moves_the_winner_further_than_a_split_decision():
     finishes = base.assign(method_score_winner=1.0)
     decisions = base.assign(method_score_winner=0.9)
     col = {"winner_score_col": "method_score_winner"}
-    top = lambda frame: (  # noqa: E731
+    top = lambda frame: (
         run_whr(frame, **col)
         .sort_values("event_date")
         .groupby("fighter")

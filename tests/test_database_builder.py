@@ -168,7 +168,7 @@ def test_mid_build_failure_cleans_staging_and_preserves_database(tmp_path: Path)
     # The path still passes required-source preflight, but parsing fails after
     # the sibling database has been opened and partially populated.
     (snapshot / "ratings_history.parquet").write_bytes(b"not a parquet file")
-    with pytest.raises(Exception):
+    with pytest.raises(Exception):  # noqa: B017 - the assertion is that ANY parse failure leaves the database untouched; pinning the type would couple this to pyarrow internals
         build_database(snapshot, database)
 
     assert database.read_bytes() == before

@@ -98,7 +98,7 @@ def _cached_get(
     try:
         time.sleep(delay)
         resp = session.get(url, timeout=30, allow_redirects=True)
-    except Exception:
+    except Exception:  # noqa: BLE001 - a multi-day crawl must survive any per-page network failure
         return None
     if resp.status_code != 200:
         return None
@@ -154,7 +154,7 @@ def _parse_event_cell(td) -> tuple[str | None, pd.Timestamp | None]:
     if dm:
         try:
             date = pd.Timestamp(f"{dm.group(1)} {int(dm.group(2))} {dm.group(3)}")
-        except Exception:
+        except Exception:  # noqa: BLE001 - any unparseable date string means no date, not a failed crawl
             date = None
     a = td.find("a")
     if a is not None and a.get_text(strip=True):
@@ -426,7 +426,7 @@ def to_canonical_fights(
 
 def _ufc_caliber_percentiles(
     ufc_ratings_current: pd.DataFrame, *, min_fights: int = 3,
-) -> tuple[dict[str, float], "object"]:
+) -> tuple[dict[str, float], object]:
     """Map every UFC fighter to their rating percentile within the UFC field.
 
     The field is the established (rating_periods >= min_fights) UFC roster; a

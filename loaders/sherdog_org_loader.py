@@ -36,7 +36,7 @@ from bs4 import BeautifulSoup
 # the same cache directory, so a second user agent and a shorter delay here were
 # drift, not a second policy.
 from loaders.page_cache import PageCache, open_cache
-from loaders.sherdog_loader import (  # noqa: F401  (_session is re-exported)
+from loaders.sherdog_loader import (
     BASE,
     DEFAULT_CACHE_DIR,
     POLITE_DELAY_SECONDS,
@@ -113,7 +113,7 @@ def fetch(session, path: str, cache_dir: Path | PageCache, kind: str, key: str,
     for attempt in range(4):
         try:
             r = session.get(url, timeout=30)
-        except Exception:
+        except Exception:  # noqa: BLE001 - the retry loop below is the handler; it backs off and tries again
             time.sleep(2 ** attempt)
             continue
         if r.status_code == 404:

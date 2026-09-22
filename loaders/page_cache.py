@@ -20,6 +20,7 @@ import gzip
 import sqlite3
 from collections.abc import Iterator
 from pathlib import Path
+from typing_extensions import Self
 
 STORE_NAME = "pages.sqlite"
 
@@ -98,7 +99,7 @@ class PageCache:
     def close(self) -> None:
         self._db.close()
 
-    def __enter__(self) -> PageCache:
+    def __enter__(self) -> Self:
         return self
 
     def __exit__(self, *_exc: object) -> None:

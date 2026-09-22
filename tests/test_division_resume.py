@@ -140,7 +140,7 @@ def test_one_fight_in_other_division_does_not_move_career():
     # GSP-like: long welterweight career, single middleweight title win cameo.
     # Career stays WW; current jumps to MW on that title win.
     bouts = [_bout("GSP", f"201{i}-01-01", "Welterweight", title=(i >= 6))
-             for i in range(0, 7)]
+             for i in range(7)]
     bouts += [_bout("GSP", "2017-11-04", "Middleweight", title=True)]
     career, current = _labels(bouts, "GSP")
     assert career == "Welterweight"

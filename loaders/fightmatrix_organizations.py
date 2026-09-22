@@ -37,9 +37,7 @@ def _within(value: pd.Timestamp | pd.NaT, start: str, end: str) -> bool:
         return True
     if start and value < pd.Timestamp(start):
         return False
-    if end and value > pd.Timestamp(end):
-        return False
-    return True
+    return not (end and value > pd.Timestamp(end))
 
 
 def normalize_organization(

@@ -81,7 +81,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from loaders.career_coverage import (  # noqa: E402
+from loaders.career_coverage import (
     DEFAULT_MIN_UFC_BOUTS,
     cached_page_ids,
     coverage_rows,
@@ -90,16 +90,16 @@ from loaders.career_coverage import (  # noqa: E402
     incorporated_page_ids,
     record_incorporated_page_ids,
 )
-from loaders.majors_scope import (  # noqa: E402
+from loaders.majors_scope import (
     DEFAULT_MAJORS_DIR,
     MAJORS_CAREERS,
     load_majors_bouts,
     resolve_identities,
     to_canonical_fights,
 )
-from loaders.crossorg_identity import align_identities, id_conflicts  # noqa: E402
-from loaders.sherdog_loader import resolve_fighter_url  # noqa: E402
-from loaders.sherdog_org_loader import (  # noqa: E402
+from loaders.crossorg_identity import align_identities, id_conflicts
+from loaders.sherdog_loader import resolve_fighter_url
+from loaders.sherdog_org_loader import (
     _session,
     align_bout_schema,
     crawl_careers,
@@ -162,16 +162,16 @@ def main() -> dict:
     cached_ids = cached_page_ids(majors_dir)
     report = {
         "min_ufc_bouts": int(args.min_ufc_bouts),
-        "ufc_fighters": int(len(table)),
-        "eligible": int(len(eligible)),
+        "ufc_fighters": len(table),
+        "eligible": len(eligible),
         "already_cached": int(
             eligible["sherdog_id"].astype("string").fillna("").isin(cached_ids).sum()
         ),
         "already_merged": int(eligible["whole_career_merged"].sum()),
-        "to_read": int(len(todo)),
+        "to_read": len(todo),
         "id_known": int(todo["sherdog_id"].notna().sum()),
         "id_unknown": int(todo["sherdog_id"].isna().sum()),
-        "bouts_before": int(len(bouts)),
+        "bouts_before": len(bouts),
     }
     print(describe(coverage_summary(table, min_ufc_bouts=args.min_ufc_bouts)), flush=True)
     print(json.dumps(report, indent=2), flush=True)
@@ -215,7 +215,7 @@ def main() -> dict:
         subject = careers["fighter_a_id"].astype(str).map(name_by_id)
         careers["fighter_a"] = careers["fighter_a"].fillna(subject)
         report["subject_names_filled"] = int(subject.notna().sum())
-    report["career_rows_fetched"] = int(len(careers))
+    report["career_rows_fetched"] = len(careers)
     report["unreachable"] = list(careers.attrs.get("unreachable", []))
 
     if not careers.empty:
@@ -224,12 +224,12 @@ def main() -> dict:
         merged.to_parquet(path, index=False)
         parsed_ids = set(careers["fighter_a_id"].dropna().astype(str))
         record_incorporated_page_ids(majors_dir, merged_ids | parsed_ids)
-        report["bouts_after"] = int(len(merged))
+        report["bouts_after"] = len(merged)
         report["bouts_added"] = int(len(merged) - len(bouts))
-        report["career_pages_incorporated"] = int(len(merged_ids | parsed_ids))
+        report["career_pages_incorporated"] = len(merged_ids | parsed_ids)
         report["artifact"] = str(path)
     else:
-        report["bouts_after"] = int(len(bouts))
+        report["bouts_after"] = len(bouts)
         report["bouts_added"] = 0
 
     (majors_dir / COVERAGE_REPORT).write_text(json.dumps(report, indent=2))

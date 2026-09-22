@@ -20,7 +20,7 @@ SNAPSHOT_DIR = ROOT / "data" / "snapshots" / "2026-05-13"
 
 pytest.importorskip("ipywidgets")
 pytest.importorskip("anywidget", reason="FigureWidget requires anywidget")
-import plotly.graph_objects as go  # noqa: E402
+import plotly.graph_objects as go
 
 if "FigureWidget" not in dir(go) or go.FigureWidget.__module__.endswith("missing_anywidget"):
     pytest.skip("plotly FigureWidget unavailable", allow_module_level=True)
@@ -42,7 +42,7 @@ def _build_namespace():
     try:
         with contextlib.redirect_stdout(sink):
             for i, src in enumerate(codes):
-                exec(compile(src, f"<cell {i}>", "exec"), ns)
+                exec(compile(src, f"<cell {i}>", "exec"), ns)  # noqa: S102 - executing the notebook's own cells is what this test exists to do
     finally:
         os.chdir(cwd)
         os.environ.pop("NB_STRICT", None)
