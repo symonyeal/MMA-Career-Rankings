@@ -298,7 +298,7 @@ conflict. See the [decision register](docs/DECISIONS.md).
 Use the system Python:
 
 ```text
-C:\Python314\python.exe -m pip install -r requirements.txt
-C:\Python314\python.exe -m pytest -q
-C:\Python314\python.exe build_boards.py data/snapshots/2026-08-13 --scope majors,pre_unified --write-readme
+python -m pip install -r requirements.txt
+python -m pytest -q
+python build_boards.py data/snapshots/2026-08-13 --scope majors,pre_unified --write-readme
 ```
