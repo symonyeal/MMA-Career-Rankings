@@ -54,11 +54,11 @@ def _synthetic_history(n_events=12):
         opp = others[e % len(others)]
         rows.append({"event_date": date, "event_name": f"E{e}",
                      "fighter_a": "Ace", "fighter_b": opp, "winner": "Ace",
-                     "is_draw": False, "is_nc": False, "is_excluded": False})
+                     "is_draw": False, "is_nc": False, "is_excluded": False, "method_score_winner": 1.0})
         x, y = others[e % 6], others[(e + 3) % 6]
         rows.append({"event_date": date, "event_name": f"E{e}",
                      "fighter_a": x, "fighter_b": y, "winner": x,
-                     "is_draw": False, "is_nc": False, "is_excluded": False})
+                     "is_draw": False, "is_nc": False, "is_excluded": False, "method_score_winner": 1.0})
     return pd.DataFrame(rows)
 
 
@@ -75,3 +75,59 @@ def test_backtest_w2_returns_scored_grid():
     assert res["log_loss"].is_monotonic_increasing
     # favorite is predicted to win -> Brier should be well below the 0.25 coin-flip floor
     assert res["brier"].min() < 0.25
+
+
+def _bout(date, winner="A", score=0.8, draw=False):
+    return {"event_date": pd.Timestamp(date), "event_name": date,
+            "fighter_a": "A", "fighter_b": "B", "winner": winner,
+            "is_draw": draw, "is_nc": False, "is_excluded": False, "method_score_winner": score}
+
+
+def test_backtest_default_fits_method_likelihood():
+    fights = pd.DataFrame([_bout("2020-01-01", score=0.5), _bout("2021-01-01")])
+
+    out = backtest_w2(fights, [0.0004], n_eval_events=1, iterations=20, min_prior_fights=1)
+
+    assert out.loc[0, "n"] == 1
+    assert out.loc[0, "brier"] == pytest.approx(0.25)
+
+
+def test_backtest_trains_on_draws_and_counts_their_appearances():
+    fights = pd.DataFrame([_bout("2020-01-01", winner=None, draw=True), _bout("2021-01-01")])
+
+    out = backtest_w2(fights, [0.0004], n_eval_events=1, iterations=20, min_prior_fights=1)
+
+    assert out.loc[0, "n"] == 1
+    assert out.loc[0, "brier"] == pytest.approx(0.25)
+
+
+def test_backtest_requires_production_score_column():
+    fights = pd.DataFrame([_bout("2020-01-01"), _bout("2021-01-01")]).drop(columns="method_score_winner")
+
+    with pytest.raises(ValueError, match="winner-score column"):
+        backtest_w2(fights, [0.0004], n_eval_events=1, min_prior_fights=1)
+
+
+def test_backtest_binary_model_requires_explicit_research_option():
+    fights = pd.DataFrame([_bout("2020-01-01", score=0.5), _bout("2021-01-01")])
+
+    out = backtest_w2(fights, [0.0004], binary_research=True,
+                      n_eval_events=1, iterations=20, min_prior_fights=1)
+
+    assert out.loc[0, "n"] == 1
+    assert out.loc[0, "brier"] < 0.25
+
+
+def test_backtest_projects_age_drift_to_forecast_date():
+    train = [_bout("2017-01-01"), _bout("2018-01-01"),
+             _bout("2019-01-01", winner="B"), _bout("2020-01-01", winner="B")]
+    scores = []
+    for date in ["2020-02-01", "2021-01-01"]:
+        fights = pd.DataFrame([*train, _bout(date)])
+        out = backtest_w2(fights, [0.0004], birth_dates={"A": pd.Timestamp("1983-01-01")},
+                          n_eval_events=1, iterations=30, min_prior_fights=1)
+        assert out.loc[0, "n"] == 1
+        scores.append(out.loc[0, "brier"])
+
+    # The same declining fighter becomes less likely to win after a longer gap.
+    assert scores[1] > scores[0]

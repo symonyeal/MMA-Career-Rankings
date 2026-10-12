@@ -196,7 +196,7 @@ def test_quality_wins_are_unique_and_inside_the_selected_prime_window(tmp_path):
     # rating row must not make bout-0 count twice.
     assert row["elite_wins"] == 5
     assert row["elite_window_start"] == inside_dates.min()
-    assert row["elite_window_end"] == later_dates.max()
+    assert row["elite_window_end"] == pd.Timestamp("2029-12-31")
 
 
 # --- Ordering: elite-win mass, not the bare level ---
@@ -369,6 +369,27 @@ def test_the_level_is_read_from_the_same_window_as_the_wins():
     got = best_elite_decade(wins, history).set_index("fighter")
 
     assert got.loc["A", "elite_level"] == pytest.approx(2100.0)
+
+
+def test_returned_window_reproduces_the_level_after_the_last_qualifying_win():
+    """A later nonqualifying appearance belongs to the rated decade."""
+    wins = _wins([f"{t}-01-01" for t in range(2000, 2005)])
+    history = _history([
+        *[(f"{t}-01-01", 2100.0) for t in range(2000, 2005)],
+        ("2009-01-01", 1500.0),
+        ("2010-01-01", 900.0),
+    ])
+
+    row = best_elite_decade(wins, history).iloc[0]
+    inside = history["event_date"].between(
+        row["elite_window_start"], row["elite_window_end"]
+    )
+
+    assert row["elite_wins"] == 5
+    assert row["elite_window_start"] == pd.Timestamp("2000-01-01")
+    assert row["elite_level"] == pytest.approx(2000.0)
+    assert history.loc[inside, "mu_whr"].mean() == pytest.approx(row["elite_level"])
+    assert row["elite_window_end"] == pd.Timestamp("2009-12-31")
 
 
 def test_wins_further_apart_than_the_span_do_not_share_a_window():

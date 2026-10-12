@@ -1,11 +1,11 @@
-"""Whole-History Rating (WHR) — a Bayesian smoother sidecar to the Glicko-2 filter.
+"""Whole-History Rating (WHR) — the retrospective production skill estimator.
 
 Reference: Rémi Coulom (2008), "Whole-History Rating: A Bayesian Rating System
 for Players of Time-Varying Strength."
 
 Why this exists
 ---------------
-The production canonical engine is Glicko-2, a *filter*: information flows one
+The diagnostic canonical engine is Glicko-2, a *filter*: information flows one
 direction (past -> future), so a fighter who debuts in an inflated modern pool
 and one who debuted in a compressed early pool are not directly comparable.
 WHR is a *smoother*: it computes the joint MAP estimate of every fighter's
@@ -48,6 +48,10 @@ vector is a concave problem whose Hessian is tridiagonal (temporal-neighbour
 coupling from the Wiener prior + per-appearance BT curvature). One Newton step
 per fighter per pass, solved in O(k) by the Thomas algorithm; iterate over all
 fighters for a fixed number of passes.
+
+The proper anchor and virtual-game priors fix the origin. Do not subtract the
+appearance mean between passes: that changes the posterior and couples otherwise
+independent bout graphs. A fixed pass count is not a convergence certificate.
 
 The output ``mu_whr`` is mapped to a familiar Elo-like scale
 (``1500 + r * 400/ln(10)``) so it slots into the same downstream machinery as
@@ -463,11 +467,6 @@ def run_whr(
             step = _thomas(a_diag, a_off, g)
             np.clip(step, -step_clip, step_clip, out=step)
             ratings[nodes] = r + step
-
-        # Re-anchor the global mean to 0 each pass — the BT graph fixes
-        # relative ratings; the level is only pinned by the weak prior, so
-        # this keeps the scale stable across iterations.
-        ratings -= ratings.mean()
 
         if age_drift and pass_index == fit_passes - 1:
             change_sum = np.zeros(len(AGE_BIN_LABELS), dtype=float)

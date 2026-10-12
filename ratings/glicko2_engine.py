@@ -55,6 +55,10 @@ class HistoryRow:
     phi_method: float
     sigma_method: float
     opponents_this_event: int
+    pre_mu_canonical: float
+    pre_phi_canonical: float
+    pre_mu_method: float
+    pre_phi_method: float
 
 
 def _months_between(a: pd.Timestamp, b: pd.Timestamp) -> float:
@@ -213,6 +217,10 @@ class RatingEngine:
                 phi_method=st.method.phi,
                 sigma_method=st.method.sigma,
                 opponents_this_event=len(series_canon[f]),
+                pre_mu_canonical=pre_canon[f].mu,
+                pre_phi_canonical=pre_canon[f].phi,
+                pre_mu_method=pre_method[f].mu,
+                pre_phi_method=pre_method[f].phi,
             ))
 
     # ------------------------------------------------------------------
@@ -279,6 +287,8 @@ class WeightedHistoryRow:
     sigma: float
     opponents_this_event: int
     total_weight: float
+    pre_mu: float
+    pre_phi: float
 
 
 class WeightedRatingEngine:
@@ -389,6 +399,8 @@ class WeightedRatingEngine:
                 sigma=st.rating.sigma,
                 opponents_this_event=len(series[f]),
                 total_weight=float(sum(w for _, _, w in series[f])),
+                pre_mu=pre[f].mu,
+                pre_phi=pre[f].phi,
             ))
 
     def history_df(self) -> pd.DataFrame:

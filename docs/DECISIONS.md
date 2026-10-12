@@ -174,6 +174,41 @@ Where the data comes from is [Source Matrix](../data/SOURCE_MATRIX.md).
    resolved improvement and there is none. Harness:
    `Claude Func Folder\ufc_whr_drift_recalibration.py`.
 
+**The WHR fit was repaired on 2026-10-09, and the published boards predate the
+repair.** The fit used to subtract the average rating after every pass. The
+anchor and virtual-game priors already fix where the scale sits, so the shift
+pulled the fit away from the posterior it claims to solve, and a fight between
+two fighters could move the ratings of fighters they never met. In the
+2026-10-08 review's ten-fight example, adding ten unrelated fights moved the gap
+between the winner and the last opponent by 93.88 points. The shift is gone.
+`tests/test_whr_joint_map.py` now checks that the fit reaches the posterior's
+stationary point and that unconnected fights leave existing ratings unchanged.
+
+Three smaller repairs from the same review shipped with it. The accuracy check
+now forecasts with each fighter's uncertainty as it stood entering the event,
+including growth from inactivity, instead of the value after his previous fight
+(cache schema 9, so older cached predictions are not reused). The Prime window
+reports the ten years its level is actually averaged over. Paired comparisons
+resample whole cards rather than single bouts, because bouts on one card are not
+independent.
+
+Held-out check against `c0072b4`, scored on 2004 cards: log loss −0.0143,
+95% CI [−0.0506, +0.0240]; Brier −0.0065, [−0.0230, +0.0118]; 38 bouts on 5
+cards. **Did not resolve.** Birth dates were not available, so age drift was
+neutral, which means this is not the production model. It shows the repair does
+not damage prediction on that sample. It is not the held-out test a rating
+change must pass, which needs the production inputs. Evidence:
+`docs/validation/whr-solver-2026-10-09/`, harness
+`analysis/check_whr_solver.py`.
+
+**Not done.** RANKINGS.md and the README boards were built by the old fit.
+This checkout has none of the inputs a refit needs: `python check_release.py
+data/snapshots/2026-08-13` lists 17 missing files and finds 0 of the 6,012 birth
+dates the last fit used. Until those inputs are restored and the full path under
+[Rebuild and verify](#rebuild-and-verify) is run, the published boards and the
+code disagree. After the refit, run the held-out test on the published scope
+before quoting any movement.
+
 **A win over a fighter returning from a long absence is priced lower.** Shipped
 2026-09-03, in the ledgers, after the rating-layer version was built and
 refused.
@@ -414,11 +449,11 @@ first line below and the boards publish the old scores while the audit, which
 does recompute, publishes the new ones, and the two silently disagree:
 
 ```text
-C:\Python314\python.exe -m ratings.rate_snapshot --snapshot-dir data/snapshots/2026-08-13 --scope majors,pre_unified --career-only
-C:\Python314\python.exe build_boards.py data/snapshots/2026-08-13 --scope majors,pre_unified --write-readme
-C:\Python314\python.exe build_top100_audit.py data/snapshots/2026-08-13 --scope majors,pre_unified
-C:\Python314\python.exe -m pytest -q
-C:\Python314\python.exe -m ruff check .
+python -m ratings.rate_snapshot --snapshot-dir data/snapshots/2026-08-13 --scope majors,pre_unified --career-only
+python build_boards.py data/snapshots/2026-08-13 --scope majors,pre_unified --write-readme
+python build_top100_audit.py data/snapshots/2026-08-13 --scope majors,pre_unified
+python -m pytest -q
+python -m ruff check .
 ```
 
 `--career-only` re-scores against the persisted fit and refuses if the scope does
@@ -429,9 +464,9 @@ A data or rating change needs the full path, and `rate_snapshot` takes about
 fifteen minutes:
 
 ```text
-C:\Python314\python.exe build_sherdog_careers.py --report-only
-C:\Python314\python.exe -c "from loaders.majors_scope import stage_majors_scope; stage_majors_scope('data/snapshots/2026-08-13')"
-C:\Python314\python.exe -m ratings.rate_snapshot --snapshot-dir data/snapshots/2026-08-13 --scope majors,pre_unified
+python build_sherdog_careers.py --report-only
+python -c "from loaders.majors_scope import stage_majors_scope; stage_majors_scope('data/snapshots/2026-08-13')"
+python -m ratings.rate_snapshot --snapshot-dir data/snapshots/2026-08-13 --scope majors,pre_unified
 ```
 
 then the board block above. Never hand-edit a generated table. After any change,

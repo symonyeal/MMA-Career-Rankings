@@ -1,0 +1,34 @@
+{
+  "baseline": "c0072b493cfbe2427d0c14744e7031dbd876ac74",
+  "scope": "majors,pre_unified",
+  "evaluation_year": 2004,
+  "iterations": 50,
+  "w2_per_day": 0.0004,
+  "birth_dates": 0,
+  "limitation": "Historical mechanism check with neutral age drift; release birth-date inputs absent.",
+  "input_sha256": "27f5cdaa0d745f1202f51cefaeb71064af98f9aaef1027d25d28fcc9db7accb3",
+  "metrics": [
+    {
+      "baseline": "baseline",
+      "challenger": "corrected",
+      "metric": "log_loss",
+      "n": 38,
+      "n_events": 5,
+      "delta": -0.014275642736167887,
+      "lo": -0.05058578626616951,
+      "hi": 0.023989806453294772,
+      "favours": "neither"
+    },
+    {
+      "baseline": "baseline",
+      "challenger": "corrected",
+      "metric": "brier",
+      "n": 38,
+      "n_events": 5,
+      "delta": -0.006541940472520282,
+      "lo": -0.022959412877844778,
+      "hi": 0.011838250954185206,
+      "favours": "neither"
+    }
+  ]
+}
