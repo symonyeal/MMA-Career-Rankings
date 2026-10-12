@@ -28,11 +28,12 @@ The full sequence is in [Rebuild and verify](docs/DECISIONS.md#rebuild-and-verif
 form, which every change ends with:
 
 ```text
-C:\Python314\python.exe -m pytest -q
-C:\Python314\python.exe -m ruff check .
+python -m pytest -q
+python -m ruff check .
+python -m pip check
 ```
 
-Both must be clean. They are also run by [CI](.github/workflows/ci.yml) on every push, because
+All three must be clean. They are also run by [CI](.github/workflows/ci.yml) on every push, because
 between 2026-09-01 and 2026-09-22 the lint gate was documented but never enforced and drifted to
 364 findings without anyone noticing.
 
