@@ -1,0 +1,36 @@
+Source: Fight Matrix, https://www.fightmatrix.com/
+Terms reviewed: 2026-10-08; see LICENSE.txt.
+
+html/ is a local cache of twelve current-ranking pages and one all-time page,
+obtained by loaders/fightmatrix_loader.py. These are complete third-party HTML
+pages, including layout and comments, rather than only extracted ranking facts.
+Cached current pages state issue date 2026-05-10, official release 1023; the
+all-time page states update date 2026-08-02. These are source issue dates.
+The loader does not record exact retrieval timestamps.
+
+The source pages' canonical URLs are:
+https://www.fightmatrix.com/mma-ranks/heavyweight-265-lbs/
+https://www.fightmatrix.com/mma-ranks/light-heavyweight-185-205-lbs/
+https://www.fightmatrix.com/mma-ranks/middleweight/
+https://www.fightmatrix.com/mma-ranks/welterweight/
+https://www.fightmatrix.com/mma-ranks/lightweight/
+https://www.fightmatrix.com/mma-ranks/featherweight/
+https://www.fightmatrix.com/mma-ranks/bantamweight/
+https://www.fightmatrix.com/mma-ranks/flyweight/
+https://www.fightmatrix.com/mma-ranks/womens-pound-for-pound/
+https://www.fightmatrix.com/mma-ranks/womens-bantamweight/
+https://www.fightmatrix.com/mma-ranks/womens-flyweight/
+https://www.fightmatrix.com/mma-ranks/womens-strawweight/
+https://www.fightmatrix.com/all-time-mma-rankings/all-time-absolute/
+
+The bounded profile loader, loaders/fightmatrix_profiles.py, also extracts
+biographical fields and factual bout records from linked fighter profiles.
+These outputs differ from the raw ranking-page cache; neither extraction nor
+attribution establishes a redistribution grant. The source FAQ identifies
+Sherdog as its main bout source: https://www.fightmatrix.com/faq/
+
+organization_normalization.csv contains this project's authored promotion rules;
+it is not a downloaded Fight Matrix table.
+
+No redistribution licence or permission record was identified for source HTML
+or extracted source compilations. See LICENSE.txt before distributing either.
