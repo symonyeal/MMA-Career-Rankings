@@ -19,9 +19,12 @@ probe700/
 data/raw/
 data/model_tuning/
 data/external/fightmatrix/profiles/
+data/external/fightmatrix/html/
 
 data/external/sherdog/*
 !data/external/sherdog/crossorg_bouts.parquet
+!data/external/sherdog/ATTRIBUTION.txt
+!data/external/sherdog/LICENSE.txt
 
 data/snapshots/*
 !data/snapshots/*/

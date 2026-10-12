@@ -1,0 +1,22 @@
+Sherdog source material: no redistribution licence identified.
+This is a rights-status notice, not a licence grant.
+
+Primary source: https://www.sherdog.com/terms-of-use
+Terms revision stated by the source: 2021-01-10.
+Reviewed: 2026-10-08.
+
+Section 4 restricts copying, distribution and disclosure of service content,
+aggregation or collation for use elsewhere, automated requests exceeding human
+browsing rates, and bypassing access restrictions. Section 9 reserves the
+operator's and licensors' proprietary rights and restricts reproduction,
+distribution and derivative uses except where expressly permitted.
+
+No separate open-data licence or permission record covering this repository's
+extracted bout compilation was identified. Its factual fields and transformation
+do not establish a redistribution grant. Redistribution rights remain unresolved.
+Record source permission or another established basis before treating these
+materials as cleared for distribution. Attribution alone is insufficient.
+
+The repository's MIT licence does not grant rights in Sherdog source material.
+This notice records the published terms; it makes no determination about the
+application of copyright, contract or statutory exceptions to particular uses.

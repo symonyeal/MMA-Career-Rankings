@@ -1,0 +1,23 @@
+Fight Matrix source material: no redistribution licence identified.
+This is a rights-status notice, not a licence grant.
+
+Primary source: https://www.fightmatrix.com/terms-conditions/
+Terms update stated by the source: 2018-08-16.
+Reviewed: 2026-10-08.
+The site footer carries a Fight Matrix copyright notice.
+
+The published terms govern access to the service and termination of access;
+they do not provide a licence to redistribute its HTML, rankings or extracted
+data. No separate open-data licence or permission record was identified in the
+source pages, terms, FAQ or repository. Public access is not a licence grant.
+
+Redistribution rights remain unresolved for cached pages and extracted source
+compilations. Keep raw HTML outside distributable repository artifacts unless
+permission is established. Record source permission or another established
+basis before treating source material as cleared for distribution. Attribution
+alone is insufficient.
+
+The repository's MIT licence does not grant rights in Fight Matrix content.
+This notice concerns source material, not the project's code or authored
+organization-normalization rules. It makes no determination about the
+application of copyright, contract or statutory exceptions to particular uses.

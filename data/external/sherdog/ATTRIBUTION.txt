@@ -1,0 +1,22 @@
+Source: Sherdog Fight Finder, https://www.sherdog.com/
+Source operator identified by its terms: Evolve Media Holdings, LLC.
+Terms reviewed: 2026-10-08; see LICENSE.txt.
+
+crossorg_bouts.parquet contains structured bout records extracted from Sherdog
+event cards and fighter career pages. It combines the six-promotion event crawl
+with whole-career records, preferring event-card rows when the sources overlap.
+The loaders are loaders/sherdog_org_loader.py, build_sherdog_majors.py and
+build_sherdog_careers.py. It contains factual fields and source identifiers,
+not complete HTML pages, photographs or articles.
+
+The event_href, fighter_a_href and fighter_b_href columns retain source paths;
+prefix them with https://www.sherdog.com. Some career rows use an ID-based
+placeholder fighter path; the numeric fighter ID is the provenance identifier.
+The source column distinguishes event cards from fighter pages.
+
+The repository records whole-career completion on 2026-09-08 in
+build_sherdog_careers.py and docs/DECISIONS.md. This is a processing milestone,
+not a retrieval timestamp. The Parquet does not retain per-page retrieval dates.
+
+Attribution does not establish permission to redistribute the extracted
+compilation. No such licence or permission record was identified; see LICENSE.txt.
