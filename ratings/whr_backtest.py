@@ -29,7 +29,9 @@ import numpy as np
 import pandas as pd
 
 from ratings.constants import WHR_ITERATIONS, WHR_W2_PER_DAY
-from ratings.whr import _ELO_PER_NAT, run_whr
+from ratings.age import load_birth_dates
+from ratings.rate_snapshot import attach_bout_weights
+from ratings.whr import _ELO_PER_NAT, production_score_kwargs, project_age_rating, run_whr
 
 
 def elo_win_prob(mu_a: float, mu_b: float,
@@ -77,6 +79,8 @@ def backtest_w2(
     iterations: int = WHR_ITERATIONS,
     min_prior_fights: int = 3,
     eps: float = 1e-6,
+    birth_dates: dict[str, object] | None = None,
+    binary_research: bool = False,
 ) -> pd.DataFrame:
     """Rolling-origin one-step-ahead scoring over a ``(w2, var_lambda)`` grid.
 
@@ -87,6 +91,12 @@ def backtest_w2(
     WHR solve per ``(w2, event)``. Returns a frame ``w2, var_lambda, brier,
     log_loss, n`` sorted by ``log_loss`` ascending (best first). Only bouts where
     both fighters have >= ``min_prior_fights`` prior appearances are scored.
+
+    The default fit uses production bout weights, method scores and age drift;
+    last ratings are projected to the held-out date. Draws remain in training
+    and appearance counts, while only decided bouts are scored. Missing birth
+    dates give neutral age drift. ``binary_research=True`` explicitly selects
+    the age-neutral binary likelihood.
     """
     lambdas = list(var_lambdas) if var_lambdas else [0.0]
     need_var = any(value > 0 for value in lambdas)
@@ -94,6 +104,16 @@ def backtest_w2(
     cols = ["w2", "var_lambda", "brier", "log_loss", "n"]
     if bouts.empty:
         return pd.DataFrame(columns=cols)
+    rated = fights.copy()
+    rated["event_date"] = pd.to_datetime(rated["event_date"], errors="coerce")
+    rated = rated.dropna(subset=["event_date", "fighter_a", "fighter_b"])
+    if "is_excluded" in rated.columns:
+        rated = rated[~rated["is_excluded"].fillna(False).astype(bool)]
+    fit_kwargs = {}
+    dob = birth_dates if birth_dates is not None else {}
+    if not binary_research:
+        rated = attach_bout_weights(rated)
+        fit_kwargs = {"age_drift": True, "birth_dates": dob, **production_score_kwargs(rated)}
 
     events = (
         bouts[["event_date", "event_name"]]
@@ -103,8 +123,8 @@ def backtest_w2(
     eval_events = events.tail(n_eval_events)
 
     appearances = pd.concat([
-        bouts[["event_date", "fighter_a"]].rename(columns={"fighter_a": "fighter"}),
-        bouts[["event_date", "fighter_b"]].rename(columns={"fighter_b": "fighter"}),
+        rated[["event_date", "fighter_a"]].rename(columns={"fighter_a": "fighter"}),
+        rated[["event_date", "fighter_b"]].rename(columns={"fighter_b": "fighter"}),
     ], ignore_index=True)
 
     rows = []
@@ -113,15 +133,24 @@ def backtest_w2(
         acc = {lam: [0.0, 0.0, 0] for lam in lambdas}
         for _, ev in eval_events.iterrows():
             d = ev["event_date"]
-            train = bouts[bouts["event_date"] < d]
+            train = rated[rated["event_date"] < d]
             if train.empty:
                 continue
             hist = run_whr(train, w2_per_day=float(w2), iterations=iterations,
-                           return_variance=need_var)
+                           return_variance=need_var, **fit_kwargs)
             if hist.empty:
                 continue
-            last = hist.sort_values(["fighter", "event_date"]).groupby("fighter").last()
+            last = hist.sort_values(["fighter", "event_date", "event_name"]).groupby("fighter").tail(1)
+            last = last.set_index("fighter")
             mu_map = last["mu_whr"]
+            if not binary_research:
+                mu_map = pd.Series({
+                    f: project_age_rating(
+                        float(row["mu_whr"]), last_date=row["event_date"], target_date=d,
+                        birth_date=dob.get(str(f)), drift_elo_per_year=hist.attrs["age_drift_elo_per_year"],
+                    )
+                    for f, row in last.iterrows()
+                })
             var_map = last["var_whr"] if need_var and "var_whr" in last.columns else None
             prior_counts = appearances[appearances["event_date"] < d].groupby("fighter").size()
             ev_bouts = bouts[(bouts["event_date"] == d) & (bouts["event_name"] == ev["event_name"])]
@@ -160,6 +189,8 @@ def main() -> None:
     parser.add_argument("--iterations", type=int, default=WHR_ITERATIONS, help="WHR coordinate-ascent passes per fit.")
     parser.add_argument("--min-prior-fights", type=int, default=3,
                         help="Min prior appearances per fighter to score a bout.")
+    parser.add_argument("--binary-research", action="store_true",
+                        help="Fit the age-neutral binary research model instead of production WHR.")
     args = parser.parse_args()
 
     fights = pd.read_parquet(args.snapshot_dir / "canonical_fights.parquet")
@@ -168,6 +199,7 @@ def main() -> None:
     result = backtest_w2(
         fights, grid, var_lambdas=lambdas, n_eval_events=args.events,
         iterations=args.iterations, min_prior_fights=args.min_prior_fights,
+        birth_dates=load_birth_dates(args.snapshot_dir), binary_research=args.binary_research,
     )
     pd.set_option("display.width", 120)
     print(result.to_string(index=False))

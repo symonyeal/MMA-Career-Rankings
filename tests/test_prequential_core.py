@@ -309,3 +309,63 @@ def test_crossorg_scope_reports_no_artifact_at_all(tmp_path: Path) -> None:
     )
     with pytest.raises(FileNotFoundError, match="no cross-org artifact at all"):
         pq.load_fight_table(snapshot, with_crossorg=True)
+
+
+@pytest.mark.parametrize("engine,stream", [
+    ("glicko", "canonical"), ("glicko", "method"), ("weighted_glicko", "canonical"),
+])
+def test_online_forecast_inflates_uncertainty_before_returning_event(engine, stream):
+    fights = pd.DataFrame([
+        {**_fight(str(k), "ufc", "2000-01-01"),
+         "event_date": pd.Timestamp("2000-01-01") + pd.Timedelta(days=10 * k),
+         "fighter_a": "A", "fighter_b": "B", "winner": "A"}
+        for k in range(10)
+    ])
+    returning = fights.iloc[-1].to_dict()
+    returning.update(fight_url="return", event_date=pd.Timestamp("2020-01-01"), event_name="Return")
+    fights = pd.concat([fights, pd.DataFrame([returning])], ignore_index=True)
+    inputs = pq.Inputs(Path("."), fights, pd.DataFrame())
+
+    out = pq.online_predictions(inputs, pq.Variant("test", engine=engine, stream=stream))
+
+    # phi^2 += n * (173.7178 * sigma)^2 during inactivity, before observing the return.
+    assert out.loc[out["fight_url"].eq("return"), "p_a"].iloc[0] == pytest.approx(0.92950835, abs=1e-8)
+
+
+@pytest.mark.parametrize("engine", ["glicko", "weighted_glicko"])
+def test_online_forecasts_share_card_state_and_count_all_prior_bouts(engine):
+    fights = pd.DataFrame([
+        {**_fight("1", "ufc", "2020-01-01"), "event_name": "Tournament",
+         "fighter_a": "A", "fighter_b": "B", "winner": "A"},
+        {**_fight("2", "ufc", "2020-01-01"), "event_name": "Tournament",
+         "fighter_a": "A", "fighter_b": "C", "winner": "C"},
+        {**_fight("3", "ufc", "2020-02-01"),
+         "fighter_a": "A", "fighter_b": "B", "winner": "A"},
+    ])
+    inputs = pq.Inputs(Path("."), fights, pd.DataFrame())
+
+    out = pq.online_predictions(inputs, pq.Variant("test", engine=engine)).set_index("fight_url")
+
+    assert out.loc[["1", "2"], "p_a"].tolist() == [0.5, 0.5]
+    assert out.loc[["1", "2"], "prior_a"].tolist() == [0, 0]
+    assert out.loc["3", "prior_a"] == 2
+
+
+@pytest.mark.parametrize("events", [
+    [("2020-01-01", "Card A"), ("2020-01-01", "Card B")],
+    [("2020-01-01", "Card A"), ("2020-02-01", "Card A")],
+])
+def test_paired_delta_resamples_cards_with_dependent_bouts(events):
+    rows = []
+    for k, (date, name) in enumerate(events):
+        for j in range(20):
+            for variant, p in [("base", 0.5), ("new", 0.25 if k == 0 else 0.75)]:
+                rows.append({"variant": variant, "fight_url": f"{k}/{j}",
+                             "event_date": pd.Timestamp(date), "event_name": name, "p_a": p, "y_a": 1})
+
+    out = pq.paired_delta(pd.DataFrame(rows), "base", "new", metric="brier", n_boot=2000)
+
+    # Two independent cards: resampling both copies of either card has probability 1/4.
+    assert out["delta"] == pytest.approx(0.0625)
+    assert out["lo"] == pytest.approx(-0.1875)
+    assert out["hi"] == pytest.approx(0.3125)

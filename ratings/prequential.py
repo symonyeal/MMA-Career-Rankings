@@ -87,7 +87,9 @@ EPS = 1e-6
 #       scores the winner by how the bout ended
 #       (``ratings.constants.WHR_WINNER_SCORE_COL``), so a cached schema-7
 #       prediction is a different model, not a stale copy of this one.
-CACHE_SCHEMA_VERSION = 8
+#   9 - entering-event Glicko uncertainty, prior bout counts and the corrected
+#       WHR posterior solve without appearance-mean projection (2026-10-08)
+CACHE_SCHEMA_VERSION = 9
 
 
 # ---------------------------------------------------------------------------
@@ -328,20 +330,13 @@ def _decided(fights: pd.DataFrame) -> pd.DataFrame:
     return f[f["winner"].eq(f["fighter_a"]) | f["winner"].eq(f["fighter_b"])]
 
 
-def _prefight_table(history: pd.DataFrame, mu_col: str, phi_col: str | None) -> pd.DataFrame:
+def _prefight_table(history: pd.DataFrame, mu_col: str, phi_col: str) -> pd.DataFrame:
     """Each history row's rating *entering* that appearance, plus prior fight count."""
-    cols = ["fighter", "event_date", "event_name", mu_col]
-    if phi_col and phi_col in history.columns:
-        cols.append(phi_col)
-    h = history[cols].copy()
+    cols = ["fighter", "event_date", "event_name", f"pre_{mu_col}", f"pre_{phi_col}", "opponents_this_event"]
+    h = history[cols].rename(columns={f"pre_{mu_col}": "pre_mu", f"pre_{phi_col}": "pre_phi"}).copy()
     h["event_date"] = pd.to_datetime(h["event_date"], errors="coerce")
     h = h.sort_values(["fighter", "event_date", "event_name"], kind="stable")
-    h["pre_mu"] = h.groupby("fighter")[mu_col].shift(1).fillna(1500.0)
-    if phi_col and phi_col in h.columns:
-        h["pre_phi"] = h.groupby("fighter")[phi_col].shift(1).fillna(350.0)
-    else:
-        h["pre_phi"] = 350.0
-    h["prior_fights"] = h.groupby("fighter").cumcount()
+    h["prior_fights"] = h.groupby("fighter")["opponents_this_event"].cumsum() - h["opponents_this_event"]
     return h[["fighter", "event_date", "event_name", "pre_mu", "pre_phi", "prior_fights"]]
 
 
@@ -876,11 +871,12 @@ def paired_delta(
     seed: int = 20260818,
     calibrated: bool = False,
 ) -> dict:
-    """Paired per-bout metric difference with a bootstrap interval.
+    """Paired per-bout metric difference with an event bootstrap interval.
 
     Both variants are scored on the identical held-out bouts, so the comparison
     is paired and the interval reflects the spread of the *difference*, not the
-    spread of two independent means.
+    spread of two independent means. Cards are resampled as clusters keyed by
+    event date and name; all bouts on a sampled card remain together.
     """
     a = predictions[predictions["variant"] == baseline].set_index("fight_url")
     b = predictions[predictions["variant"] == challenger].set_index("fight_url")
@@ -906,13 +902,17 @@ def paired_delta(
         raise ValueError(metric)
 
     d = loss(b) - loss(a)  # negative = challenger better for losses
+    events = a[["event_date", "event_name"]].copy()
+    events["d"] = d
+    clusters = events.groupby(["event_date", "event_name"], dropna=False)["d"].agg(["sum", "size"])
+    sums, sizes = clusters["sum"].to_numpy(), clusters["size"].to_numpy()
     rng = np.random.default_rng(seed)
-    idx = rng.integers(0, len(d), size=(n_boot, len(d)))
-    boots = d[idx].mean(axis=1)
+    idx = rng.integers(0, len(clusters), size=(n_boot, len(clusters)))
+    boots = sums[idx].sum(axis=1) / sizes[idx].sum(axis=1)
     lo, hi = np.percentile(boots, [2.5, 97.5])
     return {
         "baseline": baseline, "challenger": challenger, "metric": metric,
-        "n": len(d), "delta": float(d.mean()), "lo": float(lo), "hi": float(hi),
+        "n": len(d), "n_events": len(clusters), "delta": float(d.mean()), "lo": float(lo), "hi": float(hi),
         "favours": ("challenger" if hi < 0 else "baseline" if lo > 0 else "neither")
         if metric != "accuracy"
         else ("challenger" if lo > 0 else "baseline" if hi < 0 else "neither"),

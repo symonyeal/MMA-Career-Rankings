@@ -301,6 +301,8 @@ def best_elite_decade(
     for the fighter's own rated appearances. The window is chosen to hold the
     most qualifying wins, ties broken by the higher mean rating inside it, and
     both the win count and the level are then read from that same window.
+    The returned endpoints delimit the full inclusive window, including rated
+    appearances after its last qualifying win.
 
     **Why the window is chosen this way.** Picking it by mean rating instead --
     which is what ``symon_prime_score`` does -- selects the stretch with the
@@ -339,8 +341,7 @@ def best_elite_decade(
             # Most wins first; a tie goes to the stronger stretch.
             key = (count, -1e18 if pd.isna(level) else level)
             if best is None or key > (best[0], best[1]):
-                last = dates[dates <= end].max()
-                best = (count, key[1], start, last)
+                best = (count, key[1], start, end)
         if best is None:
             continue
         rows.append({
