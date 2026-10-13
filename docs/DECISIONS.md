@@ -174,12 +174,12 @@ Where the data comes from is [Source Matrix](../data/SOURCE_MATRIX.md).
    resolved improvement and there is none. Harness:
    `Claude Func Folder\ufc_whr_drift_recalibration.py`.
 
-**The WHR fit was repaired on 2026-10-09, and the published boards predate the
-repair.** The fit used to subtract the average rating after every pass. The
+**The WHR fit was repaired on 2026-10-09, and the boards were refitted with it on
+2026-10-13.** The fit used to subtract the average rating after every pass. The
 anchor and virtual-game priors already fix where the scale sits, so the shift
 pulled the fit away from the posterior it claims to solve, and a fight between
 two fighters could move the ratings of fighters they never met. In the
-2026-10-08 review's ten-fight example, adding ten unrelated fights moved the gap
+[2026-10-08 review](validation/review-2026-10-08/EVALUATION.md)'s ten-fight example, adding ten unrelated fights moved the gap
 between the winner and the last opponent by 93.88 points. The shift is gone.
 `tests/test_whr_joint_map.py` now checks that the fit reaches the posterior's
 stationary point and that unconnected fights leave existing ratings unchanged.
@@ -201,13 +201,40 @@ change must pass, which needs the production inputs. Evidence:
 `docs/validation/whr-solver-2026-10-09/`, harness
 `analysis/check_whr_solver.py`.
 
-**Not done.** RANKINGS.md and the README boards were built by the old fit.
-This checkout has none of the inputs a refit needs: `python check_release.py
-data/snapshots/2026-08-13` lists 17 missing files and finds 0 of the 6,012 birth
-dates the last fit used. Until those inputs are restored and the full path under
-[Rebuild and verify](#rebuild-and-verify) is run, the published boards and the
-code disagree. After the refit, run the held-out test on the published scope
-before quoting any movement.
+**The refit, 2026-10-13.** The inputs had been lost from this machine and were
+rebuilt: the UFCStats tables from Greco's CSVs at commit `9ffbd78` (2026-09-01,
+last card 2026-08-29); 5,601 Sherdog fighter pages (the career pages behind the
+committed bouts, every fighter on a Bellator card, and the identity-resolution
+pages); and the 302 Fight Matrix profiles. The rebuilt corpus is the published
+one: 81,512 rated bouts, 163,024 history rows, 34,126 rated fighters, 6,193
+events and 1,827 of 1,827 careers covered, and `combined_fights.parquet` is
+byte-identical. It holds 5,969 birth dates against the 6,012 the release used.
+
+Two checks separate the repair from the rebuild. Refitted with the *old* solver,
+the rebuilt inputs reproduce every rank in all four published tables, so the 43
+missing birth dates move nothing and every change below is the repair's. The
+repaired fit gives the same ratings at 50 and at 200 passes, so the change is
+not an unconverged solve.
+
+The repair moves the boards substantially. In the men's all-time top 100, 90
+fighters remain, 2 hold their rank, and the median move is 9 places. Earlier
+eras rise and recent fighters fall: Donald Cerrone 90 to 40, Fabricio Werdum 74
+to 39, Demian Maia 76 to 43; Movsar Evloev 45 to 93, Tom Aspinall 61 to 96. The
+fighters this register tracks: Strickland 17 to 38, Whittaker 46 to 41, Usman 24
+to 19, Dariush 69 to 63, Anthony Johnson 50 to 80, Chandler 87 to 92, Serra 78
+to outside the top 100, Prochazka outside before and after, and Neil Magny from
+outside to 74. On the Prime board Cerrone moves 50 to 7 and Khamzat Chimaev 16
+to 50; the current board barely moves (median 2 places).
+
+**Still open.** Magny entering the top 100 and Cerrone at 7th on Prime are the
+kinds of result this register treats as symptoms. The score layer's constants
+(exposure, contender bars, title floor) were set against ratings the old solver
+produced; whether they still hold on the repaired ratings is unmeasured, and the
+review's instruction stands: do not tune them around the solver. Not measured:
+the held-out comparison on these production inputs (about 4.5 hours:
+`python analysis/check_whr_solver.py data/snapshots/2026-08-13 --years 2024 2025
+--workers 6 --out docs/validation/whr-solver-2026-10-13`), and agreement with
+the outside lists.
 
 **A win over a fighter returning from a long absence is priced lower.** Shipped
 2026-09-03, in the ledgers, after the rating-layer version was built and
@@ -216,7 +243,7 @@ refused.
 The rating charges age but cannot distinguish active time from idle time. Stipe
 Miocic was 35 and active when Daniel Cormier fought him, then 42 and 44 months
 out when Jon Jones did; the rating alone separates the Stipe Cormier beat from
-the one Jones beat by 34 points, while the Jones win is priced 232 points below
+the one Jones beat by 35 points, while the Jones win is priced 232 points below
 its unadjusted value.
 
 `ratings/layoff.py` now discounts the opponent's price by how far past a normal
@@ -343,6 +370,18 @@ cost of aging.
     at the margin, because the résumé prices the opponent before the fight and
     the printed column reads the value at the event. Not a defect; do not
     "reconcile" them.
+12. **Two third-party datasets are published without a redistribution
+    licence, by the owner's decision of 2026-10-12.** The repository is public.
+    It carries the 13 Fight Matrix ranking pages under
+    `data/external/fightmatrix/html/` and the Sherdog-derived
+    `data/external/sherdog/crossorg_bouts.parquet`. Each directory's
+    `LICENSE.txt` records that no redistribution licence was identified, and
+    Sherdog's terms (§4) restrict collating its content for use elsewhere.
+    The data stays because it is the only copy of the crawl evidence behind the
+    published boards; removing it would leave those boards unverifiable. This
+    is a known rights risk, accepted, not a finding that redistribution is
+    permitted. If either source objects, untrack the file; history rewriting is
+    a separate decision.
 
 ## Tested and refused — do not propose these again
 

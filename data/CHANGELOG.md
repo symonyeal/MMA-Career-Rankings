@@ -1,5 +1,19 @@
 # Snapshot Changelog
 
+## 2026-10-13 - Boards refitted with the repaired WHR solver
+
+The 2026-08-13 snapshot was refitted after the WHR repair of 2026-10-09; the
+corpus itself is unchanged. See the WHR entry in `docs/DECISIONS.md` for the
+reproduction checks and the board movement.
+
+- Inputs rebuilt on a new machine: Greco CSVs at `9ffbd78`, 5,601 Sherdog
+  fighter pages, 302 Fight Matrix profiles. 81,512 rated bouts, 34,126 rated
+  fighters and 1,827 of 1,827 covered careers, all as before;
+  `combined_fights.parquet` is byte-identical.
+- Birth dates 5,969 against 6,012. The old solver on these inputs reproduces
+  every published rank, so the difference moves no board.
+- Both public boards, the README tables and the top-100 audit were regenerated.
+
 ## 2026-09-08 - Whole-career coverage completed
 
 The eleven pages exposed by the cross-source identity repair were fetched and
