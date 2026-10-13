@@ -1,0 +1,8 @@
+{
+  "elite_wins": 5,
+  "elite_window_start": "2000-01-01",
+  "elite_window_end": "2009-12-31",
+  "reported_elite_level": 2000.0,
+  "mean_inside_returned_window": 2000.0,
+  "mean_in_actual_ten_year_window": 2000.0
+}
