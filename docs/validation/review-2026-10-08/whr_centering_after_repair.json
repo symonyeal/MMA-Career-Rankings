@@ -1,0 +1,18 @@
+{
+  "run_whr": {
+    "objective": 9.369109916924266,
+    "gradient_inf_norm": 1.942890293094024e-16,
+    "final_A": 1913.0330963953043,
+    "final_A_minus_B9": 446.096750254138
+  },
+  "exact_MAP": {
+    "objective": 9.369109916924266,
+    "gradient_inf_norm": 5.8064028893609364e-11,
+    "final_A": 1913.0330963988542,
+    "final_A_minus_B9": 446.09675025702273
+  },
+  "disconnected_C_D_added": {
+    "final_A": 1913.0330963953043,
+    "final_A_minus_B9": 446.096750254138
+  }
+}
