@@ -107,9 +107,17 @@ def previous_snapshot_dir(project_root: Path, snapshot_date: str) -> Path | None
     snapshots_root = project_root / "data" / "snapshots"
     if not snapshots_root.exists():
         return None
+    # Releases are named by date alone. A suffixed folder such as
+    # 2026-08-13-fightmatrix-public is a research run, and it sorts after its
+    # release, so it must not be read as the previous one.
     candidates = []
     for path in snapshots_root.iterdir():
-        if path.is_dir() and path.name < snapshot_date and (path / "ratings_current.parquet").exists():
+        if (
+            path.is_dir()
+            and re.fullmatch(r"\d{4}-\d{2}-\d{2}", path.name)
+            and path.name < snapshot_date
+            and (path / "ratings_current.parquet").exists()
+        ):
             candidates.append(path)
     return max(candidates, key=lambda p: p.name) if candidates else None
 
