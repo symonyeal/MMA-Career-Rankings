@@ -324,10 +324,13 @@ def _elite_decade_map(snapshot_dir: Path) -> pd.DataFrame | None:
     """Fighter -> their best decade of beating contenders, and its level.
 
     Opponent strength is read from the same retrospective trajectory the board
-    ranks, at the date of the event. That trajectory has one row per appearance,
-    so a tournament can give an opponent several rows on one event; they are one
-    latent state for this event-grained gate, so they are averaged before the
-    merge and the join is validated.
+    ranks, at the opponent's last appearance BEFORE the event -- the rule the
+    contender résumé uses (``contender_resume_ledger``), so one win counts as a
+    contender win in both places or in neither. It used to be read at the event
+    itself, where the trajectory already carries that bout's result: a decisive
+    win lowered the very rating it was priced at, and on the 2026-08-13 snapshot
+    that kept Khabib Nurmagomedov and Cain Velasquez under the five wins Prime
+    requires while the résumé counted five for each.
 
     Returns ``None`` when an input is missing, so a snapshot that cannot support
     the gate publishes no elite board rather than one withholding everybody.
@@ -358,17 +361,20 @@ def _elite_decade_map(snapshot_dir: Path) -> pd.DataFrame | None:
     history = pd.read_parquet(
         history_path, columns=["fighter", "event_date", "event_name", "mu_whr"]
     )
-    opponent_events = (
-        history.rename(columns={"fighter": "opponent", "mu_whr": "opponent_mu"})
-        .groupby(["opponent", "event_date", "event_name"], as_index=False,
-                 sort=False, dropna=False)["opponent_mu"]
-        .mean()
-    )
-    rated = appearances.merge(
-        opponent_events,
-        on=["opponent", "event_date", "event_name"],
-        how="left",
-        validate="many_to_one",
+    appearances["event_date"] = pd.to_datetime(appearances["event_date"])
+    history["event_date"] = pd.to_datetime(history["event_date"])
+    rated = (
+        pd.merge_asof(
+            appearances.reset_index().sort_values("event_date"),
+            history.rename(columns={"fighter": "opponent", "mu_whr": "opponent_mu"})[
+                ["opponent", "event_date", "opponent_mu"]
+            ].sort_values("event_date"),
+            on="event_date",
+            by="opponent",
+            allow_exact_matches=False,
+        )
+        .set_index("index")
+        .sort_index()
     )
     if len(rated) != len(appearances) or rated.duplicated(["fight_url", "fighter"]).any():
         raise ValueError("elite Prime evidence must contain one row per fight and fighter")

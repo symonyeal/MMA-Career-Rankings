@@ -75,7 +75,7 @@ def test_readme_explains_the_rules_that_change_the_rankings():
     article = text.split("## What is published", 1)[0]
     flat = " ".join(article.split())
 
-    for heading in ("## The argument", "## Three answers"):
+    for heading in ("## The argument", "## What the score measures"):
         assert heading in article
 
     # Pin the rule, never the sentence. Wording is the author's; the decisive
@@ -86,8 +86,8 @@ def test_readme_explains_the_rules_that_change_the_rankings():
     for implemented_rule in (
         "UFC is `1.00`",  # article varies with the sentence; the value does not
         "virtual bout",
-        "All-time = 30% championships + 17.5% career skill + 52.5% contender résumé",
-        "Five wins are required",
+        "All-time = 1,000 × (30% title + 17.5% skill + 52.5% résumé)",
+        "and needs five",
         "eight UFC bouts",
         "within 18 months",
         "fifth-best",
@@ -155,17 +155,17 @@ def test_readme_policy_constants_are_the_ones_the_code_uses():
     quality = 1.0 - LEGACY_ACHIEVEMENT_WEIGHT
 
     expected = {
-        "achievement weight": f"{LEGACY_ACHIEVEMENT_WEIGHT:.0%} championships",
-        "career skill share": f"{quality * LEGACY_QUALITY_SKILL_SHARE:.1%} career skill",
-        "resume share": f"{quality * (1 - LEGACY_QUALITY_SKILL_SHARE):.1%} contender résumé",
+        "achievement weight": f"{LEGACY_ACHIEVEMENT_WEIGHT:.0%} title",
+        "career skill share": f"{quality * LEGACY_QUALITY_SKILL_SHARE:.1%} skill",
+        "resume share": f"{quality * (1 - LEGACY_QUALITY_SKILL_SHARE):.1%} résumé",
         "finish score": f"submission scores `{METHOD_SCORE_FINISH:.2f}`",
         "unanimous score": f"unanimous decision `{METHOD_SCORE_UNANIMOUS:.2f}`",
         "split score": f"majority decision `{METHOD_SCORE_NON_UNANIMOUS_DECISION:.2f}`",
         "dq score": f"disqualification `{METHOD_SCORE_DQ:.2f}`",
         "draw score": "a draw `0.50` for each fighter",
         "contender line": f"at least {CONTENDER_LINE_MU:,.0f}",
-        "layoff charge": f"lose {abs(OPPONENT_LAYOFF_ELO_PER_TURNAROUND):.0f} points per excess",
-        "title floor": f"carry a `{TITLE_QUALITY_MAJOR_FLOOR:.2f}` floor",
+        "layoff charge": f"marked down {abs(OPPONENT_LAYOFF_ELO_PER_TURNAROUND):.0f} points per excess",
+        "title floor": f"worth at least `{TITLE_QUALITY_MAJOR_FLOOR:.2f}`",
         "rated appearances": f"needs {SUSTAINED_PEAK_MIN_FIGHTS} rated appearances",
         "current window": f"within {CURRENT_MAX_MONTHS_INACTIVE:.0f} months",
         "division floor": f"fewer than {DEFAULT_DIVISION_MIN_POPULATION} fighter-years",
@@ -176,9 +176,9 @@ def test_readme_policy_constants_are_the_ones_the_code_uses():
 
     # Spelled out in prose; pin the word and the constant behind it together.
     spelled = [
-        (MIN_OPPONENT_UFC_BOUTS, 8, "at least eight UFC fights"),
-        (MIN_QUALITY_WINS, 5, "Five wins are required"),
-        (MAX_EXCESS_TURNAROUNDS, 4, "capped at four"),
+        (MIN_OPPONENT_UFC_BOUTS, 8, "eight or more UFC bouts"),
+        (MIN_QUALITY_WINS, 5, "and needs five"),
+        (MAX_EXCESS_TURNAROUNDS, 4, "up to four"),
     ]
     for constant, value, phrase in spelled:
         assert constant == value, f"{phrase!r} spells out {value}, code now says {constant}"

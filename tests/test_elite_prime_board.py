@@ -171,8 +171,11 @@ def test_quality_wins_are_unique_and_inside_the_selected_prime_window(tmp_path):
         columns={"opponent": "fighter"}
     )
     history["mu_whr"] = CONTENDER_LINE_MU + 100.0
+    # Each opponent's rating going in is read from an earlier appearance.
+    before = history.assign(event_date=history["event_date"] - pd.Timedelta(days=60),
+                            event_name="Earlier event")
     # A same-event tournament state used to duplicate bout-0 in the merge.
-    history = pd.concat([history, history.iloc[[0]]], ignore_index=True)
+    history = pd.concat([before, history, history.iloc[[0]]], ignore_index=True)
     history.to_parquet(tmp_path / "ratings_history_whr.parquet", index=False)
 
     ufc_rows = []
@@ -197,6 +200,31 @@ def test_quality_wins_are_unique_and_inside_the_selected_prime_window(tmp_path):
     assert row["elite_wins"] == 5
     assert row["elite_window_start"] == inside_dates.min()
     assert row["elite_window_end"] == pd.Timestamp("2029-12-31")
+
+
+def test_an_opponent_is_priced_going_in_not_after_the_loss(tmp_path):
+    """The rating on fight night already carries the loss; the gate reads the one before.
+
+    Both opponents stand above the line going in and below it on the night. Read
+    at the event, a decisive win made its own opponent look like a non-contender.
+    """
+    d = pd.to_datetime(["2020-01-01", "2020-07-01"])
+    pd.DataFrame({"fight_url": ["b0", "b1"], "fighter": "F", "opponent": ["O0", "O1"],
+                  "event_date": d, "event_name": ["E0", "E1"], "is_winner": True}
+                 ).to_parquet(tmp_path / "performance_appearances.parquet", index=False)
+    pd.DataFrame({"fighter": ["O0", "O0", "O1", "O1"],
+                  "event_date": [d[0] - pd.Timedelta(days=90), d[0], d[1] - pd.Timedelta(days=90), d[1]],
+                  "event_name": ["P0", "E0", "P1", "E1"],
+                  "mu_whr": [CONTENDER_LINE_MU + 20, CONTENDER_LINE_MU - 20] * 2}
+                 ).to_parquet(tmp_path / "ratings_history_whr.parquet", index=False)
+    pd.DataFrame({"fighter_a": [o for o in ["O0", "O1"] for _ in range(8)], "fighter_b": "X",
+                  "source_corpus": "ufc", "is_model_bout": True}
+                 ).to_parquet(tmp_path / "combined_fights.parquet", index=False)
+
+    decade = build_boards._elite_decade_map(tmp_path)
+
+    assert decade is not None
+    assert decade.set_index("fighter").loc["F", "elite_wins"] == 2
 
 
 # --- Ordering: elite-win mass, not the bare level ---
