@@ -38,7 +38,7 @@ from analysis.viz import (
 )
 
 
-SNAPSHOT_DIR = Path("data/snapshots/2026-05-13")
+SNAPSHOT_DIR = Path("data/snapshots/2026-08-13")
 
 
 @pytest.fixture(scope="module")

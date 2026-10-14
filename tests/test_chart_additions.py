@@ -26,7 +26,7 @@ from analysis.viz import (
 )
 from ratings.prequential import CACHE_SCHEMA_VERSION
 
-SNAPSHOT_DIR = Path("data/snapshots/2026-05-13")
+SNAPSHOT_DIR = Path("data/snapshots/2026-08-13")
 
 
 # --- synthetic unit tests --------------------------------------------------
