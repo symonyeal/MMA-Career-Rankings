@@ -71,6 +71,9 @@ from project_helpers import normalize_name_key
 # cn   : UFC rows after stable Sherdog-id disambiguation
 # C_id : unresolved canonical identity claims
 # b    : raw Sherdog bout rows
+# P_b  : versioned profile birth-date extract; P_t its half-written copy
+# k    : birth-date text by Sherdog id, from the extract
+# d    : k updated with every cached profile page
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_MAJORS_DIR = PROJECT_ROOT / "data" / "external" / "sherdog"
@@ -82,6 +85,9 @@ MAJORS_CAREERS = "crossorg_bouts.parquet"
 SNAPSHOT_ARTIFACT = "majors_fights.parquet"
 CAREER_COVERAGE_ARTIFACT = "career_coverage.parquet"
 SHERDOG_BIRTH_DATES_ARTIFACT = "sherdog_birth_dates.parquet"
+# Versioned beside the page store, which is a local 320 MB cache. See
+# profile_birth_dates().
+PROFILE_BIRTH_DATES = "profile_birth_dates.csv"
 _BIRTH_DATE_RE = re.compile(
     r'itemprop=["\']birthDate["\'][^>]*>\s*([^<]+?)\s*</span>', re.IGNORECASE
 )
@@ -327,23 +333,48 @@ def build_majors_fights(
     return fights, report
 
 
+def profile_birth_dates(cache_dir: Path) -> dict[str, str]:
+    """Birth-date text by Sherdog id: the versioned extract, then every cached page.
+
+    The page store is a local cache that is not versioned, so a date read only
+    from it exists on one machine. On 2026-10-13 a second machine re-crawled
+    fewer profile pages than this store held and staged 43 fewer birth dates. The
+    extract beside the store is versioned and is rewritten whenever the store
+    holds a page it lacks, so a checkout without the store stages the same
+    dates. A cached page wins over the extract when both hold an id.
+    """
+    P_b = Path(cache_dir) / PROFILE_BIRTH_DATES
+    k: dict[str, str] = {}
+    if P_b.exists():
+        F = pd.read_csv(P_b, dtype=str, keep_default_na=False)
+        k = dict(zip(F["sherdog_id"], F["birth_date_text"]))
+    d = dict(k)
+    with open_cache(cache_dir) as cache:
+        for i, h in cache.items("fighters"):
+            m = _BIRTH_DATE_RE.search(h)
+            if m is not None:
+                d[str(i)] = m.group(1).strip()
+    if d != k:
+        P_t = P_b.with_name(P_b.name + ".building")
+        pd.DataFrame(sorted(d.items()), columns=["sherdog_id", "birth_date_text"]).to_csv(
+            P_t, index=False, lineterminator="\n")
+        P_t.replace(P_b)
+    return d
+
+
 def sherdog_birth_dates(
     identity: pd.DataFrame,
     *,
     cache_dir: Path,
 ) -> pd.DataFrame:
-    """Birth dates from cached Sherdog profiles, under resolved rating names."""
+    """Birth dates from Sherdog profiles, under resolved rating names."""
     names = identity.set_index(identity["sherdog_id"].astype(str))["canonical_name"]
     rows = []
-    with open_cache(cache_dir) as cache:
-        pages = list(cache.items("fighters"))
-    for fighter_id, html in pages:
+    d = profile_birth_dates(cache_dir)
+    for fighter_id in sorted(d):
         if fighter_id not in names.index:
             continue
-        match = _BIRTH_DATE_RE.search(html)
-        if match is None:
-            continue
-        dob = pd.to_datetime(match.group(1).strip(), errors="coerce")
+        dob = pd.to_datetime(d[fighter_id], errors="coerce")
         if pd.isna(dob):
             continue
         rows.append({

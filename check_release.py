@@ -9,6 +9,10 @@ from ratings.age import load_birth_dates
 from ratings.rate_snapshot import _require_career_coverage
 from ratings.scope import DEFAULT_PUBLISHED_SCOPE, SCOPE_ARTIFACT, scope_sources
 
+# The snapshot behind README.md and RANKINGS.md. Every file in it is versioned,
+# so any checkout can rebuild, re-score or refit the published boards.
+PUBLISHED_SNAPSHOT = Path(__file__).resolve().parent / "data" / "snapshots" / "2026-08-13"
+
 
 def check(snapshot: Path, *, scope: str = DEFAULT_PUBLISHED_SCOPE, inputs_only: bool = False) -> dict:
     """Report absent prerequisites; aggregate manifests cannot replace evidence."""
@@ -35,7 +39,9 @@ def check(snapshot: Path, *, scope: str = DEFAULT_PUBLISHED_SCOPE, inputs_only: 
     if manifest.is_file():
         recorded = json.loads(manifest.read_text(encoding="utf-8")).get("birth_dates", 0)
         found = len(load_birth_dates(snapshot))
-        if found < recorded:
+        # Before a fit, fewer dates than last time means an input went missing.
+        # After it, any difference means the ratings were not fitted from these inputs.
+        if found < recorded or (not inputs_only and found != recorded):
             issues.append(f"birth dates: found {found}, previous fit recorded {recorded}")
     return {"ready": not missing and not issues, "snapshot": str(snapshot), "scope": scope,
             "missing": missing, "issues": issues}
@@ -43,7 +49,7 @@ def check(snapshot: Path, *, scope: str = DEFAULT_PUBLISHED_SCOPE, inputs_only: 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("snapshot", type=Path)
+    parser.add_argument("snapshot", type=Path, nargs="?", default=PUBLISHED_SNAPSHOT)
     parser.add_argument("--scope", default=DEFAULT_PUBLISHED_SCOPE)
     parser.add_argument("--inputs-only", action="store_true", help="Check prerequisites before fitting.")
     args = parser.parse_args()

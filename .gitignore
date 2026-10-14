@@ -20,21 +20,23 @@ data/raw/
 data/model_tuning/
 data/external/fightmatrix/profiles/
 
+# The page store (pages.sqlite, 320 MB) stays local. What staging reads from it
+# is versioned beside it: every profile's birth date, and which career pages
+# reached the corpus. Without them a new machine stages fewer birth dates.
 data/external/sherdog/*
 !data/external/sherdog/crossorg_bouts.parquet
+!data/external/sherdog/profile_birth_dates.csv
+!data/external/sherdog/career_pages_incorporated.json
 !data/external/sherdog/ATTRIBUTION.txt
 !data/external/sherdog/LICENSE.txt
 
-data/snapshots/*
-!data/snapshots/*/
-data/snapshots/*/*
-!data/snapshots/*/combined_fights.parquet
-# The two run manifests are a few kilobytes each and carry the figures the README
-# and RANKINGS publish -- rated bouts, rated fighters, the date the data runs to.
-# test_readme_narrative_figures checks the published numbers against them, so
-# ignoring them would leave that check unable to run anywhere but this machine.
-!data/snapshots/*/rating_run.json
-!data/snapshots/*/combined_fights_summary.json
+# Snapshots are versioned whole: the fit's inputs, the fitted ratings and the
+# boards. Ignoring them left the published boards rebuildable on one machine
+# only (tests/test_release_committed.py). These three are local research runs
+# that no published figure reads.
+data/snapshots/2026-05-13/
+data/snapshots/2026-06-23/
+data/snapshots/2026-08-13-fightmatrix-public/
 data/ufc_rank_engine.sqlite
 data/ufc_rank_engine_fightmatrix_public.sqlite
 data/ufc_rank_engine_fightmatrix_depth_one.sqlite

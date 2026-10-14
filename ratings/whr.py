@@ -49,9 +49,14 @@ coupling from the Wiener prior + per-appearance BT curvature). One Newton step
 per fighter per pass, solved in O(k) by the Thomas algorithm; iterate over all
 fighters for a fixed number of passes.
 
-The proper anchor and virtual-game priors fix the origin. Do not subtract the
-appearance mean between passes: that changes the posterior and couples otherwise
-independent bout graphs. A fixed pass count is not a convergence certificate.
+By default the appearance mean is subtracted after every pass
+(``center_each_pass``, :data:`WHR_CENTER_EACH_PASS`). That is the solver the
+published boards and the tuned priors were fitted with. It is not the exact
+posterior mode: the anchor and virtual-game priors already fix the origin, so
+the shift moves the fit off it and lets one bout graph move another it is not
+connected to. ``center_each_pass=False`` solves the posterior exactly; it is a
+candidate until it passes a held-out test on production inputs. A fixed pass
+count is not a convergence certificate.
 
 The output ``mu_whr`` is mapped to a familiar Elo-like scale
 (``1500 + r * 400/ln(10)``) so it slots into the same downstream machinery as
@@ -66,6 +71,7 @@ import numpy as np
 import pandas as pd
 
 from ratings.constants import (
+    WHR_CENTER_EACH_PASS,
     WHR_ITERATIONS,
     WHR_PRIOR_VAR,
     WHR_STEP_CLIP,
@@ -327,6 +333,7 @@ def run_whr(
     winner_score_col: str | None = None,
     birth_dates: dict[str, object] | pd.Series | None = None,
     age_drift: bool = False,
+    center_each_pass: bool = WHR_CENTER_EACH_PASS,
 ) -> pd.DataFrame:
     """Run the WHR smoother over a canonical fight table.
 
@@ -353,6 +360,9 @@ def run_whr(
     Only differences from the under-24 bucket are used: the common negative
     offset in observed career changes is not identified as aging. Fighters
     without a birth date retain the zero-drift prior.
+
+    ``center_each_pass`` re-centres the appearance mean after every pass, as
+    every published fit has; ``False`` solves the exact posterior mode.
     """
     cols = ["fighter", "event_date", "event_name", out_col]
     if fights is None or fights.empty:
@@ -467,6 +477,9 @@ def run_whr(
             step = _thomas(a_diag, a_off, g)
             np.clip(step, -step_clip, step_clip, out=step)
             ratings[nodes] = r + step
+
+        if center_each_pass:
+            ratings -= ratings.mean()
 
         if age_drift and pass_index == fit_passes - 1:
             change_sum = np.zeros(len(AGE_BIN_LABELS), dtype=float)

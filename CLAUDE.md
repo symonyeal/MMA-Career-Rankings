@@ -16,6 +16,8 @@ Codex reads the same file through [AGENTS.md](AGENTS.md).
 | A rating change passes a held-out prediction test. A score change cannot. | The score never predicts a fight, so it is argued from mechanism and checked against outside lists — and the check reports how much it can actually detect. |
 | Check "Tested and refused" before proposing a model change. | Fifteen changes have already been measured and rejected there. Re-proposing one costs a day and ends the same way. |
 | An external data source arrives with its licence and an `ATTRIBUTION.txt`. | These sources are redistributed inside this repository. A source whose licence is not beside it cannot be shown to be redistributable. |
+| Everything a published board reads is committed: the snapshot folder whole, plus the Sherdog extracts beside the page store. Local caches hold nothing a rebuild needs. | Until 2026-10-14 the fit's inputs and the fitted ratings were gitignored. A second machine had to re-crawl the sources, came back with 43 fewer birth dates and no odds rows, and nothing failed. `tests/test_release_committed.py` now fails on a fresh clone, which is how CI runs. |
+| A solver change ships only as a setting that defaults to the published behaviour. | The 2026-10-09 WHR repair replaced the solver outright, then the boards were refitted with it before any held-out test on production inputs. Every tuned constant had been set against the old solver, so the published boards changed and none of those constants had been re-checked. It is now `WHR_CENTER_EACH_PASS`; flip it after the test resolves, not before. |
 
 ## Re-score before you publish
 

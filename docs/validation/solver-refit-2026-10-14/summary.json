@@ -1,0 +1,89 @@
+{
+  "working_tree_rankings_equal_published_before": true,
+  "exact_solver_on_original_inputs_vs_published_after": {
+    "TOP100": [
+      [
+        [
+          46,
+          "Alex Pereira"
+        ],
+        [
+          46,
+          "Patricio Freire"
+        ]
+      ],
+      [
+        [
+          47,
+          "Patricio Freire"
+        ],
+        [
+          47,
+          "Alex Pereira"
+        ]
+      ],
+      [
+        [
+          88,
+          "Sean O'Malley"
+        ],
+        [
+          88,
+          "Sean Sherk"
+        ]
+      ],
+      [
+        [
+          89,
+          "Sean Sherk"
+        ],
+        [
+          89,
+          "Sean O'Malley"
+        ]
+      ]
+    ],
+    "WOMEN10": [],
+    "ELITEPRIME50": [],
+    "ELITEPRIMEWOMEN10": [],
+    "CURRENT30": [],
+    "CURRENTWOMEN10": []
+  },
+  "men_top100_before_to_after": {
+    "kept": 90,
+    "same_rank": 2,
+    "median_move": 9.0,
+    "named": {
+      "Donald Cerrone": [
+        90,
+        40
+      ],
+      "Sean Strickland": [
+        17,
+        38
+      ],
+      "Movsar Evloev": [
+        45,
+        93
+      ],
+      "Tom Aspinall": [
+        61,
+        96
+      ],
+      "Neil Magny": [
+        null,
+        74
+      ]
+    }
+  },
+  "prime_top50_before_to_after": {
+    "Donald Cerrone": [
+      50,
+      7
+    ],
+    "Khamzat Chimaev": [
+      16,
+      50
+    ]
+  }
+}

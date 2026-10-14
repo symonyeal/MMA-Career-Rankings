@@ -19,7 +19,8 @@ def _fights(score):
 def test_whr_satisfies_joint_posterior_stationarity(score):
     """The Gaussian/virtual priors fix location; recentering violates stationarity."""
     f = _fights(score)
-    h = run_whr(f, iterations=500, winner_score_col="method_score_winner")
+    h = run_whr(f, iterations=500, winner_score_col="method_score_winner",
+                center_each_pass=False)
     a = h[h.fighter.eq("A")].sort_values("event_date").mu_whr.to_numpy()
     b = h[~h.fighter.eq("A")].sort_values("event_date").mu_whr.to_numpy()
     x = (np.column_stack([a, b]).ravel() - 1500) * np.log(10) / 400
@@ -38,7 +39,14 @@ def test_disconnected_fights_do_not_change_existing_whr_ratings():
     f = _fights(1.0)
     u = f.assign(fighter_a="C", fighter_b="D", winner=["C", "D"] * 5,
                  event_name=[f"F{k}" for k in range(10)])
-    h = run_whr(f, iterations=100)
-    q = run_whr(pd.concat([f, u], ignore_index=True), iterations=100)
+    h = run_whr(f, iterations=100, center_each_pass=False)
+    q = run_whr(pd.concat([f, u], ignore_index=True), iterations=100,
+                center_each_pass=False)
     q = q[q.fighter.isin(h.fighter)].reset_index(drop=True)
     pd.testing.assert_frame_equal(h, q, check_exact=False, atol=1e-8, rtol=0)
+
+
+def test_published_default_recentres_every_pass():
+    """Every published board was fitted re-centred; the exact mode is opt-in."""
+    h = run_whr(_fights(1.0), iterations=100)
+    assert h.mu_whr.mean() == pytest.approx(1500.0, abs=1e-6)

@@ -20,9 +20,9 @@ jobs:
           python-version: ${{ matrix.python }}
       - run: python -m pip install --upgrade pip
       - run: python -m pip install -r requirements.txt
-      # Tests that need a snapshot artifact skip themselves on a fresh clone.
-      # The two run manifests are versioned, so the checks that tie the published
-      # README figures to the run that produced them do execute here.
+      # The release snapshot is versioned whole, so the tests that read it run
+      # here on a fresh clone instead of skipping, and test_release_committed
+      # fails if any file a rebuild needs is missing or gitignored.
       - run: python -m pytest -q
       - run: python -m ruff check .
       - run: python -m pip check

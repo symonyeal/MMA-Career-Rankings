@@ -7,6 +7,7 @@ import pytest
 from loaders.majors_scope import (
     CANONICAL_COLUMNS,
     build_majors_fights,
+    PROFILE_BIRTH_DATES,
     load_majors_bouts,
     resolve_identities,
     sherdog_birth_dates,
@@ -154,6 +155,12 @@ def test_sherdog_birth_dates_read_the_shared_store(tmp_path):
     )
 
     births = sherdog_birth_dates(identity, cache_dir=tmp_path)
+    clean = tmp_path / "clean"
+    clean.mkdir()
+    (clean / PROFILE_BIRTH_DATES).write_bytes((tmp_path / PROFILE_BIRTH_DATES).read_bytes())
+
+    # The versioned extract alone stages the same dates as the page store.
+    pd.testing.assert_frame_equal(sherdog_birth_dates(identity, cache_dir=clean), births)
 
     assert births.to_dict(orient="records") == [
         {
