@@ -1,5 +1,21 @@
 # Snapshot Changelog
 
+## 2026-10-14 - Prime prices opponents going into the fight
+
+The Prime gate read each beaten opponent's rating on the night of the fight,
+which already counts that loss, while the résumé reads it before the fight. A
+decisive win could therefore push its own opponent under the 1,750 line. Both
+now read the rating going in. All-time and Current are unchanged.
+
+- Prime qualifiers: 65 to 77 men and 1 to 2 women; none lost qualification.
+- Khabib Nurmagomedov (4 to 5 elite wins) ranks 9th and Cain Velasquez (3 to 5)
+  37th. Henry Cejudo stays at 4, because his Dominick Cruz win is marked down
+  for Cruz's layoff, and Matt Hughes stays at 3.
+- In the men's top 50, five enter (Nurmagomedov, Movsar Evloev, Sean Brady,
+  Velasquez, Anthony Hernandez) and five leave (Beneil Dariush, Alexandre
+  Pantoja, Dan Henderson, Mauricio Rua, Donald Cerrone). The top six are
+  unchanged; the median move is 3 places and the largest 10.
+
 ## 2026-10-14 - Published boards restored, and the release versioned whole
 
 The 2026-10-13 refit is withdrawn. `README.md` and `RANKINGS.md` are back to
