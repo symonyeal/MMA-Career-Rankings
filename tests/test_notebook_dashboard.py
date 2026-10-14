@@ -16,7 +16,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-SNAPSHOT_DIR = ROOT / "data" / "snapshots" / "2026-05-13"
+SNAPSHOT_DIR = ROOT / "data" / "snapshots" / "2026-08-13"
 
 pytest.importorskip("ipywidgets")
 pytest.importorskip("anywidget", reason="FigureWidget requires anywidget")

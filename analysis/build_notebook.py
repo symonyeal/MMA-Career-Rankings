@@ -117,9 +117,12 @@ from analysis.viz import (  # noqa: E402
 from ratings.symon_score import career_mass_family as _career_mass_family  # noqa: E402
 
 SNAPSHOT_BASE = PROJECT_ROOT / "data" / "snapshots"
+# Releases only: every release fit writes rating_run.json, and releases are
+# versioned. Local research runs have no manifest, and counting them made the
+# notebook compare against a snapshot only one machine held.
 SNAPSHOT_CANDIDATES = [
     p for p in SNAPSHOT_BASE.iterdir()
-    if p.is_dir() and re.fullmatch(r"\d{4}-\d{2}-\d{2}", p.name)
+    if p.is_dir() and re.fullmatch(r"\d{4}-\d{2}-\d{2}", p.name) and (p / "rating_run.json").is_file()
 ]
 SNAPSHOT_DIR = sorted(SNAPSHOT_CANDIDATES, key=lambda p: p.name)[-1]
 PREVIOUS_SNAPSHOT_DIR = (
