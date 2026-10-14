@@ -96,3 +96,15 @@ def test_profile_staging_into_a_new_snapshot_does_not_need_ratings(tmp_path):
     weights = crossorg_org_weights(fights, tmp_path)
     assert weights.tolist() == [1.0, 1.0]
     assert weights.index.equals(fights.index)
+
+
+def test_the_changelog_compares_against_the_previous_release_not_a_research_run(tmp_path):
+    """``2026-08-13-fightmatrix-public`` sorts after ``2026-08-13``, so picking the
+    greatest name before the new date compared a refresh with a research run and
+    published movers such as Brendan Loughnane +923."""
+    for name in ("2026-06-23", "2026-08-13", "2026-08-13-fightmatrix-public"):
+        folder = tmp_path / "data" / "snapshots" / name
+        folder.mkdir(parents=True)
+        (folder / "ratings_current.parquet").write_bytes(b"")
+    previous = refresh.previous_snapshot_dir(tmp_path, "2026-10-14")
+    assert previous is not None and previous.name == "2026-08-13"

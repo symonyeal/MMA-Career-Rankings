@@ -25,6 +25,11 @@ column of `ratings_current.parquet` is identical except `months_inactive`
   ratings existed, for a diagnostic bout weight the production fit discards. A
   new snapshot now stages that weight as 1.0. This had broken every refresh into
   a new date since profile staging became the default.
+- A refresh's changelog entry compared the new ratings with the folder whose
+  name sorted last before the new date, which was the research run
+  `2026-08-13-fightmatrix-public`, not the `2026-08-13` release; the movers it
+  listed (Brendan Loughnane +923.7) were differences between two scopes. Only
+  folders named by a date alone now count as the previous release.
 
 ## 2026-10-14 - Prime prices opponents going into the fight
 
