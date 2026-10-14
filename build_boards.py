@@ -748,19 +748,24 @@ def current_board_markdown(
     are separated to prevent.
 
     The columns it does print are the screens and the discounts, so the reader
-    can see them working: the UFC bout count the board gates on, how many years
-    of the freshness window held no bout, and the date the rating was last
-    proved.
+    can see them working: the UFC bout count the board gates on, and the date
+    of the last bout -- the date the recency rule read, which counts any
+    recorded fight. For Tom Aspinall on 2026-08-13 that is his 2025-10-25 no
+    contest, not his last rated bout of 2024-07-27; printing the rated date
+    beside an 18-month rule would show a qualifying fighter as 25 months idle.
+    A snapshot without the recorded date falls back to the last rated bout.
     """
     ranked = gated[gated["status"].eq("ranked")].head(top).copy()
     if ranked.empty:
         raise ValueError("the current board has no ranked fighters to publish")
     lookup = current.set_index("fighter") if "fighter" in current.columns else current
-    last = (
-        pd.to_datetime(ranked["fighter"].map(lookup["whr_last_event_date"]), errors="coerce")
-        if "whr_last_event_date" in getattr(lookup, "columns", [])
-        else pd.Series(pd.NaT, index=ranked.index)
-    )
+    columns = getattr(lookup, "columns", [])
+    last = pd.Series(pd.NaT, index=ranked.index, dtype="datetime64[ns]")
+    for date_col in ("last_recorded_event_date", "whr_last_event_date"):
+        if date_col in columns:
+            last = last.fillna(
+                pd.to_datetime(ranked["fighter"].map(lookup[date_col]), errors="coerce")
+            )
     bouts = pd.to_numeric(ranked.get("tested_opponent_wins"), errors="coerce")
     return _markdown_table(pd.DataFrame({
         "#": ranked["rank"].astype(int).to_numpy(),

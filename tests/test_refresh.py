@@ -79,3 +79,20 @@ def test_no_flags_means_the_published_configuration():
 
     opted_out = refresh.parse_args(["--no-include-external"])
     assert not opted_out.include_fightmatrix_profiles
+
+
+def test_profile_staging_into_a_new_snapshot_does_not_need_ratings(tmp_path):
+    """``refresh.py --snapshot-date <new date>`` stages FightMatrix profiles
+    before the ratings exist. It used to read ``ratings_current.parquet`` from
+    the new folder for a bout weight the production fit discards, and crashed."""
+    import pandas as pd
+
+    from loaders.fightmatrix_profiles import crossorg_org_weights
+
+    fights = pd.DataFrame({
+        "fighter_a": ["A", "B"], "fighter_b": ["C", "D"],
+        "event_date": pd.to_datetime(["2026-09-01", "2026-09-02"]),
+    })
+    weights = crossorg_org_weights(fights, tmp_path)
+    assert weights.tolist() == [1.0, 1.0]
+    assert weights.index.equals(fights.index)

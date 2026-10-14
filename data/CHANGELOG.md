@@ -1,5 +1,31 @@
 # Snapshot Changelog
 
+## 2026-10-14 - Current counts any recorded fight for recency
+
+The README promises that any recorded MMA fight within 18 months keeps a
+fighter eligible for Current. The clock read only the last rated bout, so a no
+contest, an overturned result or a bout with no recorded winner did not count.
+It now reads every bout the rating run could see; `last_event_date` is still the
+last rated bout, and the new `last_recorded_event_date` is the one the rule reads.
+No rating, score or other board changed: re-scored with `--career-only`, every
+column of `ratings_current.parquet` is identical except `months_inactive`
+(104 fighters) and the new date.
+
+- Tom Aspinall enters Current at 30th (1,909). His last rated bout was
+  2024-07-27; his title fight with Ciryl Gane on 2025-10-25 was a no contest,
+  10.15 months before the snapshot date, not 25.10. Sergei Pavlovich moves to
+  31st and everyone below shifts one place. Ranked men: 326 to 327. The women's
+  board is unchanged.
+- Six other fighters have a recorded bout inside 18 months and a rated one
+  outside it; each still fails the 13-appearance or 8-UFC-bout rule.
+- The Current table's "Last bout" is now the date the rule read (2025-10-25 for
+  Aspinall), falling back to the last rated bout.
+- `refresh.py --snapshot-date <new date>` crashed staging Fight Matrix profiles:
+  the stage read `ratings_current.parquet` from the new folder before the
+  ratings existed, for a diagnostic bout weight the production fit discards. A
+  new snapshot now stages that weight as 1.0. This had broken every refresh into
+  a new date since profile staging became the default.
+
 ## 2026-10-14 - Prime prices opponents going into the fight
 
 The Prime gate read each beaten opponent's rating on the night of the fight,

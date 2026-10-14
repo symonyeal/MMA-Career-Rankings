@@ -363,6 +363,21 @@ def _bout_fingerprint(frame: pd.DataFrame) -> pd.Series:
     return bout_fingerprint(frame)
 
 
+def crossorg_org_weights(fights: pd.DataFrame, snapshot_dir: Path) -> pd.Series:
+    """The diagnostic per-bout weight, or 1.0 when the snapshot has no ratings yet.
+
+    ``refresh.py`` stages these profiles before it rates a new snapshot, so on a
+    new date there is no ``ratings_current.parquet`` to weight against. The
+    production fit discards this column and rates every bout at 1.0, so 1.0 is
+    the value the fit would use regardless; only the experimental org-weight
+    research path reads it, and that path runs on a snapshot already rated.
+    """
+    ratings_path = Path(snapshot_dir) / "ratings_current.parquet"
+    if not ratings_path.exists():
+        return pd.Series(1.0, index=fights.index)
+    return compute_fight_weights(fights, pd.read_parquet(ratings_path))
+
+
 def build_public_profile_snapshot(
     snapshot_dir: Path,
     *,
@@ -429,8 +444,7 @@ def build_public_profile_snapshot(
             canonical_keys = set(_bout_fingerprint(canonical))
             fm_crossorg = fm_crossorg[~fm_crossorg["_fingerprint"].isin(canonical_keys)]
         fm_crossorg = fm_crossorg.drop(columns="_fingerprint").reset_index(drop=True)
-        current = pd.read_parquet(snapshot_dir / "ratings_current.parquet")
-        fm_crossorg["org_weight"] = compute_fight_weights(fm_crossorg, current).values
+        fm_crossorg["org_weight"] = crossorg_org_weights(fm_crossorg, snapshot_dir).values
         fm_crossorg["source"] = "fightmatrix_public"
     fm_crossorg.to_parquet(snapshot_dir / "fightmatrix_crossorg_fights.parquet", index=False)
 
