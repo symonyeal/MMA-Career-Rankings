@@ -220,7 +220,13 @@ def rebuild_notebook(project_root: Path) -> Path:
     return write_notebook(project_root / "analysis" / "notebook.ipynb")
 
 
-def main() -> None:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    """Command-line settings. With no flags, they reproduce the published release.
+
+    The external sources used to be opt-in, so a refresh with no flags rated a
+    different corpus from the published one: among other things it lost the 53
+    birth dates that only the Fight Matrix profiles carry, and nothing said so.
+    """
     parser = argparse.ArgumentParser(description="Refresh UFC snapshot, ratings, dominance, and changelog.")
     parser.add_argument("--snapshot-date", default=str(date.today()), help="YYYY-MM-DD snapshot label.")  # noqa: DTZ011 - the snapshot label is a local calendar date, not an instant
     parser.add_argument("--project-root", default=str(PROJECT_ROOT), help="Project root path.")
@@ -237,9 +243,9 @@ def main() -> None:
                 "publish rank intervals (0 skips; benchmark the selected scope before a release run)."
         ),
     )
-    parser.add_argument("--include-external", action="store_true",
-                        help="Also load project-local UFC-DataLab, FightMatrix, and cached odds "
-                             "artifacts into the snapshot.")
+    parser.add_argument("--include-external", action=argparse.BooleanOptionalAction, default=True,
+                        help="Load UFC-DataLab, Fight Matrix and the odds into the snapshot. On by "
+                             "default because the published release reads them.")
     parser.add_argument("--include-odds", action="store_true",
                         help="Ingest the mdabbert ufc-master.csv before ratings so the performance "
                              "sleeve's market sub-factor is active.")
@@ -249,8 +255,10 @@ def main() -> None:
                         help="When --include-external is set, re-fetch FightMatrix HTML instead of using cache.")
     parser.add_argument(
         "--include-fightmatrix-profiles",
-        action="store_true",
-        help="Stage the bounded public ranked-cohort profile histories and merge their non-UFC bouts.",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Stage the bounded public ranked-cohort profile histories and merge their non-UFC bouts. "
+             "Defaults to --include-external: the published fit reads birth dates only they carry.",
     )
     parser.add_argument("--fightmatrix-profile-sleep", type=float, default=1.0)
     parser.add_argument("--fightmatrix-profile-limit", type=int, default=None)
@@ -272,7 +280,7 @@ def main() -> None:
         action="store_true",
         help="Deprecated alias for --scope fightmatrix.",
     )
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     if args.experimental_crossorg and args.scope is not None:
         parser.error("--experimental-crossorg cannot be combined with --scope")
     args.scope = (
@@ -280,7 +288,15 @@ def main() -> None:
         if args.experimental_crossorg
         else (args.scope or DEFAULT_PUBLISHED_SCOPE)
     )
+    if args.include_fightmatrix_profiles is None:
+        args.include_fightmatrix_profiles = args.include_external
+    if args.include_fightmatrix_profiles and not args.include_external:
+        parser.error("--include-fightmatrix-profiles requires --include-external")
+    return args
 
+
+def main() -> None:
+    args = parse_args()
     project_root = Path(args.project_root).resolve()
     greco_dir = (
         Path(args.greco_dir).resolve()
@@ -295,9 +311,6 @@ def main() -> None:
     print(f"[refresh] greco_dir    = {greco_dir}")
     print(f"[refresh] raw_dir      = {raw_dir}")
     print(f"[refresh] snapshot_dir = {snapshot_dir}")
-
-    if args.include_fightmatrix_profiles and not args.include_external:
-        parser.error("--include-fightmatrix-profiles requires --include-external")
 
     copy_raw_inputs(greco_dir, raw_dir)
     counts, _ = build_snapshot(greco_dir, snapshot_dir)

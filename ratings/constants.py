@@ -444,6 +444,15 @@ WHR_PRIOR_VAR: float = 8.0
 WHR_ITERATIONS: int = 50
 WHR_STEP_CLIP: float = 1.5
 
+# * WHR_CENTER_EACH_PASS — subtract the mean appearance rating after every
+#   coordinate pass. Every published board, and every constant tuned above
+#   and in the score layer, was fitted with this solver. False solves the
+#   stated posterior exactly (the 2026-10-09 repair): unconnected fight graphs
+#   stop moving each other, but the boards move a long way and the change has
+#   not passed a held-out test on production inputs. It stays off until it
+#   does; see "The WHR solver" in docs/DECISIONS.md.
+WHR_CENTER_EACH_PASS: bool = True
+
 # * WHR_VIRTUAL_GAMES — prior evidence, in bouts, that every fighter carries
 #   against an average opponent: half a win and half a loss per virtual game.
 #

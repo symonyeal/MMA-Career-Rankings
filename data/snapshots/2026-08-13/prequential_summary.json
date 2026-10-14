@@ -1,0 +1,24 @@
+{
+  "snapshot": "2026-08-13",
+  "scope": "majors,pre_unified",
+  "cache_schema_version": 8,
+  "rated_bouts": 80697,
+  "eval_events": 24,
+  "calibration_events": 40,
+  "eval_mode": "recent",
+  "since_year": null,
+  "min_prior_fights": 3,
+  "min_n_for_conclusions": 200,
+  "with_crossorg_experimental": false,
+  "variants": [
+    "canonical",
+    "whr"
+  ],
+  "scored_bouts_per_variant": 218,
+  "cpu_seconds": {
+    "inputs": 87.5,
+    "sweep": 9480.7,
+    "total": 9569.1
+  },
+  "wall_seconds": 9823.1
+}

@@ -1,0 +1,17 @@
+{
+  "primary_key": "fighter_url",
+  "source": "Greco/ufc_fighter_tott.csv + ufc_fighter_details.csv",
+  "row_grain": "one row per fighter ever in the Greco universe (not all are UFC-active)",
+  "columns": {
+    "fighter": "display name (matches canonical_rounds.fighter)",
+    "fighter_url": "Greco fighter PK",
+    "first_name": "Greco FIRST",
+    "last_name": "Greco LAST",
+    "nickname": "Greco NICKNAME (empty -> null)",
+    "height_inches": "parsed from \"5' 11\\\"\"",
+    "weight_lb": "parsed from '155 lbs.'",
+    "reach_inches": "parsed from '70\"' (float)",
+    "stance": "Greco STANCE (Orthodox/Southpaw/Switch/Open Stance/null)",
+    "dob": "Greco DOB parsed"
+  }
+}

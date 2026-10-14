@@ -3,7 +3,7 @@
   "career_reference": "contender:60",
   "age_drift": true,
   "rated_bouts": 81512,
-  "birth_dates": 5969,
+  "birth_dates": 6012,
   "history_rows": 163024,
   "current_fighters": 34126,
   "events_processed": 6193,
@@ -153,5 +153,5 @@
   "ped_confirmed_fights": 5,
   "dq_fights": 323,
   "missed_weight_fights": 1,
-  "odds_covered_fights": 0
+  "odds_covered_fights": 6562
 }

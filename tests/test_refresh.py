@@ -61,9 +61,21 @@ def test_refresh_writes_board_artifacts_immediately_after_ratings(
             "2026-08-20",
             "--min-fights",
             "4",
+            "--no-include-external",
         ],
     )
 
     refresh.main()
 
     assert order == ["ratings", "boards", "changelog", "notebook"]
+
+
+def test_no_flags_means_the_published_configuration():
+    """A plain refresh on any machine stages what the published fit read."""
+    args = refresh.parse_args([])
+    assert args.include_external
+    assert args.include_fightmatrix_profiles
+    assert args.scope == "majors,pre_unified"
+
+    opted_out = refresh.parse_args(["--no-include-external"])
+    assert not opted_out.include_fightmatrix_profiles

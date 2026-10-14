@@ -8,6 +8,7 @@ Missing birth dates imply neutral age drift; such a run does not reproduce a rel
 from __future__ import annotations
 
 import argparse
+import functools
 import hashlib
 import json
 import subprocess
@@ -44,7 +45,8 @@ def _init(snapshot: Path, baseline: str, iterations: int) -> None:
     exec(compile(source, f"{baseline}:ratings/whr.py", "exec"), old.__dict__)  # noqa: S102 -- the baseline solver is this repo's own committed source
     f, dob = _load(snapshot)
     G.update(f=f, dob=dob, bouts=_decided_bouts(f), it=iterations,
-             solvers=[("baseline", old.run_whr), ("corrected", run_whr)])
+             solvers=[("baseline", old.run_whr),
+                      ("corrected", functools.partial(run_whr, center_each_pass=False))])
 
 
 def _card(key: tuple[pd.Timestamp, str]) -> list[dict]:

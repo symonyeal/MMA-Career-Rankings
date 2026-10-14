@@ -1,0 +1,76 @@
+{
+  "source": "https://www.fightmatrix.com",
+  "rows": 285,
+  "divisions": [
+    {
+      "division": "heavyweight",
+      "rows": 25,
+      "cache": "C:\\Users\\sislam\\Downloads\\New Work Folder (Former Codex)\\My Projects\\F U N\\Symon UFC Rank Engine\\UFC-Rank-Engine\\data\\external\\fightmatrix\\html\\heavyweight.html"
+    },
+    {
+      "division": "light-heavyweight",
+      "rows": 25,
+      "cache": "C:\\Users\\sislam\\Downloads\\New Work Folder (Former Codex)\\My Projects\\F U N\\Symon UFC Rank Engine\\UFC-Rank-Engine\\data\\external\\fightmatrix\\html\\light-heavyweight.html"
+    },
+    {
+      "division": "middleweight",
+      "rows": 25,
+      "cache": "C:\\Users\\sislam\\Downloads\\New Work Folder (Former Codex)\\My Projects\\F U N\\Symon UFC Rank Engine\\UFC-Rank-Engine\\data\\external\\fightmatrix\\html\\middleweight.html"
+    },
+    {
+      "division": "welterweight",
+      "rows": 25,
+      "cache": "C:\\Users\\sislam\\Downloads\\New Work Folder (Former Codex)\\My Projects\\F U N\\Symon UFC Rank Engine\\UFC-Rank-Engine\\data\\external\\fightmatrix\\html\\welterweight.html"
+    },
+    {
+      "division": "lightweight",
+      "rows": 25,
+      "cache": "C:\\Users\\sislam\\Downloads\\New Work Folder (Former Codex)\\My Projects\\F U N\\Symon UFC Rank Engine\\UFC-Rank-Engine\\data\\external\\fightmatrix\\html\\lightweight.html"
+    },
+    {
+      "division": "featherweight",
+      "rows": 25,
+      "cache": "C:\\Users\\sislam\\Downloads\\New Work Folder (Former Codex)\\My Projects\\F U N\\Symon UFC Rank Engine\\UFC-Rank-Engine\\data\\external\\fightmatrix\\html\\featherweight.html"
+    },
+    {
+      "division": "bantamweight",
+      "rows": 25,
+      "cache": "C:\\Users\\sislam\\Downloads\\New Work Folder (Former Codex)\\My Projects\\F U N\\Symon UFC Rank Engine\\UFC-Rank-Engine\\data\\external\\fightmatrix\\html\\bantamweight.html"
+    },
+    {
+      "division": "flyweight",
+      "rows": 25,
+      "cache": "C:\\Users\\sislam\\Downloads\\New Work Folder (Former Codex)\\My Projects\\F U N\\Symon UFC Rank Engine\\UFC-Rank-Engine\\data\\external\\fightmatrix\\html\\flyweight.html"
+    },
+    {
+      "division": "womens-pound-for-pound",
+      "rows": 10,
+      "cache": "C:\\Users\\sislam\\Downloads\\New Work Folder (Former Codex)\\My Projects\\F U N\\Symon UFC Rank Engine\\UFC-Rank-Engine\\data\\external\\fightmatrix\\html\\womens-pound-for-pound.html"
+    },
+    {
+      "division": "womens-bantamweight",
+      "rows": 25,
+      "cache": "C:\\Users\\sislam\\Downloads\\New Work Folder (Former Codex)\\My Projects\\F U N\\Symon UFC Rank Engine\\UFC-Rank-Engine\\data\\external\\fightmatrix\\html\\womens-bantamweight.html"
+    },
+    {
+      "division": "womens-flyweight",
+      "rows": 25,
+      "cache": "C:\\Users\\sislam\\Downloads\\New Work Folder (Former Codex)\\My Projects\\F U N\\Symon UFC Rank Engine\\UFC-Rank-Engine\\data\\external\\fightmatrix\\html\\womens-flyweight.html"
+    },
+    {
+      "division": "womens-strawweight",
+      "rows": 25,
+      "cache": "C:\\Users\\sislam\\Downloads\\New Work Folder (Former Codex)\\My Projects\\F U N\\Symon UFC Rank Engine\\UFC-Rank-Engine\\data\\external\\fightmatrix\\html\\womens-strawweight.html"
+    }
+  ],
+  "all_time_rows": 35,
+  "all_time_pages": [
+    {
+      "page": "all-time-absolute",
+      "rows": 35,
+      "cache": "C:\\Users\\sislam\\Downloads\\New Work Folder (Former Codex)\\My Projects\\F U N\\Symon UFC Rank Engine\\UFC-Rank-Engine\\data\\external\\fightmatrix\\html\\all-time-absolute.html"
+    }
+  ],
+  "output": "data\\snapshots\\2026-08-13\\fightmatrix_rankings.parquet",
+  "all_time_output": "data\\snapshots\\2026-08-13\\fightmatrix_all_time.parquet"
+}

@@ -1,5 +1,28 @@
 # Snapshot Changelog
 
+## 2026-10-14 - Published boards restored, and the release versioned whole
+
+The 2026-10-13 refit is withdrawn. `README.md` and `RANKINGS.md` are back to
+the boards published before it, line for line. See "The WHR solver" in
+`docs/DECISIONS.md`.
+
+- The exact WHR solver is kept as the setting `WHR_CENTER_EACH_PASS = False`.
+  The default stays re-centred until a held-out test on the published inputs
+  resolves in the exact solver's favour.
+- Refitted on the original inputs (6,012 birth dates, 6,562 odds rows), the
+  exact solver reproduces the 2026-10-13 boards except two adjacent swaps in the
+  men's top 100. The board movement came from the solver; the inputs the second
+  machine could not rebuild moved two pairs. Evidence in
+  `docs/validation/solver-refit-2026-10-14/`.
+- `data/snapshots/2026-08-13/` is now versioned whole: inputs, fitted ratings
+  and boards. Any checkout can rebuild, re-score or refit the release, and
+  `tests/test_release_committed.py` fails on a fresh clone if a file goes missing.
+- Staging no longer needs the local Sherdog page store: profile birth dates and
+  the merged-career list are versioned beside it.
+- `python refresh.py` with no flags now stages the external sources the
+  published release reads, including the Fight Matrix profiles that alone carry
+  53 of its birth dates. `--no-include-external` opts out.
+
 ## 2026-10-13 - Boards refitted with the repaired WHR solver
 
 The 2026-08-13 snapshot was refitted after the WHR repair of 2026-10-09; the
