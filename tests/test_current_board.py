@@ -206,6 +206,78 @@ def test_current_recency_metadata_does_not_create_a_second_rating():
     assert "activity_mu_penalty" not in got.columns
 
 
+def _recorded(rows: list[tuple[str, str, str, bool]]) -> pd.DataFrame:
+    return pd.DataFrame(
+        [
+            {"event_date": pd.Timestamp(d), "fighter_a": a, "fighter_b": b, "is_excluded": ex}
+            for d, a, b, ex in rows
+        ]
+    )
+
+
+def test_a_no_contest_counts_as_a_recorded_fight_for_recency():
+    """The README promises "any recorded MMA fight within 18 months".
+
+    A no contest is excluded from the rating, but it is still a fight. Tom
+    Aspinall's last rated bout was 2024-07-27; his title fight with Ciryl Gane
+    on 2025-10-25 ended in a no contest, and reading only the rated bout held
+    him off the 2026-08-13 board as 25 months idle.
+    """
+    from ratings.rate_snapshot import _attach_months_inactive
+
+    current = pd.DataFrame({
+        "fighter": ["Tom Aspinall", "Ciryl Gane"],
+        "last_event_date": [pd.Timestamp("2024-07-27"), pd.Timestamp("2026-06-14")],
+    })
+    recorded = _recorded([
+        ("2024-07-27", "Tom Aspinall", "Curtis Blaydes", False),
+        ("2025-10-25", "Tom Aspinall", "Ciryl Gane", True),
+        ("2026-06-14", "Ciryl Gane", "Someone", False),
+    ])
+    got = _attach_months_inactive(
+        current, pd.Timestamp("2026-08-30"), recorded_fights=recorded
+    ).set_index("fighter")
+    assert got.loc["Tom Aspinall", "months_inactive"] == pytest.approx(10.15)
+    assert got.loc["Tom Aspinall", "last_recorded_event_date"] == pd.Timestamp("2025-10-25")
+    # The rated date is a different fact and stays what the fit saw.
+    assert got.loc["Tom Aspinall", "last_event_date"] == pd.Timestamp("2024-07-27")
+    # A later rated bout is never overridden by an earlier recorded one.
+    assert got.loc["Ciryl Gane", "last_recorded_event_date"] == pd.Timestamp("2026-06-14")
+
+
+def test_recency_without_a_fight_table_reads_the_rated_date():
+    from ratings.rate_snapshot import _attach_months_inactive
+
+    current = pd.DataFrame({
+        "fighter": ["A"], "last_event_date": [pd.Timestamp("2025-01-01")],
+    })
+    got = _attach_months_inactive(current, pd.Timestamp("2026-01-01"))
+    assert got.loc[0, "months_inactive"] == pytest.approx(11.99)
+
+
+def test_no_published_fighter_is_withheld_for_recency_after_a_recent_recorded_fight():
+    """The published board against the snapshot's own fight table.
+
+    Every row the rating run could see counts, rated or not: a no contest, an
+    overturned result and a bout with no recorded winner are all fights.
+    """
+    board = _published()
+    from loaders.combined_fights import load_combined_fights
+
+    fights, _ = load_combined_fights(SNAPSHOT, scope="majors,pre_unified", label="test")
+    dates = pd.to_datetime(fights["event_date"])
+    rated = ~fights["is_excluded"].fillna(False).astype(bool)
+    reference = dates[rated].max()
+    last = pd.concat(
+        [pd.DataFrame({"fighter": fights[side], "d": dates}) for side in ("fighter_a", "fighter_b")]
+    ).dropna().groupby("fighter")["d"].max()
+    months = (reference - last).dt.days / 30.4375
+    recent = set(months[months <= build_boards.CURRENT_MAX_MONTHS_INACTIVE].index)
+    stale = board[board["status"].astype(str).str.startswith("not currently active")]
+    wrongly = sorted(set(stale["fighter"]) & recent)
+    assert wrongly == []
+
+
 def test_the_layoff_charge_lives_in_the_pricing_layer():
     """Not in the rating, and not on this board.
 
@@ -224,3 +296,25 @@ def test_the_layoff_charge_lives_in_the_pricing_layer():
     assert MAX_EXCESS_TURNAROUNDS > 0
     assert not hasattr(whr, "LAYOFF_GRACE_DAYS")
     assert not hasattr(whr, "LAYOFF_MAX_IDLE_YEARS")
+
+
+def test_the_published_last_bout_is_the_date_the_recency_rule_read():
+    """A fighter on the board for a no contest must not print a date 25 months old.
+
+    The table's "Last bout" sits beside a rule that reads any recorded fight, so
+    it prints the same date. A snapshot without the recorded date falls back to
+    the last rated bout.
+    """
+    gated = pd.DataFrame({
+        "rank": [1, 2], "fighter": ["Aspinall", "Older"], "status": ["ranked", "ranked"],
+        "score": [1909.0, 1900.0], "tested_opponent_wins": [9, 12],
+    })
+    current = pd.DataFrame({
+        "fighter": ["Aspinall", "Older"],
+        "whr_last_event_date": pd.to_datetime(["2024-07-27", "2026-01-10"]),
+        "last_recorded_event_date": pd.to_datetime(["2025-10-25", None]),
+    })
+    table = build_boards.current_board_markdown(gated, current, rating_col="score")
+    assert "| 1 | Aspinall |" in table and "2025-10-25" in table
+    assert "2024-07-27" not in table
+    assert "2026-01-10" in table

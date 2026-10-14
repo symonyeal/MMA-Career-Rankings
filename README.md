@@ -293,7 +293,7 @@ The table prints both inputs instead of the internal ordering index.
 | 27 | Sean Brady | Welterweight | 1916 | 11 | 2026-05-09 |
 | 28 | Alex Pereira | Light Heavyweight | 1913 | 13 | 2026-06-14 |
 | 29 | Aljamain Sterling | Bantamweight | 1912 | 23 | 2026-04-25 |
-| 30 | Sergei Pavlovich | Heavyweight | 1907 | 12 | 2026-05-30 |
+| 30 | Tom Aspinall | Heavyweight | 1909 | 9 | 2025-10-25 |
 
 <!-- BOARD:CURRENT30:END -->
 

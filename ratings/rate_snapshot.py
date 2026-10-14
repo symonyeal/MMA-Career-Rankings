@@ -164,11 +164,15 @@ def _require_career_coverage(snapshot_dir: Path, scope: str) -> dict:
     return summary
 
 
+def _rated_rows(fights: pd.DataFrame) -> pd.DataFrame:
+    if "is_excluded" in fights.columns:
+        return fights[~fights["is_excluded"].fillna(False).astype(bool)].copy()
+    return fights
+
+
 def _source_fights_for_public_resume(snapshot_dir: Path, scope: str) -> pd.DataFrame:
     fights, _ = load_combined_fights(snapshot_dir, scope=scope, label="resume")
-    if "is_excluded" in fights.columns:
-        fights = fights[~fights["is_excluded"].fillna(False).astype(bool)].copy()
-    return fights
+    return _rated_rows(fights)
 
 
 def refresh_career_columns(
@@ -218,7 +222,15 @@ def refresh_career_columns(
     )
     appearances_path = snapshot_dir / "performance_appearances.parquet"
     appearances = pd.read_parquet(appearances_path) if appearances_path.exists() else pd.DataFrame()
-    source_fights = _source_fights_for_public_resume(snapshot_dir, scope)
+    recorded_fights, _ = load_combined_fights(snapshot_dir, scope=scope, label="resume")
+    source_fights = _rated_rows(recorded_fights)
+    # Recency is board metadata, not a fit input, so it is re-measured here with
+    # the same reference date the full run uses: the last rated bout.
+    current = _attach_months_inactive(
+        current,
+        pd.to_datetime(source_fights["event_date"]).max(),
+        recorded_fights=recorded_fights,
+    )
     current = current.merge(
         public_legacy_score_rows(
             current,
@@ -303,12 +315,42 @@ def attach_bout_weights(
 _attach_org_only_weights = attach_bout_weights
 
 
+def _last_recorded_dates(fights: pd.DataFrame) -> pd.Series:
+    """Fighter -> date of the latest bout in the table, rated or not."""
+    dates = pd.to_datetime(fights["event_date"], errors="coerce")
+    sides = [
+        pd.DataFrame({"fighter": fights[side], "event_date": dates})
+        for side in ("fighter_a", "fighter_b")
+    ]
+    return (
+        pd.concat(sides, ignore_index=True)
+        .dropna()
+        .groupby("fighter")["event_date"]
+        .max()
+    )
+
+
 def _attach_months_inactive(
-    current: pd.DataFrame, snapshot_max_date: pd.Timestamp
+    current: pd.DataFrame,
+    snapshot_max_date: pd.Timestamp,
+    *,
+    recorded_fights: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
-    """Measure recency for the Current eligibility rule."""
+    """Measure recency for the Current eligibility rule.
+
+    The rule is "any recorded MMA fight within 18 months", so the clock reads
+    every bout the run could see, not only the rated ones. A no contest, an
+    overturned result and a bout with no recorded winner are excluded from the
+    rating and are still fights: reading the rated date alone held Tom Aspinall
+    off the 2026-08-13 board as 25 months idle, ten months after his title
+    fight with Ciryl Gane. ``last_event_date`` stays the last rated bout.
+    """
     out = current.copy()
     last = pd.to_datetime(out.get("last_event_date"), errors="coerce")
+    if recorded_fights is not None and not recorded_fights.empty:
+        recorded = out["fighter"].map(_last_recorded_dates(recorded_fights))
+        last = pd.concat([last, pd.to_datetime(recorded)], axis=1).max(axis=1)
+    out["last_recorded_event_date"] = last
     months = (pd.Timestamp(snapshot_max_date) - last).dt.days / 30.4375
     out["months_inactive"] = months.clip(lower=0.0).round(2)
     return out
@@ -675,7 +717,7 @@ def run(
         how="left",
     )
 
-    current = _attach_months_inactive(current, snapshot_max_date)
+    current = _attach_months_inactive(current, snapshot_max_date, recorded_fights=fights)
 
     # Opponent context per appearance. Division boards score a fighter inside
     # one weight class from it; the latent skill model does not read it.
