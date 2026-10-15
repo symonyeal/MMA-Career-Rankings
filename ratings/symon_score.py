@@ -530,7 +530,10 @@ def division_year_reference(
     return pd.Series(bars)
 
 
-def career_skill_mass(
+YEAR_COLUMNS = ["fighter", "year", "annual_mean", "field_mean", "excess"]
+
+
+def career_skill_years(
     history: pd.DataFrame,
     *,
     mu_col: str = "mu_whr",
@@ -546,7 +549,9 @@ def career_skill_mass(
     hinge_scale: float = 0.0,
     hinge_spread_fraction: float | None = None,
 ) -> pd.DataFrame:
-    """Sum positive fighter-year skill excess, one contribution per active year.
+    """Fighter-years behind :func:`career_skill_mass`: ``fighter, year, annual_mean, field_mean, excess``.
+
+    Sum positive fighter-year skill excess, one contribution per active year.
 
     ``divisions`` is a fighter -> division label mapping. Given one, the bar is
     struck inside each division-year at ``division_reference`` and only falls
@@ -590,7 +595,7 @@ def career_skill_mass(
         event_col=event_col,
     )
     if h.empty:
-        return _empty(MASS_COLUMNS)
+        return _empty(YEAR_COLUMNS)
 
     h["year"] = h["event_date"].dt.year.astype("int64")
     annual = (
@@ -600,7 +605,7 @@ def career_skill_mass(
     )
     annual = annual[annual["appearances"] >= int(min_appearances_per_year)].copy()
     if annual.empty:
-        return _empty(MASS_COLUMNS)
+        return _empty(YEAR_COLUMNS)
 
     if divisions is not None and len(divisions):
         annual["division"] = annual["fighter"].map(divisions)
@@ -641,6 +646,14 @@ def career_skill_mass(
         annual["annual_mean"] - annual["field_mean"], resolved_hinge_scale
     )
 
+    return annual[YEAR_COLUMNS]
+
+
+def career_skill_mass(history: pd.DataFrame, **kwargs) -> pd.DataFrame:
+    """Career skill mass: the per-fighter sum of :func:`career_skill_years` excess, with its shape."""
+    annual = career_skill_years(history, **kwargs)
+    if annual.empty:
+        return _empty(MASS_COLUMNS)
     grouped = annual.groupby("fighter", sort=False)["excess"]
     out = pd.DataFrame({
         "score": grouped.sum(),
