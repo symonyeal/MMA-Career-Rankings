@@ -5,9 +5,11 @@ below comes from the ``viz.py`` builder the notebook calls, or from the rating c
 boards use; the page only filters, sorts and draws. Boards are the published ones
 (``build_boards.py``), so the site and README cannot disagree.
 
-Two certificates are checked before anything is written:
+Four certificates are checked before anything is written:
   1. the All-time score is reconstructed from its three normalised terms;
-  2. the per-year career receipt sums to the published career skill mass.
+  2. the per-year career receipt sums to the published career skill mass;
+  3. each integrity-policy rating is the base rating less its debit;
+  4. the calibration table is symmetric: bin b and bin 9 − b are one bout seen from both corners.
 
 Usage: python analysis/build_site.py [data/snapshots/<date>]
 """
@@ -27,8 +29,8 @@ sys.path.insert(0, str(ROOT))
 
 from analysis.viz import (
     DIV_SHORT, DIVISIONS, _division_strength_frame, add_division_to_fights, all_time_benchmark_table,
-    career_bar_ladder_chart, division_year_top_fighters_chart, integrity_impact_chart,
-    integrity_ledger_table, title_lineage_chart, win_streaks, yearly_rating_delta_scatter,
+    career_bar_ladder_chart, division_year_top_fighters_chart, integrity_ledger_table, title_lineage_chart,
+    win_streaks, yearly_rating_delta_scatter,
 )
 from build_boards import _division_column
 from ratings.constants import (
@@ -224,13 +226,31 @@ def build(snap):
          "avg_opp_rating", "ongoing", "ended_by", "gender"]]
     bench = all_time_benchmark_table(rc, rd("fightmatrix_all_time"), "public_legacy_score",
                                      min_fights=SUSTAINED_PEAK_MIN_FIGHTS, limit=100)
-    ia = rd("integrity_appearances")
+    # Integrity policy: rank on the base WHR list before and after the debits, highest-rated debited first.
+    ib = rd("integrity_discounted_board")
+    assert np.allclose(ib["mu_whr"] - ib["integrity_cost"], ib["integrity_discounted_rating"]), \
+        "integrity rating is not base rating less debit"
+    db = ib[ib["integrity_cost"] > 0].sort_values("mu_whr", ascending=False)
+    ia, il = rd("integrity_appearances"), rd("integrity_ledger")
     integrity = {
-        "fig": fig(integrity_impact_chart(ia, integrity_discounted_board=rd("integrity_discounted_board"), n=12)),
-        "ledger": plain(integrity_ledger_table(ia, integrity_ledger=rd("integrity_ledger"), n=None)
+        "n": len(db), "rated": len(ib), "cost": plain([db["integrity_cost"].min(), db["integrity_cost"].max()], 1),
+        "debits": plain(db.head(25)[["fighter", "mu_whr", "undiscounted_rank", "rank", "integrity_cost",
+                                     "ped_discounted_fights", "dq_discounted_fights",
+                                     "missed_weight_discounted_fights"]].to_numpy().tolist(), 1),
+        "ledger": plain(integrity_ledger_table(ia, integrity_ledger=il, n=None)
                         .replace("�", "—", regex=True).to_numpy().tolist()),  # source mis-decoded dash
     }
     ladder = fig(career_bar_ladder_chart(career_mass_family(whr), n=15))
+
+    # 7. Calibration of the pre-fight Glicko-2 forecast (ratings.diagnostics.calibration_residual_rows).
+    cr = rd("calibration_residuals")
+    o = cr[cr["segment_type"].eq("overall")].sort_values("prob_bin")
+    assert np.allclose(o["predicted_mean"].to_numpy() + o["predicted_mean"].to_numpy()[::-1], 1), \
+        "calibration table is not symmetric"
+    big = cr[cr["segment_type"].eq("division") & cr["segment_value"].isin(DIVISIONS)]
+    big = big[big.groupby("segment_value")["n"].transform("sum") >= 1000]
+    calib = plain(pd.concat([o.assign(segment_value="All bouts"), big])[
+        ["segment_value", "prob_bin", "predicted_mean", "empirical_win_rate", "n"]].to_numpy().tolist(), 4)
 
     return {
         "meta": {
@@ -244,7 +264,7 @@ def build(snap):
         "strength": strength, "year_top": year_top, "movers": movers,
         "mix": plain([[*k, v] for k, v in mix.items()]), "entropy": plain(ent.to_numpy().tolist(), 3),
         "lineage": lineage, "streaks": plain(st.to_numpy().tolist(), 0),
-        "bench": plain(bench.to_numpy().tolist(), 1), "integrity": integrity, "ladder": ladder,
+        "bench": plain(bench.to_numpy().tolist(), 1), "integrity": integrity, "ladder": ladder, "calib": calib,
     }
 
 

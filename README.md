@@ -28,6 +28,11 @@ fighters, minimum rated bouts) drives every section.
 | [**Weight classes and eras**](https://symonyeal.github.io/UFC-Rank-Engine/#divisions) | How strong each class has been year by year, its top five in any year, how deep its elite is, and how fights end. |
 | [**Title lineage**](https://symonyeal.github.io/UFC-Rank-Engine/#lineage) | Every reign in every class, with defences. |
 | [**Integrity policy and outside check**](https://symonyeal.github.io/UFC-Rank-Engine/#policy) | The PED, disqualification and missed-weight ledger, and where the board disagrees with FightMatrix. |
+| [**Forecast calibration**](https://symonyeal.github.io/UFC-Rank-Engine/#checks) | How often pre-fight favourites actually won, against the probability they were given, with 95% intervals. |
+
+Each section heading states one finding, computed from the published snapshot when the page loads, and each
+chart's title states what that chart shows under the current controls. A caption under every chart gives its
+source, sample size and assumptions. The page follows the reader's light or dark setting.
 
 | Weight-class board | Score anatomy and exchange rates |
 | --- | --- |
