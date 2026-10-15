@@ -1,6 +1,6 @@
-// Draws site/data.js (written by analysis/build_site.py). Each section makes one claim: its h2 states the
-// published finding, computed once from DATA; each exhibit's title states what it shows under the current
-// controls. Sections draw when visible and redraw when a control they read changes. Colours: style.css tokens.
+// Draws site/data.js (written by analysis/build_site.py). Headlines and chart titles are fixed in index.html;
+// the numbers speak in each chart's insight line, computed from DATA under the current controls. Sections draw
+// when visible and redraw when a control they read changes. Colours: style.css tokens.
 "use strict";
 
 const D = window.DATA, M = D.meta, F = D.F, NF = F.name.length;
@@ -53,9 +53,9 @@ function plot(id, data, layout = {}) {
     ...layout, margin: { t: 12, r: 24, b: 48, l: 56, ...layout.margin }, xaxis: ax("xaxis"), yaxis: ax("yaxis"),
   }, CFG);
 }
-// An exhibit is a claim (title), its proof (chart) and its provenance (caption).
-function ex(id, title, src) {
-  $(id + "-t").innerHTML = title;
+// An exhibit: a fixed title in the page, a computed insight, the chart and a short caption.
+function ex(id, insight, src) {
+  $(id + "-i").innerHTML = insight;
   if (src != null) $(id + "-s").innerHTML = src;
 }
 function empty(id, msg) {
@@ -137,12 +137,12 @@ function divisionOptions() {
 if (!window.Plotly) document.querySelector(".hero").insertAdjacentHTML("beforeend",
   `<p class="callout">Charts need plotly.js from cdn.jsdelivr.net, which did not load. Tables still work.</p>`);
 
-// ---- claims shared by headline and exhibit -----------------------------------------------------------------
-// Year leaders of a strength frame (rows [class, year, rating, n]) and how often the lead changed hands.
+// ---- helpers shared by sections -----------------------------------------------------------------
+// Year leaders of a strength frame (rows [class, year, rating, n]).
 function leaders(R) {
   const ys = [...new Set(R.map((r) => r[1]))].sort((a, b) => a - b);
   const L = ys.map((y) => argmax(R.filter((r) => r[1] === y), (r) => r[2]));
-  return { ys, L, changes: L.filter((r, k) => k && r[0] !== L[k - 1][0]).length };
+  return { ys, L };
 }
 const streakSort = { length: (r) => [r[1], r[8] ?? 0, r[6]], quality: (r) => [r[8] ?? 0, r[1], r[6]], title_wins: (r) => [r[6], r[1], r[8] ?? 0] };
 function streaks(g, div, min, key) {
@@ -157,64 +157,17 @@ function calRows(seg) {
 }
 const overconfident = (R) => sum(R.filter((r) => r.p > 0.5).map((r) => r.n * (r.p - r.y))) > 0;  // favourites win less than forecast
 
-// ---- hero and headlines (published parameters, men, every class) --------------------------------------------
-function headlines() {
-  const top = (v, g = "M") => boardRows(v, false, g, "All", M.min_periods);
-  const [A, P, Cu] = ["all_time", "prime", "current"].map((v) => top(v));
-  const nm = (i) => esc(F.name[i]);
-  $("hero-h").innerHTML = A[0] === P[0]
-    ? `${nm(A[0])} has the most valuable men's career on record and the best ten-year prime; ${nm(Cu[0])} is the best fighter now.`
-    : `${nm(A[0])} has the most valuable men's career on record, ${nm(P[0])} the best ten-year prime, and ${nm(Cu[0])} is the best fighter now.`;
-  $("facts").innerHTML = [
-    [fmt(M.rated_bouts), "rated bouts, all recorded promotions"], [fmt(M.established), `fighters with ${M.min_periods}+ rated bouts`],
-    [fmt(F.score[A[0]] - F.score[A[1]]), `All-time points between #1 and #2 (${esc(F.name[A[1]])})`], [M.through, "latest bout in the data"],
-  ].map(([v, l]) => `<div><b>${v}</b><span>${l}</span></div>`).join("");
-
-  const t10 = (L) => new Set(L.slice(0, 10)), a10 = t10(A);
-  const both = (L) => [...t10(L)].filter((i) => a10.has(i)).length;
-  $("rankings-h").textContent = `The three boards ask different questions: ${both(P)} of the men's All-time top 10 are in the Prime top 10, and ${both(Cu)} are in the Current top 10.`;
-
-  const U = units("M", "All").sort((x, y) => x.rank - y.rank).slice(0, 20), pts = [0, 1, 2].map((j) => sum(U.map((u) => upts(u)[j])));
-  const j = pts.indexOf(Math.max(...pts));
-  $("anatomy-h").textContent = `${PART()[j][0]} supplies ${fmt(100 * pts[j] / sum(pts))}% of the points of the men's All-time top 20.`;
-
-  const Bm = D.bar.M.slice(0, 15), dl = M.bar_raise.length - 1, keep = Bm.filter((r) => r[1][dl] <= 15).length;
-  $("careers-h").textContent = `The career-mass order survives a higher bar: raising every year's bar by ${M.bar_raise[dl]} rating points keeps ${keep} of the men's top 15 in the top 15.`;
-
-  let big = null;
-  Object.entries(D.movers).forEach(([y, f]) => (f.data[0]?.x || []).forEach((d, k) => {
-    if (!big || Math.abs(d) > Math.abs(big[0])) big = [d, f.data[0].y[k], y];
-  }));
-  if (big) $("movers-h").textContent = `The largest one-year move among board fighters is ${big[1]}'s ${sgn(big[0])} rating points in ${big[2]}.`;
-
-  const st = streaks("M", "All", 3, "length"), ties = st.filter((r) => r[1] === st[0][1]).length;
-  if (st.length) $("streaks-h").textContent = `${st[0][0]} ${ties > 1 ? `shares the longest men's UFC win streak with ${ties - 1} other${ties > 2 ? "s" : ""}` : "holds the longest men's UFC win streak"}: ${st[0][1]} wins, ${iso(st[0][2]).slice(0, 4)}–${iso(st[0][3]).slice(0, 4)}.`;
-
-  const men = D.divisions.slice(0, 9), Lm = leaders(D.strength["10"].filter((r) => men.includes(r[0])));
-  $("divisions-h").textContent = `In UFC bouts, ${Lm.L.at(-1)[0]} has the strongest top ten in ${Lm.ys.at(-1)}; the strongest men's class has changed ${Lm.changes} times since ${Lm.ys[0]}.`;
-
-  const all = Object.entries(D.lineage).flatMap(([d, f]) => reigns(f[0]).slice(0, -1).map((r) => ({ ...r, d })));  // completed reigns
-  const hi = argmax(all, (r) => r.yrs), yrs = all.map((r) => r.yrs).sort((a, b) => a - b), med = yrs[Math.floor(yrs.length / 2)];
-  $("lineage-h").textContent = `The belt usually changes hands within ${fmt(med, 1)} years (the median); the longest completed run is ${hi.f}'s ${fmt(hi.yrs, 1)} years at ${hi.d}.`;
-
-  const dm = pool("all_time", false, "M", "All", M.min_periods).filter((i) => F.dom[i] != null && F.domw[i] >= 8);
-  const d1 = argmax(dm, (i) => F.dom[i]);
-  $("dominance-h").textContent = `${F.name[d1]} wins most one-sidedly among men with 8 or more scored wins.`;
-
-  const G = D.integrity;
-  $("policy-h").textContent = `The integrity policy debits ${fmt(G.n)} fighters by ${fmt(G.cost[0])} to ${fmt(G.cost[1])} rating points each, and leaves every published board unchanged.`;
-
-  const cr = calRows("All bouts"), dev = Math.max(...cr.map((r) => Math.abs(r.y - r.p)));
-  $("checks-h").textContent = `Pre-fight win probabilities are within ${fmt(100 * dev, 1)} percentage points of observed win rates in every band, though favourites win slightly ${overconfident(cr) ? "less" : "more"} often than forecast.`;
-
-  const B = D.bench.filter((r) => r[2] != null);
-  $("benchmark-h").textContent = `The men's All-time board and FightMatrix's all-time list agree at Spearman ρ = ${fmt(rho(B.map((r) => r[1]), B.map((r) => r[2])), 2)} over the ${B.length} fighters on both.`;
+// ---- hero facts (published boards, men) ---------------------------------------------------------------------
+function facts() {
+  const one = (v) => esc(F.name[boardRows(v, false, "M", "All", M.min_periods)[0]]);
+  $("facts").innerHTML = [[one("all_time"), "#1 All-time"], [one("prime"), "#1 Prime"], [one("current"), "#1 Current"],
+    [fmt(M.rated_bouts), `rated bouts through ${M.through}`]].map(([v, l]) => `<div><b>${v}</b><span>${l}</span></div>`).join("");
 }
 
 // ---- 1. rankings --------------------------------------------------------------------------------------------
 SECTIONS.rankings = () => {
   const out = S.view === "all_time" && S.div !== "All" ? classTable() : boardTable();
-  $("board-s").textContent = `${out} ${SNAP}.`;
+  $("board-s").textContent = out;
 };
 function boardTable() {
   const all = boardRows(), rows = all.filter((i) => !S.q || F.name[i].toLowerCase().includes(S.q)).slice(0, S.top);
@@ -241,7 +194,7 @@ function boardTable() {
     ? `<table><thead><tr>${cols.map(([h]) => `<th class="${/^(#|Fighter|Division|Best|Last)/.test(h) ? "" : "num"}">${h}</th>`).join("")}</tr></thead><tbody>` +
       rows.map((i) => `<tr>${cols.map(([, c]) => c(i)).join("")}</tr>`).join("") + "</tbody></table>"
     : `<p class="note" style="padding:10px 14px">No ranked fighters match the current filters.</p>`;
-  return `Showing ${rows.length} of ${all.length} ranked on the ${V.name} board; bars start at 0.`;
+  return `Showing ${rows.length} of ${all.length}.`;
 }
 function classTable() {
   const all = units(S.g, S.div).filter((u) => F.n[u.f] >= S.min);
@@ -257,7 +210,7 @@ function classTable() {
       <td class="num">${fmt(100 * v[k] / F.score[u.f])}%</td><td class="num dim">${fmt(p[0])}</td><td class="num dim">${fmt(p[1])}</td>
       <td class="num dim">${fmt(p[2])}</td><td class="num dim">${F.at[u.f] ?? ""}</td><td class="dim">${esc(other(u))}</td></tr>`; }).join("") +
     "</tbody></table>";
-  return `Showing ${U.length} of ${all.length} ranked on the ${S.div} class board, UFC bouts only; Share of All-time is the part of the All-time score earned there.`;
+  return `Showing ${U.length} of ${all.length}; UFC bouts only.`;
 }
 $("board").addEventListener("click", (e) => {
   const b = e.target.closest(".namebtn");
@@ -292,10 +245,8 @@ SECTIONS.anatomy = () => {
   });
   const [n1, n2] = order;
   const lead = n2 ? ` by ${fmt(uscore(n1, a, s) - uscore(n2, a, s))} points` : "";
-  const big = [0, 1, 2].map((j) => upts(n1, a, s)[j]), jm = big.indexOf(Math.max(...big));
-  ex("anat-chart", (published() ? "" : `At a = ${fmt(a, 3)}, s = ${fmt(s, 3)}: `) +
-    `${esc(F.name[n1.f])} leads ${n2 ? esc(F.name[n2.f]) : "the board"}${lead}; ${PART()[jm][0].toLowerCase()} is the largest part of the leader's total`,
-    `Top ${shown.length} of ${order.length} on the ${cls ? S.div + " class" : (S.g === "M" ? "men's" : "women's") + " All-time"} board; ▲▼ = places moved against the published order. Bars start at 0. ${SNAP}.`);
+  ex("anat-chart", (published() ? "" : `At a = ${fmt(a, 3)}, s = ${fmt(s, 3)}: `) + `${esc(F.name[n1.f])} leads${n2 ? ` ${esc(F.name[n2.f])}` : ""}${lead}.`,
+    `Top ${shown.length} of ${order.length} ranked. ▲▼ places moved from the published order.`);
 
   // Published top 100 against the new order: overlap at the top and Spearman's ρ.
   const P = [...U].sort((x, y) => x.rank - y.rank).slice(0, 100), r = rho(P.map((u) => u.rank), P.map((u) => R.get(u)));
@@ -303,10 +254,9 @@ SECTIONS.anatomy = () => {
   const mv = P.slice(0, 50).map((u) => [u.f, u.rank - R.get(u)]).sort((x, y) => y[1] - x[1]);
   const who = (l) => l.map(([i, d]) => `${esc(F.name[i])} ${sgn(d)}`).join(", ");
   $("anat-summary").innerHTML = published()
-    ? `Published rates: a = ${M.a}, s = ${M.s}. Move a slider to see how much of the order the exchange rate decides.`
-    : `${top10} of the published top 10 stay in the top 10; Spearman's ρ against the published top 100 is <b>${fmt(r, 3)}</b>.
-       Largest moves in the published top 50: up ${who(mv.slice(0, 3).filter((x) => x[1] > 0)) || "none"};
-       down ${who(mv.slice(-3).reverse().filter((x) => x[1] < 0)) || "none"}.`;
+    ? ""
+    : `${top10} of the top 10 stay · ρ = ${fmt(r, 2)} vs the published top 100 · up: ${who(mv.slice(0, 3).filter((x) => x[1] > 0)) || "none"}
+       · down: ${who(mv.slice(-3).reverse().filter((x) => x[1] < 0)) || "none"}`;
   robustness();
 };
 function robustness() {
@@ -324,8 +274,8 @@ function robustness() {
       textfont: { color: T.text, size: 12 }, hoverinfo: "skip", marker: { size: 16, symbol: "circle-open", color: T.text, line: { width: 2 } } },
   ], { height: 460, xaxis: { title: { text: "championships weight a" }, dtick: 0.1 },
     yaxis: { title: { text: "career-skill share s" }, dtick: 0.1 }, margin: { r: 8 } });
-  ex("rob-chart", `${esc(S.rob)} ranks between #${lo} and #${hi} across every exchange rate, and #${lo} at ${fmt(100 * best / Z.length)}% of them`,
-    `All-time rank at each pair (a, s) on a 0.05 grid, ${Z.length} pairs, among the ${E.length} careers on the same board. Colour runs from #1 (yellow) to #${zmax} (dark); worse ranks share the end colour. Click a cell to move the sliders there.`);
+  ex("rob-chart", `${esc(S.rob)}: #${lo} to #${hi} across all rates; #${lo} at ${fmt(100 * best / Z.length)}% of them.`,
+    `Grid a, s = 0, 0.05, …, 1. Click a cell to set the sliders.`);
   if (!$("rob-chart").bound) {
     $("rob-chart").bound = true;
     $("rob-chart").on("plotly_click", (ev) => { const p = ev.points[0]; if (p.data.type === "heatmap") setRates(p.x, p.y); });
@@ -399,8 +349,8 @@ SECTIONS.fighters = () => {
     xaxis: { title: { text: "Event date" }, type: "date", range: [iso(Math.min(...days) - 180), iso(Math.max(...days) + 180)] },
   });
   const p = argmax(peaks, (q) => q[1]);
-  ex("arc-chart", peaks.length > 1 ? `${esc(p[0])} peaked highest of the ${peaks.length} selected: ${fmt(p[1])} on ${p[2]}` : `${esc(p[0])} peaked at ${fmt(p[1])} on ${p[2]}`,
-    `Line: base WHR skill after each rated bout, all promotions. Dot: win; red ×: loss. Number above each line: best ${M.peak[2]} mean with at least ${M.peak[1]} bouts. ${SNAP}.`);
+  ex("arc-chart", peaks.length > 1 ? `Highest peak: ${esc(p[0])}, ${fmt(p[1])} (${p[2].slice(0, 4)}).` : `Peak ${fmt(p[1])} (${p[2].slice(0, 4)}).`,
+    `Dot: win · red ×: loss · number: best ${M.peak[2]} mean.`);
   $("cards").innerHTML = S.sel.map((f, k) => card(I.get(f), colors[k])).join("");
 };
 function card(i, c) {
@@ -438,8 +388,8 @@ function receiptChart() {
     customdata: r.map((x) => [x[1], x[2]]),
     hovertemplate: "%{x}<br>credited %{y:.0f}<br>yearly mean rating %{customdata[0]:.0f}<br>that year's bar %{customdata[1]:.0f}<extra></extra>" }],
   { height: 380, xaxis: { title: { text: "Year" }, dtick: y.length > 14 ? 2 : 1 }, yaxis: { title: { text: "Credited excess over the bar" }, rangemode: "tozero" } });
-  ex("rec-chart", `${esc(S.rec)}: ${on.filter(Boolean).length} of ${y.length} active years cleared the bar, and the best three supplied ${fmt(100 * top3 / m)}% of a career mass of ${fmt(F.mass[i])}`,
-    `Each bar: soft positive part of (yearly mean base WHR rating − that year's bar). Grey: under 1 point. The bars add up to the published career mass, which is checked when the site is built. Bars start at 0.`);
+  ex("rec-chart", `${esc(S.rec)}: ${on.filter(Boolean).length} of ${y.length} years above the bar; career mass ${fmt(F.mass[i])}.`,
+    `The bars sum to the published career mass.`);
 }
 SECTIONS.careers = () => {
   receiptChart();
@@ -463,11 +413,10 @@ function barChart() {
       hovertemplate: `<b>%{y}</b><br>bar raised ${S.raise} points: #%{x}, career mass %{customdata:,}<extra></extra>` },
   ], { height: Math.max(380, 26 * n + 90), yaxis: { autorange: "reversed", automargin: true },
     xaxis: { title: { text: "Career-mass rank (1 is best)" }, range: [Math.max(...rk, ...r0) + 1.5, 0.3] }, margin: { l: 8, r: 24 } });
-  const who = S.g === "M" ? "men's" : "women's", w = argmax(range(n), (j) => rk[j] - r0[j]), stay = rk.filter((v) => v <= n).length;
-  ex("ladder-chart", S.raise === 0 ? `${esc(B[0][0])} has the largest ${who} career mass, ${fmt(B[0][2][0])}; raise the bar to test the order`
-    : `Raising every year's bar by ${S.raise} points keeps ${stay} of the ${who} top ${n} in the top ${n}` +
-      (rk[w] > r0[w] ? `; ${esc(B[w][0])} falls furthest, #${r0[w]} to #${rk[w]}` : ""),
-    `Career mass = Σ over active years of the soft positive part of (yearly mean rating − that year's bar − δ); δ = 0 is the published measure, which counts every promotion. Ranks among all rated ${S.g === "M" ? "men" : "women"}. Grey: rank at the published bar; red: lower at the raised bar; accent: higher.`);
+  const w = argmax(range(n), (j) => rk[j] - r0[j]), stay = rk.filter((v) => v <= n).length;
+  ex("ladder-chart", S.raise === 0 ? "Published order. Raise the bar to test it." :
+    `Bar +${S.raise}: ${stay} of the top ${n} hold${rk[w] > r0[w] ? `; ${esc(B[w][0])} falls #${r0[w]} → #${rk[w]}` : ""}.`,
+    `Grey: published rank · red: falls · accent: rises.`);
 }
 function legacyPrime() {
   const P = pool("all_time").filter((i) => F.n[i] >= Math.max(8, S.min) && F.prime[i] != null && F.score[i] != null)
@@ -485,8 +434,7 @@ function legacyPrime() {
   ], { height: 520, annotations: [...up, ...dn].map(([i, r], k) => ({ x: F.prime[i], y: F.score[i], text: F.name[i], showarrow: true, arrowhead: 0,
     ax: 0, ay: r > 0 ? -22 : 22, arrowcolor: T.border2, font: { size: 12, color: k === 0 ? T.accent : T.text2 } })),
     xaxis: { title: { text: "Prime score (best ten years)" } }, yaxis: { title: { text: "All-time score" } } });
-  ex("lp-chart", `${esc(F.name[up[0][0]])} sits furthest above the trend: ${fmt(up[0][1])} more All-time points than the Prime score predicts`,
-    `Dashed: least-squares fit of All-time on Prime over the ${n} highest All-time scores shown (${S.g === "M" ? "men" : "women"}, ${Math.max(8, S.min)}+ rated bouts). The units differ, so read distance from the line, not from the diagonal. Named: three furthest above and three furthest below.`);
+  ex("lp-chart", `Furthest above the trend: ${esc(F.name[up[0][0]])}, +${fmt(up[0][1])}.`, `Dashed: least-squares fit over the ${n} shown.`);
 }
 $("rec-pick").value = S.rec;
 $("rec-pick").addEventListener("change", (e) => { if (I.has(e.target.value)) { S.rec = e.target.value; receiptChart(); } });
@@ -503,8 +451,7 @@ SECTIONS.movers = () => {
     hovertemplate: "<b>%{y}</b><br>%{x:+.0f} over %{customdata[1]} bouts<br>%{customdata[0]}<extra></extra>" }],
   { height: Math.max(420, 22 * t.x.length + 90), xaxis: { title: { text: "Change in base WHR skill over the year" }, zeroline: true, zerolinecolor: T.text2 },
     yaxis: { automargin: true }, margin: { r: 48, l: 8 } });
-  ex("mov-chart", `In ${y}, ${esc(t.y[hi])} rose most (${sgn(t.x[hi])}) and ${esc(t.y[lo])} fell most (${sgn(t.x[lo])})`,
-    `Sum of the per-bout rating changes within ${y}, from the last rating before the year. Fighters with ${M.min_periods}+ rated bouts, both genders; the ${Math.ceil(t.x.length / 2)} largest each way. Accent: rise; red: fall.`);
+  ex("mov-chart", `${y}: ${esc(t.y[hi])} ${sgn(t.x[hi])}; ${esc(t.y[lo])} ${sgn(t.x[lo])}.`, `Board fighters, both genders.`);
 };
 $("mov-year").addEventListener("change", () => mark("movers"));
 
@@ -536,9 +483,8 @@ function streakChart() {
     hovertemplate: "<b>%{customdata[0]}</b><br>%{x} straight UFC wins, %{customdata[1]}–%{customdata[2]}<br>average opponent %{y:.0f}<br>%{customdata[3]} title wins · %{customdata[4]}<extra></extra>" }],
   { height: 440, annotations: [...named].map((r) => label(r[1], r[8], r[0].split(" ").at(-1), r === S.streak ? T.accent : T.text2, { yshift: 13 })),
     xaxis: { title: { text: "Streak length (UFC wins)" }, dtick: 1 }, yaxis: { title: { text: "Average opponent rating (Glicko-2 today)" } } });
-  ex("st-chart", long === hard ? `${esc(long[0])}'s ${long[1]}-win streak is the longest shown and beat the strongest opposition, averaging ${fmt(hard[8])}`
-    : `${esc(long[0])}'s ${long[1]}-win streak is the longest shown; ${esc(hard[0])}'s ${hard[1]}-win run beat the strongest opposition, averaging ${fmt(hard[8])}`,
-    `The ${R.length} streaks in the table (${S.g === "M" ? "men" : "women"}, ${S.div === "All" ? "every class" : S.div}, ${S.stMin}+ wins). Average opponent: each beaten opponent's Glicko-2 rating today. Accent: the selected row.`);
+  ex("st-chart", long === hard ? `${esc(long[0])}: longest (${long[1]}) and toughest (${fmt(hard[8])}).`
+    : `Longest: ${esc(long[0])}, ${long[1]}. Toughest: ${esc(hard[0])}, ${fmt(hard[8])}.`, `Opponent rating: Glicko-2 today.`);
 }
 $("st-table").addEventListener("click", (e) => {
   const tr = e.target.closest("tr[data-k]");
@@ -561,7 +507,7 @@ SECTIONS.divisions = () => {
   const rows = D.strength[S.k].filter((r) => S.dv.has(r[0]) && r[1] >= y0 && r[1] <= y1);
   if (!rows.length) empty("dv-heat", "Select at least one class with enough rated fighters.");
   else {
-    const { ys, L, changes } = leaders(rows), top = new Map(L.map((r) => [r[1], r[2]])), cell = new Map(rows.map((r) => [r[0] + "|" + r[1], r]));
+    const { ys, L } = leaders(rows), top = new Map(L.map((r) => [r[1], r[2]])), cell = new Map(rows.map((r) => [r[0] + "|" + r[1], r]));
     const ds = sel.filter((d) => rows.some((r) => r[0] === d)).reverse(), cnt = {};
     const z = ds.map((d) => ys.map((y) => { const r = cell.get(d + "|" + y); return r ? 100 * r[2] / top.get(y) : null; }));
     L.forEach((r) => { cnt[r[0]] = (cnt[r[0]] || 0) + 1; });
@@ -572,8 +518,8 @@ SECTIONS.divisions = () => {
       customdata: ds.map((d) => ys.map((y) => { const r = cell.get(d + "|" + y); return r ? [r[2], r[3]] : [null, null]; })),
       hovertemplate: "%{x} · %{y}<br>index %{z:.1f}<br>top-end rating %{customdata[0]:.0f} · %{customdata[1]} fighters<extra></extra>" }],
     { height: Math.max(300, 34 * ds.length + 90), xaxis: { title: { text: "Year" } } });
-    ex("dv-heat", `${esc(L.at(-1)[0])} has the strongest UFC top ${S.k} in ${ys.at(-1)}; the lead changed hands ${changes} times since ${ys[0]}, and ${esc(most)} held it in ${cnt[most]} of ${ys.length} years`,
-      `Each cell: the mean end-of-year base WHR rating of the class's top ${S.k} among fighters with a UFC bout in that class that year, as an index (100 = that year's strongest selected class). Colour runs from ${zmin} (dark, the 10th percentile of the cells shown) to 100 (yellow); lower indices share the darkest colour. Blank: fewer than ${S.k} such fighters.`);
+    ex("dv-heat", `${esc(L.at(-1)[0])} leads in ${ys.at(-1)}; ${esc(most)} led most often, ${cnt[most]} of ${ys.length} years.`,
+      `100 = that year's strongest class, by the mean of its top ${S.k}. Colour floor ${zmin}.`);
   }
   yearTop();
   methodMix(y0, y1);
@@ -589,8 +535,8 @@ function yearTop() {
     hovertemplate: "%{y}<br>end-of-year rating %{x:.0f}<extra></extra>" }],
   { height: Math.max(360, 22 * ys.length + 80), xaxis: { title: { text: "End-of-year rating" } },
     yaxis: { categoryorder: "array", categoryarray: [...ys].reverse(), automargin: true, tickfont: { color: T.text2, size: 12 } }, margin: { l: 8 } });
-  ex("dv-year-chart", `${esc(best.y.replace(/^\d+\.\s*/, "").split("  ·")[0])} (${esc(best.c)}) ended ${yr} rated highest of the selected classes: ${fmt(best.x)}`,
-    `Top five per class by end-of-year base WHR rating among fighters with a UFC bout in that class that year; classes ordered by their #1. A dot plot, so the axis does not start at 0.`);
+  ex("dv-year-chart", `${yr}: ${esc(best.y.replace(/^\d+\.\s*/, "").split("  ·")[0])} (${esc(best.c)}) rated highest, ${fmt(best.x)}.`,
+    `End-of-year rating, top five per class.`);
 }
 function methodMix(y0, y1) {
   const mix = {};
@@ -605,8 +551,7 @@ function methodMix(y0, y1) {
     yaxis: { range: [0, 1], tickformat: ".0%", title: { text: "Share of bouts" } }, xaxis: { title: { text: "Year" }, range: [ys[0], ys.at(-1)] }, margin: { r: 96 } });
   const w = Math.min(5, ys.length), dec = (K) => 100 * sum(K.map((k) => mix[ys[k]].Decision)) / sum(K.map((k) => tot[k]));
   const K0 = range(w), K1 = range(w).map((k) => ys.length - w + k);
-  ex("dv-mix", `Decisions went from ${fmt(dec(K0))}% of bouts in ${ys[0]}–${ys[w - 1]} to ${fmt(dec(K1))}% in ${ys[ys.length - w]}–${ys.at(-1)}`,
-    `UFC bouts in the selected classes, ${fmt(sum(tot))} in all; disqualifications and other endings are left out. Each year sums to 100%; the title compares bout-weighted means over the first and last ${w} years shown.`);
+  ex("dv-mix", `Decisions: ${fmt(dec(K0))}% in ${ys[0]}–${ys[w - 1]}, ${fmt(dec(K1))}% in ${ys[ys.length - w]}–${ys.at(-1)}.`, `${fmt(sum(tot))} UFC bouts.`);
 }
 $("dv-chips").addEventListener("click", (e) => {
   const c = e.target.closest(".chip");
@@ -631,8 +576,8 @@ SECTIONS.lineage = () => {
     customdata: [[r.f, r.opp, r.start, r.def, r.yrs]],
     hovertemplate: "<b>%{customdata[0]}</b><br>won %{customdata[2]} against %{customdata[1]}<br>%{customdata[3]} defences · %{customdata[4]} years<extra></extra>" })),
   { height: 200, barmode: "overlay", uniformtext: { minsize: 12, mode: "hide" }, xaxis: { type: "date" }, yaxis: { visible: false }, margin: { t: 8, b: 32, l: 8, r: 8 } });
-  ex("tl-chart", `${esc(d)}: the longest run to the next title change is ${esc(top.f)}'s, ${fmt(top.yrs, 1)} years with ${top.def} defence${top.def === 1 ? "" : "s"}`,
-    `${R.length} reigns${$("tl-int").checked ? ", interim belts included" : ""}. A reign runs until someone else wins the title, so a vacated belt counts until it is refilled; the current reign is drawn to 150 days after the last title bout and is left out of the claim. Label: surname and defences (3D = three). Labels that do not fit are in the hover.`);
+  ex("tl-chart", `Longest: ${esc(top.f)}, ${fmt(top.yrs, 1)} years, ${top.def} defence${top.def === 1 ? "" : "s"}.`,
+    `A reign runs to the next title change, so a vacated belt counts until refilled.`);
 };
 $("tl-div").addEventListener("change", () => mark("lineage"));
 $("tl-int").addEventListener("change", () => mark("lineage"));
@@ -648,8 +593,7 @@ SECTIONS.dominance = () => {
     hovertemplate: "<b>%{y}</b><br>dominance %{x:.1f}<br>%{customdata[0]} wins<br>rating %{customdata[1]}<extra></extra>" }],
   { height: Math.max(380, 22 * P.length + 80), xaxis: { title: { text: "Mean dominance per win" }, rangemode: "tozero" }, margin: { l: 8, r: 48 } });
   const tie = P.filter((i) => F.dom[i] === F.dom[top]).length;
-  ex("dm-chart", `${esc(F.name[top])} wins most one-sidedly${tie > 1 ? `, level with ${tie - 1} other${tie > 2 ? "s" : ""}` : ""}: mean dominance ${fmt(F.dom[top], 1)} over ${F.domw[top]} wins`,
-    `${P.length} fighters with ${S.dmMin}+ scored wins (${S.g === "M" ? "men" : "women"}, ${S.div === "All" ? "every class" : S.div}, ${S.min}+ rated bouts). Bars start at 0.`);
+  ex("dm-chart", `${esc(F.name[top])} leads${tie > 1 ? `, tied with ${tie - 1}` : ""}: ${fmt(F.dom[top], 1)} over ${F.domw[top]} wins.`, `${P.length} fighters with ${S.dmMin}+ wins.`);
 };
 
 // ---- 11. integrity policy ------------------------------------------------------------------------------------
@@ -665,8 +609,7 @@ SECTIONS.policy = () => {
       customdata: R.map((r) => [r[4], why(r), r[1]]), hovertemplate: "<b>%{y}</b><br>policy rank #%{x}<br>debit −%{customdata[0]:.0f} on base %{customdata[2]:.0f}<br>%{customdata[1]}<extra></extra>" },
   ], { height: Math.max(380, 24 * R.length + 80), xaxis: { title: { text: `Rank among all ${fmt(G.rated)} rated fighters (1 is best)` }, autorange: "reversed" },
     yaxis: { automargin: true }, margin: { l: 8 } });
-  ex("pol-chart", `Among the 15 highest-rated debited fighters, ${esc(R[w][0])} moves most: #${R[w][2]} to #${R[w][3]} for a ${fmt(R[w][4])}-point debit`,
-    `Grey: rank on the base WHR rating list; red: rank after the policy's debits. The 15 highest-rated of ${fmt(G.n)} debited fighters, both genders. The ledger below lists every debited result.`);
+  ex("pol-chart", `Largest move: ${esc(R[w][0])}, #${R[w][2]} → #${R[w][3]} for −${fmt(R[w][4])}.`, `${fmt(G.n)} fighters debited; the 15 highest-rated shown.`);
   const L = G.ledger.slice(0, Math.max(S.top, 25));
   $("pol-table").innerHTML = `<table><thead><tr><th>Date</th><th>Fighter</th><th>Opponent</th><th>Reason</th><th>Detail</th>
     <th class="num">Result weight</th><th class="num">Discount</th></tr></thead><tbody>` +
@@ -689,8 +632,8 @@ SECTIONS.checks = () => {
   ], { height: 460, annotations: [label(0.98, 0.9, "forecast = observed", T.muted, { xanchor: "right", yanchor: "top" })],
     xaxis: { title: { text: "Forecast win probability" }, range: [0, 1], tickformat: ".0%" },
     yaxis: { title: { text: "Observed win rate" }, range: [0, 1], tickformat: ".0%" } });
-  ex("cal-chart", `${esc(S.cal)}: favourites win slightly ${overconfident(R) ? "less" : "more"} often than forecast; the largest gap is ${fmt(100 * dev, 1)} percentage points, and ${cover} of ${R.length} bands lie within their 95% interval`,
-    `Causal Glicko-2 ratings, which the engine keeps as a diagnostic; the boards use the WHR fit. ${fmt(n)} bouts, each counted once from each corner, in ten bands of forecast probability. Error bars: ±1.96 binomial standard errors, assuming bouts are independent; with this many bouts most are narrower than the marker.`);
+  ex("cal-chart", `Largest gap ${fmt(100 * dev, 1)} points; favourites win slightly ${overconfident(R) ? "less" : "more"} often than forecast.`,
+    `${fmt(n)} bouts · bars: 95% intervals · causal Glicko-2.`);
 };
 $("cal-seg").addEventListener("change", (e) => { S.cal = e.target.value; mark("checks"); });
 
@@ -709,8 +652,8 @@ SECTIONS.benchmark = () => {
       customdata: B.map((r) => [r[4], r[3]]), hovertemplate: "<b>%{y}</b><br>Rank Engine #%{x}<br>score %{customdata[0]:.1f}<br>gap %{customdata[1]:+d}<extra></extra>" },
   ], { height: Math.max(420, 22 * B.length + 80), xaxis: { range: [Math.max(...B.flatMap((r) => [r[1], r[2]])) + 1, 0], title: { text: "Rank (1 is best)" } },
     yaxis: { automargin: true }, margin: { l: 8 } });
-  ex("bm-chart", `${B.length} of the top ${all.length} are on FightMatrix's list (ρ = ${fmt(rho(B.map((r) => r[1]), B.map((r) => r[2])), 2)}); ${esc(far[0])} differs most, #${far[1]} here and #${far[2]} there`,
-    `Dot: Rank Engine All-time rank; diamond: FightMatrix all-time rank (${D.bench.filter((r) => r[2] != null).length} matched names in all). Men only; the leaders not on FightMatrix's list are left out.`);
+  ex("bm-chart", `ρ = ${fmt(rho(B.map((r) => r[1]), B.map((r) => r[2])), 2)} over ${B.length} matched; biggest gap ${esc(far[0])}, #${far[1]} here, #${far[2]} there.`,
+    `Dot: Rank Engine · diamond: FightMatrix.`);
 };
 
 // ---- wiring --------------------------------------------------------------------------------------------------
@@ -725,7 +668,7 @@ $("w-a").value = S.a; $("w-s").value = S.s; $("o-a").textContent = fmt(S.a, 3); 
 $("foot").textContent = `${SNAP}. The rankings are the published boards; see README.md and RANKINGS.md.`;
 $("names").innerHTML = F.name.map((f) => `<option value="${esc(f)}">`).join("");
 divisionOptions();
-headlines();
+facts();
 matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { theme(); mark(); });
 const io = new IntersectionObserver((es) => {
   es.forEach((e) => (e.isIntersecting ? visible.add(e.target.id) : visible.delete(e.target.id)));
