@@ -348,186 +348,186 @@ in full.
 
 | # | Fighter | Class score | Share of All-time | All-time # |
 | ---: | --- | ---: | ---: | ---: |
-| 1 | Stipe Miocic | 1500.4 | 100% | 9 |
-| 2 | Francis Ngannou | 1182.3 | 100% | 14 |
-| 3 | Fedor Emelianenko | 1117.2 | 100% | 18 |
-| 4 | Junior Dos Santos | 960.4 | 100% | 28 |
-| 5 | Daniel Cormier | 900.7 | 51% | 7 |
-| 6 | Cain Velasquez | 862.6 | 100% | 35 |
-| 7 | Fabricio Werdum | 842.7 | 100% | 39 |
-| 8 | Ciryl Gane | 755.9 | 100% | 49 |
-| 9 | Antonio Rodrigo Nogueira | 691.2 | 100% | 57 |
-| 10 | Alexander Volkov | 659.3 | 100% | 62 |
+| 1 | Stipe Miocic | 1763.8 | 100% | 8 |
+| 2 | Francis Ngannou | 1588.4 | 100% | 10 |
+| 3 | Fedor Emelianenko | 1109.2 | 100% | 22 |
+| 4 | Daniel Cormier | 1035.1 | 51% | 5 |
+| 5 | Ciryl Gane | 929.3 | 100% | 29 |
+| 6 | Cain Velasquez | 889.9 | 100% | 33 |
+| 7 | Junior Dos Santos | 867.0 | 100% | 34 |
+| 8 | Antonio Rodrigo Nogueira | 662.0 | 100% | 53 |
+| 9 | Tom Aspinall | 626.0 | 100% | 55 |
+| 10 | Curtis Blaydes | 614.9 | 100% | 59 |
 
 #### Men — Light Heavyweight
 
 | # | Fighter | Class score | Share of All-time | All-time # |
 | ---: | --- | ---: | ---: | ---: |
-| 1 | Jon Jones | 2633.2 | 85% | 1 |
-| 2 | Lyoto Machida | 901.5 | 80% | 17 |
-| 3 | Daniel Cormier | 861.1 | 49% | 7 |
-| 4 | Mauricio Rua | 788.1 | 100% | 48 |
-| 5 | Chuck Liddell | 738.8 | 90% | 42 |
-| 6 | Rashad Evans | 689.3 | 96% | 53 |
-| 7 | Glover Teixeira | 666.3 | 100% | 61 |
-| 8 | Jan Blachowicz | 648.0 | 100% | 64 |
-| 9 | Ryan Bader | 646.3 | 73% | 32 |
-| 10 | Dan Henderson | 625.4 | 65% | 27 |
+| 1 | Jon Jones | 3107.0 | 84% | 1 |
+| 2 | Lyoto Machida | 1032.9 | 85% | 17 |
+| 3 | Daniel Cormier | 987.4 | 49% | 5 |
+| 4 | Mauricio Rua | 801.2 | 100% | 40 |
+| 5 | Alex Pereira | 790.9 | 68% | 20 |
+| 6 | Vadim Nemkov | 719.0 | 95% | 43 |
+| 7 | Jan Blachowicz | 629.8 | 100% | 54 |
+| 8 | Tito Ortiz | 619.9 | 90% | 49 |
+| 9 | Anthony Johnson | 587.1 | 88% | 52 |
+| 10 | Ryan Bader | 584.4 | 75% | 41 |
 
 #### Men — Middleweight
 
 | # | Fighter | Class score | Share of All-time | All-time # |
 | ---: | --- | ---: | ---: | ---: |
-| 1 | Anderson Silva | 1732.8 | 94% | 6 |
-| 2 | Israel Adesanya | 1212.0 | 98% | 13 |
-| 3 | Chris Weidman | 942.3 | 100% | 30 |
-| 4 | Dricus Du Plessis | 832.7 | 98% | 36 |
-| 5 | Gegard Mousasi | 818.6 | 83% | 25 |
-| 6 | Robert Whittaker | 756.1 | 92% | 41 |
-| 7 | Sean Strickland | 631.9 | 74% | 38 |
-| 8 | Jacare Souza | 595.3 | 95% | 66 |
-| 9 | Luke Rockhold | 574.0 | 100% | 75 |
-| 10 | Khamzat Chimaev | 516.3 | 70% | 52 |
+| 1 | Anderson Silva | 1566.3 | 96% | 9 |
+| 2 | Israel Adesanya | 1453.4 | 99% | 12 |
+| 3 | Dricus Du Plessis | 977.9 | 95% | 27 |
+| 4 | Sean Strickland | 912.1 | 75% | 18 |
+| 5 | Chris Weidman | 823.2 | 100% | 35 |
+| 6 | Khamzat Chimaev | 724.8 | 77% | 28 |
+| 7 | Robert Whittaker | 676.9 | 97% | 47 |
+| 8 | Gegard Mousasi | 623.5 | 93% | 50 |
+| 9 | Luke Rockhold | 618.2 | 100% | 58 |
+| 10 | Nassourdine Imavov | 511.5 | 99% | 77 |
 
 #### Men — Welterweight
 
 | # | Fighter | Class score | Share of All-time | All-time # |
 | ---: | --- | ---: | ---: | ---: |
-| 1 | Georges St-Pierre | 2164.6 | 94% | 2 |
-| 2 | Kamaru Usman | 1104.9 | 100% | 19 |
-| 3 | Matt Hughes | 1027.3 | 97% | 22 |
-| 4 | Tyron Woodley | 747.8 | 100% | 50 |
-| 5 | Leon Edwards | 739.2 | 100% | 51 |
-| 6 | Robbie Lawler | 600.6 | 93% | 65 |
-| 7 | Neil Magny | 590.4 | 100% | 74 |
-| 8 | Carlos Condit | 542.2 | 100% | 85 |
-| 9 | Belal Muhammad | 539.6 | 100% | 87 |
-| 10 | Johny Hendricks | 524.1 | 97% | 86 |
+| 1 | Georges St-Pierre | 1999.8 | 95% | 3 |
+| 2 | Matt Hughes | 1139.1 | 99% | 21 |
+| 3 | Kamaru Usman | 1076.0 | 100% | 24 |
+| 4 | Islam Makhachev | 694.7 | 24% | 2 |
+| 5 | Leon Edwards | 621.7 | 100% | 57 |
+| 6 | Tyron Woodley | 571.7 | 100% | 66 |
+| 7 | Shavkat Rakhmonov | 542.5 | 100% | 71 |
+| 8 | Belal Muhammad | 517.8 | 100% | 75 |
+| 9 | Matt Serra | 511.3 | 100% | 78 |
+| 10 | Robbie Lawler | 424.3 | 98% | 90 |
 
 #### Men — Lightweight
 
 | # | Fighter | Class score | Share of All-time | All-time # |
 | ---: | --- | ---: | ---: | ---: |
-| 1 | Islam Makhachev | 1648.3 | 77% | 3 |
-| 2 | Khabib Nurmagomedov | 1338.1 | 98% | 11 |
-| 3 | Charles Oliveira | 1041.8 | 88% | 15 |
-| 4 | Benson Henderson | 953.8 | 95% | 24 |
-| 5 | Justin Gaethje | 946.9 | 99% | 29 |
-| 6 | Dustin Poirier | 905.5 | 86% | 23 |
-| 7 | Frankie Edgar | 706.5 | 62% | 16 |
-| 8 | Donald Cerrone | 670.2 | 80% | 40 |
-| 9 | Beneil Dariush | 654.7 | 100% | 63 |
-| 10 | BJ Penn | 646.3 | 73% | 33 |
+| 1 | Islam Makhachev | 2173.7 | 75% | 2 |
+| 2 | Khabib Nurmagomedov | 1384.4 | 99% | 15 |
+| 3 | Justin Gaethje | 1168.9 | 99% | 19 |
+| 4 | Benson Henderson | 1036.7 | 97% | 25 |
+| 5 | Charles Oliveira | 1034.2 | 100% | 26 |
+| 6 | Dustin Poirier | 818.1 | 88% | 30 |
+| 7 | Anthony Pettis | 679.5 | 83% | 37 |
+| 8 | Eddie Alvarez | 625.8 | 100% | 56 |
+| 9 | Frankie Edgar | 583.9 | 64% | 31 |
+| 10 | Beneil Dariush | 525.0 | 100% | 73 |
 
 #### Men — Featherweight
 
 | # | Fighter | Class score | Share of All-time | All-time # |
 | ---: | --- | ---: | ---: | ---: |
-| 1 | Jose Aldo | 1872.9 | 93% | 4 |
-| 2 | Alexander Volkanovski | 1625.2 | 97% | 8 |
-| 3 | Max Holloway | 1288.6 | 87% | 10 |
-| 4 | Ilia Topuria | 768.6 | 71% | 21 |
-| 5 | Patricio Freire | 686.6 | 86% | 46 |
-| 6 | Conor McGregor | 557.5 | 78% | 54 |
-| 7 | Chad Mendes | 438.6 | 100% | 109 |
-| 8 | Movsar Evloev | 409.2 | 82% | 93 |
-| 9 | Frankie Edgar | 394.8 | 35% | 16 |
-| 10 | Cub Swanson | 383.9 | 99% | 130 |
+| 1 | Jose Aldo | 1894.2 | 97% | 6 |
+| 2 | Alexander Volkanovski | 1835.5 | 97% | 7 |
+| 3 | Max Holloway | 1134.7 | 78% | 14 |
+| 4 | Ilia Topuria | 1083.4 | 74% | 13 |
+| 5 | Conor McGregor | 703.4 | 92% | 42 |
+| 6 | Patricio Freire | 690.1 | 85% | 38 |
+| 7 | Movsar Evloev | 620.1 | 86% | 45 |
+| 8 | Urijah Faber | 345.8 | 77% | 87 |
+| 9 | Frankie Edgar | 332.5 | 36% | 31 |
+| 10 | Mike Brown | 328.0 | 100% | 122 |
 
 #### Men — Bantamweight
 
 | # | Fighter | Class score | Share of All-time | All-time # |
 | ---: | --- | ---: | ---: | ---: |
-| 1 | Dominick Cruz | 1314.6 | 97% | 12 |
-| 2 | Merab Dvalishvili | 964.6 | 100% | 26 |
-| 3 | Aljamain Sterling | 931.1 | 86% | 20 |
-| 4 | Petr Yan | 930.2 | 100% | 31 |
-| 5 | TJ Dillashaw | 615.6 | 100% | 67 |
-| 6 | Renan Barao | 547.9 | 100% | 81 |
-| 7 | Sean O'Malley | 537.2 | 100% | 89 |
-| 8 | Raphael Assuncao | 385.1 | 84% | 104 |
-| 9 | Umar Nurmagomedov | 336.2 | 95% | 149 |
-| 10 | Cory Sandhagen | 330.8 | 89% | 141 |
+| 1 | Dominick Cruz | 1480.7 | 98% | 11 |
+| 2 | Merab Dvalishvili | 1284.0 | 100% | 16 |
+| 3 | Aljamain Sterling | 990.2 | 91% | 23 |
+| 4 | Petr Yan | 915.9 | 100% | 32 |
+| 5 | Sean O'Malley | 693.1 | 100% | 48 |
+| 6 | TJ Dillashaw | 532.1 | 100% | 72 |
+| 7 | Renan Barao | 424.8 | 100% | 92 |
+| 8 | Raphael Assuncao | 401.7 | 98% | 97 |
+| 9 | Umar Nurmagomedov | 329.8 | 98% | 121 |
+| 10 | Sergio Pettis | 294.1 | 78% | 107 |
 
 #### Men — Flyweight
 
 | # | Fighter | Class score | Share of All-time | All-time # |
 | ---: | --- | ---: | ---: | ---: |
-| 1 | Demetrious Johnson | 1685.2 | 89% | 5 |
-| 2 | Henry Cejudo | 648.3 | 80% | 44 |
-| 3 | Alexandre Pantoja | 615.1 | 100% | 70 |
-| 4 | Brandon Moreno | 545.2 | 100% | 82 |
-| 5 | Deiveson Figueiredo | 535.0 | 79% | 58 |
-| 6 | Joshua Van | 417.5 | 100% | 119 |
-| 7 | Joseph Benavidez | 397.0 | 57% | 56 |
-| 8 | Jussier Formiga | 354.5 | 100% | 148 |
-| 9 | Muhammad Mokaev | 226.7 | 84% | 197 |
-| 10 | Manel Kape | 210.3 | 85% | 209 |
+| 1 | Demetrious Johnson | 1855.9 | 90% | 4 |
+| 2 | Henry Cejudo | 727.8 | 90% | 39 |
+| 3 | Joshua Van | 668.4 | 100% | 51 |
+| 4 | Deiveson Figueiredo | 488.6 | 87% | 67 |
+| 5 | Alexandre Pantoja | 469.4 | 100% | 85 |
+| 6 | Brandon Moreno | 414.9 | 100% | 96 |
+| 7 | Jussier Formiga | 324.8 | 100% | 125 |
+| 8 | Manel Kape | 263.1 | 86% | 128 |
+| 9 | Joseph Benavidez | 239.6 | 51% | 84 |
+| 10 | Muhammad Mokaev | 233.0 | 77% | 130 |
 
 #### Men — Strawweight
 
 | # | Fighter | Class score | Share of All-time | All-time # |
 | ---: | --- | ---: | ---: | ---: |
-| 1 | Tatsuro Taira | 2.3 | 2% | 399 |
-| 2 | Haruo Ochi | 1.2 | 93% | 1451 |
-| 3 | Mitsuhisa Sunabe | 0.3 | 86% | 1534 |
-| 4 | Namiki Kawahara | 0.2 | 100% | 1560 |
-| 5 | Jarred Brooks | 0.1 | 9% | 1456 |
-| 6 | Daichi Kitakata | 0.1 | 99% | 1633 |
-| 7 | Seiichiro Ito | 0.0 | 8% | 1702 |
-| 8 | Ryosuke Honda | 0.0 | 25% | 2088 |
-| 9 | Tadaaki Yamamoto | 0.0 | 90% | 2427 |
-| 10 | Yuya Shibata | 0.0 | 1% | 1691 |
+| 1 | Tatsuro Taira | 3.3 | 3% | 254 |
+| 2 | Haruo Ochi | 1.5 | 98% | 826 |
+| 3 | Namiki Kawahara | 0.3 | 100% | 1021 |
+| 4 | Mitsuhisa Sunabe | 0.3 | 97% | 1017 |
+| 5 | Jarred Brooks | 0.1 | 13% | 863 |
+| 6 | Daichi Kitakata | 0.1 | 100% | 1204 |
+| 7 | Seiichiro Ito | 0.0 | 5% | 1448 |
+| 8 | Ryosuke Honda | 0.0 | 19% | 1984 |
+| 9 | Tadaaki Yamamoto | 0.0 | 98% | 2415 |
+| 10 | Jo Arai | 0.0 | 0% | 973 |
 
 #### Women — Women's Featherweight
 
 | # | Fighter | Class score | Share of All-time | All-time # |
 | ---: | --- | ---: | ---: | ---: |
-| 1 | Cristiane Justino | 816.5 | 93% | 3 |
-| 2 | Amanda Nunes | 346.7 | 21% | 1 |
-| 3 | Julia Budd | 155.3 | 100% | 30 |
-| 4 | Germaine de Randamie | 98.2 | 45% | 20 |
-| 5 | Macy Chiasson | 63.1 | 97% | 50 |
+| 1 | Cristiane Justino | 821.4 | 94% | 3 |
+| 2 | Amanda Nunes | 361.9 | 21% | 1 |
+| 3 | Julia Budd | 136.0 | 100% | 24 |
+| 4 | Germaine de Randamie | 95.5 | 70% | 25 |
+| 5 | Macy Chiasson | 53.1 | 95% | 40 |
 
 #### Women — Women's Bantamweight
 
 | # | Fighter | Class score | Share of All-time | All-time # |
 | ---: | --- | ---: | ---: | ---: |
-| 1 | Amanda Nunes | 1332.3 | 79% | 1 |
-| 2 | Ronda Rousey | 713.9 | 96% | 6 |
-| 3 | Julianna Pena | 402.7 | 100% | 12 |
-| 4 | Holly Holm | 359.1 | 96% | 13 |
-| 5 | Valentina Shevchenko | 342.9 | 21% | 2 |
+| 1 | Amanda Nunes | 1374.0 | 79% | 1 |
+| 2 | Ronda Rousey | 691.9 | 95% | 5 |
+| 3 | Julianna Pena | 419.5 | 100% | 8 |
+| 4 | Holly Holm | 355.9 | 97% | 11 |
+| 5 | Valentina Shevchenko | 277.2 | 19% | 2 |
 
 #### Women — Women's Flyweight
 
 | # | Fighter | Class score | Share of All-time | All-time # |
 | ---: | --- | ---: | ---: | ---: |
-| 1 | Valentina Shevchenko | 1280.7 | 79% | 2 |
-| 2 | Alexa Grasso | 378.5 | 85% | 10 |
-| 3 | Manon Fiorot | 335.7 | 96% | 14 |
-| 4 | Katlyn Cerminara | 203.7 | 78% | 18 |
-| 5 | Erin Blanchfield | 194.2 | 100% | 24 |
+| 1 | Valentina Shevchenko | 1208.1 | 81% | 2 |
+| 2 | Alexa Grasso | 494.4 | 90% | 7 |
+| 3 | Manon Fiorot | 263.9 | 97% | 13 |
+| 4 | Natalia Silva | 209.3 | 100% | 15 |
+| 5 | Tracy Cortez | 126.3 | 99% | 26 |
 
 #### Women — Women's Strawweight
 
 | # | Fighter | Class score | Share of All-time | All-time # |
 | ---: | --- | ---: | ---: | ---: |
-| 1 | Zhang Weili | 824.0 | 99% | 5 |
-| 2 | Rose Namajunas | 758.0 | 89% | 4 |
-| 3 | Joanna Jedrzejczyk | 498.5 | 90% | 7 |
-| 4 | Carla Esparza | 452.8 | 100% | 9 |
-| 5 | Tatiana Suarez | 395.9 | 90% | 11 |
+| 1 | Rose Namajunas | 735.5 | 99% | 4 |
+| 2 | Zhang Weili | 650.0 | 99% | 6 |
+| 3 | Tatiana Suarez | 352.6 | 86% | 9 |
+| 4 | Joanna Jedrzejczyk | 341.3 | 85% | 10 |
+| 5 | Carla Esparza | 294.4 | 100% | 12 |
 
 #### Women — Women's Atomweight
 
 | # | Fighter | Class score | Share of All-time | All-time # |
 | ---: | --- | ---: | ---: | ---: |
-| 1 | Seo Hee Ham | 51.1 | 98% | 65 |
-| 2 | Seika Izawa | 34.3 | 20% | 28 |
-| 3 | Tomo Maesawa | 30.8 | 98% | 84 |
-| 4 | Norma Dumont | 26.1 | 22% | 38 |
-| 5 | Mina Kurobe | 23.7 | 82% | 87 |
+| 1 | Seika Izawa | 55.5 | 22% | 14 |
+| 2 | Seo Hee Ham | 46.1 | 98% | 44 |
+| 3 | Taila Santos | 32.4 | 26% | 27 |
+| 4 | Norma Dumont | 25.8 | 76% | 54 |
+| 5 | Tomo Maesawa | 24.9 | 100% | 59 |
 
 <!-- BOARD:CLASS:END -->
 
