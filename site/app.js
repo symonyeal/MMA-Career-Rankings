@@ -1,98 +1,112 @@
-// The notebook's analyses (analysis/build_notebook.py) as a static page. Data: data.js, written by
-// analysis/build_site.py. Sections draw lazily when visible and redraw when a control they read changes.
+// Draws site/data.js (written by analysis/build_site.py). Each section makes one claim: its h2 states the
+// published finding, computed once from DATA; each exhibit's title states what it shows under the current
+// controls. Sections draw when visible and redraw when a control they read changes. Colours: style.css tokens.
 "use strict";
 
 const D = window.DATA, M = D.meta, F = D.F, NF = F.name.length;
 const I = new Map(F.name.map((f, i) => [f, i]));
-
-// analysis/viz.py: THEME, CHART_COLORWAY, METHOD_COLOR, HEATMAP_COLORSCALE and the "ufc_dark" template.
-const T = {
-  bg: "#0b1220", surface: "#161f33", surface_alt: "#111a2b", text: "#f8fafc", text_2: "#cbd5e1",
-  muted: "#94a3b8", caption: "#64748b", border: "#2a3650", border_strong: "#3b4a6b", primary: "#38bdf8",
-  secondary: "#a78bfa", accent: "#fbbf24", accent_2: "#f472b6", positive: "#34d399", negative: "#f87171",
-  neutral: "#94a3b8",
-};
-const FONT = '-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif';
-const COLORWAY = ["#38bdf8", "#fbbf24", "#34d399", "#a78bfa", "#fb7185", "#f97316", "#22d3ee", "#a3e635", "#e879f9", "#60a5fa"];
-const METHOD_COLOR = ["#fb7185", "#a78bfa", "#34d399", "#fbbf24", "#22d3ee", "#94a3b8", "#64748b"];
-const HEAT = [[0, T.surface_alt], [0.45, "#1d4ed8"], [1, T.primary]];
-const AX = {
-  gridcolor: T.border, zerolinecolor: T.border_strong, linecolor: T.border_strong, tickcolor: T.border_strong,
-  tickfont: { color: T.text_2, size: 11 }, title: { font: { color: T.text_2, size: 12 } }, automargin: true,
-};
-const TPL = { layout: {
-  paper_bgcolor: T.bg, plot_bgcolor: T.bg, font: { family: FONT, color: T.text, size: 13 },
-  title: { font: { family: FONT, color: T.text, size: 16 } }, colorway: COLORWAY, xaxis: AX, yaxis: AX,
-  legend: { bgcolor: "rgba(0,0,0,0)", font: { color: T.text_2, size: 11 } },
-  hoverlabel: { bgcolor: T.surface, bordercolor: T.border_strong, font: { family: FONT, color: T.text, size: 12 } },
-  margin: { t: 56, r: 36, b: 48, l: 56 },
-} };
-const CFG = { responsive: true, displaylogo: false, modeBarButtonsToRemove: ["lasso2d", "select2d"] };
-
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 const fmt = (v, d = 0) => v == null ? "" : Number(v).toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d });
+const sgn = (v, d = 0) => (v > 0 ? "+" : v < 0 ? "−" : "") + fmt(Math.abs(v), d);
 const iso = (day) => new Date(day * 864e5).toISOString().slice(0, 10);
 const short = (d) => D.short[d] || d;
 const range = (n) => [...Array(n).keys()];
-const divColor = (d) => COLORWAY[Math.max(0, D.divisions.indexOf(d)) % COLORWAY.length];
-const chip = (r) => r == null ? "" : `<span class="chip-rank ${r <= 3 ? "r" + r : ""}">${r}</span>`;
+const sum = (l) => l.reduce((a, b) => a + b, 0);
+const argmax = (l, f) => l.reduce((b, x) => (f(x) > f(b) ? x : b), l[0]);
+const chip = (r) => r == null ? "" : `<span class="chip-rank ${r === 1 ? "r1" : ""}">${r}</span>`;
+const SNAP = `Snapshot ${M.snapshot}, bouts through ${M.through}`;
+
+// Spearman's ρ: Pearson correlation of mid-ranks.
+function rho(x, y) {
+  const rk = (v) => { const o = range(v.length).sort((a, b) => v[a] - v[b]), r = Array(v.length);
+    for (let i = 0; i < o.length;) { let j = i; while (j + 1 < o.length && v[o[j + 1]] === v[o[i]]) j++;
+      for (let k = i; k <= j; k++) r[o[k]] = (i + j) / 2; i = j + 1; } return r; };
+  const a = rk(x), b = rk(y), n = a.length, ma = sum(a) / n, mb = sum(b) / n;
+  const c = sum(a.map((v, i) => (v - ma) * (b[i] - mb)));
+  return c / Math.sqrt(sum(a.map((v) => (v - ma) ** 2)) * sum(b.map((v) => (v - mb) ** 2)));
+}
+
+// ---- theme: every colour is a CSS token --------------------------------------------------------------------
+let T, CAT, AX, SEQ;
+function theme() {
+  const c = getComputedStyle(document.documentElement), tok = (k) => c.getPropertyValue("--" + k).trim();
+  T = { bg: tok("bg"), surface: tok("surface"), text: tok("text"), text2: tok("text-2"), muted: tok("muted"),
+    border: tok("border"), border2: tok("border-strong"), context: tok("context"), accent: tok("accent"),
+    negative: tok("negative"), positive: tok("positive"), font: tok("font") };
+  CAT = [1, 2, 3, 4, 5, 6].map((i) => tok("c" + i));
+  SEQ = [[0, T.surface], [1, T.accent]];  // sequential, one hue; lightness is monotone in both themes
+  AX = { gridcolor: T.border, zerolinecolor: T.border2, linecolor: T.border2, automargin: true,
+    tickfont: { color: T.text2, size: 12 }, title: { font: { color: T.text2, size: 13 } } };
+}
+theme();
+const PART = () => [["Championships", CAT[1]], ["Career skill", CAT[0]], ["Contender résumé", CAT[2]]];
+const CFG = { responsive: true, displaylogo: false, modeBarButtonsToRemove: ["lasso2d", "select2d"] };
 
 function plot(id, data, layout = {}) {
   if (!window.Plotly) return;
-  if (typeof layout.title === "string") layout = { ...layout, title: { text: layout.title } };  // plotly.js >= 3
-  if (innerWidth < 700) {  // phone: drop the gutters reserved for end-of-line labels; axes automargin
-    const m = layout.margin || {};
-    layout = { ...layout, margin: { ...m, l: Math.min(m.l ?? 56, 48), r: Math.min(m.r ?? 36, 16) },
-      title: { ...layout.title, font: { size: 13 } } };
-  }
-  Plotly.react($(id), data, { height: 460, ...layout, template: TPL }, CFG);
+  const ax = (k) => ({ ...AX, ...layout[k], title: { ...AX.title, ...(layout[k]?.title || {}) } });
+  Plotly.react($(id), data, {
+    height: 440, paper_bgcolor: T.bg, plot_bgcolor: T.bg, colorway: CAT, showlegend: false, hovermode: "closest",
+    font: { family: T.font, color: T.text, size: 13 },
+    hoverlabel: { bgcolor: T.bg, bordercolor: T.border2, font: { family: T.font, color: T.text, size: 13 } },
+    legend: { bgcolor: "rgba(0,0,0,0)", font: { color: T.text2, size: 12 } },
+    ...layout, margin: { t: 12, r: 24, b: 48, l: 56, ...layout.margin }, xaxis: ax("xaxis"), yaxis: ax("yaxis"),
+  }, CFG);
 }
-function plotFig(id, f, patch = {}) {
-  const g = structuredClone(f);
-  plot(id, g.data, { ...g.layout, ...patch });
+// An exhibit is a claim (title), its proof (chart) and its provenance (caption).
+function ex(id, title, src) {
+  $(id + "-t").innerHTML = title;
+  if (src != null) $(id + "-s").innerHTML = src;
 }
-function empty(id, msg, height = 300) {
-  plot(id, [], { height, xaxis: { visible: false }, yaxis: { visible: false },
-    annotations: [{ text: msg, showarrow: false, x: 0.5, y: 0.5, xref: "paper", yref: "paper", font: { color: T.caption, size: 14 } }] });
+function empty(id, msg) {
+  ex(id, msg, "");
+  plot(id, [], { height: 200, xaxis: { visible: false }, yaxis: { visible: false } });
+}
+const label = (x, y, text, color, o = {}) => ({ x, y, text, showarrow: false, font: { size: 12, color }, ...o });
+// End-of-line label heights spread at least 14 px apart; span: data range of the axis, px: plot height.
+function dodge(ys, span, px) {
+  const g = 14 * span / px, o = range(ys.length).sort((a, b) => ys[a] - ys[b]), out = [...ys];
+  o.forEach((k, j) => { if (j && out[k] - out[o[j - 1]] < g) out[k] = out[o[j - 1]] + g; });
+  return out;
 }
 
-// ---- state and the control room -------------------------------------------------------------------------
+// ---- state and the control bar ---------------------------------------------------------------------------
 const S = {
   g: "M", div: "All", top: 30, min: M.min_periods, view: "all_time", q: "",
   sel: ["Jon Jones", "Georges St-Pierre", "Islam Makhachev"].filter((f) => I.has(f)),
   a: M.a, s: M.s, rob: "Georges St-Pierre", rec: "Jon Jones", streak: null,
   dv: new Set(["Lightweight", "Welterweight", "Middleweight", "Light Heavyweight", "Heavyweight", "Featherweight"]),
-  k: "10", idx: false, stSort: "length", stMin: 5, dmMin: 8,
+  k: "10", stSort: "length", stMin: 5, dmMin: 8, cal: "All bouts",
 };
 const VIEWS = {
-  all_time: { rank: "at", val: "score", label: "All-time score", div: "div" },
-  prime: { rank: "pr", val: "plevel", label: "Prime level", div: "div" },
-  current: { rank: "cr", val: "cur", label: "Current rating", div: "cdiv" },
+  all_time: { rank: "at", val: "score", label: "All-time score", div: "div", name: "All-time" },
+  prime: { rank: "pr", val: "plevel", label: "Prime level", div: "div", name: "Prime" },
+  current: { rank: "cr", val: "cur", label: "Current rating", div: "cdiv", name: "Current" },
 };
 
-// Class rows (ratings.division_legacy): the All-time score split by the class it was earned in. A fighter
-// belongs to every class where they earned credit; Current places a fighter in their current class.
+// Class rows (ratings.division_legacy): the All-time score split by the class it was earned in.
 const C = D.classes.map(([f, d, rank, t, k, r]) => ({ f, d, rank, t, k, r }));
 const member = new Map();
 C.forEach((u) => { if (!member.has(u.f)) member.set(u.f, new Map()); member.get(u.f).set(u.d, u); });
 const inClass = (i, d, view = S.view) => view === "current" ? F.cdiv[i] === d : member.get(i)?.has(d);
-function pool(view = S.view, useDiv = true) {
-  return range(NF).filter((i) => F.g[i] === S.g && F.n[i] >= S.min && (!useDiv || S.div === "All" || inClass(i, S.div, view)));
+function pool(view = S.view, useDiv = true, g = S.g, div = S.div, min = S.min) {
+  return range(NF).filter((i) => F.g[i] === g && F.n[i] >= min && (!useDiv || div === "All" || inClass(i, div, view)));
 }
 // A board unit is a whole career (no class chosen) or the part of it earned in one class.
 const uscore = (u, a = M.a, s = M.s) => M.scale * (a * u.t + (1 - a) * (s * u.k + (1 - s) * u.r));
+const upts = (u, a = M.a, s = M.s) => [M.scale * a * u.t, M.scale * (1 - a) * s * u.k, M.scale * (1 - a) * (1 - s) * u.r];
 function units(g, div) {
   return div === "All"
     ? range(NF).filter((i) => F.g[i] === g && F.at[i] != null).map((i) => ({ f: i, d: "All", rank: F.at[i], t: F.T[i], k: F.S[i], r: F.R[i] }))
     : C.filter((u) => F.g[u.f] === g && u.d === div);
 }
-function boardRows(view = S.view, useDiv = true) {
+function boardRows(view = S.view, useDiv = true, g = S.g, div = S.div, min = S.min) {
   const r = VIEWS[view].rank;
-  return pool(view, useDiv).filter((i) => F[r][i] != null).sort((a, b) => F[r][a] - F[r][b]);
+  return pool(view, useDiv, g, div, min).filter((i) => F[r][i] != null).sort((a, b) => F[r][a] - F[r][b]);
 }
 
-const SECTIONS = {}, dirty = new Set(Object.keys(SECTIONS)), visible = new Set();
+const SECTIONS = {}, dirty = new Set(), visible = new Set();
 function mark(...ids) {
   (ids.length ? ids : Object.keys(SECTIONS)).forEach((i) => dirty.add(i));
   flush();
@@ -100,7 +114,6 @@ function mark(...ids) {
 function flush() {
   for (const id of [...dirty]) if (visible.has(id)) { dirty.delete(id); SECTIONS[id](); }
 }
-
 function seg(id, key, after) {
   $(id).addEventListener("click", (e) => {
     const b = e.target.closest("button");
@@ -110,11 +123,11 @@ function seg(id, key, after) {
     after();
   });
 }
-function slider(id, out, key, after, parse = Number) {
+function slider(id, out, key, after) {
   const el = $(id);
   el.value = S[key];
   $(out).textContent = el.value;
-  el.addEventListener("input", () => { S[key] = parse(el.value); $(out).textContent = el.value; after(); });
+  el.addEventListener("input", () => { S[key] = Number(el.value); $(out).textContent = el.value; after(); });
 }
 function divisionOptions() {
   const have = new Set([...C.filter((u) => F.g[u.f] === S.g).map((u) => u.d), ...F.cdiv.filter((d, i) => F.g[i] === S.g && d)]);
@@ -122,28 +135,105 @@ function divisionOptions() {
   if (!have.has(S.div)) S.div = "All";
   $("c-div").innerHTML = ["All", ...order].map((d) => `<option ${d === S.div ? "selected" : ""}>${esc(d)}</option>`).join("");
 }
-
 if (!window.Plotly) document.querySelector(".hero").insertAdjacentHTML("beforeend",
   `<p class="callout">Charts need plotly.js from cdn.jsdelivr.net, which did not load. Tables still work.</p>`);
 
-// ---- hero -----------------------------------------------------------------------------------------------
-$("facts").innerHTML = [
-  [M.through, "data through"], [fmt(M.rated_bouts), "rated bouts"], [fmt(M.fighters), "rated fighters"],
-  [fmt(M.established), `on the boards (${M.min_periods}+ rated bouts)`], [fmt(M.contender), "contender line"],
-].map(([v, l]) => `<div class="fact"><b>${v}</b><span>${l}</span></div>`).join("");
-$("foot").textContent = `Snapshot ${M.snapshot}. Rankings are the published boards; see README.md and RANKINGS.md.`;
-$("names").innerHTML = F.name.map((f) => `<option value="${esc(f)}">`).join("");
+// ---- claims shared by headline and exhibit -----------------------------------------------------------------
+function placementClaim(r, n, label) {
+  return Math.abs(r) < 0.2 ? `Record length barely orders the top ${n}: Spearman ρ = ${fmt(r, 2)} between rated bouts and ${label}`
+    : `${r > 0 ? "Longer" : "Shorter"} records score higher: Spearman ρ = ${fmt(r, 2)} between rated bouts and ${label} in the top ${n}`;
+}
+function shapeClaim(P) {
+  const m = P.map((i) => F.mass[i]), ry = rho(P.map((i) => F.ay[i]), m), rh = rho(P.map((i) => F.mass[i] / F.ay[i]), m);
+  return [ry, rh, ry >= rh
+    ? `Among the ${P.length} largest careers, mass follows the number of years (ρ = ${fmt(ry, 2)}) more than the height above the bar (ρ = ${fmt(rh, 2)})`
+    : `Among the ${P.length} largest careers, mass follows the height above the bar (ρ = ${fmt(rh, 2)}) more than the number of years (ρ = ${fmt(ry, 2)})`];
+}
+const streakSort = { length: (r) => [r[1], r[8] ?? 0, r[6]], quality: (r) => [r[8] ?? 0, r[1], r[6]], title_wins: (r) => [r[6], r[1], r[8] ?? 0] };
+function streaks(g, div, min, key) {
+  return D.streaks.filter((r) => r[11] === g && r[1] >= min && (div === "All" || r[5].includes(div)))
+    .sort((a, b) => { const x = streakSort[key](a), y = streakSort[key](b); return y[0] - x[0] || y[1] - x[1] || y[2] - x[2]; });
+}
+// Reigns of a lineage figure: one bar trace per reign, customdata [fighter, won against, start, defences, years].
+const reigns = (f) => f.data.map((t) => ({ f: t.customdata[0][0], opp: t.customdata[0][1], start: t.customdata[0][2],
+  def: t.customdata[0][3], yrs: t.customdata[0][4], x: t.x[0], text: t.text[0] }));
+function calRows(seg) {
+  return D.calib.filter((r) => r[0] === seg).map(([, b, p, y, n]) => ({ b, p, y, n, se: Math.sqrt(p * (1 - p) / n) }));
+}
+const overconfident = (R) => sum(R.filter((r) => r.p > 0.5).map((r) => r.n * (r.p - r.y))) > 0;  // favourites win less than forecast
 
-// ---- 1. rankings ----------------------------------------------------------------------------------------
+// ---- hero and headlines (published parameters, men, every class) --------------------------------------------
+function headlines() {
+  const top = (v, g = "M") => boardRows(v, false, g, "All", M.min_periods);
+  const [A, P, Cu] = ["all_time", "prime", "current"].map((v) => top(v));
+  const nm = (i) => esc(F.name[i]);
+  $("hero-h").innerHTML = A[0] === P[0]
+    ? `${nm(A[0])} has the most valuable men's career on record and the best ten-year prime; ${nm(Cu[0])} is the best fighter now.`
+    : `${nm(A[0])} has the most valuable men's career on record, ${nm(P[0])} the best ten-year prime, and ${nm(Cu[0])} is the best fighter now.`;
+  $("facts").innerHTML = [
+    [fmt(M.rated_bouts), "rated bouts, all recorded promotions"], [fmt(M.established), `fighters with ${M.min_periods}+ rated bouts`],
+    [fmt(F.score[A[0]] - F.score[A[1]]), `All-time points between #1 and #2 (${esc(F.name[A[1]])})`], [M.through, "latest bout in the data"],
+  ].map(([v, l]) => `<div><b>${v}</b><span>${l}</span></div>`).join("");
+
+  const t10 = (L) => new Set(L.slice(0, 10)), a10 = t10(A);
+  const both = (L) => [...t10(L)].filter((i) => a10.has(i)).length;
+  $("rankings-h").textContent = `The three boards ask different questions: ${both(P)} of the men's All-time top 10 are in the Prime top 10, and ${both(Cu)} are in the Current top 10.`;
+
+  const U = units("M", "All").sort((x, y) => x.rank - y.rank).slice(0, 20), pts = [0, 1, 2].map((j) => sum(U.map((u) => upts(u)[j])));
+  const j = pts.indexOf(Math.max(...pts));
+  $("anatomy-h").textContent = `${PART()[j][0]} supplies ${fmt(100 * pts[j] / sum(pts))}% of the points of the men's All-time top 20.`;
+
+  const A100 = A.slice(0, 100);
+  $("placement-h").textContent = placementClaim(rho(A100.map((i) => F.n[i]), A100.map((i) => F.score[i])), 100, "the men's All-time score") + ".";
+
+  const Pm = pool("all_time", false, "M", "All", M.min_periods).filter((i) => F.mass[i] > 0).sort((x, y) => F.mass[y] - F.mass[x]).slice(0, 100);
+  $("careers-h").textContent = shapeClaim(Pm)[2] + ".";
+
+  let big = null;
+  Object.entries(D.movers).forEach(([y, f]) => (f.data[0]?.x || []).forEach((d, k) => {
+    if (!big || Math.abs(d) > Math.abs(big[0])) big = [d, f.data[0].y[k], y];
+  }));
+  if (big) $("movers-h").textContent = `The largest one-year move among board fighters is ${big[1]}'s ${sgn(big[0])} rating points in ${big[2]}.`;
+
+  const st = streaks("M", "All", 3, "length"), ties = st.filter((r) => r[1] === st[0][1]).length;
+  if (st.length) $("streaks-h").textContent = `${st[0][0]} ${ties > 1 ? `shares the longest men's UFC win streak with ${ties - 1} other${ties > 2 ? "s" : ""}` : "holds the longest men's UFC win streak"}: ${st[0][1]} wins, ${iso(st[0][2]).slice(0, 4)}–${iso(st[0][3]).slice(0, 4)}.`;
+
+  const men = D.divisions.slice(0, 9), R = D.strength["10"].filter((r) => men.includes(r[0]));
+  const last = Math.max(...R.map((r) => r[1])), lead = argmax(R.filter((r) => r[1] === last), (r) => r[2]);
+  const leaders = [...new Set(R.map((r) => r[1]))].sort().map((y) => argmax(R.filter((r) => r[1] === y), (r) => r[2])[0]);
+  const changes = leaders.filter((d, k) => k && d !== leaders[k - 1]).length;
+  $("divisions-h").textContent = `${lead[0]} has the strongest top ten in ${last}; the strongest men's class has changed ${changes} times since ${Math.min(...R.map((r) => r[1]))}.`;
+
+  const all = Object.entries(D.lineage).flatMap(([d, f]) => reigns(f[0]).slice(0, -1).map((r) => ({ ...r, d })));  // completed reigns
+  const hi = argmax(all, (r) => r.yrs), yrs = all.map((r) => r.yrs).sort((a, b) => a - b), med = yrs[Math.floor(yrs.length / 2)];
+  $("lineage-h").textContent = `The belt usually changes hands within ${fmt(med, 1)} years (the median); the longest completed run is ${hi.f}'s ${fmt(hi.yrs, 1)} years at ${hi.d}.`;
+
+  const dm = pool("all_time", false, "M", "All", M.min_periods).filter((i) => F.dom[i] != null && F.domw[i] >= 8);
+  const d1 = argmax(dm, (i) => F.dom[i]);
+  $("dominance-h").textContent = `${F.name[d1]} wins most one-sidedly among men with 8 or more scored wins.`;
+
+  const G = D.integrity;
+  $("policy-h").textContent = `The integrity policy debits ${fmt(G.n)} fighters by ${fmt(G.cost[0])} to ${fmt(G.cost[1])} rating points each, and leaves every published board unchanged.`;
+
+  const cr = calRows("All bouts"), dev = Math.max(...cr.map((r) => Math.abs(r.y - r.p)));
+  $("checks-h").textContent = `Pre-fight win probabilities are within ${fmt(100 * dev, 1)} percentage points of observed win rates in every band, though favourites win slightly ${overconfident(cr) ? "less" : "more"} often than forecast.`;
+
+  const B = D.bench.filter((r) => r[2] != null);
+  $("benchmark-h").textContent = `The men's All-time board and FightMatrix's all-time list agree at Spearman ρ = ${fmt(rho(B.map((r) => r[1]), B.map((r) => r[2])), 2)} over the ${B.length} fighters on both.`;
+}
+
+// ---- 1. rankings --------------------------------------------------------------------------------------------
 SECTIONS.rankings = () => {
-  if (S.view === "all_time" && S.div !== "All") return classTable();
-  const rows = boardRows().filter((i) => !S.q || F.name[i].toLowerCase().includes(S.q)).slice(0, S.top);
-  const V = VIEWS[S.view], vmax = Math.max(...rows.map((i) => F[V.val][i])), vmin = Math.min(...rows.map((i) => F[V.val][i]));
-  const bar = (v, d) => `<td class="num bar"><i style="width:${(100 * (v - vmin * 0.98) / (vmax - vmin * 0.98 || 1)).toFixed(1)}%"></i><span>${fmt(v, d)}</span></td>`;
+  const out = S.view === "all_time" && S.div !== "All" ? classTable() : boardTable();
+  $("board-s").textContent = `${out} ${SNAP}.`;
+};
+function boardTable() {
+  const all = boardRows(), rows = all.filter((i) => !S.q || F.name[i].toLowerCase().includes(S.q)).slice(0, S.top);
+  const V = VIEWS[S.view], vmax = Math.max(...rows.map((i) => F[V.val][i]));
+  const bar = (v, d) => `<td class="num bar"><i style="width:${(100 * v / (vmax || 1)).toFixed(1)}%"></i><span>${fmt(v, d)}</span></td>`;
   const now = (i) => F.cdiv[i] && F.cdiv[i] !== F.div[i] ? ` <span class="dim">→ now ${esc(short(F.cdiv[i]))}</span>` : "";
   const name = (i) => `<td class="name"><button class="namebtn" data-f="${esc(F.name[i])}">${esc(F.name[i])}</button></td>`;
-  const cls = S.div !== "All";  // Prime and Current within a class: the published order restricted, renumbered
-  const pos = new Map(rows.map((i, k) => [i, k + 1]));
+  const cls = S.div !== "All", pos = new Map(rows.map((i, k) => [i, k + 1]));
   const cols = {
     all_time: [["#", (i) => `<td>${chip(F.at[i])}</td>`], ["Fighter", name], ["Division", (i) => `<td>${esc(F.div[i])}${now(i)}</td>`],
       ["Score", (i) => bar(F.score[i], 1)], ["Prime", (i) => `<td class="num">${fmt(F.plevel[i])}</td>`],
@@ -162,22 +252,23 @@ SECTIONS.rankings = () => {
     ? `<table><thead><tr>${cols.map(([h]) => `<th class="${/^(#|Fighter|Division|Best|Last)/.test(h) ? "" : "num"}">${h}</th>`).join("")}</tr></thead><tbody>` +
       rows.map((i) => `<tr>${cols.map(([, c]) => c(i)).join("")}</tr>`).join("") + "</tbody></table>"
     : `<p class="note" style="padding:10px 14px">No ranked fighters match the current filters.</p>`;
-};
+  return `Showing ${rows.length} of ${all.length} ranked on the ${V.name} board; bars start at 0.`;
+}
 function classTable() {
-  const U = units(S.g, S.div).filter((u) => F.n[u.f] >= S.min && (!S.q || F.name[u.f].toLowerCase().includes(S.q)))
-    .sort((x, y) => x.rank - y.rank).slice(0, S.top);
-  if (!U.length) { $("board").innerHTML = `<p class="note" style="padding:10px 14px">No ranked fighters in this class.</p>`; return; }
+  const all = units(S.g, S.div).filter((u) => F.n[u.f] >= S.min);
+  const U = all.filter((u) => !S.q || F.name[u.f].toLowerCase().includes(S.q)).sort((x, y) => x.rank - y.rank).slice(0, S.top);
+  if (!U.length) { $("board").innerHTML = `<p class="note" style="padding:10px 14px">No ranked fighters in this class.</p>`; return ""; }
   const v = U.map((u) => uscore(u)), vmax = Math.max(...v);
-  const pts = (u) => [M.scale * M.a * u.t, M.scale * (1 - M.a) * M.s * u.k, M.scale * (1 - M.a) * (1 - M.s) * u.r];
   const other = (u) => [...member.get(u.f)].filter(([d]) => d !== u.d).map(([d, w]) => `${short(d)} #${w.rank}`).join(", ");
   $("board").innerHTML = `<table><thead><tr><th>#</th><th>Fighter</th><th class="num">Class score</th><th class="num">Share of All-time</th>
     <th class="num">Championships</th><th class="num">Career skill</th><th class="num">Résumé</th><th class="num">All-time #</th><th>Also ranked</th></tr></thead><tbody>` +
-    U.map((u, k) => { const p = pts(u); return `<tr><td>${chip(u.rank)}</td>
+    U.map((u, k) => { const p = upts(u); return `<tr><td>${chip(u.rank)}</td>
       <td class="name"><button class="namebtn" data-f="${esc(F.name[u.f])}">${esc(F.name[u.f])}</button></td>
       <td class="num bar"><i style="width:${(100 * v[k] / vmax).toFixed(1)}%"></i><span>${fmt(v[k], 1)}</span></td>
       <td class="num">${fmt(100 * v[k] / F.score[u.f])}%</td><td class="num dim">${fmt(p[0])}</td><td class="num dim">${fmt(p[1])}</td>
       <td class="num dim">${fmt(p[2])}</td><td class="num dim">${F.at[u.f] ?? ""}</td><td class="dim">${esc(other(u))}</td></tr>`; }).join("") +
     "</tbody></table>";
+  return `Showing ${U.length} of ${all.length} ranked on the ${S.div} class board; class scores add up to each All-time score.`;
 }
 $("board").addEventListener("click", (e) => {
   const b = e.target.closest(".namebtn");
@@ -186,72 +277,66 @@ $("board").addEventListener("click", (e) => {
 seg("c-view", "view", () => mark("rankings", "placement", "divisions"));
 $("c-search").addEventListener("input", (e) => { S.q = e.target.value.trim().toLowerCase(); mark("rankings"); });
 
-// ---- 2. score anatomy and the exchange rates -----------------------------------------------------------
-function rerank(U, a, s) {
-  return new Map([...U].sort((x, y) => uscore(y, a, s) - uscore(x, a, s)).map((u, r) => [u, r + 1]));
-}
+// ---- 2. score anatomy and the exchange rates ---------------------------------------------------------------
+const rerank = (U, a, s) => new Map([...U].sort((x, y) => uscore(y, a, s) - uscore(x, a, s)).map((u, r) => [u, r + 1]));
+const published = () => Math.abs(S.a - M.a) < 1e-9 && Math.abs(S.s - M.s) < 1e-9;
 SECTIONS.anatomy = () => {
   const { a, s } = S, U = units(S.g, S.div), R = rerank(U, a, s), K = Math.min(20, S.top), cls = S.div !== "All";
-  const shown = U.filter((u) => F.n[u.f] >= S.min).sort((x, y) => R.get(x) - R.get(y)).slice(0, K).reverse();
-  const lab = shown.map((u) => {
-    const d = u.rank - R.get(u);
-    return `#${R.get(u)}  ${F.name[u.f]}` + (d ? `  (${d > 0 ? "▲" : "▼"}${Math.abs(d)})` : "");
-  });
-  const ev = (txt) => (u) => (cls ? `${fmt(100 * uscore(u) / F.score[u.f])}% of the All-time score earned at ${short(u.d)}` : txt(u.f));
-  const parts = [
-    [`Championships · ${fmt(100 * a, 1)}%`, (u) => M.scale * a * u.t, T.accent, ev((i) => `${F.tw[i]} qualifying title wins`)],
-    [`Career skill · ${fmt(100 * (1 - a) * s, 1)}%`, (u) => M.scale * (1 - a) * s * u.k, T.primary, ev((i) => `${F.cy[i]} contributing career years`)],
-    [`Contender résumé · ${fmt(100 * (1 - a) * (1 - s), 1)}%`, (u) => M.scale * (1 - a) * (1 - s) * u.r, T.positive, ev((i) => `${F.cw[i]} contender wins`)],
-  ];
+  const order = U.filter((u) => F.n[u.f] >= S.min).sort((x, y) => R.get(x) - R.get(y)), shown = order.slice(0, K).reverse();
+  if (!shown.length) return empty("anat-chart", "No ranked fighters match the current filters.");
+  const lab = shown.map((u) => { const d = u.rank - R.get(u);
+    return `${F.name[u.f]}  #${R.get(u)}` + (d ? ` (${d > 0 ? "▲" : "▼"}${Math.abs(d)})` : ""); });
   const tot = shown.map((u) => uscore(u, a, s));
-  const data = parts.map(([name, f, color, ev]) => ({
-    type: "bar", orientation: "h", name, x: shown.map(f), y: lab, marker: { color },
-    customdata: shown.map((u, j) => [fmt(tot[j], 1), ev(u)]),
-    hovertemplate: `<b>%{y}</b><br>${name}: %{x:.1f} points<br>${cls ? "Class" : "All-time"} total: %{customdata[0]}<br>%{customdata[1]}<extra></extra>`,
+  const why = [(i) => `${F.tw[i]} qualifying title wins`, (i) => `${F.cy[i]} contributing career years`, (i) => `${F.cw[i]} contender wins`];
+  const w = [a, (1 - a) * s, (1 - a) * (1 - s)];
+  const data = PART().map(([name, color], j) => ({
+    type: "bar", orientation: "h", name: `${name} · ${fmt(100 * w[j], 1)}%`, x: shown.map((u) => upts(u, a, s)[j]), y: lab, marker: { color },
+    customdata: shown.map((u, k) => [fmt(tot[k], 1), cls ? `${fmt(100 * uscore(u) / F.score[u.f])}% of the All-time score earned at ${short(u.d)}` : why[j](u.f)]),
+    hovertemplate: `<b>%{y}</b><br>${name}: %{x:.1f} points<br>total %{customdata[0]}<br>%{customdata[1]}<extra></extra>`,
   }));
   data.push({ type: "scatter", mode: "text", x: tot, y: lab, text: tot.map((v) => "  " + fmt(v)), textposition: "middle right",
-    textfont: { color: T.text, size: 11 }, hoverinfo: "skip", showlegend: false, cliponaxis: false });
+    textfont: { color: T.text, size: 12 }, hoverinfo: "skip", showlegend: false, cliponaxis: false });
   plot("anat-chart", data, {
-    title: (cls ? `${S.div}: ` : "All-time: ") + (published() ? "why the leaders rank here" : "the board at the chosen exchange rates (▲▼ against published)"),
-    barmode: "stack", height: Math.max(470, 31 * shown.length + 185), hovermode: "closest",
-    xaxis: { title: { text: cls ? `Weighted points earned at ${S.div}` : "Weighted points in the All-time score" }, rangemode: "tozero", range: [0, Math.max(...tot, 1) * 1.16] },
-    legend: { orientation: "h", y: -0.16, x: 0, traceorder: "normal" }, margin: { t: 68, r: 84, b: 100, l: 60 },
+    barmode: "stack", height: Math.max(420, 28 * shown.length + 120), showlegend: true,
+    xaxis: { title: { text: cls ? `Points earned at ${S.div}` : "Points in the All-time score" }, rangemode: "tozero", range: [0, Math.max(...tot) * 1.14] },
+    legend: { orientation: "h", y: 1.0, yanchor: "bottom", x: 0, traceorder: "normal" }, margin: { t: 40, r: 16 },
   });
+  const [n1, n2] = order;
+  const lead = n2 ? ` by ${fmt(uscore(n1, a, s) - uscore(n2, a, s))} points` : "";
+  const big = [0, 1, 2].map((j) => upts(n1, a, s)[j]), jm = big.indexOf(Math.max(...big));
+  ex("anat-chart", (published() ? "" : `At a = ${fmt(a, 3)}, s = ${fmt(s, 3)}: `) +
+    `${esc(F.name[n1.f])} leads ${n2 ? esc(F.name[n2.f]) : "the board"}${lead}; ${PART()[jm][0].toLowerCase()} is the largest part of the leader's total`,
+    `Top ${shown.length} of ${order.length} on the ${cls ? S.div + " class" : (S.g === "M" ? "men's" : "women's") + " All-time"} board; ▲▼ = places moved against the published order. Bars start at 0. ${SNAP}.`);
 
-  // Published top 100 against the new order: overlap at the top and Spearman's rho.
-  const P = [...U].sort((x, y) => x.rank - y.rank).slice(0, 100);
-  const q = [...P].sort((x, y) => R.get(x) - R.get(y)), pos = new Map(q.map((u, r) => [u, r + 1]));
-  const n = P.length, rho = n > 1 ? 1 - 6 * P.reduce((t, u, r) => t + (r + 1 - pos.get(u)) ** 2, 0) / (n * (n * n - 1)) : 1;
+  // Published top 100 against the new order: overlap at the top and Spearman's ρ.
+  const P = [...U].sort((x, y) => x.rank - y.rank).slice(0, 100), r = rho(P.map((u) => u.rank), P.map((u) => R.get(u)));
   const top10 = P.slice(0, 10).filter((u) => R.get(u) <= 10).length;
   const mv = P.slice(0, 50).map((u) => [u.f, u.rank - R.get(u)]).sort((x, y) => y[1] - x[1]);
-  const who = (l) => l.map(([i, d]) => `${esc(F.name[i])} ${d > 0 ? "+" : ""}${d}`).join(", ");
-  const num1 = F.name[[...R].find(([, r]) => r === 1)[0].f];
+  const who = (l) => l.map(([i, d]) => `${esc(F.name[i])} ${sgn(d)}`).join(", ");
   $("anat-summary").innerHTML = published()
-    ? `At the published rates (a = ${M.a}, s = ${M.s}). Move a slider to see how much of the order is the exchange rate.`
-    : `At a = ${fmt(a, 3)}, s = ${fmt(s, 3)}: #1 is <b>${esc(num1)}</b>; ${top10} of the published top 10 stay in the top 10;
-       Spearman's ρ over the published top 100 is <b>${fmt(rho, 3)}</b>.
-       Largest moves in the published top 50 — up: ${who(mv.slice(0, 3).filter((x) => x[1] > 0)) || "none"};
-       down: ${who(mv.slice(-3).reverse().filter((x) => x[1] < 0)) || "none"}.`;
+    ? `Published rates: a = ${M.a}, s = ${M.s}. Move a slider to see how much of the order the exchange rate decides.`
+    : `${top10} of the published top 10 stay in the top 10; Spearman's ρ against the published top 100 is <b>${fmt(r, 3)}</b>.
+       Largest moves in the published top 50: up ${who(mv.slice(0, 3).filter((x) => x[1] > 0)) || "none"};
+       down ${who(mv.slice(-3).reverse().filter((x) => x[1] < 0)) || "none"}.`;
   robustness();
 };
-const published = () => Math.abs(S.a - M.a) < 1e-9 && Math.abs(S.s - M.s) < 1e-9;
 function robustness() {
   const f = I.get(S.rob);
   if (f == null || F.at[f] == null) return empty("rob-chart", "Pick a fighter ranked on an All-time board.");
   const E = units(F.g[f], "All"), me = E.find((u) => u.f === f), G = range(21).map((k) => k / 20);
   const z = G.map((s) => G.map((a) => { const v = uscore(me, a, s); return 1 + E.filter((u) => uscore(u, a, s) > v).length; }));
-  const zmax = Math.max(10, Math.min(Math.max(...z.flat()), 3 * F.at[f]));
+  const Z = z.flat(), lo = Math.min(...Z), hi = Math.max(...Z), zmax = Math.max(10, Math.min(hi, 3 * F.at[f]));
+  const best = Z.filter((v) => v === lo).length;
   plot("rob-chart", [
-    { type: "heatmap", x: G, y: G, z, zmin: 1, zmax, colorscale: HEAT, reversescale: true,
-      texttemplate: "%{z}", textfont: { size: 9, color: T.text }, colorbar: { title: { text: "rank" } },
+    { type: "heatmap", x: G, y: G, z, zmin: 1, zmax, colorscale: SEQ, reversescale: true, xgap: 1, ygap: 1,
+      colorbar: { title: { text: "rank", font: { color: T.text2 } }, tickfont: { color: T.text2, size: 12 }, outlinewidth: 0 },
       hovertemplate: "a = %{x:.2f}, s = %{y:.2f}<br>rank %{z}<extra></extra>" },
-    { type: "scatter", mode: "markers", x: [M.a], y: [M.s], hoverinfo: "skip", showlegend: false,
-      marker: { size: 18, symbol: "circle-open", color: T.accent, line: { width: 3 } } },
-  ], {
-    title: `${S.rob}: All-time rank across exchange rates (published #${F.at[f]})`, height: 520,
-    xaxis: { title: { text: "championships weight a" }, dtick: 0.1 }, yaxis: { title: { text: "career-skill share s" }, dtick: 0.1 },
-    margin: { t: 60, r: 20, b: 56, l: 64 },
-  });
+    { type: "scatter", mode: "markers+text", x: [M.a], y: [M.s], text: [`published #${F.at[f]}`], textposition: "top center",
+      textfont: { color: T.text, size: 12 }, hoverinfo: "skip", marker: { size: 16, symbol: "circle-open", color: T.text, line: { width: 2 } } },
+  ], { height: 460, xaxis: { title: { text: "championships weight a" }, dtick: 0.1 },
+    yaxis: { title: { text: "career-skill share s" }, dtick: 0.1 }, margin: { r: 8 } });
+  ex("rob-chart", `${esc(S.rob)} ranks between #${lo} and #${hi} across every exchange rate, and #${lo} at ${fmt(100 * best / Z.length)}% of them`,
+    `All-time rank at each pair (a, s) on a 0.05 grid, ${Z.length} pairs, among the ${E.length} careers on the same board. Colour runs from #1 (accent) to #${zmax} (background tone); worse ranks share the end colour. Click a cell to move the sliders there.`);
   if (!$("rob-chart").bound) {
     $("rob-chart").bound = true;
     $("rob-chart").on("plotly_click", (ev) => { const p = ev.points[0]; if (p.data.type === "heatmap") setRates(p.x, p.y); });
@@ -267,35 +352,28 @@ $("w-reset").addEventListener("click", () => setRates(M.a, M.s));
 $("rob-pick").value = S.rob;
 $("rob-pick").addEventListener("change", (e) => { if (I.has(e.target.value)) { S.rob = e.target.value; robustness(); } });
 
-// ---- 3. résumé vs rating ---------------------------------------------------------------------------------
+// ---- 3. records and scores ---------------------------------------------------------------------------------
 SECTIONS.placement = () => {
   const cu = S.view === "all_time" && S.div !== "All" ? new Map(units(S.g, S.div).map((u) => [u.f, u])) : null;
   const V = cu ? { ...VIEWS.all_time, label: `${S.div} class score` } : VIEWS[S.view];
   const val = (i) => (cu ? uscore(cu.get(i)) : F[V.val][i]);
   const rows = cu ? [...cu.values()].filter((u) => F.n[u.f] >= S.min).sort((x, y) => x.rank - y.rank).map((u) => u.f).slice(0, S.top)
     : boardRows().slice(0, S.top);
-  if (!rows.length) return empty("place-chart", "No ranked fighters match the current filters.");
-  const by = new Map();
-  rows.forEach((i, r) => { const d = F[V.div][i] || "Unknown"; if (!by.has(d)) by.set(d, []); by.get(d).push([i, r + 1]); });
-  const mean = (l) => l.reduce((t, [i]) => t + val(i), 0) / l.length;
-  const data = [...by].sort((x, y) => mean(y[1]) - mean(x[1])).map(([d, l]) => ({
-    type: "scatter", mode: "markers", name: d, x: l.map(([i]) => F.n[i]), y: l.map(([i]) => val(i)),
-    marker: { size: l.map(([, r]) => (r <= 10 ? 16 : 9)), color: divColor(d), opacity: 0.82, line: { color: "white", width: 0.8 } },
-    customdata: l.map(([i, r]) => [r, F.name[i], F.last[i]]),
-    hovertemplate: `<b>#%{customdata[0]} %{customdata[1]}</b><br>${d}<br>rated bouts=%{x}<br>${V.label}=%{y:.1f}<br>last bout=%{customdata[2]}<extra></extra>`,
-  }));
-  const ann = rows.slice(0, 10).map((i, r) => ({ x: F.n[i], y: val(i), text: String(r + 1), showarrow: false,
-    font: { size: 10, color: r ? T.text : T.bg }, bgcolor: r ? T.surface : T.accent, bordercolor: T.border_strong, borderpad: 2 }))
-    .concat(rows.slice(0, 6).map((i, r) => ({ x: F.n[i], y: val(i), text: F.name[i], showarrow: false, xanchor: "left",
-      xshift: 14, yshift: r % 2 ? -10 : 10, font: { size: 11, color: T.text } })));
-  plot("place-chart", data, {
-    title: `Top ${rows.length} placement — ${V.label}`, height: 560, annotations: ann,
-    xaxis: { title: { text: "Rated bouts" }, rangemode: "tozero" }, yaxis: { title: { text: V.label } },
-    legend: { orientation: "h", y: -0.2 }, margin: { l: 70, r: 40, t: 70, b: 110 },
+  if (rows.length < 3) return empty("place-chart", "Too few ranked fighters match the current filters.");
+  const top = rows.slice(0, 10), rest = rows.slice(10);
+  const tr = (l, color, size) => ({ type: "scatter", mode: "markers", x: l.map((i) => F.n[i]), y: l.map(val),
+    marker: { size, color, line: { color: T.bg, width: 1 } }, customdata: l.map((i) => [rows.indexOf(i) + 1, F.name[i], F.last[i]]),
+    hovertemplate: `<b>#%{customdata[0]} %{customdata[1]}</b><br>rated bouts %{x}<br>${V.label} %{y:.1f}<br>last bout %{customdata[2]}<extra></extra>` });
+  plot("place-chart", [tr(rest, T.context, 9), tr(top, T.accent, 11)], {
+    height: 500, annotations: top.slice(0, 6).map((i, r) => label(F.n[i], val(i), F.name[i].split(" ").at(-1), T.text,
+      { xanchor: "left", xshift: 9, yshift: r % 2 ? -8 : 8 })),
+    xaxis: { title: { text: "Rated bouts" }, rangemode: "tozero" }, yaxis: { title: { text: V.label } }, margin: { r: 60 },
   });
+  ex("place-chart", placementClaim(rho(rows.map((i) => F.n[i]), rows.map(val)), rows.length, V.label.toLowerCase()),
+    `Accent: the top 10, the first six named. n = ${rows.length} from the ${V.name} board, ${S.g === "M" ? "men" : "women"}, ${S.div === "All" ? "every class" : S.div}, ${S.min}+ rated bouts. ${SNAP}.`);
 };
 
-// ---- 4. fighters: arcs and tale of the tape -------------------------------------------------------------
+// ---- 4. fighters: arcs and tale of the tape -----------------------------------------------------------------
 function decode(name) {
   const t = D.traj[name];
   if (!t) return null;
@@ -308,55 +386,58 @@ function addFighter(f, go = false) {
   mark("fighters");
   if (go) $("fighters").scrollIntoView({ behavior: "smooth" });
 }
-const RES = { W: "Win", L: "Loss", D: "Draw", N: "" };
-function arcTraces(names, colors) {
-  const data = [], ann = [];
-  const [W, minN, label] = M.peak;
-  names.forEach((f, k) => {
-    const t = decode(f);
-    if (!t) return;
-    const c = colors[k], x = t.day.map(iso);
-    const txt = t.day.map((_, j) => `${RES[t.r[j]]} vs ${t.o[j] >= 0 ? D.N[t.o[j]] : "?"}${t.m[j] !== "-" ? " · " + M.methods[+t.m[j]] : ""}`);
-    data.push({ type: "scatter", mode: "lines", name: f, x, y: t.mu, line: { color: c, width: 2 }, text: txt,
-      hovertemplate: `<b>${esc(f)}</b><br>%{x|%Y-%m-%d}<br>rating %{y:.0f}<br>%{text}<extra></extra>` });
-    const g = {};
-    t.m.split("").forEach((m, j) => { (g[m] ||= []).push(j); });
-    Object.entries(g).forEach(([m, J]) => data.push({
-      type: "scatter", mode: "markers", x: J.map((j) => x[j]), y: J.map((j) => t.mu[j]), showlegend: false, hoverinfo: "skip",
-      marker: { size: 7, color: m === "-" ? T.caption : METHOD_COLOR[+m], line: { color: c, width: 1.5 } },
-    }));
-    // Best 5-year stretch: rolling mean over (t − W, t] with at least minN bouts (viz.trajectory_chart).
-    let lo = 0, sum = 0, best = null;
-    t.day.forEach((d, j) => {
-      sum += t.mu[j];
-      while (t.day[lo] <= d - W) sum -= t.mu[lo++];
-      const n = j - lo + 1;
-      if (n >= minN && (!best || sum / n > best[1])) best = [j, sum / n];
-    });
-    if (best) ann.push({ x: x[best[0]], y: t.mu[best[0]], text: `${label} ${fmt(best[1])}`, showarrow: true, arrowhead: 2, ax: 0, ay: -30, font: { color: c, size: 10 } });
-    const e = t.day.length - 1;
-    ann.push({ x: x[e], y: t.mu[e], text: f, showarrow: false, xanchor: "left", xshift: 8, font: { color: c, size: 11 } });
+const RES = { W: "Win", L: "Loss", D: "Draw", N: "No result" };
+// Best five-year stretch: rolling mean over (t − W, t] with at least minN bouts (viz.trajectory_chart).
+function bestStretch(t) {
+  const [W, minN] = M.peak;
+  let lo = 0, s = 0, best = null;
+  t.day.forEach((d, j) => {
+    s += t.mu[j];
+    while (t.day[lo] <= d - W) s -= t.mu[lo++];
+    const n = j - lo + 1;
+    if (n >= minN && (!best || s / n > best[1])) best = [j, s / n];
   });
-  return { data, ann };
+  return best;
 }
 const contender = () => ({ type: "line", xref: "paper", x0: 0, x1: 1, y0: M.contender, y1: M.contender, line: { color: T.muted, dash: "dash", width: 1 } });
 SECTIONS.fighters = () => {
-  const colors = S.sel.map((_, k) => COLORWAY[k % COLORWAY.length]);
+  const colors = S.sel.map((_, k) => CAT[k]);
   $("sel-chips").innerHTML = S.sel.map((f, k) => `<span class="chip"><i style="background:${colors[k]}"></i>${esc(f)}<button data-f="${esc(f)}" aria-label="remove">×</button></span>`).join("");
   if (!S.sel.length) { empty("arc-chart", "Add a fighter to draw their career."); $("cards").innerHTML = ""; return; }
-  const { data, ann } = arcTraces(S.sel, colors);
-  plot("arc-chart", data, {
-    title: "Base WHR skill, fight by fight", height: 540, hovermode: "closest", annotations: ann,
-    shapes: S.sel.some((f) => Math.min(...(decode(f)?.mu ?? [Infinity])) < M.contender + 150) ? [contender()] : [],
-    xaxis: { title: { text: "Event date" }, type: "date" }, yaxis: { title: { text: "Rating" } },
-    legend: { orientation: "h", y: 1.1, x: 0, yanchor: "bottom" }, margin: { r: 150, t: 80 },
+  const data = [], ann = [], peaks = [], ends = [];
+  S.sel.forEach((f, k) => {
+    const t = decode(f), c = colors[k];
+    if (!t) return;
+    const x = t.day.map(iso), txt = t.day.map((_, j) => `${RES[t.r[j]]} vs ${t.o[j] >= 0 ? D.N[t.o[j]] : "?"}${t.m[j] !== "-" ? " · " + M.methods[+t.m[j]] : ""}`);
+    data.push({ type: "scatter", mode: "lines", x, y: t.mu, line: { color: c, width: 2 }, text: txt,
+      hovertemplate: `<b>${esc(f)}</b><br>%{x|%Y-%m-%d}<br>rating %{y:.0f}<br>%{text}<extra></extra>` });
+    const J = (o) => range(x.length).filter((j) => t.r[j] === o);
+    data.push({ type: "scatter", mode: "markers", x: J("W").map((j) => x[j]), y: J("W").map((j) => t.mu[j]), hoverinfo: "skip",
+      marker: { size: 6, color: c } });
+    data.push({ type: "scatter", mode: "markers", x: J("L").map((j) => x[j]), y: J("L").map((j) => t.mu[j]), hoverinfo: "skip",
+      marker: { size: 9, symbol: "x-thin", color: T.negative, line: { width: 2, color: T.negative } } });
+    const b = bestStretch(t);
+    if (b) ann.push({ x: x[b[0]], y: t.mu[b[0]], text: fmt(b[1]), showarrow: true, arrowhead: 0, arrowcolor: c, ax: 0, ay: -26, font: { color: c, size: 12 } });
+    const e = t.day.length - 1, top = t.mu.indexOf(Math.max(...t.mu));
+    ends.push([x[e], t.mu[e], f.split(" ").at(-1), c]);
+    peaks.push([f, t.mu[top], x[top]]);
   });
+  const days = S.sel.flatMap((f) => decode(f)?.day ?? []), mu = S.sel.flatMap((f) => decode(f)?.mu ?? []), near = Math.min(...mu) < M.contender + 150;  // draw the line only near the data
+  const lo = near ? Math.min(M.contender, ...mu) : Math.min(...mu), ey = dodge(ends.map((q) => q[1]), Math.max(...mu) - lo || 1, 430);
+  plot("arc-chart", data, {
+    height: 500, annotations: [...ann, ...ends.map(([x, , text, c], k) => label(x, ey[k], text, c, { xanchor: "left", xshift: 6 })),
+      ...(near ? [label(1, M.contender, `contender line ${fmt(M.contender)}`, T.muted, { xref: "paper", xanchor: "right", yanchor: "bottom" })] : [])],
+    shapes: near ? [contender()] : [], yaxis: { title: { text: "Base WHR skill" } }, margin: { r: 90 },
+    xaxis: { title: { text: "Event date" }, type: "date", range: [iso(Math.min(...days) - 180), iso(Math.max(...days) + 180)] },
+  });
+  const p = argmax(peaks, (q) => q[1]);
+  ex("arc-chart", peaks.length > 1 ? `${esc(p[0])} peaked highest of the ${peaks.length} selected: ${fmt(p[1])} on ${p[2]}` : `${esc(p[0])} peaked at ${fmt(p[1])} on ${p[2]}`,
+    `Line: base WHR skill after each rated bout, all promotions. Dot: win; red ×: loss. Number above each line: best ${M.peak[2]} mean with at least ${M.peak[1]} bouts. ${SNAP}.`);
   $("cards").innerHTML = S.sel.map((f, k) => card(I.get(f), colors[k])).join("");
 };
 function card(i, c) {
   const pts = [M.scale * M.a * F.T[i], M.scale * (1 - M.a) * M.s * F.S[i], M.scale * (1 - M.a) * (1 - M.s) * F.R[i]];
-  const tot = pts.reduce((x, y) => x + y, 0) || 1;
-  const row = (k, v) => `<dt>${k}</dt><dd>${v}</dd>`;
+  const tot = sum(pts) || 1, row = (k, v) => `<dt>${k}</dt><dd>${v}</dd>`;
   const rk = (r, v) => (r != null ? `#${r} · ` : "<span class='dim'>not ranked</span> · ") + v;
   return `<div class="card" style="--c:${c}"><h4>${esc(F.name[i])}</h4>
     <div class="sub">${esc(F.div[i])}${F.cdiv[i] && F.cdiv[i] !== F.div[i] ? ` · now ${esc(F.cdiv[i])}` : ""} · ${F.w[i]}–${F.l[i]}${F.d[i] ? "–" + F.d[i] : ""}</div>
@@ -366,11 +447,11 @@ function card(i, c) {
       ${row("Current", rk(F.cr[i], fmt(F.cur[i])))}
       ${row("Peak rating", fmt(F.peak[i]))}
       ${row("Career mass", `${fmt(F.mass[i])} · ${F.cy[i]} of ${F.ay[i]} years`)}
-      ${row("Dominance", F.dom[i] != null ? `${fmt(F.dom[i], 2)} over ${F.domw[i]} wins` : "—")}
+      ${row("Dominance", F.dom[i] != null ? `${fmt(F.dom[i], 1)} over ${F.domw[i]} wins` : "—")}
       ${row("By class", [...(member.get(i) ?? [])].sort((x, y) => uscore(y[1]) - uscore(x[1]))
         .map(([d, u]) => `${short(d)} #${u.rank} · ${fmt(100 * uscore(u) / F.score[i])}%`).join("<br>") || "—")}
       ${row("Rated bouts", `${F.n[i]} · last ${F.last[i] ?? "—"}`)}</dl>
-    <div class="stack">${pts.map((p, j) => `<span style="width:${(100 * p / tot).toFixed(1)}%;background:${[T.accent, T.primary, T.positive][j]}"></span>`).join("")}</div>
+    <div class="stack">${pts.map((p, j) => `<span style="width:${(100 * p / tot).toFixed(1)}%;background:${PART()[j][1]}"></span>`).join("")}</div>
     <small>All-time points: championships ${fmt(pts[0])} · skill ${fmt(pts[1])} · résumé ${fmt(pts[2])}</small></div>`;
 }
 $("sel-chips").addEventListener("click", (e) => {
@@ -379,89 +460,113 @@ $("sel-chips").addEventListener("click", (e) => {
 });
 $("sel-add").addEventListener("change", (e) => { addFighter(e.target.value); e.target.value = ""; });
 
-// ---- 5. careers: receipt, shape, ladder, all-time vs prime ---------------------------------------------
+// ---- 5. careers: receipt, shape, ladder, All-time vs Prime -------------------------------------------------
 function receiptChart() {
   const r = D.receipt[S.rec], i = I.get(S.rec);
   if (!r) return empty("rec-chart", "No rated years for this fighter.");
-  const y = r.map((x) => x[0]);
-  plot("rec-chart", [
-    { type: "bar", name: "credited excess", x: y, y: r.map((x) => x[3]), base: r.map((x) => x[2]), marker: { color: T.primary, opacity: 0.85 },
-      hovertemplate: "year %{x}<br>credited %{y:.0f} rating points<extra></extra>" },
-    { type: "scatter", mode: "lines", name: "that year's bar", x: y, y: r.map((x) => x[2]), line: { color: T.accent, width: 2, dash: "dash" },
-      hovertemplate: "year %{x}<br>bar %{y:.0f}<extra></extra>" },
-    { type: "scatter", mode: "lines+markers", name: "rating that year", x: y, y: r.map((x) => x[1]), line: { color: T.text, width: 2 },
-      marker: { size: 7 }, hovertemplate: "year %{x}<br>rating %{y:.0f}<extra></extra>" },
-  ], { title: `Where ${S.rec} earned it — career mass ${fmt(F.mass[i])}`, height: 430, barmode: "overlay",
-    xaxis: { title: { text: "year" }, dtick: y.length > 14 ? 2 : 1 }, yaxis: { title: { text: "rating" } },
-    legend: { orientation: "h", y: 1.12, x: 0 } });
+  const y = r.map((x) => x[0]), e = r.map((x) => x[3]), m = sum(e) || 1, top3 = sum([...e].sort((a, b) => b - a).slice(0, 3));
+  const on = e.map((v) => v >= 1);
+  plot("rec-chart", [{ type: "bar", x: y, y: e, marker: { color: on.map((b) => (b ? T.accent : T.context)) },
+    customdata: r.map((x) => [x[1], x[2]]),
+    hovertemplate: "%{x}<br>credited %{y:.0f}<br>yearly mean rating %{customdata[0]:.0f}<br>that year's bar %{customdata[1]:.0f}<extra></extra>" }],
+  { height: 380, xaxis: { title: { text: "Year" }, dtick: y.length > 14 ? 2 : 1 }, yaxis: { title: { text: "Credited excess over the bar" }, rangemode: "tozero" } });
+  ex("rec-chart", `${esc(S.rec)}: ${on.filter(Boolean).length} of ${y.length} active years cleared the bar, and the best three supplied ${fmt(100 * top3 / m)}% of a career mass of ${fmt(F.mass[i])}`,
+    `Each bar: soft positive part of (yearly mean base WHR rating − that year's bar). Grey: under 1 point. The bars add up to the published career mass, which is checked when the site is built. Bars start at 0.`);
 }
 SECTIONS.careers = () => {
   receiptChart();
-  // Height or duration (viz.career_shape_scatter).
-  const P = pool("all_time").filter((i) => F.mass[i] > 0).sort((x, y) => F.mass[y] - F.mass[x]).slice(0, Math.max(20, S.top));
-  if (P.length) {
-    const ms = P.map((i) => F.mass[i]), yrs = P.map((i) => F.ay[i]), mn = Math.min(...ms), sp = Math.max(...ms) - mn || 1;
-    const qs = [0.25, 0.5, 0.75, 0.95].map((q) => [...ms].sort((a, b) => a - b)[Math.round(q * (ms.length - 1))]);
-    const g = range(60).map((k) => Math.max(1, Math.min(...yrs) - 0.5) + k * (Math.max(...yrs) - Math.min(...yrs) + 1) / 59);
-    plot("shape-chart", [
-      ...qs.map((L) => ({ type: "scatter", mode: "lines", x: g, y: g.map((x) => L / x), hoverinfo: "skip", showlegend: false,
-        line: { color: T.border_strong, width: 1, dash: "dot" } })),
-      { type: "scatter", mode: "markers+text", x: yrs, y: P.map((i) => F.mass[i] / F.ay[i]),
-        text: P.map((i, r) => (r < 12 ? F.name[i] : "")), textposition: "top center", textfont: { size: 10, color: T.muted },
-        marker: { size: ms.map((m) => 8 + 14 * (m - mn) / sp), color: ms, colorscale: [[0, T.caption], [1, T.accent]], showscale: true,
-          colorbar: { title: { text: "career<br>mass" } }, line: { color: T.bg, width: 1 } },
-        customdata: P.map((i) => [F.name[i], F.mass[i], F.n[i]]), showlegend: false,
-        hovertemplate: "<b>%{customdata[0]}</b><br>active years %{x}<br>mean yearly excess %{y:.0f}<br>career mass %{customdata[1]:.0f}<br>rated bouts %{customdata[2]}<extra></extra>" },
-    ], { title: "What built the score: years above the field vs distance above it", height: 560,
-      xaxis: { title: { text: "active years (each contributes once)" } }, yaxis: { title: { text: "mean yearly excess over the bar" }, rangemode: "tozero" } });
-  } else empty("shape-chart", "No careers match the current filters.");
-  plotFig("ladder-chart", D.ladder, { height: 560, legend: { font: { size: 10 } }, xaxis: { ...D.ladder.layout.xaxis, type: "category" } });
+  shapeChart();
+  ladderChart();
   legacyPrime();
 };
+function shapeChart() {
+  const P = pool("all_time").filter((i) => F.mass[i] > 0).sort((x, y) => F.mass[y] - F.mass[x]).slice(0, Math.max(20, S.top));
+  if (P.length < 3) return empty("shape-chart", "Too few careers match the current filters.");
+  const ms = P.map((i) => F.mass[i]), yrs = P.map((i) => F.ay[i]), x0 = Math.max(1, Math.min(...yrs) - 0.5), x1 = Math.max(...yrs) + 0.5;
+  const sorted = [...ms].sort((a, b) => a - b), qs = [0.25, 0.5, 0.75].map((q) => sorted[Math.round(q * (ms.length - 1))]);
+  const g = range(60).map((k) => x0 + k * (x1 - x0) / 59), top = P.slice(0, 10), rest = P.slice(10);
+  const tr = (l, color, size) => ({ type: "scatter", mode: "markers", x: l.map((i) => F.ay[i]), y: l.map((i) => F.mass[i] / F.ay[i]),
+    marker: { size, color, line: { color: T.bg, width: 1 } }, customdata: l.map((i) => [F.name[i], F.mass[i], F.n[i]]),
+    hovertemplate: "<b>%{customdata[0]}</b><br>active years %{x}<br>mean yearly excess %{y:.0f}<br>career mass %{customdata[1]:.0f}<br>rated bouts %{customdata[2]}<extra></extra>" });
+  const ymax = Math.max(...P.map((i) => F.mass[i] / F.ay[i])) * 1.1;
+  plot("shape-chart", [
+    ...qs.map((L) => ({ type: "scatter", mode: "lines", x: g, y: g.map((x) => L / x), hoverinfo: "skip", line: { color: T.border2, width: 1, dash: "dot" } })),
+    tr(rest, T.context, 8), tr(top, T.accent, 10),
+  ], { height: 500, annotations: [
+    ...qs.map((L) => label(x1, L / x1, `mass ${fmt(L)}`, T.muted, { xanchor: "left", xshift: 4 })),
+    ...top.slice(0, 6).map((i, r) => label(F.ay[i], F.mass[i] / F.ay[i], F.name[i].split(" ").at(-1), T.text, { yshift: r % 2 ? -12 : 12 })),
+  ], xaxis: { title: { text: "Active years" } }, yaxis: { title: { text: "Mean yearly excess over the bar" }, range: [0, ymax] }, margin: { r: 90 } });
+  ex("shape-chart", shapeClaim(P)[2],
+    `Mass = active years × mean yearly excess, so each dotted curve joins careers of equal mass (25th, 50th and 75th percentiles of those shown). Accent: the ten largest. n = ${P.length}, ${S.g === "M" ? "men" : "women"}, ${S.div === "All" ? "every class" : S.div}. Vertical axis starts at 0.`);
+}
+function ladderChart() {
+  const L = D.ladder.data, refs = L[0].x, last = refs.length - 1, n = L.length;
+  const drop = (t) => (t.y[last] ?? n) - t.y[0], worst = argmax(L, drop), stay = L.filter((t) => t.y[last] != null && t.y[last] <= n).length;
+  const name = { mean: "field mean", "0.5": "50th pct", "0.75": "75th pct", "0.9": "90th pct", "0.95": "95th pct" };
+  const out = n + 1.5, pos = (r) => (r == null || r > n ? out : r);  // bump chart: ranks below n share one row
+  plot("ladder-chart", L.map((t) => { const on = t === worst; return { type: "scatter", mode: "lines+markers", x: refs.map((r) => name[r] ?? r), y: t.y.map(pos),
+    line: { color: on ? T.accent : T.context, width: on ? 3 : 1.5 }, marker: { size: on ? 8 : 6, color: on ? T.accent : T.context }, customdata: t.y,
+    hovertemplate: `<b>${esc(t.name)}</b><br>bar at the %{x}<br>rank #%{customdata}<extra></extra>` }; }), {
+    height: 540, annotations: L.map((t) => label(0, t.y[0], t.name, t === worst ? T.accent : T.text2, { xanchor: "right", xshift: -10 }))
+      .concat([label(0, out, `below #${n}`, T.muted, { xanchor: "right", xshift: -10 }),
+        label(last, pos(worst.y[last]), `#${worst.y[last]}`, T.accent, { xanchor: "left", xshift: 10 })]),
+    shapes: [{ type: "line", xref: "paper", x0: 0, x1: 1, y0: n + 0.75, y1: n + 0.75, line: { color: T.border2, width: 1, dash: "dot" } }],
+    xaxis: { title: { text: "Yearly bar" }, type: "category" },
+    yaxis: { title: { text: "" }, range: [out + 0.6, 0.4], showticklabels: false, showgrid: false, zeroline: false },
+    margin: { l: 150, r: 48 },
+  });
+  ex("ladder-chart", `${stay} of the top ${n} keep a top-${n} place when the bar rises to the field's 95th percentile; ${esc(worst.name)} falls furthest, #${worst.y[0]} to #${worst.y[last]}`,
+    `ratings.symon_score.career_mass_family: the same career sum recomputed with each year's bar moved from the field mean up to its 95th percentile. Rows are career-mass ranks 1 to ${n}; a rank below #${n} is drawn on the bottom row, with the true rank in the hover. The top ${n} at the mean bar, both genders, every class; this chart does not follow the controls.`);
+}
 function legacyPrime() {
   const P = pool("all_time").filter((i) => F.n[i] >= Math.max(8, S.min) && F.prime[i] != null && F.score[i] != null)
     .sort((x, y) => F.score[y] - F.score[x]).slice(0, Math.max(20, 2 * S.top));
   if (P.length < 3) return empty("lp-chart", "Too few fighters match the current filters.");
-  const x = P.map((i) => F.prime[i]), y = P.map((i) => F.score[i]), n = P.length;
-  const mx = x.reduce((a, b) => a + b) / n, my = y.reduce((a, b) => a + b) / n;
-  const b1 = x.reduce((t, xi, k) => t + (xi - mx) * (y[k] - my), 0) / x.reduce((t, xi) => t + (xi - mx) ** 2, 0), b0 = my - b1 * mx;
-  const res = P.map((i, k) => [i, y[k] - (b0 + b1 * x[k])]).sort((u, v) => v[1] - u[1]);
-  const by = new Map();
-  P.forEach((i) => { const d = F.div[i] || "—"; if (!by.has(d)) by.set(d, []); by.get(d).push(i); });
+  const x = P.map((i) => F.prime[i]), y = P.map((i) => F.score[i]), n = P.length, mx = sum(x) / n, my = sum(y) / n;
+  const b1 = sum(x.map((xi, k) => (xi - mx) * (y[k] - my))) / sum(x.map((xi) => (xi - mx) ** 2)), b0 = my - b1 * mx;  // OLS
+  const res = P.map((i, k) => [i, y[k] - (b0 + b1 * x[k])]).sort((u, v) => v[1] - u[1]), up = res.slice(0, 3), dn = res.slice(-3);
   const xs = [Math.min(...x), Math.max(...x)];
-  const lab = [...res.slice(0, 4), ...res.slice(-4)].map(([i, r]) => ({ x: F.prime[i], y: F.score[i], text: F.name[i],
-    showarrow: true, arrowhead: 0, ax: 0, ay: r > 0 ? -22 : 22, font: { size: 10, color: r > 0 ? T.positive : T.accent_2 }, arrowcolor: T.border_strong }));
   plot("lp-chart", [
-    { type: "scatter", mode: "lines", x: xs, y: xs.map((v) => b0 + b1 * v), line: { color: T.muted, dash: "dash" }, hoverinfo: "skip", showlegend: false },
-    ...[...by].map(([d, l]) => ({ type: "scatter", mode: "markers", name: short(d), x: l.map((i) => F.prime[i]), y: l.map((i) => F.score[i]),
-      marker: { size: 11, opacity: 0.8, color: divColor(d), line: { color: T.bg, width: 0.6 } },
-      customdata: l.map((i) => [F.name[i], F.n[i], res.find((r) => r[0] === i)[1] >= 0 ? "More All-time than typical for this Prime" : "More Prime than typical for this All-time"]),
-      hovertemplate: "<b>%{customdata[0]}</b><br>Prime score=%{x:.0f}<br>All-time score=%{y:.1f}<br>%{customdata[1]} rated bouts<br><b>%{customdata[2]}</b><extra></extra>" })),
-  ], { title: "All-time vs Prime — longevity beyond the best decade", height: 580, annotations: lab, hovermode: "closest",
-    xaxis: { title: { text: "Prime score · best 10 years, at least 13 appearances" } }, yaxis: { title: { text: "All-time score" } },
-    legend: { orientation: "h", y: -0.2 } });
+    { type: "scatter", mode: "lines", x: xs, y: xs.map((v) => b0 + b1 * v), line: { color: T.muted, dash: "dash", width: 1 }, hoverinfo: "skip" },
+    { type: "scatter", mode: "markers", x, y, marker: { size: 9, color: P.map((i) => (i === up[0][0] ? T.accent : T.context)), line: { color: T.bg, width: 1 } },
+      customdata: P.map((i, k) => [F.name[i], F.n[i], y[k] - (b0 + b1 * x[k])]),
+      hovertemplate: "<b>%{customdata[0]}</b><br>Prime %{x:.0f}<br>All-time %{y:.1f}<br>%{customdata[2]:+.0f} against the trend<br>%{customdata[1]} rated bouts<extra></extra>" },
+  ], { height: 520, annotations: [...up, ...dn].map(([i, r], k) => ({ x: F.prime[i], y: F.score[i], text: F.name[i], showarrow: true, arrowhead: 0,
+    ax: 0, ay: r > 0 ? -22 : 22, arrowcolor: T.border2, font: { size: 12, color: k === 0 ? T.accent : T.text2 } })),
+    xaxis: { title: { text: "Prime score (best ten years)" } }, yaxis: { title: { text: "All-time score" } } });
+  ex("lp-chart", `${esc(F.name[up[0][0]])} sits furthest above the trend: ${fmt(up[0][1])} more All-time points than the Prime score predicts`,
+    `Dashed: least-squares fit of All-time on Prime over the ${n} highest All-time scores shown (${S.g === "M" ? "men" : "women"}, ${Math.max(8, S.min)}+ rated bouts). The units differ, so read distance from the line, not from the diagonal. Named: three furthest above and three furthest below.`);
 }
 $("rec-pick").value = S.rec;
 $("rec-pick").addEventListener("change", (e) => { if (I.has(e.target.value)) { S.rec = e.target.value; receiptChart(); } });
 
-// ---- 6. risers and fallers -------------------------------------------------------------------------------
+// ---- 6. risers and fallers ---------------------------------------------------------------------------------
 const movYears = Object.keys(D.movers).sort((a, b) => b - a);
 $("mov-year").innerHTML = movYears.map((y) => `<option>${y}</option>`).join("");
-SECTIONS.movers = () => plotFig("mov-chart", D.movers[$("mov-year").value]);
+SECTIONS.movers = () => {
+  const y = $("mov-year").value, t = D.movers[y].data[0];
+  if (!t || !t.x?.length) return empty("mov-chart", `No measurable rating moves in ${y}.`);
+  const k = range(t.x.length), hi = argmax(k, (j) => t.x[j]), lo = argmax(k, (j) => -t.x[j]);
+  plot("mov-chart", [{ type: "bar", orientation: "h", x: t.x, y: t.y, marker: { color: t.x.map((v) => (v >= 0 ? T.accent : T.negative)) },
+    text: t.x.map((v) => sgn(v)), textposition: "outside", cliponaxis: false, textfont: { size: 12, color: T.text2 }, customdata: t.customdata,
+    hovertemplate: "<b>%{y}</b><br>%{x:+.0f} over %{customdata[1]} bouts<br>%{customdata[0]}<extra></extra>" }],
+  { height: Math.max(420, 22 * t.x.length + 90), xaxis: { title: { text: "Change in base WHR skill over the year" }, zeroline: true, zerolinecolor: T.text2 },
+    yaxis: { automargin: true }, margin: { r: 48, l: 8 } });
+  ex("mov-chart", `In ${y}, ${esc(t.y[hi])} rose most (${sgn(t.x[hi])}) and ${esc(t.y[lo])} fell most (${sgn(t.x[lo])})`,
+    `Sum of the per-bout rating changes within ${y}, from the last rating before the year. Fighters with ${M.min_periods}+ rated bouts, both genders; the ${Math.ceil(t.x.length / 2)} largest each way. Accent: rise; red: fall.`);
+};
 $("mov-year").addEventListener("change", () => mark("movers"));
 
-// ---- 7. win streaks --------------------------------------------------------------------------------------
+// ---- 7. win streaks ----------------------------------------------------------------------------------------
 // row: fighter, length, start day, end day, division, divisions, title wins, finishes, avg opp, ongoing, ended by, gender
 let stRows = [];
 SECTIONS.streaks = () => {
-  const key = { length: (r) => [r[1], r[8] ?? 0, r[6]], quality: (r) => [r[8] ?? 0, r[1], r[6]], title_wins: (r) => [r[6], r[1], r[8] ?? 0] }[S.stSort];
-  stRows = D.streaks.filter((r) => r[11] === S.g && r[1] >= S.stMin && (S.div === "All" || r[5].includes(S.div)))
-    .sort((a, b) => { const x = key(a), y = key(b); return y[0] - x[0] || y[1] - x[1] || y[2] - x[2]; }).slice(0, S.top);
+  stRows = streaks(S.g, S.div, S.stMin, S.stSort).slice(0, S.top);
   const mx = Math.max(1, ...stRows.map((r) => r[1]));
   $("st-table").innerHTML = stRows.length ? `<table><thead><tr><th>#</th><th>Fighter</th><th class="num">Streak</th><th>Division</th><th>Span</th>
     <th class="num">Avg opp</th><th class="num">Titles</th><th class="num">Finishes</th><th>Status</th></tr></thead><tbody>` +
     stRows.map((r, k) => `<tr class="pickable ${S.streak === r ? "sel" : ""}" data-k="${k}"><td>${chip(k + 1)}</td><td class="name">${esc(r[0])}</td>
-      <td class="num bar"><i style="width:${(100 * r[1] / mx).toFixed(0)}%;background:rgba(251,191,36,.3)"></i><span>${r[1]}</span></td>
+      <td class="num bar"><i style="width:${(100 * r[1] / mx).toFixed(0)}%"></i><span>${r[1]}</span></td>
       <td>${esc(r[4] ?? "—")}</td><td class="dim">${iso(r[2]).slice(0, 4)}–${iso(r[3]).slice(0, 4)}</td><td class="num dim">${fmt(r[8])}</td>
       <td class="num dim">${r[6]}</td><td class="num dim">${r[7]}</td><td class="${r[9] ? "ok" : "dim"}">${esc(r[10])}</td></tr>`).join("") + "</tbody></table>"
     : `<p class="note" style="padding:10px 14px">No streaks match the current filters.</p>`;
@@ -472,19 +577,19 @@ function streakChart() {
   const r = S.streak;
   if (!r) return empty("st-chart", "No streak selected.");
   const t = decode(r[0]);
-  if (!t) return empty("st-chart", `${r[0]} has fewer than ${M.min_periods} rated bouts, so no rating timeline is published.`);
-  const x = t.day.map(iso), oc = { W: T.positive, L: T.negative, D: T.neutral, N: T.caption };
-  const data = [{ type: "scatter", mode: "lines", x, y: t.mu, name: `${r[0]} rating`, line: { color: T.primary, width: 2.5, shape: "spline", smoothing: 0.4 }, hoverinfo: "skip" }];
-  ["W", "L", "D"].forEach((o) => {
-    const J = range(x.length).filter((j) => t.r[j] === o);
-    if (J.length) data.push({ type: "scatter", mode: "markers", name: RES[o], x: J.map((j) => x[j]), y: J.map((j) => t.mu[j]),
-      marker: { size: 10, color: oc[o], line: { color: T.bg, width: 1.5 } }, text: J.map((j) => D.N[t.o[j]] ?? "?"),
-      hovertemplate: `<b>${esc(r[0])} — ${RES[o]}</b> vs %{text}<br>%{x|%b %d, %Y}<br>rating %{y:.0f}<extra></extra>` });
-  });
-  plot("st-chart", data, { title: `${r[0]}: rating timeline`, height: 440, hovermode: "closest",
-    shapes: [{ type: "rect", xref: "x", yref: "paper", x0: iso(r[2]), x1: iso(r[3]), y0: 0, y1: 1, fillcolor: "rgba(251,191,36,0.14)", line: { width: 0 }, layer: "below" }],
-    annotations: [{ x: iso(Math.round((r[2] + r[3]) / 2)), y: 1, yref: "paper", yanchor: "bottom", showarrow: false, text: `${r[1]}-fight win streak`, font: { color: T.accent, size: 12 } }],
-    xaxis: { title: { text: "Date" }, type: "date" }, yaxis: { title: { text: "Base WHR skill" } }, legend: { orientation: "h", y: 1.1, x: 0, yanchor: "bottom" } });
+  if (!t) return empty("st-chart", `${esc(r[0])} has fewer than ${M.min_periods} rated bouts, so no rating timeline is published.`);
+  const x = t.day.map(iso), J = (o) => range(x.length).filter((j) => t.r[j] === o);
+  const pts = (o, marker) => ({ type: "scatter", mode: "markers", x: J(o).map((j) => x[j]), y: J(o).map((j) => t.mu[j]), marker,
+    text: J(o).map((j) => D.N[t.o[j]] ?? "?"), hovertemplate: `<b>${RES[o]}</b> vs %{text}<br>%{x|%b %d, %Y}<br>rating %{y:.0f}<extra></extra>` });
+  plot("st-chart", [
+    { type: "scatter", mode: "lines", x, y: t.mu, line: { color: T.text2, width: 1.5 }, hoverinfo: "skip" },
+    pts("W", { size: 8, color: T.accent }), pts("L", { size: 10, symbol: "x-thin", color: T.negative, line: { width: 2, color: T.negative } }),
+    pts("D", { size: 8, symbol: "circle-open", color: T.muted, line: { width: 2 } }),
+  ], { height: 400,
+    shapes: [{ type: "rect", xref: "x", yref: "paper", x0: iso(r[2]), x1: iso(r[3]), y0: 0, y1: 1, fillcolor: T.accent, opacity: 0.1, line: { width: 0 }, layer: "below" }],
+    xaxis: { title: { text: "Date" }, type: "date" }, yaxis: { title: { text: "Base WHR skill" } } });
+  ex("st-chart", `${esc(r[0])}: ${r[1]} straight UFC wins, ${iso(r[2]).slice(0, 7)} to ${iso(r[3]).slice(0, 7)}${r[9] ? ", still running" : `, ended by ${esc(r[10]).toLowerCase()}`}`,
+    `Shaded: the streak. Line and markers: base WHR rating after each rated bout in any promotion; accent dot = win, red × = loss, open circle = draw.`);
 }
 $("st-table").addEventListener("click", (e) => {
   const tr = e.target.closest("tr[data-k]");
@@ -495,84 +600,114 @@ $("st-table").addEventListener("click", (e) => {
 });
 $("st-sort").addEventListener("change", (e) => { S.stSort = e.target.value; mark("streaks"); });
 
-// ---- 8. weight classes -----------------------------------------------------------------------------------
+// ---- 8. weight classes -------------------------------------------------------------------------------------
 const dvYears = [...new Set(D.strength["10"].map((r) => r[1]))].sort((a, b) => a - b);
 const DV = { y0: Math.max(2000, dvYears[0]), y1: dvYears[dvYears.length - 1] };
 $("dv-y0").value = DV.y0; $("dv-y1").value = DV.y1;
 $("dv-year").min = Math.min(...Object.keys(D.year_top)); $("dv-year").max = Math.max(...Object.keys(D.year_top));
 $("dv-year").value = $("o-dv-year").textContent = $("dv-year").max;
 $("dv-chips").innerHTML = D.divisions.map((d) => `<span class="chip ${S.dv.has(d) ? "on" : ""}" data-d="${esc(d)}">${esc(short(d))}</span>`).join("");
+// Grey lines for context, the accent on the class the claim names, labels at the line ends.
+function linesWithLead(id, series, lead, layout) {
+  const data = series.map(([d, x, y, cd, hov]) => ({ type: "scatter", mode: "lines", x, y, customdata: cd, hovertemplate: hov,
+    line: { color: d === lead ? T.accent : T.context, width: d === lead ? 3 : 1.5 } }));
+  const ord = [...data.keys()].sort((a, b) => (series[a][0] === lead) - (series[b][0] === lead));  // accent drawn last
+  const all = series.flatMap((q) => q[2]), [lo, hi] = layout.yaxis.range ?? [Math.min(...all), Math.max(...all)];
+  const ey = dodge(series.map((q) => q[2].at(-1)), hi - lo || 1, layout.height - 70);
+  const xs = series.flatMap((q) => q[1]);
+  plot(id, ord.map((k) => data[k]), { ...layout, margin: { r: 64, ...layout.margin }, xaxis: { range: [Math.min(...xs), Math.max(...xs)], ...layout.xaxis },
+    annotations: series.map(([d, x], k) => label(x.at(-1), ey[k], short(d), d === lead ? T.accent : T.muted, { xanchor: "left", xshift: 6 })) });
+}
 SECTIONS.divisions = () => {
   const sel = D.divisions.filter((d) => S.dv.has(d)), y0 = Math.min(DV.y0, DV.y1), y1 = Math.max(DV.y0, DV.y1);
   const rows = D.strength[S.k].filter((r) => S.dv.has(r[0]) && r[1] >= y0 && r[1] <= y1);
-  const ymax = {};
-  rows.forEach((r) => { ymax[r[1]] = Math.max(ymax[r[1]] ?? -Infinity, r[2]); });
-  const val = (r) => (S.idx ? 100 * r[2] / ymax[r[1]] : r[2]);
-  if (!rows.length) { ["dv-time", "dv-heat"].forEach((id) => empty(id, "Select at least one class with enough rated fighters.")); }
+  if (!rows.length) ["dv-time", "dv-heat"].forEach((id) => empty(id, "Select at least one class with enough rated fighters."));
   else {
-    const last = Math.max(...rows.map((r) => r[1])), lead = rows.filter((r) => r[1] === last).sort((a, b) => b[2] - a[2])[0];
-    const data = sel.map((d) => { const l = rows.filter((r) => r[0] === d); return l.length && {
-      type: "scatter", mode: "lines+markers", name: d, x: l.map((r) => r[1]), y: l.map(val), line: { color: divColor(d), width: 2.5 }, marker: { size: 6 },
-      customdata: l.map((r) => [r[2], r[3]]), hovertemplate: `<b>${esc(d)}</b> ${S.idx ? "index %{y:.1f} · " : ""}rating %{customdata[0]:.1f} · %{customdata[1]} fighters<extra></extra>` }; }).filter(Boolean);
-    const ends = data.map((t) => ({ x: t.x.at(-1), y: t.y.at(-1), text: short(t.name), showarrow: false, xanchor: "left", xshift: 8, font: { color: t.line.color, size: 11 } }));
-    plot("dv-time", data, { title: { text: `Division strength — top ${S.k} per class, ${y0}–${y1}<br><sup>Leader in ${last}: ${lead[0]} (${fmt(lead[2], 1)})</sup>` },
-      height: 540, hovermode: "x unified", annotations: ends, xaxis: { title: { text: "Year" } },
-      yaxis: { title: { text: S.idx ? "Strength index (strongest selected class = 100)" : "Base WHR skill" } },
-      legend: { orientation: "h", y: -0.18 }, margin: { r: 70 } });
-    const years = [...new Set(rows.map((r) => r[1]))].sort((a, b) => a - b), cell = new Map(rows.map((r) => [r[0] + "|" + r[1], r]));
+    const last = Math.max(...rows.map((r) => r[1])), lead = argmax(rows.filter((r) => r[1] === last), (r) => r[2]);
+    const series = sel.map((d) => { const l = rows.filter((r) => r[0] === d);
+      return l.length && [d, l.map((r) => r[1]), l.map((r) => r[2]), l.map((r) => r[3]), `<b>${esc(d)}</b> %{x}<br>rating %{y:.0f} · %{customdata} fighters<extra></extra>`]; }).filter(Boolean);
+    linesWithLead("dv-time", series, lead[0], { height: 480, xaxis: { title: { text: "Year" } }, yaxis: { title: { text: `Mean base WHR skill of the top ${S.k}` } } });
+    ex("dv-time", `${esc(lead[0])} has the strongest top ${S.k} in ${last}: mean rating ${fmt(lead[2])}`,
+      `Mean end-of-year base WHR rating of each class's top ${S.k}, ${y0}–${y1}; a class-year needs ${S.k} rated fighters. Grey: the other selected classes.`);
+
+    const ymax = {}, years = [...new Set(rows.map((r) => r[1]))].sort((a, b) => a - b), cell = new Map(rows.map((r) => [r[0] + "|" + r[1], r]));
+    rows.forEach((r) => { ymax[r[1]] = Math.max(ymax[r[1]] ?? -Infinity, r[2]); });
     const ds = sel.filter((d) => rows.some((r) => r[0] === d)).reverse();
     const z = ds.map((d) => years.map((y) => { const r = cell.get(d + "|" + y); return r ? 100 * r[2] / ymax[y] : null; }));
-    const zmin = Math.max(80, Math.min(...z.flat().filter((v) => v != null)));
-    plot("dv-heat", [{ type: "heatmap", x: years, y: ds.map(short), z, zmin, zmax: 100, colorscale: HEAT, colorbar: { title: { text: "Strength index" } },
+    const leaders = years.map((y) => rows.filter((r) => r[1] === y).reduce((b, r) => (r[2] > b[2] ? r : b))[0]);
+    const changes = leaders.filter((d, k) => k && d !== leaders[k - 1]).length, cnt = {};
+    leaders.forEach((d) => { cnt[d] = (cnt[d] || 0) + 1; });
+    const most = argmax(Object.keys(cnt), (d) => cnt[d]);
+    const zmin = Math.max(80, Math.floor(Math.min(...z.flat().filter((v) => v != null))));
+    plot("dv-heat", [{ type: "heatmap", x: years, y: ds.map(short), z, zmin, zmax: 100, colorscale: SEQ, xgap: 1, ygap: 1,
+      colorbar: { title: { text: "index", font: { color: T.text2 } }, tickfont: { color: T.text2, size: 12 }, outlinewidth: 0 },
       customdata: ds.map((d) => years.map((y) => cell.get(d + "|" + y)?.[2] ?? null)),
-      hovertemplate: "%{x} · %{y}<br>strength index %{z:.1f}<br>top-end rating %{customdata:.1f}<extra></extra>" }],
-      { title: `Top-end division strength by year (top ${S.k})`, height: Math.max(300, 34 * ds.length + 120), xaxis: { title: { text: "Year" } } });
+      hovertemplate: "%{x} · %{y}<br>index %{z:.1f}<br>top-end rating %{customdata:.0f}<extra></extra>" }],
+    { height: Math.max(260, 30 * ds.length + 90), xaxis: { title: { text: "Year" } } });
+    ex("dv-heat", `The strongest selected class changed ${changes} times between ${years[0]} and ${years.at(-1)}; ${esc(most)} led in ${cnt[most]} of ${years.length} years`,
+      `Index: 100 = that year's strongest selected class, on the same top-${S.k} mean. Colour runs from ${zmin} (lightest) to 100${zmin > 80 ? "" : "; lower indices share the lightest colour"}. Blank: too few rated fighters.`);
   }
   yearTop();
-  // Board share by career class (viz.top100_division_density_chart) on the chosen board.
+  boardShare();
+  parity(sel, y0, y1);
+  methodMix(y0, y1);
+};
+function yearTop() {
+  const yr = $("dv-year").value, keep = new Set([...S.dv].map(short));
+  const T5 = D.year_top[yr].data.filter((t) => keep.has(t.name));
+  if (!T5.length) return empty("dv-year-chart", `No rated fighters in the selected classes in ${yr}.`);
+  const pts = T5.flatMap((t) => t.x.map((x, k) => ({ x, y: t.y[k], c: t.name }))), best = argmax(pts, (p) => p.x);
+  const ys = pts.map((p) => p.y);
+  plot("dv-year-chart", [{ type: "scatter", mode: "markers", x: pts.map((p) => p.x), y: ys,
+    marker: { size: 10, color: pts.map((p) => (p === best ? T.accent : T.context)), line: { color: T.bg, width: 1 } },
+    hovertemplate: "%{y}<br>end-of-year rating %{x:.0f}<extra></extra>" }],
+  { height: Math.max(360, 22 * ys.length + 80), xaxis: { title: { text: "End-of-year rating" } },
+    yaxis: { categoryorder: "array", categoryarray: [...ys].reverse(), automargin: true, tickfont: { color: T.text2, size: 12 } }, margin: { l: 8 } });
+  ex("dv-year-chart", `${esc(best.y.replace(/^\d+\.\s*/, "").split("  ·")[0])} (${esc(best.c)}) ended ${yr} rated highest of the selected classes: ${fmt(best.x)}`,
+    `Top five per class by end-of-year base WHR rating; classes ordered by their #1. A dot plot, so the axis does not start at 0.`);
+}
+function boardShare() {
   const B = boardRows(S.view, false).slice(0, 100), dv = VIEWS[S.view].div, cnt = {}, pts = S.view === "all_time";
+  if (!B.length) return empty("dv-share", "No ranked fighters match the current filters.");
   B.forEach((i) => {
     if (pts) [...(member.get(i) ?? [])].forEach(([d, u]) => { cnt[d] = (cnt[d] || 0) + uscore(u); });
     else { const d = F[dv][i] || "Unknown"; cnt[d] = (cnt[d] || 0) + 1; }
   });
-  const den = Object.values(cnt).reduce((x, y) => x + y, 0), sh = Object.entries(cnt).sort((a, b) => a[1] - b[1]);
-  plot("dv-share", [{ type: "bar", orientation: "h", x: sh.map(([, n]) => 100 * n / den), y: sh.map(([d]) => d), marker: { color: T.primary },
-    text: sh.map(([, n]) => `${fmt(100 * n / den, 1)}%`), textposition: "outside", cliponaxis: false,
+  const den = sum(Object.values(cnt)), sh = Object.entries(cnt).sort((a, b) => a[1] - b[1]), top = sh.at(-1);
+  plot("dv-share", [{ type: "bar", orientation: "h", x: sh.map(([, n]) => 100 * n / den), y: sh.map(([d]) => d),
+    marker: { color: sh.map((r) => (r === top ? T.accent : T.context)) }, text: sh.map(([, n]) => `${fmt(100 * n / den, 1)}%`),
+    textposition: "outside", cliponaxis: false, textfont: { size: 12, color: T.text2 },
     customdata: sh.map(([, n]) => fmt(n)), hovertemplate: `<b>%{y}</b><br>%{customdata} ${pts ? "All-time points" : "fighters"}<extra></extra>` }],
-    { title: pts ? `Where the All-time top ${B.length} earned their points, by class` : `Class share inside the ${VIEWS[S.view].label.split(" ")[0]} top ${B.length}`,
-      height: Math.max(380, 30 * sh.length + 120),
-      xaxis: { ticksuffix: "%", title: { text: "Share" } }, showlegend: false, margin: { r: 60 } });
-  // Parity (viz.division_entropy_chart) and finishes (viz.method_mix_timeline_chart).
-  const E = D.entropy.filter((r) => S.dv.has(r[1]) && r[0] >= y0 && r[0] <= y1), ent = [];
-  sel.forEach((d) => { const l = E.filter((r) => r[1] === d); if (!l.length) return;
-    ent.push({ type: "scatter", mode: "lines+markers", name: short(d), x: l.map((r) => r[0]), y: l.map((r) => r[2]), line: { color: divColor(d) }, marker: { size: 5 },
-      hovertemplate: `<b>${esc(d)}</b> %{x}<br>crowdedness %{y:.2f}<extra></extra>` },
-    { type: "scatter", mode: "lines", name: short(d), x: l.map((r) => r[0]), y: l.map((r) => r[3]), xaxis: "x", yaxis: "y2", showlegend: false, line: { color: divColor(d) },
-      hovertemplate: `<b>${esc(d)}</b> %{x}<br>average top-10 rating %{y:.0f}<extra></extra>` }); });
-  if (ent.length) plot("dv-ent", ent, { title: "How deep each class is, and how strong its top", height: 680,
-    yaxis: { domain: [0.56, 1], range: [0, 1.02], title: { text: "Crowdedness (0–1)" } },
-    yaxis2: { ...AX, domain: [0, 0.44], title: { text: "Average top-10 rating" } }, xaxis: { anchor: "y2", title: { text: "Year" } },
-    legend: { orientation: "h", y: 1.08, x: 0 } });
-  else empty("dv-ent", "No parity rows for the selected classes.");
+  { height: Math.max(320, 26 * sh.length + 80), xaxis: { ticksuffix: "%", title: { text: pts ? "Share of points" : "Share of fighters" }, rangemode: "tozero" }, margin: { r: 56, l: 8 } });
+  ex("dv-share", `${esc(top[0])} supplies ${fmt(100 * top[1] / den)}% of the ${pts ? "points earned by the All-time" : `fighters in the ${VIEWS[S.view].name}`} top ${B.length}`,
+    pts ? `Each fighter's All-time points split by the class they were earned in (class boards), ${S.g === "M" ? "men" : "women"}. Bars start at 0.`
+      : `Fighters counted by ${S.view === "current" ? "current" : "career"} division, ${S.g === "M" ? "men" : "women"}. Bars start at 0.`);
+}
+function parity(sel, y0, y1) {
+  const E = D.entropy.filter((r) => S.dv.has(r[1]) && r[0] >= y0 && r[0] <= y1);
+  if (!E.length) return empty("dv-ent", "No parity rows for the selected classes.");
+  const last = Math.max(...E.map((r) => r[0])), lead = argmax(E.filter((r) => r[0] === last), (r) => r[2]);
+  const series = sel.map((d) => { const l = E.filter((r) => r[1] === d);
+    return l.length && [d, l.map((r) => r[0]), l.map((r) => r[2]), l.map((r) => r[3]), `<b>${esc(d)}</b> %{x}<br>crowdedness %{y:.2f}<br>top-10 mean rating %{customdata:.0f}<extra></extra>`]; }).filter(Boolean);
+  linesWithLead("dv-ent", series, lead[1], { height: 440, xaxis: { title: { text: "Year" } }, yaxis: { title: { text: "Crowdedness of the top ten (0–1)" }, range: [0, 1.02] } });
+  ex("dv-ent", `${esc(lead[1])} has the most crowded top ten in ${last}: ${fmt(lead[2], 2)}`,
+    `Normalised entropy of softmax(μ/100) over each class's ten highest year-end Glicko-2 ratings (ratings.diagnostics): 1 = all ten level, 0 = one fighter far ahead. Axis from 0.`);
+}
+function methodMix(y0, y1) {
   const mix = {};
-  D.mix.forEach(([y, d, b, n]) => { if (y < y0 || y > y1 || !S.dv.has(d)) return; (mix[y] ||= { "KO/TKO": 0, Submission: 0, Decision: 0 })[b] += n; });
-  const ys = Object.keys(mix).map(Number).sort((a, b) => a - b), tot = ys.map((y) => Object.values(mix[y]).reduce((a, b) => a + b, 0));
-  const MC = { "KO/TKO": [T.negative, "rgba(248,113,113,0.55)"], Submission: [T.secondary, "rgba(167,139,250,0.55)"], Decision: [T.primary, "rgba(56,189,248,0.55)"] };
-  plot("dv-mix", Object.keys(MC).map((b) => ({ type: "scatter", mode: "lines", stackgroup: "one", name: b, x: ys, y: ys.map((y, k) => mix[y][b] / tot[k]),
-    line: { width: 0.5, color: MC[b][0] }, fillcolor: MC[b][1], customdata: tot,
-    hovertemplate: `<b>${b}</b><br>%{x}: %{y:.0%} of %{customdata} bouts<extra></extra>` })),
-  { title: "How fights end over time (bouts with a recorded weight class)", height: 440,
-    yaxis: { range: [0, 1], tickformat: ".0%", title: { text: "Share of fights" } }, xaxis: { title: { text: "Year" } }, legend: { orientation: "h", y: 1.12, x: 0 } });
-};
-function yearTop() {
-  const f = structuredClone(D.year_top[$("dv-year").value]), keep = new Set([...S.dv].map(short));
-  f.data = f.data.filter((t) => keep.has(t.name));
-  f.data.forEach((t) => { t.marker = { color: divColor(D.divisions.find((d) => short(d) === t.name)) }; t.cliponaxis = false; });
-  if (!f.data.length) return empty("dv-year-chart", "No rated fighters in the selected classes that year.");
-  const ys = f.data.flatMap((t) => t.y), xs = f.data.flatMap((t) => t.x);
-  plot("dv-year-chart", f.data, { ...f.layout, height: Math.max(380, 30 * ys.length + 110),
-    xaxis: { ...f.layout.xaxis, range: [Math.min(...xs) - 60, Math.max(...xs) + 60], title: { text: "Base WHR skill, end of year" } },
-    yaxis: { categoryorder: "array", categoryarray: [...ys].reverse(), automargin: true }, margin: { l: 40, r: 60, t: 70, b: 80 } });
+  D.mix.forEach(([y, d, b, n]) => { if (y < y0 || y > y1 || !S.dv.has(d)) return; (mix[y] ||= { Decision: 0, "KO/TKO": 0, Submission: 0 })[b] += n; });
+  const ys = Object.keys(mix).map(Number).sort((a, b) => a - b), tot = ys.map((y) => sum(Object.values(mix[y])));
+  if (!ys.length) return empty("dv-mix", "No bouts in the selected classes and years.");
+  const P = { Decision: CAT[0], "KO/TKO": CAT[1], Submission: CAT[2] }, sh = (b, k) => mix[ys[k]][b] / tot[k];
+  plot("dv-mix", Object.keys(P).map((b) => ({ type: "scatter", mode: "lines", stackgroup: "one", x: ys, y: ys.map((_, k) => sh(b, k)),
+    line: { width: 0.5, color: P[b] }, fillcolor: P[b], customdata: tot, hovertemplate: `<b>${b}</b><br>%{x}: %{y:.0%} of %{customdata} bouts<extra></extra>` })), {
+    height: 400, annotations: Object.keys(P).map((b, j) => { const k = ys.length - 1, below = sum(Object.keys(P).slice(0, j).map((c) => sh(c, k)));
+      return label(ys[k], below + sh(b, k) / 2, b, P[b], { xanchor: "left", xshift: 6 }); }),
+    yaxis: { range: [0, 1], tickformat: ".0%", title: { text: "Share of bouts" } }, xaxis: { title: { text: "Year" }, range: [ys[0], ys.at(-1)] }, margin: { r: 96 } });
+  const w = Math.min(5, ys.length), dec = (K) => 100 * sum(K.map((k) => mix[ys[k]].Decision)) / sum(K.map((k) => tot[k]));
+  const K0 = range(w), K1 = range(w).map((k) => ys.length - w + k);
+  ex("dv-mix", `Decisions went from ${fmt(dec(K0))}% of bouts in ${ys[0]}–${ys[w - 1]} to ${fmt(dec(K1))}% in ${ys[ys.length - w]}–${ys.at(-1)}`,
+    `Bouts in the selected classes in every recorded promotion, ${fmt(sum(tot))} in all; disqualifications and other endings are left out. Each year sums to 100%; the title compares bout-weighted means over the first and last ${w} years shown.`);
 }
 $("dv-chips").addEventListener("click", (e) => {
   const c = e.target.closest(".chip");
@@ -583,54 +718,103 @@ $("dv-chips").addEventListener("click", (e) => {
 });
 ["y0", "y1"].forEach((k) => $("dv-" + k).addEventListener("change", (e) => { DV[k] = +e.target.value; mark("divisions"); }));
 $("dv-k").addEventListener("change", (e) => { S.k = e.target.value; mark("divisions"); });
-seg("dv-index", "idx", () => { S.idx = S.idx === "1"; mark("divisions"); });
 $("dv-year").addEventListener("input", (e) => { $("o-dv-year").textContent = e.target.value; yearTop(); });
 
-// ---- 9. title lineage ------------------------------------------------------------------------------------
+// ---- 9. title lineage ----------------------------------------------------------------------------------------
 $("tl-div").innerHTML = Object.keys(D.lineage).map((d) => `<option ${d === "Lightweight" ? "selected" : ""}>${esc(d)}</option>`).join("");
-SECTIONS.lineage = () => plotFig("tl-chart", D.lineage[$("tl-div").value][$("tl-int").checked ? 1 : 0], { height: 320 });
+SECTIONS.lineage = () => {
+  const d = $("tl-div").value, R = reigns(D.lineage[d][$("tl-int").checked ? 1 : 0]);
+  if (!R.length) return empty("tl-chart", `No title wins recorded at ${d}.`);
+  const done = R.length > 1 ? R.slice(0, -1) : R, top = done.reduce((b, r) => (r.yrs > b.yrs ? r : b));
+  plot("tl-chart", R.map((r, k) => ({ type: "bar", orientation: "h", x: [r.x], base: [r.start], y: ["belt"], text: [r.text],
+    textposition: "inside", insidetextanchor: "middle", textangle: 0, textfont: { size: 12, color: r === top ? T.bg : T.text },
+    marker: { color: r === top ? T.accent : k % 2 ? T.context : T.border2, line: { color: T.bg, width: 1 } },
+    customdata: [[r.f, r.opp, r.start, r.def, r.yrs]],
+    hovertemplate: "<b>%{customdata[0]}</b><br>won %{customdata[2]} against %{customdata[1]}<br>%{customdata[3]} defences · %{customdata[4]} years<extra></extra>" })),
+  { height: 200, barmode: "overlay", uniformtext: { minsize: 12, mode: "hide" }, xaxis: { type: "date" }, yaxis: { visible: false }, margin: { t: 8, b: 32, l: 8, r: 8 } });
+  ex("tl-chart", `${esc(d)}: the longest run to the next title change is ${esc(top.f)}'s, ${fmt(top.yrs, 1)} years with ${top.def} defence${top.def === 1 ? "" : "s"}`,
+    `${R.length} reigns${$("tl-int").checked ? ", interim belts included" : ""}. A reign runs until someone else wins the title, so a vacated belt counts until it is refilled; the current reign is drawn to 150 days after the last title bout and is left out of the claim. Label: surname and defences (3D = three). Labels that do not fit are in the hover.`);
+};
 $("tl-div").addEventListener("change", () => mark("lineage"));
 $("tl-int").addEventListener("change", () => mark("lineage"));
 
-// ---- 10. dominance ---------------------------------------------------------------------------------------
+// ---- 10. dominance -----------------------------------------------------------------------------------------
 SECTIONS.dominance = () => {
   const P = pool("all_time").filter((i) => F.dom[i] != null && F.domw[i] >= S.dmMin).sort((x, y) => F.dom[y] - F.dom[x]).slice(0, S.top).reverse();
   if (!P.length) return empty("dm-chart", "No fighters match the current filters.");
+  const top = P.at(-1);
   plot("dm-chart", [{ type: "bar", orientation: "h", x: P.map((i) => F.dom[i]), y: P.map((i) => F.name[i]),
-    marker: { color: P.map((_, k) => (k === P.length - 1 ? T.accent : T.primary)) }, text: P.map((i) => fmt(F.dom[i], 2)), textposition: "outside", cliponaxis: false,
-    customdata: P.map((i) => [F.domw[i], fmt(F.whr[i])]), hovertemplate: "<b>%{y}</b><br>dominance %{x:.2f}<br>%{customdata[0]} wins<br>rating %{customdata[1]}<extra></extra>" }],
-  { title: "Most dominant fighters", height: Math.max(420, 26 * P.length + 120), showlegend: false,
-    xaxis: { title: { text: "Dominance score (higher = more one-sided wins)" }, rangemode: "tozero" }, margin: { l: 40, r: 60 } });
+    marker: { color: P.map((i) => (i === top ? T.accent : T.context)) }, text: P.map((i) => fmt(F.dom[i], 1)), textposition: "outside",
+    cliponaxis: false, textfont: { size: 12, color: T.text2 }, customdata: P.map((i) => [F.domw[i], fmt(F.whr[i])]),
+    hovertemplate: "<b>%{y}</b><br>dominance %{x:.1f}<br>%{customdata[0]} wins<br>rating %{customdata[1]}<extra></extra>" }],
+  { height: Math.max(380, 22 * P.length + 80), xaxis: { title: { text: "Mean dominance per win" }, rangemode: "tozero" }, margin: { l: 8, r: 48 } });
+  const tie = P.filter((i) => F.dom[i] === F.dom[top]).length;
+  ex("dm-chart", `${esc(F.name[top])} wins most one-sidedly${tie > 1 ? `, level with ${tie - 1} other${tie > 2 ? "s" : ""}` : ""}: mean dominance ${fmt(F.dom[top], 1)} over ${F.domw[top]} wins`,
+    `${P.length} fighters with ${S.dmMin}+ scored wins (${S.g === "M" ? "men" : "women"}, ${S.div === "All" ? "every class" : S.div}, ${S.min}+ rated bouts). Bars start at 0.`);
 };
 
-// ---- 11. integrity policy --------------------------------------------------------------------------------
+// ---- 11. integrity policy ------------------------------------------------------------------------------------
+// debit row: fighter, base rating, base rank, policy rank, debit, PED, DQ, missed-weight results
 SECTIONS.policy = () => {
-  plotFig("pol-chart", D.integrity.fig);
-  const L = D.integrity.ledger.slice(0, Math.max(S.top, 25));
+  const G = D.integrity, R = G.debits.slice(0, 15).reverse(), moves = R.map((r) => r[3] - r[2]), w = argmax(range(R.length), (k) => moves[k]);
+  const y = R.map((r) => r[0]), why = (r) => [r[5] && `${r[5]} PED`, r[6] && `${r[6]} DQ`, r[7] && `${r[7]} missed weight`].filter(Boolean).join(", ");
+  plot("pol-chart", [
+    { type: "scatter", mode: "lines", x: R.flatMap((r) => [r[2], r[3], null]), y: R.flatMap((r) => [r[0], r[0], null]), line: { color: T.border2, width: 2 }, hoverinfo: "skip" },
+    { type: "scatter", mode: "markers", x: R.map((r) => r[2]), y, marker: { size: 9, color: T.context },
+      hovertemplate: "<b>%{y}</b><br>base rank #%{x}<extra></extra>" },
+    { type: "scatter", mode: "markers", x: R.map((r) => r[3]), y, marker: { size: 9, color: T.negative },
+      customdata: R.map((r) => [r[4], why(r), r[1]]), hovertemplate: "<b>%{y}</b><br>policy rank #%{x}<br>debit −%{customdata[0]:.0f} on base %{customdata[2]:.0f}<br>%{customdata[1]}<extra></extra>" },
+  ], { height: Math.max(380, 24 * R.length + 80), xaxis: { title: { text: `Rank among all ${fmt(G.rated)} rated fighters (1 is best)` }, autorange: "reversed" },
+    yaxis: { automargin: true }, margin: { l: 8 } });
+  ex("pol-chart", `Among the 15 highest-rated debited fighters, ${esc(R[w][0])} moves most: #${R[w][2]} to #${R[w][3]} for a ${fmt(R[w][4])}-point debit`,
+    `Grey: rank on the base WHR rating list; red: rank after the policy's debits. The 15 highest-rated of ${fmt(G.n)} debited fighters, both genders. The ledger below lists every debited result.`);
+  const L = G.ledger.slice(0, Math.max(S.top, 25));
   $("pol-table").innerHTML = `<table><thead><tr><th>Date</th><th>Fighter</th><th>Opponent</th><th>Reason</th><th>Detail</th>
     <th class="num">Result weight</th><th class="num">Discount</th></tr></thead><tbody>` +
-    L.map((r) => `<tr><td class="dim">${r[0] ?? ""}</td><td class="name">${esc(r[1])}</td><td>${esc(r[2])}</td><td style="color:${T.accent}">${esc(r[3])}</td>
+    L.map((r) => `<tr><td class="dim">${r[0] ?? ""}</td><td class="name">${esc(r[1])}</td><td>${esc(r[2])}</td><td>${esc(r[3])}</td>
       <td class="dim" style="white-space:normal;min-width:260px">${esc(r[4])}</td><td class="num">${fmt(r[5], 2)}</td><td class="num down">${fmt(r[6])}%</td></tr>`).join("") + "</tbody></table>";
 };
 
-// ---- 12. benchmark ---------------------------------------------------------------------------------------
+// ---- 12. calibration ---------------------------------------------------------------------------------------
+const calSegs = [...new Set(D.calib.map((r) => r[0]))];
+$("cal-seg").innerHTML = calSegs.map((s) => `<option>${esc(s)}</option>`).join("");
+SECTIONS.checks = () => {
+  const R = calRows(S.cal), n = sum(R.map((r) => r.n)) / 2, dev = Math.max(...R.map((r) => Math.abs(r.y - r.p)));
+  const cover = R.filter((r) => Math.abs(r.y - r.p) <= 1.96 * r.se).length;
+  plot("cal-chart", [
+    { type: "scatter", mode: "lines", x: [0, 1], y: [0, 1], line: { color: T.muted, dash: "dash", width: 1 }, hoverinfo: "skip" },
+    { type: "scatter", mode: "markers", x: R.map((r) => r.p), y: R.map((r) => r.y), marker: { size: 9, color: T.accent },
+      error_y: { type: "data", array: R.map((r) => 1.96 * r.se), color: T.accent, thickness: 1.5, width: 0 },
+      customdata: R.map((r) => [r.n, 100 * (r.y - r.p)]),
+      hovertemplate: "forecast %{x:.1%}<br>observed %{y:.1%} (%{customdata[1]:+.1f} points)<br>n = %{customdata[0]:,}<extra></extra>" },
+  ], { height: 460, annotations: [label(0.98, 0.9, "forecast = observed", T.muted, { xanchor: "right", yanchor: "top" })],
+    xaxis: { title: { text: "Forecast win probability" }, range: [0, 1], tickformat: ".0%", constrain: "domain" },
+    yaxis: { title: { text: "Observed win rate" }, range: [0, 1], tickformat: ".0%", scaleanchor: "x" } });
+  ex("cal-chart", `${esc(S.cal)}: favourites win slightly ${overconfident(R) ? "less" : "more"} often than forecast; the largest gap is ${fmt(100 * dev, 1)} percentage points, and ${cover} of ${R.length} bands lie within their 95% interval`,
+    `Causal Glicko-2 ratings, which the engine keeps as a diagnostic; the boards use the WHR fit. ${fmt(n)} bouts, each counted once from each corner, in ten bands of forecast probability. Error bars: ±1.96 binomial standard errors, assuming bouts are independent; with this many bouts most are narrower than the marker.`);
+};
+$("cal-seg").addEventListener("change", (e) => { S.cal = e.target.value; mark("checks"); });
+
+// ---- 13. benchmark -----------------------------------------------------------------------------------------
+// row: fighter, engine rank, FightMatrix rank, gap, score, FightMatrix points
 SECTIONS.benchmark = () => {
   const all = D.bench.slice(0, Math.max(15, S.top)), B = all.filter((r) => r[2] != null).reverse();
-  const far = [...B].sort((a, b) => Math.abs(b[3]) - Math.abs(a[3])).slice(0, 3);
-  $("bm-summary").innerHTML = `Matched <b>${B.length} of ${all.length}</b> men's All-time leaders to FightMatrix's list.` +
-    (far.length ? ` Largest disagreements: ${far.map((r) => `${esc(r[0])} (#${r[1]} here, #${r[2]} there)`).join(", ")}.` : "");
-  if (!B.length) return empty("bm-chart", "No matched fighters.");
+  if (B.length < 3) return empty("bm-chart", "Too few matched fighters.");
+  const far = argmax(B, (r) => Math.abs(r[3]));
   plot("bm-chart", [
-    { type: "scatter", mode: "lines", x: B.flatMap((r) => [r[1], r[2], null]), y: B.flatMap((r) => [r[0], r[0], null]), line: { color: T.border_strong, width: 2 }, hoverinfo: "skip", showlegend: false },
-    { type: "scatter", mode: "markers", name: "Rank Engine", x: B.map((r) => r[1]), y: B.map((r) => r[0]), marker: { color: T.primary, size: 10 },
-      customdata: B.map((r) => [r[4], r[3]]), hovertemplate: "<b>%{y}</b><br>Engine rank %{x}<br>Score %{customdata[0]:.1f}<br>Gap %{customdata[1]:+d}<extra></extra>" },
-    { type: "scatter", mode: "markers", name: "FightMatrix all-time", x: B.map((r) => r[2]), y: B.map((r) => r[0]), marker: { color: T.accent, size: 10, symbol: "diamond" },
-      customdata: B.map((r) => r[5]), hovertemplate: "<b>%{y}</b><br>FightMatrix rank %{x}<br>Points %{customdata:,.0f}<extra></extra>" },
-  ], { title: "Where the All-time board disagrees with an external reference", height: Math.max(520, 22 * B.length + 170),
-    xaxis: { autorange: "reversed", title: { text: "Rank (1 is best)" } }, yaxis: { automargin: true }, legend: { orientation: "h", y: 1.04, x: 0 } });
+    { type: "scatter", mode: "lines", x: B.flatMap((r) => [r[1], r[2], null]), y: B.flatMap((r) => [r[0], r[0], null]),
+      line: { color: T.border2, width: 2 }, hoverinfo: "skip" },
+    { type: "scatter", mode: "markers", x: B.map((r) => r[2]), y: B.map((r) => r[0]), marker: { color: T.context, size: 9, symbol: "diamond" },
+      customdata: B.map((r) => r[5]), hovertemplate: "<b>%{y}</b><br>FightMatrix #%{x}<br>%{customdata:,.0f} points<extra></extra>" },
+    { type: "scatter", mode: "markers", x: B.map((r) => r[1]), y: B.map((r) => r[0]), marker: { color: B.map((r) => (r === far ? T.accent : T.text2)), size: 9 },
+      customdata: B.map((r) => [r[4], r[3]]), hovertemplate: "<b>%{y}</b><br>Rank Engine #%{x}<br>score %{customdata[0]:.1f}<br>gap %{customdata[1]:+d}<extra></extra>" },
+  ], { height: Math.max(420, 22 * B.length + 80), xaxis: { range: [Math.max(...B.flatMap((r) => [r[1], r[2]])) + 1, 0], title: { text: "Rank (1 is best)" } },
+    yaxis: { automargin: true }, margin: { l: 8 } });
+  ex("bm-chart", `${B.length} of the top ${all.length} are on FightMatrix's list (ρ = ${fmt(rho(B.map((r) => r[1]), B.map((r) => r[2])), 2)}); ${esc(far[0])} differs most, #${far[1]} here and #${far[2]} there`,
+    `Dot: Rank Engine All-time rank; diamond: FightMatrix all-time rank (${D.bench.filter((r) => r[2] != null).length} matched names in all). Men only; the leaders not on FightMatrix's list are left out.`);
 };
 
-// ---- wiring ----------------------------------------------------------------------------------------------
+// ---- wiring --------------------------------------------------------------------------------------------------
 seg("c-gender", "g", () => { divisionOptions(); mark(); });
 $("c-div").addEventListener("change", (e) => { S.div = e.target.value; mark(); });
 slider("c-top", "o-top", "top", () => mark());
@@ -638,7 +822,11 @@ slider("c-min", "o-min", "min", () => mark());
 slider("st-min", "o-st-min", "stMin", () => mark("streaks"));
 slider("dm-min", "o-dm-min", "dmMin", () => mark("dominance"));
 $("w-a").value = S.a; $("w-s").value = S.s; $("o-a").textContent = fmt(S.a, 3); $("o-s").textContent = fmt(S.s, 3);
+$("foot").textContent = `${SNAP}. The rankings are the published boards; see README.md and RANKINGS.md.`;
+$("names").innerHTML = F.name.map((f) => `<option value="${esc(f)}">`).join("");
 divisionOptions();
+headlines();
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { theme(); mark(); });
 const io = new IntersectionObserver((es) => {
   es.forEach((e) => (e.isIntersecting ? visible.add(e.target.id) : visible.delete(e.target.id)));
   flush();
