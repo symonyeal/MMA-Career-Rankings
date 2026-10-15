@@ -529,17 +529,23 @@ SECTIONS.divisions = () => {
 };
 function yearTop() {
   const yr = $("dv-year").value, keep = new Set([...S.dv].map(short));
-  const T5 = D.year_top[yr].data.filter((t) => keep.has(t.name));
-  if (!T5.length) return empty("dv-year-chart", `No rated fighters in the selected classes in ${yr}.`);
-  const pts = T5.flatMap((t) => t.x.map((x, k) => ({ x, y: t.y[k], c: t.name }))), best = argmax(pts, (p) => p.x);
-  const ys = pts.map((p) => p.y);
-  plot("dv-year-chart", [{ type: "scatter", mode: "markers", x: pts.map((p) => p.x), y: ys,
-    marker: { size: 10, color: pts.map((p) => (p === best ? T.accent : T.context)), line: { color: T.bg, width: 1 } },
-    hovertemplate: "%{y}<br>end-of-year rating %{x:.0f}<extra></extra>" }],
-  { height: Math.max(360, 22 * ys.length + 80), xaxis: { title: { text: "End-of-year rating" } },
-    yaxis: { categoryorder: "array", categoryarray: [...ys].reverse(), automargin: true, tickfont: { color: T.text2, size: 12 } }, margin: { l: 8 } });
-  ex("dv-year-chart", `${yr}: ${esc(best.y.replace(/^\d+\.\s*/, "").split("  ·")[0])} (${esc(best.c)}) rated highest, ${fmt(best.x)}.`,
-    `End-of-year rating, top five per class.`);
+  const nm = (y) => y.replace(/^\d+\.\s*/, "").split("·")[0].trim(), full = (c) => D.divisions.find((d) => short(d) === c) || c;
+  // one row per class: its top five (rank-1 first), ordered by their mean, strongest at the top
+  const R = D.year_top[yr].data.filter((t) => keep.has(t.name))
+    .map((t) => ({ c: t.name, x: t.x, f: t.y.map(nm), m: sum(t.x) / t.x.length })).sort((a, b) => a.m - b.m);
+  if (!R.length) return empty("dv-year-chart", `No rated fighters in the selected classes in ${yr}.`);
+  const top = R.at(-1), best = argmax(R, (r) => Math.max(...r.x)), each = (g) => R.flatMap((r) => r.x.map((_, k) => g(r, k)));
+  plot("dv-year-chart", [
+    { type: "scatter", mode: "markers", x: each((r, k) => r.x[k]), y: each((r) => r.c),
+      marker: { size: 11, color: each((r) => (r === top ? T.accent : T.context)), line: { color: T.bg, width: 1 } },
+      customdata: each((r, k) => `${k + 1}. ${r.f[k]}`), hovertemplate: "%{customdata} · %{y}<br>end-of-year rating %{x:.0f}<extra></extra>" },
+    { type: "scatter", mode: "markers", x: R.map((r) => r.m), y: R.map((r) => r.c), marker: { symbol: "line-ns-open", size: 18, color: T.text2, line: { width: 2 } },
+      hovertemplate: "%{y}: top-five mean %{x:.0f}<extra></extra>" },
+  ], { height: Math.max(260, 48 * R.length + 80), xaxis: { title: { text: "End-of-year rating" } },
+    yaxis: { categoryorder: "array", categoryarray: R.map((r) => r.c) },
+    annotations: R.map((r) => label(Math.max(...r.x), r.c, esc(r.f[0]), r === top ? T.accent : T.text2, { xanchor: "right", yshift: 14 })) });
+  ex("dv-year-chart", `${yr}: ${esc(full(top.c))} has the strongest top five (mean ${fmt(top.m)}); ${esc(best.f[0])} rated highest, ${fmt(Math.max(...best.x))}.`,
+    `Dots: the top five by end-of-year rating, #1 named; tick: their mean.`);
 }
 function methodMix(y0, y1) {
   const mix = {};
