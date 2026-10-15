@@ -13,7 +13,8 @@ The site draws every analysis in the project's notebook from the published
 snapshot, in the browser, with no install. One set of controls (men or women,
 weight class, how many fighters, minimum rated bouts) drives every section.
 
-- **The rankings.** All-time, Prime and Current, exactly as published below.
+- **The rankings.** All-time, Prime and Current, exactly as published below, and
+  a board for every weight class whose scores add up to the All-time score.
 - **Why the leaders rank where they do.** Each All-time score split into
   championships, career skill and contender résumé. Two sliders change the
   exchange rate between them and re-rank the board, and a heat map shows how far
@@ -87,11 +88,16 @@ fighter has ever beaten so an unbeaten run against weak opposition cannot keep
 climbing. It needs 13 rated appearances, eight UFC bouts and a UFC bout within
 18 months. Integrity deductions never alter a published board.
 
+Each weight class has its own All-time board: the same score, counted only from
+the title wins, contender wins and career years earned in that class. A fighter's
+class scores add up exactly to their All-time score, so a champion in two classes
+is ranked in both and the class boards can never contradict the overall one.
+
 ## What is published
 
 The men's headline boards are published below so the rankings are visible on
 the repository front page. The full [Published UFC Rankings](RANKINGS.md) adds
-the three women's boards.
+the three women's boards and the weight-class boards.
 
 <!-- PUBLICATION:RELEASE:BEGIN -->
 

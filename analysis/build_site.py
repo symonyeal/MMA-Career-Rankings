@@ -161,6 +161,16 @@ def build(snap):
     }
     F = {k: plain(pd.Series(list(v)) if not isinstance(v, list) else v, 3 if k in "TSR" else 1) for k, v in F.items()}
 
+    # Class boards (ratings.division_legacy): components back on the normalised scale, so the page
+    # re-weights a class exactly as it re-weights the All-time board; sum over classes = All-time.
+    cb = rd("class_board")
+    cb = cb[cb["fighter"].isin(set(names))]
+    idx0 = {f: i for i, f in enumerate(names)}
+    w = PUBLIC_LEGACY_DISPLAY_SCALE * np.array([a, (1 - a) * s, (1 - a) * (1 - s)])  # points per normalised unit
+    cols = ["fighter", "division", "rank", "title", "skill", "resume"]
+    classes = plain([[idx0[f], d, r, t / w[0], k / w[1], q / w[2]]
+                     for f, d, r, t, k, q in cb[cols].itertuples(index=False)], 4)
+
     # 2. Trajectories: one point per WHR appearance, joined to its bout by (fighter, date, event, k).
     key = ["fighter", "event_date", "event_name"]
     h = whr[whr["fighter"].isin(set(names))].sort_values(key, kind="stable")
@@ -230,7 +240,7 @@ def build(snap):
             "a": a, "s": s, "scale": PUBLIC_LEGACY_DISPLAY_SCALE, "methods": METHODS,
             "peak": [FIVE_YEAR_PEAK_WINDOW_DAYS, FIVE_YEAR_PEAK_MIN_FIGHTS, FIVE_YEAR_PEAK_WINDOW_LABEL],
         },
-        "divisions": DIVISIONS, "short": DIV_SHORT, "F": F, "N": N, "traj": traj, "receipt": rec,
+        "divisions": DIVISIONS, "short": DIV_SHORT, "F": F, "classes": classes, "N": N, "traj": traj, "receipt": rec,
         "strength": strength, "year_top": year_top, "movers": movers,
         "mix": plain([[*k, v] for k, v in mix.items()]), "entropy": plain(ent.to_numpy().tolist(), 3),
         "lineage": lineage, "streaks": plain(st.to_numpy().tolist(), 0),

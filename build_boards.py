@@ -58,6 +58,7 @@ from ratings.opponent_quality import (
     quality_win_record,
 )
 from ratings.scope import DEFAULT_PUBLISHED_SCOPE, scope_sources
+from ratings.division_legacy import MEN_LIMIT_LB, class_board, class_ledger, class_scores
 from ratings.performance_adjustment import womens_division_label
 import itertools
 
@@ -93,6 +94,8 @@ README_CURRENT_BEGIN = "<!-- BOARD:CURRENT30:BEGIN -->"
 README_CURRENT_END = "<!-- BOARD:CURRENT30:END -->"
 README_CURRENT_WOMEN_BEGIN = "<!-- BOARD:CURRENTWOMEN10:BEGIN -->"
 README_CURRENT_WOMEN_END = "<!-- BOARD:CURRENTWOMEN10:END -->"
+README_CLASS_BEGIN = "<!-- BOARD:CLASS:BEGIN -->"
+README_CLASS_END = "<!-- BOARD:CLASS:END -->"
 README_RELEASE_BEGIN = "<!-- PUBLICATION:RELEASE:BEGIN -->"
 README_RELEASE_END = "<!-- PUBLICATION:RELEASE:END -->"
 
@@ -448,6 +451,11 @@ def write_board_artifacts(
             target / f"completeness_gated_board{suffix}.parquet", index=False
         )
 
+    classes = None
+    if core_col == "public_legacy_score" and (snap / "performance_appearances.parquet").exists():
+        classes = class_board_frame(snap, current, boards, scope)
+        classes.to_parquet(target / "class_board.parquet", index=False)
+
     prime_boards: dict[str, pd.DataFrame] = {}
     elite_prime_boards: dict[str, pd.DataFrame] = {}
     if PRIME_RATING_COL in current.columns:
@@ -573,6 +581,10 @@ def write_board_artifacts(
             gender: int(frame["status"].eq("ranked").sum())
             for gender, frame in boards.items()
         },
+        "class_ranked_by_gender": (
+            {g: int(n) for g, n in classes.groupby("gender")["fighter"].nunique().items()}
+            if classes is not None else {}
+        ),
         "prime_rating_col": PRIME_RATING_COL if prime_boards else None,
         "prime_ranked_by_gender": {
             gender: int(frame["status"].eq("ranked").sum())
@@ -595,6 +607,57 @@ def write_board_artifacts(
             for gender, frame in current_boards.items()
         },
     }
+
+
+def class_board_frame(
+    snapshot_dir: Path, current: pd.DataFrame, gated: dict[str, pd.DataFrame], scope: str
+) -> pd.DataFrame:
+    """The All-time board by weight class (:mod:`ratings.division_legacy`).
+
+    Refuses to publish unless every fighter's class scores sum to their published All-time
+    score: the class boards and the All-time board are one measure, split by where it was earned.
+    """
+    from ratings.rate_snapshot import _source_fights_for_public_resume
+
+    snap = Path(snapshot_dir)
+    scores = class_scores(current, class_ledger(
+        current, pd.read_parquet(snap / "performance_appearances.parquet"),
+        source_fights=_source_fights_for_public_resume(snap, scope),
+        history=pd.read_parquet(snap / "ratings_history_whr.parquet"),
+    ))
+    total = scores.groupby("fighter")["score"].sum().reindex(current["fighter"]).fillna(0.0)
+    gap = (total.to_numpy() - pd.to_numeric(current["public_legacy_score"], errors="coerce").fillna(0.0).to_numpy())
+    if abs(gap).max() > 1e-6:
+        raise ValueError(f"class scores do not sum to the All-time score (max gap {abs(gap).max():.3g})")
+    eligible = pd.concat([b.loc[b["status"].eq("ranked"), "fighter"] for b in gated.values()])
+    return class_board(scores, current, eligible)
+
+
+CLASS_ORDER = [c for c, _ in reversed(MEN_LIMIT_LB)] + [
+    "Women's Featherweight", "Women's Bantamweight", "Women's Flyweight", "Women's Strawweight", "Women's Atomweight",
+]
+
+
+def class_board_markdown(classes: pd.DataFrame, all_time: dict[str, pd.Series], *, top: int = 10,
+                         top_women: int = 5, min_ranked: int = 10) -> str:
+    """One table per weight class, heaviest first: rank, fighter, class score, the share of the
+    fighter's All-time score earned in the class, and their All-time rank."""
+    parts = []
+    for g, label, n in (("M", "Men", top), ("F", "Women", top_women)):
+        frame = classes[classes["gender"].eq(g)]
+        for d in [c for c in CLASS_ORDER if c in set(frame["division"])]:
+            rows = frame[frame["division"].eq(d)]
+            if len(rows) < min_ranked:
+                continue
+            rows = rows.head(n)
+            parts.append(f"#### {label} — {d}\n\n" + _markdown_table(pd.DataFrame({
+                "#": rows["rank"].to_numpy(),
+                "Fighter": rows["fighter"].str.replace("|", r"\|", regex=False).to_numpy(),
+                "Class score": rows["score"].round(1).to_numpy(),
+                "Share of All-time": [f"{v:.0%}" for v in rows["share"]],
+                "All-time #": ["" if pd.isna(v) else f"{v:.0f}" for v in rows["fighter"].map(all_time.get(g, {}))],
+            })))
+    return "\n\n".join(parts)
 
 
 def board_rank_map(path: Path) -> pd.Series:
@@ -1123,6 +1186,16 @@ def main() -> None:
                     ),
                 )
             )
+        class_path = out / "class_board.parquet"
+        if class_path.exists():
+            ranks = {
+                g: board_rank_map(p)
+                for g, p in (("M", out / "completeness_gated_board.parquet"),
+                             ("F", out / "completeness_gated_board_women.parquet"))
+                if p.exists()
+            }
+            replacements.append((README_CLASS_BEGIN, README_CLASS_END,
+                                 class_board_markdown(pd.read_parquet(class_path), ranks)))
         plans: list[tuple[Path, tuple[tuple[str, str, str], ...]]] = [
             (Path(args.write_readme), tuple(replacements))
         ]
