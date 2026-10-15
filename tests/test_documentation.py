@@ -44,6 +44,7 @@ PUBLICATION_MARKERS = (
     "BOARD:ELITEPRIMEWOMEN10",
     "BOARD:CURRENT30",
     "BOARD:CURRENTWOMEN10",
+    "BOARD:CLASS",
 )
 # The overview publishes the three men's headline boards beside the release
 # facts they were built from. Every women's table stays in the publication only.

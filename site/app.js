@@ -71,9 +71,21 @@ const VIEWS = {
   current: { rank: "cr", val: "cur", label: "Current rating", div: "cdiv" },
 };
 
+// Class rows (ratings.division_legacy): the All-time score split by the class it was earned in. A fighter
+// belongs to every class where they earned credit; Current places a fighter in their current class.
+const C = D.classes.map(([f, d, rank, t, k, r]) => ({ f, d, rank, t, k, r }));
+const member = new Map();
+C.forEach((u) => { if (!member.has(u.f)) member.set(u.f, new Map()); member.get(u.f).set(u.d, u); });
+const inClass = (i, d, view = S.view) => view === "current" ? F.cdiv[i] === d : member.get(i)?.has(d);
 function pool(view = S.view, useDiv = true) {
-  const dv = VIEWS[view].div;
-  return range(NF).filter((i) => F.g[i] === S.g && F.n[i] >= S.min && (!useDiv || S.div === "All" || F[dv][i] === S.div));
+  return range(NF).filter((i) => F.g[i] === S.g && F.n[i] >= S.min && (!useDiv || S.div === "All" || inClass(i, S.div, view)));
+}
+// A board unit is a whole career (no class chosen) or the part of it earned in one class.
+const uscore = (u, a = M.a, s = M.s) => M.scale * (a * u.t + (1 - a) * (s * u.k + (1 - s) * u.r));
+function units(g, div) {
+  return div === "All"
+    ? range(NF).filter((i) => F.g[i] === g && F.at[i] != null).map((i) => ({ f: i, d: "All", rank: F.at[i], t: F.T[i], k: F.S[i], r: F.R[i] }))
+    : C.filter((u) => F.g[u.f] === g && u.d === div);
 }
 function boardRows(view = S.view, useDiv = true) {
   const r = VIEWS[view].rank;
@@ -105,7 +117,7 @@ function slider(id, out, key, after, parse = Number) {
   el.addEventListener("input", () => { S[key] = parse(el.value); $(out).textContent = el.value; after(); });
 }
 function divisionOptions() {
-  const have = new Set(F.div.filter((d, i) => F.g[i] === S.g && d));
+  const have = new Set([...C.filter((u) => F.g[u.f] === S.g).map((u) => u.d), ...F.cdiv.filter((d, i) => F.g[i] === S.g && d)]);
   const order = [...have].sort((a, b) => ((D.divisions.indexOf(a) + 99) % 99) - ((D.divisions.indexOf(b) + 99) % 99) || a.localeCompare(b));
   if (!have.has(S.div)) S.div = "All";
   $("c-div").innerHTML = ["All", ...order].map((d) => `<option ${d === S.div ? "selected" : ""}>${esc(d)}</option>`).join("");
@@ -124,28 +136,49 @@ $("names").innerHTML = F.name.map((f) => `<option value="${esc(f)}">`).join("");
 
 // ---- 1. rankings ----------------------------------------------------------------------------------------
 SECTIONS.rankings = () => {
+  if (S.view === "all_time" && S.div !== "All") return classTable();
   const rows = boardRows().filter((i) => !S.q || F.name[i].toLowerCase().includes(S.q)).slice(0, S.top);
   const V = VIEWS[S.view], vmax = Math.max(...rows.map((i) => F[V.val][i])), vmin = Math.min(...rows.map((i) => F[V.val][i]));
   const bar = (v, d) => `<td class="num bar"><i style="width:${(100 * (v - vmin * 0.98) / (vmax - vmin * 0.98 || 1)).toFixed(1)}%"></i><span>${fmt(v, d)}</span></td>`;
   const now = (i) => F.cdiv[i] && F.cdiv[i] !== F.div[i] ? ` <span class="dim">→ now ${esc(short(F.cdiv[i]))}</span>` : "";
   const name = (i) => `<td class="name"><button class="namebtn" data-f="${esc(F.name[i])}">${esc(F.name[i])}</button></td>`;
+  const cls = S.div !== "All";  // Prime and Current within a class: the published order restricted, renumbered
+  const pos = new Map(rows.map((i, k) => [i, k + 1]));
   const cols = {
     all_time: [["#", (i) => `<td>${chip(F.at[i])}</td>`], ["Fighter", name], ["Division", (i) => `<td>${esc(F.div[i])}${now(i)}</td>`],
       ["Score", (i) => bar(F.score[i], 1)], ["Prime", (i) => `<td class="num">${fmt(F.plevel[i])}</td>`],
       ["Prime rank", (i) => `<td class="num">${F.pr[i] ?? ""}</td>`], ["Elite wins", (i) => `<td class="num">${F.pwins[i] ?? ""}</td>`],
       ["Rated bouts", (i) => `<td class="num dim">${F.n[i]}</td>`], ["Last bout", (i) => `<td class="dim">${F.last[i] ?? ""}</td>`]],
-    prime: [["#", (i) => `<td>${chip(F.pr[i])}</td>`], ["Fighter", name], ["Division", (i) => `<td>${esc(F.div[i])}</td>`],
+    prime: [["#", (i) => `<td>${chip(cls ? pos.get(i) : F.pr[i])}</td>`], ["Fighter", name], ["Division", (i) => `<td>${esc(F.div[i])}</td>`],
       ["Prime", (i) => bar(F.plevel[i], 0)], ["Elite wins", (i) => `<td class="num">${F.pwins[i] ?? ""}</td>`],
-      ["Best decade", (i) => `<td class="dim">${F.p0[i] ?? ""}–${F.p1[i] ?? ""}</td>`], ["All-time rank", (i) => `<td class="num dim">${F.at[i] ?? ""}</td>`]],
-    current: [["#", (i) => `<td>${chip(F.cr[i])}</td>`], ["Fighter", name], ["Division", (i) => `<td>${esc(F.cdiv[i])}</td>`],
+      ["Best decade", (i) => `<td class="dim">${F.p0[i] ?? ""}–${F.p1[i] ?? ""}</td>`], ["Prime #", (i) => `<td class="num dim">${F.pr[i] ?? ""}</td>`],
+      ["All-time rank", (i) => `<td class="num dim">${F.at[i] ?? ""}</td>`]],
+    current: [["#", (i) => `<td>${chip(cls ? pos.get(i) : F.cr[i])}</td>`], ["Fighter", name], ["Division", (i) => `<td>${esc(F.cdiv[i])}</td>`],
       ["Rating", (i) => bar(F.cur[i], 0)], ["UFC bouts", (i) => `<td class="num">${F.ufc[i] ?? ""}</td>`],
-      ["Last bout", (i) => `<td class="dim">${F.last[i] ?? ""}</td>`], ["All-time rank", (i) => `<td class="num dim">${F.at[i] ?? ""}</td>`]],
-  }[S.view];
+      ["Last bout", (i) => `<td class="dim">${F.last[i] ?? ""}</td>`], ["Current #", (i) => `<td class="num dim">${F.cr[i] ?? ""}</td>`],
+      ["All-time rank", (i) => `<td class="num dim">${F.at[i] ?? ""}</td>`]],
+  }[S.view].filter(([h]) => cls || !/^(Prime|Current) #$/.test(h));
   $("board").innerHTML = rows.length
     ? `<table><thead><tr>${cols.map(([h]) => `<th class="${/^(#|Fighter|Division|Best|Last)/.test(h) ? "" : "num"}">${h}</th>`).join("")}</tr></thead><tbody>` +
       rows.map((i) => `<tr>${cols.map(([, c]) => c(i)).join("")}</tr>`).join("") + "</tbody></table>"
     : `<p class="note" style="padding:10px 14px">No ranked fighters match the current filters.</p>`;
 };
+function classTable() {
+  const U = units(S.g, S.div).filter((u) => F.n[u.f] >= S.min && (!S.q || F.name[u.f].toLowerCase().includes(S.q)))
+    .sort((x, y) => x.rank - y.rank).slice(0, S.top);
+  if (!U.length) { $("board").innerHTML = `<p class="note" style="padding:10px 14px">No ranked fighters in this class.</p>`; return; }
+  const v = U.map((u) => uscore(u)), vmax = Math.max(...v);
+  const pts = (u) => [M.scale * M.a * u.t, M.scale * (1 - M.a) * M.s * u.k, M.scale * (1 - M.a) * (1 - M.s) * u.r];
+  const other = (u) => [...member.get(u.f)].filter(([d]) => d !== u.d).map(([d, w]) => `${short(d)} #${w.rank}`).join(", ");
+  $("board").innerHTML = `<table><thead><tr><th>#</th><th>Fighter</th><th class="num">Class score</th><th class="num">Share of All-time</th>
+    <th class="num">Championships</th><th class="num">Career skill</th><th class="num">Résumé</th><th class="num">All-time #</th><th>Also ranked</th></tr></thead><tbody>` +
+    U.map((u, k) => { const p = pts(u); return `<tr><td>${chip(u.rank)}</td>
+      <td class="name"><button class="namebtn" data-f="${esc(F.name[u.f])}">${esc(F.name[u.f])}</button></td>
+      <td class="num bar"><i style="width:${(100 * v[k] / vmax).toFixed(1)}%"></i><span>${fmt(v[k], 1)}</span></td>
+      <td class="num">${fmt(100 * v[k] / F.score[u.f])}%</td><td class="num dim">${fmt(p[0])}</td><td class="num dim">${fmt(p[1])}</td>
+      <td class="num dim">${fmt(p[2])}</td><td class="num dim">${F.at[u.f] ?? ""}</td><td class="dim">${esc(other(u))}</td></tr>`; }).join("") +
+    "</tbody></table>";
+}
 $("board").addEventListener("click", (e) => {
   const b = e.target.closest(".namebtn");
   if (b) addFighter(b.dataset.f, true);
@@ -154,47 +187,45 @@ seg("c-view", "view", () => mark("rankings", "placement", "divisions"));
 $("c-search").addEventListener("input", (e) => { S.q = e.target.value.trim().toLowerCase(); mark("rankings"); });
 
 // ---- 2. score anatomy and the exchange rates -----------------------------------------------------------
-const score = (i, a, s) => M.scale * (a * F.T[i] + (1 - a) * (s * F.S[i] + (1 - s) * F.R[i]));
-const eligible = (g) => range(NF).filter((i) => F.g[i] === g && F.at[i] != null);
-function rerank(g, a, s) {
-  const E = eligible(g).sort((x, y) => score(y, a, s) - score(x, a, s));
-  return new Map(E.map((i, r) => [i, r + 1]));
+function rerank(U, a, s) {
+  return new Map([...U].sort((x, y) => uscore(y, a, s) - uscore(x, a, s)).map((u, r) => [u, r + 1]));
 }
 SECTIONS.anatomy = () => {
-  const { a, s } = S, R = rerank(S.g, a, s), K = Math.min(20, S.top);
-  const shown = pool("all_time").filter((i) => R.has(i)).sort((x, y) => R.get(x) - R.get(y)).slice(0, K).reverse();
-  const lab = shown.map((i) => {
-    const d = F.at[i] - R.get(i);
-    return `#${R.get(i)}  ${F.name[i]}` + (d ? `  (${d > 0 ? "▲" : "▼"}${Math.abs(d)})` : "");
+  const { a, s } = S, U = units(S.g, S.div), R = rerank(U, a, s), K = Math.min(20, S.top), cls = S.div !== "All";
+  const shown = U.filter((u) => F.n[u.f] >= S.min).sort((x, y) => R.get(x) - R.get(y)).slice(0, K).reverse();
+  const lab = shown.map((u) => {
+    const d = u.rank - R.get(u);
+    return `#${R.get(u)}  ${F.name[u.f]}` + (d ? `  (${d > 0 ? "▲" : "▼"}${Math.abs(d)})` : "");
   });
+  const ev = (txt) => (u) => (cls ? `${fmt(100 * uscore(u) / F.score[u.f])}% of the All-time score earned at ${short(u.d)}` : txt(u.f));
   const parts = [
-    [`Championships · ${fmt(100 * a, 1)}%`, (i) => M.scale * a * F.T[i], T.accent, (i) => `${F.tw[i]} qualifying title wins`],
-    [`Career skill · ${fmt(100 * (1 - a) * s, 1)}%`, (i) => M.scale * (1 - a) * s * F.S[i], T.primary, (i) => `${F.cy[i]} contributing career years`],
-    [`Contender résumé · ${fmt(100 * (1 - a) * (1 - s), 1)}%`, (i) => M.scale * (1 - a) * (1 - s) * F.R[i], T.positive, (i) => `${F.cw[i]} contender wins`],
+    [`Championships · ${fmt(100 * a, 1)}%`, (u) => M.scale * a * u.t, T.accent, ev((i) => `${F.tw[i]} qualifying title wins`)],
+    [`Career skill · ${fmt(100 * (1 - a) * s, 1)}%`, (u) => M.scale * (1 - a) * s * u.k, T.primary, ev((i) => `${F.cy[i]} contributing career years`)],
+    [`Contender résumé · ${fmt(100 * (1 - a) * (1 - s), 1)}%`, (u) => M.scale * (1 - a) * (1 - s) * u.r, T.positive, ev((i) => `${F.cw[i]} contender wins`)],
   ];
-  const tot = shown.map((i) => score(i, a, s));
+  const tot = shown.map((u) => uscore(u, a, s));
   const data = parts.map(([name, f, color, ev]) => ({
     type: "bar", orientation: "h", name, x: shown.map(f), y: lab, marker: { color },
-    customdata: shown.map((i, j) => [fmt(tot[j], 1), ev(i)]),
-    hovertemplate: `<b>%{y}</b><br>${name}: %{x:.1f} points<br>All-time total: %{customdata[0]}<br>%{customdata[1]}<extra></extra>`,
+    customdata: shown.map((u, j) => [fmt(tot[j], 1), ev(u)]),
+    hovertemplate: `<b>%{y}</b><br>${name}: %{x:.1f} points<br>${cls ? "Class" : "All-time"} total: %{customdata[0]}<br>%{customdata[1]}<extra></extra>`,
   }));
   data.push({ type: "scatter", mode: "text", x: tot, y: lab, text: tot.map((v) => "  " + fmt(v)), textposition: "middle right",
     textfont: { color: T.text, size: 11 }, hoverinfo: "skip", showlegend: false, cliponaxis: false });
   plot("anat-chart", data, {
-    title: published() ? "Why the All-time leaders rank here" : "All-time board at the chosen exchange rates (▲▼ against published)",
+    title: (cls ? `${S.div}: ` : "All-time: ") + (published() ? "why the leaders rank here" : "the board at the chosen exchange rates (▲▼ against published)"),
     barmode: "stack", height: Math.max(470, 31 * shown.length + 185), hovermode: "closest",
-    xaxis: { title: { text: "Weighted points in the All-time score" }, rangemode: "tozero", range: [0, Math.max(...tot, 1) * 1.16] },
+    xaxis: { title: { text: cls ? `Weighted points earned at ${S.div}` : "Weighted points in the All-time score" }, rangemode: "tozero", range: [0, Math.max(...tot, 1) * 1.16] },
     legend: { orientation: "h", y: -0.16, x: 0, traceorder: "normal" }, margin: { t: 68, r: 84, b: 100, l: 60 },
   });
 
   // Published top 100 against the new order: overlap at the top and Spearman's rho.
-  const P = eligible(S.g).sort((x, y) => F.at[x] - F.at[y]).slice(0, 100);
-  const q = [...P].sort((x, y) => R.get(x) - R.get(y)), pos = new Map(q.map((i, r) => [i, r + 1]));
-  const n = P.length, rho = 1 - 6 * P.reduce((t, i, r) => t + (r + 1 - pos.get(i)) ** 2, 0) / (n * (n * n - 1));
-  const top10 = P.slice(0, 10).filter((i) => R.get(i) <= 10).length;
-  const mv = P.slice(0, 50).map((i) => [i, F.at[i] - R.get(i)]).sort((x, y) => y[1] - x[1]);
+  const P = [...U].sort((x, y) => x.rank - y.rank).slice(0, 100);
+  const q = [...P].sort((x, y) => R.get(x) - R.get(y)), pos = new Map(q.map((u, r) => [u, r + 1]));
+  const n = P.length, rho = n > 1 ? 1 - 6 * P.reduce((t, u, r) => t + (r + 1 - pos.get(u)) ** 2, 0) / (n * (n * n - 1)) : 1;
+  const top10 = P.slice(0, 10).filter((u) => R.get(u) <= 10).length;
+  const mv = P.slice(0, 50).map((u) => [u.f, u.rank - R.get(u)]).sort((x, y) => y[1] - x[1]);
   const who = (l) => l.map(([i, d]) => `${esc(F.name[i])} ${d > 0 ? "+" : ""}${d}`).join(", ");
-  const num1 = F.name[[...R].find(([, r]) => r === 1)[0]];
+  const num1 = F.name[[...R].find(([, r]) => r === 1)[0].f];
   $("anat-summary").innerHTML = published()
     ? `At the published rates (a = ${M.a}, s = ${M.s}). Move a slider to see how much of the order is the exchange rate.`
     : `At a = ${fmt(a, 3)}, s = ${fmt(s, 3)}: #1 is <b>${esc(num1)}</b>; ${top10} of the published top 10 stay in the top 10;
@@ -207,8 +238,8 @@ const published = () => Math.abs(S.a - M.a) < 1e-9 && Math.abs(S.s - M.s) < 1e-9
 function robustness() {
   const f = I.get(S.rob);
   if (f == null || F.at[f] == null) return empty("rob-chart", "Pick a fighter ranked on an All-time board.");
-  const E = eligible(F.g[f]), G = range(21).map((k) => k / 20);
-  const z = G.map((s) => G.map((a) => { const v = score(f, a, s); return 1 + E.filter((j) => score(j, a, s) > v).length; }));
+  const E = units(F.g[f], "All"), me = E.find((u) => u.f === f), G = range(21).map((k) => k / 20);
+  const z = G.map((s) => G.map((a) => { const v = uscore(me, a, s); return 1 + E.filter((u) => uscore(u, a, s) > v).length; }));
   const zmax = Math.max(10, Math.min(Math.max(...z.flat()), 3 * F.at[f]));
   plot("rob-chart", [
     { type: "heatmap", x: G, y: G, z, zmin: 1, zmax, colorscale: HEAT, reversescale: true,
@@ -238,20 +269,24 @@ $("rob-pick").addEventListener("change", (e) => { if (I.has(e.target.value)) { S
 
 // ---- 3. résumé vs rating ---------------------------------------------------------------------------------
 SECTIONS.placement = () => {
-  const V = VIEWS[S.view], rows = boardRows().slice(0, S.top);
+  const cu = S.view === "all_time" && S.div !== "All" ? new Map(units(S.g, S.div).map((u) => [u.f, u])) : null;
+  const V = cu ? { ...VIEWS.all_time, label: `${S.div} class score` } : VIEWS[S.view];
+  const val = (i) => (cu ? uscore(cu.get(i)) : F[V.val][i]);
+  const rows = cu ? [...cu.values()].filter((u) => F.n[u.f] >= S.min).sort((x, y) => x.rank - y.rank).map((u) => u.f).slice(0, S.top)
+    : boardRows().slice(0, S.top);
   if (!rows.length) return empty("place-chart", "No ranked fighters match the current filters.");
   const by = new Map();
   rows.forEach((i, r) => { const d = F[V.div][i] || "Unknown"; if (!by.has(d)) by.set(d, []); by.get(d).push([i, r + 1]); });
-  const mean = (l) => l.reduce((t, [i]) => t + F[V.val][i], 0) / l.length;
+  const mean = (l) => l.reduce((t, [i]) => t + val(i), 0) / l.length;
   const data = [...by].sort((x, y) => mean(y[1]) - mean(x[1])).map(([d, l]) => ({
-    type: "scatter", mode: "markers", name: d, x: l.map(([i]) => F.n[i]), y: l.map(([i]) => F[V.val][i]),
+    type: "scatter", mode: "markers", name: d, x: l.map(([i]) => F.n[i]), y: l.map(([i]) => val(i)),
     marker: { size: l.map(([, r]) => (r <= 10 ? 16 : 9)), color: divColor(d), opacity: 0.82, line: { color: "white", width: 0.8 } },
     customdata: l.map(([i, r]) => [r, F.name[i], F.last[i]]),
     hovertemplate: `<b>#%{customdata[0]} %{customdata[1]}</b><br>${d}<br>rated bouts=%{x}<br>${V.label}=%{y:.1f}<br>last bout=%{customdata[2]}<extra></extra>`,
   }));
-  const ann = rows.slice(0, 10).map((i, r) => ({ x: F.n[i], y: F[V.val][i], text: String(r + 1), showarrow: false,
+  const ann = rows.slice(0, 10).map((i, r) => ({ x: F.n[i], y: val(i), text: String(r + 1), showarrow: false,
     font: { size: 10, color: r ? T.text : T.bg }, bgcolor: r ? T.surface : T.accent, bordercolor: T.border_strong, borderpad: 2 }))
-    .concat(rows.slice(0, 6).map((i, r) => ({ x: F.n[i], y: F[V.val][i], text: F.name[i], showarrow: false, xanchor: "left",
+    .concat(rows.slice(0, 6).map((i, r) => ({ x: F.n[i], y: val(i), text: F.name[i], showarrow: false, xanchor: "left",
       xshift: 14, yshift: r % 2 ? -10 : 10, font: { size: 11, color: T.text } })));
   plot("place-chart", data, {
     title: `Top ${rows.length} placement — ${V.label}`, height: 560, annotations: ann,
@@ -332,6 +367,8 @@ function card(i, c) {
       ${row("Peak rating", fmt(F.peak[i]))}
       ${row("Career mass", `${fmt(F.mass[i])} · ${F.cy[i]} of ${F.ay[i]} years`)}
       ${row("Dominance", F.dom[i] != null ? `${fmt(F.dom[i], 2)} over ${F.domw[i]} wins` : "—")}
+      ${row("By class", [...(member.get(i) ?? [])].sort((x, y) => uscore(y[1]) - uscore(x[1]))
+        .map(([d, u]) => `${short(d)} #${u.rank} · ${fmt(100 * uscore(u) / F.score[i])}%`).join("<br>") || "—")}
       ${row("Rated bouts", `${F.n[i]} · last ${F.last[i] ?? "—"}`)}</dl>
     <div class="stack">${pts.map((p, j) => `<span style="width:${(100 * p / tot).toFixed(1)}%;background:${[T.accent, T.primary, T.positive][j]}"></span>`).join("")}</div>
     <small>All-time points: championships ${fmt(pts[0])} · skill ${fmt(pts[1])} · résumé ${fmt(pts[2])}</small></div>`;
@@ -493,13 +530,17 @@ SECTIONS.divisions = () => {
   }
   yearTop();
   // Board share by career class (viz.top100_division_density_chart) on the chosen board.
-  const B = boardRows(S.view, false).slice(0, 100), dv = VIEWS[S.view].div, cnt = {};
-  B.forEach((i) => { const d = F[dv][i] || "Unknown"; cnt[d] = (cnt[d] || 0) + 1; });
-  const sh = Object.entries(cnt).sort((a, b) => a[1] - b[1]);
-  plot("dv-share", [{ type: "bar", orientation: "h", x: sh.map(([, n]) => 100 * n / B.length), y: sh.map(([d]) => d), marker: { color: T.primary },
-    text: sh.map(([, n]) => `${fmt(100 * n / B.length, 1)}%`), textposition: "outside", cliponaxis: false,
-    customdata: sh.map(([, n]) => n), hovertemplate: "<b>%{y}</b><br>%{customdata} of the top group<extra></extra>" }],
-    { title: `Class share inside the ${VIEWS[S.view].label.split(" ")[0]} top ${B.length}`, height: Math.max(380, 30 * sh.length + 120),
+  const B = boardRows(S.view, false).slice(0, 100), dv = VIEWS[S.view].div, cnt = {}, pts = S.view === "all_time";
+  B.forEach((i) => {
+    if (pts) [...(member.get(i) ?? [])].forEach(([d, u]) => { cnt[d] = (cnt[d] || 0) + uscore(u); });
+    else { const d = F[dv][i] || "Unknown"; cnt[d] = (cnt[d] || 0) + 1; }
+  });
+  const den = Object.values(cnt).reduce((x, y) => x + y, 0), sh = Object.entries(cnt).sort((a, b) => a[1] - b[1]);
+  plot("dv-share", [{ type: "bar", orientation: "h", x: sh.map(([, n]) => 100 * n / den), y: sh.map(([d]) => d), marker: { color: T.primary },
+    text: sh.map(([, n]) => `${fmt(100 * n / den, 1)}%`), textposition: "outside", cliponaxis: false,
+    customdata: sh.map(([, n]) => fmt(n)), hovertemplate: `<b>%{y}</b><br>%{customdata} ${pts ? "All-time points" : "fighters"}<extra></extra>` }],
+    { title: pts ? `Where the All-time top ${B.length} earned their points, by class` : `Class share inside the ${VIEWS[S.view].label.split(" ")[0]} top ${B.length}`,
+      height: Math.max(380, 30 * sh.length + 120),
       xaxis: { ticksuffix: "%", title: { text: "Share" } }, showlegend: false, margin: { r: 60 } });
   // Parity (viz.division_entropy_chart) and finishes (viz.method_mix_timeline_chart).
   const E = D.entropy.filter((r) => S.dv.has(r[1]) && r[0] >= y0 && r[0] <= y1), ent = [];
