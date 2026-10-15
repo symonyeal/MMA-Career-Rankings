@@ -3938,8 +3938,9 @@ def title_lineage_chart(
     for _, r in rg.iterrows():
         last = str(r["fighter"]).split()[-1]
         tag = f"{last} ({r['defenses']}D)" if r["defenses"] else last
+        # On a date axis a bar's length is read in milliseconds, so a length in days drew invisible slivers.
         fig.add_trace(go.Bar(
-            x=[r["days"]], y=["belt"], base=[r["start"]],
+            x=[r["days"] * 86_400_000], y=["belt"], base=[r["start"]],
             orientation="h", marker_color=color_for[r["fighter"]],
             marker_line={"color": THEME["bg"], "width": 1.5},
             opacity=0.92, showlegend=False,

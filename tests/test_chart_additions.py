@@ -53,6 +53,16 @@ def test_striking_profile_unknown_fighter_is_empty_state():
     assert hasattr(fig, "layout")
 
 
+def test_title_lineage_bar_spans_the_reign_on_a_date_axis():
+    app = pd.DataFrame({
+        "fighter": ["A", "B"], "opponent": ["B", "A"], "division": ["Lightweight"] * 2,
+        "event_date": pd.to_datetime(["2020-01-01", "2021-01-01"]), "is_winner": [True, True],
+        "is_championship_bout": [True, True], "is_interim_title_bout": [False, False],
+    })
+    reign = title_lineage_chart(app, division="Lightweight").data[0]
+    assert reign.x[0] == 366 * 86_400_000  # 2020 is a leap year; a date axis measures length in ms
+
+
 def test_prequential_artifacts_are_in_snapshot_loader_map():
     mapped = dict(TABLE_KEY_MAP)
     assert mapped["prequential_predictions"] == "prequential_predictions"
