@@ -111,7 +111,10 @@ function mark(...ids) {
   flush();
 }
 function flush() {
-  for (const id of [...dirty]) if (visible.has(id)) { dirty.delete(id); SECTIONS[id](); }
+  for (const id of [...dirty]) if (visible.has(id)) {
+    dirty.delete(id);
+    try { SECTIONS[id](); } catch (e) { reportError(e); }   // one failing section must not stop the rest
+  }
 }
 function seg(id, key, after) {
   $(id).addEventListener("click", (e) => {

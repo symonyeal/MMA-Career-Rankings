@@ -375,3 +375,7 @@ generated; rebuild it after the boards change:
 ```text
 python analysis/build_site.py data/snapshots/2026-08-13
 ```
+
+`index.html` loads each asset as `name?v=<content hash>`, so a browser never pairs the page with a
+cached older asset. After editing `app.js` or `style.css` alone, re-stamp with
+`python analysis/build_site.py --stamp`; a test fails while the stamp is stale.

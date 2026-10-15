@@ -5,9 +5,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>UFC Rank Engine</title>
 <meta name="description" content="The Symon UFC Rank Engine boards (All-time, Prime, Current) and the evidence behind them, interactive.">
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="style.css?v=4387dd9591">
+<script>
+addEventListener("error", (e) => {
+  const m = e.message || "could not load " + (e.target.src || e.target.href);
+  const show = () => { const p = document.getElementById("fail"); p.hidden = false; p.textContent += " " + m.replace(/\.$/, "") + "."; };
+  document.readyState === "loading" ? addEventListener("DOMContentLoaded", show) : show();
+}, true);
+</script>
 <script src="https://cdn.jsdelivr.net/npm/plotly.js-dist-min@4.1.1/plotly.min.js"></script>
-<script src="data.js"></script>
+<script src="data.js?v=61d6fb395d"></script>
 </head>
 <body>
 <header class="top">
@@ -30,6 +37,7 @@
 </header>
 
 <main class="wrap" id="top">
+  <p id="fail" class="callout" hidden>Part of the page failed; a hard reload (Ctrl+F5) usually fixes it.</p>
   <section class="hero">
     <h1>Three ways to rank a fighter: the career, the prime, and now.</h1>
     <p class="lede">One rating model is fitted to every recorded bout, then read three ways: what a career was worth
@@ -159,6 +167,6 @@
   </footer>
 </main>
 <datalist id="names"></datalist>
-<script src="app.js"></script>
+<script src="app.js?v=406bb19042"></script>
 </body>
 </html>
