@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>UFC Rank Engine</title>
+<meta name="description" content="Interactive analyses of the Symon UFC Rank Engine boards: All-time, Prime and Current.">
+<link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/plotly.js-dist-min@4.1.1/plotly.min.js"></script>
+<script src="data.js"></script>
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="#top">UFC Rank Engine</a>
+    <nav>
+      <a href="#rankings">Rankings</a><a href="#anatomy">Score</a><a href="#fighters">Fighters</a>
+      <a href="#careers">Careers</a><a href="#movers">Movers</a><a href="#streaks">Streaks</a>
+      <a href="#divisions">Weight classes</a><a href="#lineage">Titles</a><a href="#policy">Policy</a>
+      <a href="#benchmark">Benchmark</a>
+    </nav>
+  </div>
+  <div class="controls wrap" id="controls">
+    <span class="label">Control room</span>
+    <div class="seg" id="c-gender"><button data-v="M" class="on">Men</button><button data-v="F">Women</button></div>
+    <label>Weight class <select id="c-div"></select></label>
+    <label>Show top <input id="c-top" type="range" min="5" max="100" step="5" value="30"><output id="o-top">30</output></label>
+    <label>Min rated bouts <input id="c-min" type="range" min="13" max="40" step="1" value="13"><output id="o-min">13</output></label>
+  </div>
+</header>
+
+<main class="wrap" id="top">
+  <section class="hero">
+    <h1>Symon UFC Rank Engine</h1>
+    <p class="lede">Recorded MMA careers fitted together, then asked three different questions: what a
+      career was worth (<b>All-time</b>), how good a fighter was at their best (<b>Prime</b>) and how good
+      they are now (<b>Current</b>). Every chart below is one of the analyses in
+      <code>analysis/</code>, drawn from the published snapshot.</p>
+    <div class="facts" id="facts"></div>
+  </section>
+
+  <section id="rankings">
+    <h2>The rankings</h2>
+    <p class="note">The published boards, filtered by the control room. A blank Prime rank means the
+      fighter did not qualify, not that they placed last. <b>Now in</b> marks a fighter whose current class
+      differs from the class they built their career in. Select a name to add it to <a href="#fighters">Fighters</a>.</p>
+    <div class="row">
+      <div class="seg" id="c-view">
+        <button data-v="all_time" class="on">All-time</button><button data-v="prime">Prime</button><button data-v="current">Current</button>
+      </div>
+      <input id="c-search" type="search" placeholder="Find a fighter on this board">
+    </div>
+    <div id="board" class="table-wrap"></div>
+  </section>
+
+  <section id="anatomy">
+    <h2>Why the All-time leaders rank here</h2>
+    <p class="note">The All-time score is
+      <code>1000 × (a·championships + (1 − a)·(s·career skill + (1 − s)·contender résumé))</code>, each term
+      divided by the mean of its own top 100. Bars reconstruct the published total exactly. Move the two
+      exchange rates to re-rank the same eligible fighters; eligibility does not depend on them.</p>
+    <div class="row">
+      <label>Championships weight a <input id="w-a" type="range" min="0" max="1" step="0.025"><output id="o-a"></output></label>
+      <label>Career-skill share s <input id="w-s" type="range" min="0" max="1" step="0.025"><output id="o-s"></output></label>
+      <button id="w-reset" class="btn">Published rates</button>
+    </div>
+    <div id="anat-summary" class="callout"></div>
+    <div id="anat-chart" class="chart"></div>
+    <h3>How far does one fighter's rank depend on the exchange rates?</h3>
+    <div class="row"><label>Fighter <input id="rob-pick" list="names" class="pick"></label></div>
+    <div id="rob-chart" class="chart"></div>
+    <p class="note">Each cell is the fighter's All-time rank at that pair of rates. The ring marks the
+      published rates. Select a cell to move the sliders there.</p>
+  </section>
+
+  <section id="placement">
+    <h2>Résumé vs rating</h2>
+    <p class="note">Each dot is a fighter on the board chosen under <a href="#rankings">The rankings</a>:
+      across is rated bouts, up is that board's figure. Top-right is an elite figure built over a long
+      record. The top ten carry their rank.</p>
+    <div id="place-chart" class="chart"></div>
+  </section>
+
+  <section id="fighters">
+    <h2>Fighters: career arcs and tale of the tape</h2>
+    <p class="note">Base WHR skill, fight by fight. Dots are bouts coloured by how they ended; the dashed
+      line is the contender line. The arrow marks the best five-year stretch with at least the stated
+      number of bouts. Cards compare what each career did; they do not predict a bout.</p>
+    <div class="row"><label>Add fighter <input id="sel-add" list="names" class="pick" placeholder="Type a name"></label>
+      <div id="sel-chips" class="chips"></div></div>
+    <div id="arc-chart" class="chart"></div>
+    <div id="cards" class="cards"></div>
+  </section>
+
+  <section id="careers">
+    <h2>Where a career score comes from</h2>
+    <p class="note">Career skill mass sums, over a fighter's active years, how far their average rating
+      stood above that year's bar: the contender line of their division, or the sport-wide line where the
+      division is too thin. A year below the bar adds almost nothing; it never subtracts. The bars sum to
+      the published career mass.</p>
+    <div class="row"><label>Fighter <input id="rec-pick" list="names" class="pick"></label></div>
+    <div id="rec-chart" class="chart"></div>
+    <h3>Height or duration</h3>
+    <p class="note">Mass is exactly active years × mean yearly excess, so every career sits on this plane and
+      the dotted curves join equal mass. Up and left is a short, towering peak; down and right is a long stay
+      above the field.</p>
+    <div id="shape-chart" class="chart"></div>
+    <h3>Does the order survive a higher bar?</h3>
+    <p class="note">The same career sum recomputed with the yearly bar raised from the field mean to its
+      95th percentile. Flat lines are fighters the choice of bar does not decide; lines that dive were
+      collecting credit for years slightly above average.</p>
+    <div id="ladder-chart" class="chart"></div>
+    <h3>All-time vs Prime</h3>
+    <p class="note">Across is the ten-year Prime score, up the All-time score. The units differ, so read
+      distance from the dashed trend, not the diagonal. Named fighters are furthest from it.</p>
+    <div id="lp-chart" class="chart"></div>
+  </section>
+
+  <section id="movers">
+    <h2>Risers and fallers</h2>
+    <p class="note">The biggest rating moves of one year among board-eligible fighters. Hover for the
+      bouts behind each move.</p>
+    <div class="row"><label>Year <select id="mov-year"></select></label></div>
+    <div id="mov-chart" class="chart"></div>
+  </section>
+
+  <section id="streaks">
+    <h2>Win streaks</h2>
+    <p class="note">Unbroken UFC win runs. Draws and losses end a run; no-contests neither extend nor end it.
+      Average opponent is their Glicko-2 rating today. Select a row for the rating timeline.</p>
+    <div class="row">
+      <label>Sort <select id="st-sort"><option value="length">Longest</option><option value="quality">Toughest schedule</option><option value="title_wins">Most title wins</option></select></label>
+      <label>Min wins <input id="st-min" type="range" min="3" max="15" value="5"><output id="o-st-min">5</output></label>
+    </div>
+    <div id="st-table" class="table-wrap short"></div>
+    <div id="st-chart" class="chart"></div>
+  </section>
+
+  <section id="divisions">
+    <h2>Weight classes</h2>
+    <p class="note">Each class-year is the mean end-of-year base WHR rating of its top fighters. The class
+      controls here are local to this section.</p>
+    <div class="row">
+      <div id="dv-chips" class="chips toggles"></div>
+    </div>
+    <div class="row">
+      <label>From <input id="dv-y0" type="number" min="1993" max="2026"></label>
+      <label>to <input id="dv-y1" type="number" min="1993" max="2026"></label>
+      <label>Top per class <select id="dv-k"><option>5</option><option selected>10</option><option>15</option><option>25</option></select></label>
+      <div class="seg" id="dv-index"><button data-v="0" class="on">Rating</button><button data-v="1">Index</button></div>
+    </div>
+    <div id="dv-time" class="chart"></div>
+    <h3>Era heat map</h3>
+    <p class="note">100 is the strongest selected class that year.</p>
+    <div id="dv-heat" class="chart"></div>
+    <h3>Single-year ranking</h3>
+    <div class="row"><label>Year <input id="dv-year" type="range" min="1993" max="2026"><output id="o-dv-year"></output></label></div>
+    <div id="dv-year-chart" class="chart"></div>
+    <h3>Board share by career class</h3>
+    <p class="note">How the top 100 of the board chosen under The rankings splits across classes.</p>
+    <div id="dv-share" class="chart"></div>
+    <h3>Division parity</h3>
+    <p class="note">Crowdedness near 1 means the top ten are bunched (a deep, competitive field); near 0
+      means one fighter towers over a thin class.</p>
+    <div id="dv-ent" class="chart"></div>
+    <h3>How fights end</h3>
+    <div id="dv-mix" class="chart"></div>
+  </section>
+
+  <section id="lineage">
+    <h2>Title lineage</h2>
+    <p class="note">The belt as one track: each segment is a reign from winning the title to losing it,
+      labelled with defences (<b>3D</b>).</p>
+    <div class="row"><label>Class <select id="tl-div"></select></label>
+      <label class="check"><input id="tl-int" type="checkbox"> Include interim</label></div>
+    <div id="tl-chart" class="chart"></div>
+  </section>
+
+  <section id="dominance">
+    <h2>Most dominant</h2>
+    <p class="note">Mean per-win dominance: strike differential, control time and submission attempts,
+      combined. It is not a rating input.</p>
+    <div class="row"><label>Min wins <input id="dm-min" type="range" min="3" max="20" value="8"><output id="o-dm-min">8</output></label></div>
+    <div id="dm-chart" class="chart"></div>
+  </section>
+
+  <section id="policy">
+    <h2>Integrity policy view</h2>
+    <p class="note">A separate, stated judgement: fixed debits to base WHR points for PED-confirmed,
+      disqualification and missed-weight wins. It never alters a published board and is not presented as a
+      predictive improvement.</p>
+    <div id="pol-chart" class="chart"></div>
+    <div id="pol-table" class="table-wrap short"></div>
+  </section>
+
+  <section id="benchmark">
+    <h2>Appendix: sanity check against FightMatrix</h2>
+    <p class="note">The men's All-time board against FightMatrix's all-time list. This is a check, not a
+      target: FightMatrix covers whole careers under its own definition, so disagreement names fighters
+      worth a look rather than errors.</p>
+    <div id="bm-summary" class="callout"></div>
+    <div id="bm-chart" class="chart"></div>
+  </section>
+
+  <footer>
+    <p id="foot"></p>
+    <p>Not drawn here because this snapshot lacks the artifact: held-out forecast scores
+      (<code>prequential_*</code>), rank intervals (<code>career_mass_uncertainty</code>) and closing odds.
+      Rebuild with <code>python analysis/build_site.py data/snapshots/&lt;date&gt;</code>.</p>
+  </footer>
+</main>
+<datalist id="names"></datalist>
+<script src="app.js"></script>
+</body>
+</html>
