@@ -14,7 +14,7 @@
   <div class="wrap">
     <a class="brand" href="#top">UFC Rank Engine</a>
     <nav>
-      <a href="#rankings">Rankings</a><a href="#anatomy">Score</a><a href="#placement">Records</a><a href="#fighters">Fighters</a>
+      <a href="#rankings">Rankings</a><a href="#anatomy">Score</a><a href="#fighters">Fighters</a>
       <a href="#careers">Careers</a><a href="#movers">Movers</a><a href="#streaks">Streaks</a>
       <a href="#divisions">Weight classes</a><a href="#lineage">Titles</a><a href="#dominance">Dominance</a>
       <a href="#policy">Policy</a><a href="#checks">Checks</a>
@@ -34,17 +34,19 @@
     <h1 id="hero-h">Three boards from one fit of every recorded MMA career.</h1>
     <p class="lede">One rating model is fitted to every recorded bout at once, so a win counts for more the better the
       opponent proved to be. Three questions are then asked of it: what a career was worth (<b>All-time</b>), how good a
-      fighter was across their best ten years (<b>Prime</b>) and how good they are now (<b>Current</b>). Each section below
-      makes one claim and shows the evidence. The controls in the bar above apply to every section.</p>
+      fighter was across their best ten years (<b>Prime</b>) and how good they are now (<b>Current</b>). All-time and Prime
+      count every promotion; Current and the weight-class views count the UFC only. Each section below makes one claim and
+      shows the evidence. The controls in the bar above apply to every section.</p>
     <div class="facts" id="facts"></div>
   </section>
 
   <section id="rankings">
     <h2 id="rankings-h">The three boards ask different questions, so their top tens differ.</h2>
-    <p class="note">These are the published boards, filtered by the bar above. Choosing a weight class on the All-time board
-      shows that class's own board: the All-time score counted only from what was earned in that class. A fighter's class
-      scores add up exactly to their All-time score, so a two-division champion is ranked in both. Prime and Current within a
-      class keep the published order, renumbered. A blank Prime rank means the fighter did not qualify; it does not mean they
+    <p class="note">These are the published boards, filtered by the bar above. All-time and Prime count every promotion;
+      Current counts the UFC. Choosing a weight class on the All-time board shows that class's own board, which is UFC only:
+      the All-time score counted only from what was earned in UFC bouts in that class. A two-division champion is ranked in
+      both, and what a fighter earned outside the UFC stays in their All-time score but in no class. Prime and Current
+      within a class keep the published order, renumbered. A blank Prime rank means the fighter did not qualify; it does not mean they
       placed last. Select a name to add it to <a href="#fighters">Fighters</a>.</p>
     <div class="row">
       <div class="seg" id="c-view">
@@ -72,13 +74,6 @@
     <figure><h3 id="rob-chart-t"></h3><div id="rob-chart" class="chart"></div><figcaption id="rob-chart-s"></figcaption></figure>
   </section>
 
-  <section id="placement">
-    <h2 id="placement-h">Long records and high scores go together.</h2>
-    <p class="note">Each dot is a fighter on the board chosen under <a href="#rankings">The rankings</a>. Across is the number of
-      rated bouts; up is that board's figure. The ten leaders are marked.</p>
-    <figure><h3 id="place-chart-t"></h3><div id="place-chart" class="chart"></div><figcaption id="place-chart-s"></figcaption></figure>
-  </section>
-
   <section id="fighters">
     <h2 id="fighters-h">A rating arc shows when a career peaked and how long it held there.</h2>
     <p class="note">Base WHR skill after each rated bout, for up to six fighters. The cards compare what each career did; they
@@ -96,7 +91,7 @@
       A year below the bar adds almost nothing, and no year subtracts.</p>
     <div class="row"><label>Fighter <input id="rec-pick" list="names" class="pick"></label></div>
     <figure><h3 id="rec-chart-t"></h3><div id="rec-chart" class="chart"></div><figcaption id="rec-chart-s"></figcaption></figure>
-    <figure><h3 id="shape-chart-t"></h3><div id="shape-chart" class="chart"></div><figcaption id="shape-chart-s"></figcaption></figure>
+    <div class="row"><label>Raise every year's bar by <input id="bar-d" type="range" min="0" max="200" step="25"><output id="o-bar-d"></output> rating points</label></div>
     <figure><h3 id="ladder-chart-t"></h3><div id="ladder-chart" class="chart"></div><figcaption id="ladder-chart-s"></figcaption></figure>
     <figure><h3 id="lp-chart-t"></h3><div id="lp-chart" class="chart"></div><figcaption id="lp-chart-s"></figcaption></figure>
   </section>
@@ -112,7 +107,8 @@
   <section id="streaks">
     <h2 id="streaks-h">The longest UFC win streaks.</h2>
     <p class="note">Unbroken UFC win runs. A draw or a loss ends a run; a no-contest neither extends nor ends it. Average
-      opponent is the opponents' Glicko-2 rating today. Select a row to see that fighter's rating timeline.</p>
+      opponent is the beaten opponents' Glicko-2 rating today. The chart places each streak in the table by its length and
+      the strength of who it beat; select a row to mark it. For a fighter's rating over time, see <a href="#fighters">Fighters</a>.</p>
     <div class="row">
       <label>Sort <select id="st-sort"><option value="length">Longest</option><option value="quality">Toughest schedule</option><option value="title_wins">Most title wins</option></select></label>
       <label>Min wins <input id="st-min" type="range" min="3" max="15" value="5"><output id="o-st-min">5</output></label>
@@ -123,20 +119,17 @@
 
   <section id="divisions">
     <h2 id="divisions-h">Weight classes differ in strength, and the strongest class changes over time.</h2>
-    <p class="note">The class chips and years here apply only to this section. The board-share chart follows the board chosen
-      under The rankings.</p>
+    <p class="note">UFC bouts only: a fighter counts toward a class in a year when they had a UFC bout in that class that
+      year. Ratings are the base WHR fit of every recorded bout. The class chips and years here apply only to this section.</p>
     <div class="row"><div id="dv-chips" class="chips toggles"></div></div>
     <div class="row">
       <label>From <input id="dv-y0" type="number" min="1993" max="2026"></label>
       <label>to <input id="dv-y1" type="number" min="1993" max="2026"></label>
       <label>Top per class <select id="dv-k"><option>5</option><option selected>10</option><option>15</option><option>25</option></select></label>
     </div>
-    <figure><h3 id="dv-time-t"></h3><div id="dv-time" class="chart"></div><figcaption id="dv-time-s"></figcaption></figure>
     <figure><h3 id="dv-heat-t"></h3><div id="dv-heat" class="chart"></div><figcaption id="dv-heat-s"></figcaption></figure>
     <div class="row"><label>Year <input id="dv-year" type="range" min="1993" max="2026"><output id="o-dv-year"></output></label></div>
     <figure><h3 id="dv-year-chart-t"></h3><div id="dv-year-chart" class="chart"></div><figcaption id="dv-year-chart-s"></figcaption></figure>
-    <figure><h3 id="dv-share-t"></h3><div id="dv-share" class="chart"></div><figcaption id="dv-share-s"></figcaption></figure>
-    <figure><h3 id="dv-ent-t"></h3><div id="dv-ent" class="chart"></div><figcaption id="dv-ent-s"></figcaption></figure>
     <figure><h3 id="dv-mix-t"></h3><div id="dv-mix" class="chart"></div><figcaption id="dv-mix-s"></figcaption></figure>
   </section>
 
