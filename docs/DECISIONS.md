@@ -382,6 +382,34 @@ cost of aging.
     is a known rights risk, accepted, not a finding that redistribution is
     permitted. If either source objects, untrack the file; history rewriting is
     a separate decision.
+13. **Weight-class boards are the All-time score split by where it was earned.**
+    Shipped 2026-10-14 (`ratings/division_legacy.py`, `class_board.parquet`, the
+    class tables in `RANKINGS.md`). Before this, every board was pound-for-pound,
+    a fighter belonged to one career class, and the ten men who won titles in two
+    classes (Jones, St-Pierre, Makhachev, Cormier, Topuria, Penn, Couture, Cejudo,
+    Pereira, McGregor) were missing from the second. The diagnostic class score in
+    `division_resume.parquet` gave a second order inside each class that
+    disagreed with the All-time board: across the men's top fifteens, rank
+    correlation 0.57 to 0.89, and a different #1 at featherweight and
+    bantamweight.
+
+    Each title win, contender win and career year is assigned to the class of its
+    bout, and a class score is the All-time score over that class's evidence,
+    with the board-wide normalisers. A fighter's class scores therefore sum to
+    their All-time score, and `build_boards.py` refuses to publish if they do
+    not; on 2026-08-13 the largest gap is 5e-13. Two terms need a stated
+    allocation rule: a capped contender-win year is split pro rata, and a career
+    year's credit is split by the share of that year's bouts in each class. Bouts
+    at open weight or with no weight class count toward no class (a median 0% of
+    a top-100 score, at most 11.5%). Within a class, Prime and Current keep the
+    published order, renumbered; they are restrictions, not new scores.
+14. **A career year is still measured against the bar of the fighter's career
+    class, not the class fought in that year.** Open. It is the remaining
+    inconsistency under item 13: a fighter who moved up is credited at the new
+    weight against the old weight's field. Changing it moves published scores, so
+    it is a score change, argued from mechanism and checked against the outside
+    lists like any other; it was kept out of item 13 so that the class boards
+    could ship without moving a published rank.
 
 ## Tested and refused — do not propose these again
 
