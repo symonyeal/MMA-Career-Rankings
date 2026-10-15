@@ -12,12 +12,15 @@ Four certificates are checked before anything is written:
   4. the calibration table is symmetric: bin b and bin 9 − b are one bout seen from both corners.
 
 Usage: python analysis/build_site.py [data/snapshots/<date>]
+       python analysis/build_site.py --stamp     (re-stamp index.html after editing app.js or style.css)
 """
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import math
+import re
 import sys
 from pathlib import Path
 
@@ -285,13 +288,34 @@ def build(snap):
     }
 
 
+ASSETS = ("style.css", "data.js", "app.js")
+
+
+def version(path):
+    """Content hash of an asset, line endings normalised so a Windows checkout and the deployed file agree."""
+    return hashlib.sha256(path.read_bytes().replace(b"\r\n", b"\n")).hexdigest()[:10]
+
+
+def stamp(site=ROOT / "site"):
+    """Point index.html at each asset by its content hash: a browser never pairs a new page with a cached old asset."""
+    p = site / "index.html"
+    h = p.read_text(encoding="utf-8")
+    for a in ASSETS:
+        h = re.sub(rf'"{re.escape(a)}(\?v=\w+)?"', f'"{a}?v={version(site / a)}"', h)
+    p.write_text(h, encoding="utf-8", newline="\n")
+
+
 def main(snap):
     data = build(Path(snap))
     out = ROOT / "site" / "data.js"
     out.write_text("window.DATA = " + json.dumps(data, separators=(",", ":"), ensure_ascii=False) + ";\n",
                    encoding="utf-8")
+    stamp()
     print(f"wrote {out} ({out.stat().st_size / 1e6:.1f} MB)")
 
 
 if __name__ == "__main__":
-    main(sys.argv[1] if len(sys.argv) > 1 else max((ROOT / "data" / "snapshots").glob("20*")))
+    if sys.argv[1:] == ["--stamp"]:
+        stamp()
+    else:
+        main(sys.argv[1] if len(sys.argv) > 1 else max((ROOT / "data" / "snapshots").glob("20*")))
