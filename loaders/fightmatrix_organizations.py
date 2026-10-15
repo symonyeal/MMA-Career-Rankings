@@ -32,6 +32,13 @@ def load_organization_rules(path: str | Path = DEFAULT_RULES_PATH) -> pd.DataFra
     return rules
 
 
+@lru_cache(maxsize=4)
+def _rule_rows(path: str | Path = DEFAULT_RULES_PATH) -> tuple:
+    """The committed rules as tuples, built once: rebuilding them on every call cost
+    minutes per pass over a corpus of tens of thousands of bouts."""
+    return tuple(load_organization_rules(path).itertuples(index=False))
+
+
 def _within(value: pd.Timestamp | pd.NaT, start: str, end: str) -> bool:
     if pd.isna(value):
         return True
@@ -50,10 +57,10 @@ def normalize_organization(
     """Return an auditable organization match; unknowns stay unknown."""
     raw = " ".join(str(raw_label or "").split())
     when = pd.to_datetime(event_date, errors="coerce")
-    source = load_organization_rules() if rules is None else rules
+    source = _rule_rows() if rules is None else tuple(rules.itertuples(index=False))
     matched = [
         row
-        for row in source.itertuples(index=False)
+        for row in source
         if re.search(row.pattern, raw, flags=re.IGNORECASE) is not None
     ]
     if not matched:
@@ -65,7 +72,7 @@ def normalize_organization(
         # tier, which is the opposite of what the rule assigned it.
         matched = [
             row
-            for row in source.itertuples(index=False)
+            for row in source
             if row.canonical_organization.casefold() == raw.casefold()
         ]
     for row in matched:
