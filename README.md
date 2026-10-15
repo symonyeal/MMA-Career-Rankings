@@ -293,6 +293,7 @@ conflict. See the [decision register](docs/DECISIONS.md).
 | `ratings/` / `loaders/` | Model / data assembly |
 | `data/snapshots/<date>/` | Release artifacts |
 | [`docs/`](docs/) | Method and decisions |
+| [`site/`](site/) | Interactive analysis site, published at <https://symonyeal.github.io/UFC-Rank-Engine/>; open `site/index.html` locally |
 | `tests/` | Verification |
 
 Use the system Python:
@@ -301,4 +302,11 @@ Use the system Python:
 python -m pip install -r requirements.txt
 python -m pytest -q
 python build_boards.py data/snapshots/2026-08-13 --scope majors,pre_unified --write-readme
+```
+
+The site draws the notebook's analyses from one snapshot. Its data file, `site/data.js`, is
+generated; rebuild it after the boards change:
+
+```text
+python analysis/build_site.py data/snapshots/2026-08-13
 ```
