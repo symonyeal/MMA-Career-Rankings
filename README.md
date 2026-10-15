@@ -1,33 +1,39 @@
 # Symon UFC Rank Engine
 
-This project fits recorded MMA careers together, then answers three different
-questions: career, peak and current strength.
+<p align="center">
+  <a href="https://symonyeal.github.io/UFC-Rank-Engine/"><img alt="Open the interactive rankings site" src="https://img.shields.io/badge/Interactive%20rankings-Open%20the%20site-38bdf8?style=for-the-badge"></a>
+</p>
 
-## Explore the rankings
-
-### **[Open the interactive site →](https://symonyeal.github.io/UFC-Rank-Engine/)**
+<p align="center"><b><a href="https://symonyeal.github.io/UFC-Rank-Engine/">symonyeal.github.io/UFC-Rank-Engine</a></b>
+· every ranking and analysis in the browser, no install</p>
 
 [![The interactive site: the published boards, filtered by roster, weight class and depth](docs/site/rankings.png)](https://symonyeal.github.io/UFC-Rank-Engine/)
 
-The site draws every analysis in the project's notebook from the published
-snapshot, in the browser, with no install. One set of controls (men or women,
-weight class, how many fighters, minimum rated bouts) drives every section.
+This project fits recorded MMA careers together, then answers three different
+questions: career, peak and current strength. The site above is the way to
+read the answers. One set of controls (men or women, weight class, how many
+fighters, minimum rated bouts) drives every section.
 
-- **The rankings.** All-time, Prime and Current, exactly as published below, and
-  a board for every weight class whose scores add up to the All-time score.
-- **Why the leaders rank where they do.** Each All-time score split into
-  championships, career skill and contender résumé. Two sliders change the
-  exchange rate between them and re-rank the board, and a heat map shows how far
-  one fighter's place depends on that choice.
-- **Careers side by side.** Rating paths fight by fight, a year-by-year receipt
-  that adds up to the career score, and cards comparing any fighters you pick.
-- **Weight classes and eras.** How strong each class has been year by year, its
-  top five in any year, how fights end, and every title lineage.
-- **Streaks, movers, the integrity policy, and a check against FightMatrix.**
+## What the site does
 
-| Score anatomy and exchange rates | Career arcs and tale of the tape |
+| Feature | What you can do |
 | --- | --- |
-| [![Score anatomy](docs/site/score-anatomy.png)](https://symonyeal.github.io/UFC-Rank-Engine/#anatomy) | [![Career arcs](docs/site/career-arcs.png)](https://symonyeal.github.io/UFC-Rank-Engine/#fighters) |
+| [**Rankings**](https://symonyeal.github.io/UFC-Rank-Engine/#rankings) | All-time, Prime and Current, exactly as published below. Pick a weight class for that class's own board, whose scores add up to each fighter's All-time score. |
+| [**Weight-class boards**](https://symonyeal.github.io/UFC-Rank-Engine/#rankings) | A champion in two classes is ranked in both, with the share of their career earned in each. |
+| [**Score anatomy**](https://symonyeal.github.io/UFC-Rank-Engine/#anatomy) | See each score split into championships, career skill and contender résumé. Move two sliders to change the exchange rate and watch the board re-rank. |
+| [**Rank robustness**](https://symonyeal.github.io/UFC-Rank-Engine/#anatomy) | A heat map of one fighter's rank under every exchange rate, with the published choice marked. |
+| [**Career arcs and tale of the tape**](https://symonyeal.github.io/UFC-Rank-Engine/#fighters) | Overlay up to six fighters' ratings fight by fight and compare their records, ranks and class placements side by side. |
+| [**Where a career score comes from**](https://symonyeal.github.io/UFC-Rank-Engine/#careers) | A year-by-year receipt that sums to the career score, peak against longevity, and whether the order survives a higher bar. |
+| [**Risers, fallers and streaks**](https://symonyeal.github.io/UFC-Rank-Engine/#movers) | The biggest rating moves of any year and the longest unbeaten UFC runs, each with its timeline. |
+| [**Weight classes and eras**](https://symonyeal.github.io/UFC-Rank-Engine/#divisions) | How strong each class has been year by year, its top five in any year, how deep its elite is, and how fights end. |
+| [**Title lineage**](https://symonyeal.github.io/UFC-Rank-Engine/#lineage) | Every reign in every class, with defences. |
+| [**Integrity policy and outside check**](https://symonyeal.github.io/UFC-Rank-Engine/#policy) | The PED, disqualification and missed-weight ledger, and where the board disagrees with FightMatrix. |
+
+| Weight-class board | Score anatomy and exchange rates |
+| --- | --- |
+| [![Heavyweight class board](docs/site/class-board.png)](https://symonyeal.github.io/UFC-Rank-Engine/#rankings) | [![Score anatomy](docs/site/score-anatomy.png)](https://symonyeal.github.io/UFC-Rank-Engine/#anatomy) |
+| **Career arcs and tale of the tape** | **Weight classes over time** |
+| [![Career arcs](docs/site/career-arcs.png)](https://symonyeal.github.io/UFC-Rank-Engine/#fighters) | [![Division strength](docs/site/weight-classes.png)](https://symonyeal.github.io/UFC-Rank-Engine/#divisions) |
 
 ## The argument
 
