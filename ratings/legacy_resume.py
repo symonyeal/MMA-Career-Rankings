@@ -320,11 +320,15 @@ def _scale(values: pd.Series, *, top_n: int = LEGACY_NORMALISER_TOP_N) -> pd.Ser
     own. An all-zero column stays zero.
     """
     v = pd.to_numeric(values, errors="coerce").fillna(0.0)
-    positive = v[v > 0]
-    if positive.empty:
-        return v * 0.0
-    norm = float(positive.nlargest(min(top_n, len(positive))).mean())
+    norm = legacy_norm(v, top_n=top_n)
     return v / norm if norm > 0 else v * 0.0
+
+
+def legacy_norm(values: pd.Series, *, top_n: int = LEGACY_NORMALISER_TOP_N) -> float:
+    """The divisor :func:`_scale` uses: mean of the top ``top_n`` positive values, 0 if none."""
+    v = pd.to_numeric(values, errors="coerce").fillna(0.0)
+    positive = v[v > 0]
+    return float(positive.nlargest(min(top_n, len(positive))).mean()) if len(positive) else 0.0
 
 
 def _empty_quality_ledger() -> pd.DataFrame:
@@ -955,6 +959,26 @@ def _combine_title_ledgers(
 def title_quality_ledger(
     fights: pd.DataFrame | None,
     history: pd.DataFrame | None,
+    **kwargs,
+) -> pd.DataFrame:
+    """Per-fighter sums of :func:`title_quality_rows`: one row per fighter with the
+    summed quality and the count of wins that cleared the contender line."""
+    priced = title_quality_rows(fights, history, **kwargs)
+    if priced.empty:
+        return _empty_quality_ledger()
+    out = priced.groupby("fighter", sort=False).agg(
+        public_legacy_title_quality=("weight", "sum"),
+        public_legacy_qualifying_title_wins=("qualifying", "sum"),
+    ).reset_index()
+    out["public_legacy_qualifying_title_wins"] = (
+        out["public_legacy_qualifying_title_wins"].astype(int)
+    )
+    return out[QUALITY_LEDGER_COLUMNS]
+
+
+def title_quality_rows(
+    fights: pd.DataFrame | None,
+    history: pd.DataFrame | None,
     *,
     reference: str | float | None = None,
     divisions: pd.Series | None = None,
@@ -980,8 +1004,9 @@ def title_quality_ledger(
     ``major_title_floor``; see the note above :data:`TITLE_QUALITY_MAJOR_FLOOR`
     for why, and pass ``0.0`` to reproduce the 2026-09-01 ledger.
 
-    Returns one row per fighter with the summed quality and the count of wins
-    that cleared the contender line.
+    Returns one row per priced title win: ``fighter``, ``event_date``, ``weight``
+    (its quality) and ``qualifying`` (cleared the contender line), plus
+    ``fight_url`` when the input carries it.
     """
     from ratings.symon_score import DEFAULT_CAREER_REFERENCE, year_reference
 
@@ -1140,15 +1165,7 @@ def title_quality_ledger(
     # above their division's contender line. The SCORE uses the convex weight,
     # which never zeroes -- this count is what a reader wants to see beside it.
     priced["qualifying"] = priced["opponent_mu"] >= priced["bar"]
-
-    out = priced.groupby("fighter", sort=False).agg(
-        public_legacy_title_quality=("weight", "sum"),
-        public_legacy_qualifying_title_wins=("qualifying", "sum"),
-    ).reset_index()
-    out["public_legacy_qualifying_title_wins"] = (
-        out["public_legacy_qualifying_title_wins"].astype(int)
-    )
-    return out[QUALITY_LEDGER_COLUMNS]
+    return priced
 
 
 RESUME_LEDGER_COLUMNS = [
@@ -1185,9 +1202,45 @@ def contender_resume_ledger(
     fights: pd.DataFrame | None,
     history: pd.DataFrame | None,
     *,
+    year_cap: float = RESUME_YEAR_CAP,
+    **kwargs,
+) -> pd.DataFrame:
+    """Per-fighter résumé from :func:`contender_resume_rows`: each year's priced
+    wins summed and capped at ``year_cap``, then summed over years, beside the
+    uncapped count of qualifying wins."""
+    priced = contender_resume_rows(fights, history, **kwargs)
+    if priced.empty:
+        return _empty_resume_ledger()
+    per_year = (
+        priced.groupby(["fighter", "_year"])["weight"].sum().clip(upper=float(year_cap))
+    )
+    out = (
+        per_year.groupby("fighter")
+        .sum()
+        .rename("public_legacy_resume_quality")
+        .reset_index()
+    )
+    counts = (
+        priced.groupby("fighter")
+        .size()
+        .rename("public_legacy_contender_wins")
+        .reset_index()
+    )
+    out = out.merge(counts, on="fighter", how="left")
+    out["public_legacy_contender_wins"] = (
+        pd.to_numeric(out["public_legacy_contender_wins"], errors="coerce")
+        .fillna(0)
+        .astype(int)
+    )
+    return out[RESUME_LEDGER_COLUMNS]
+
+
+def contender_resume_rows(
+    fights: pd.DataFrame | None,
+    history: pd.DataFrame | None,
+    *,
     contender_line: float = CONTENDER_LINE_MU,
     min_opponent_ufc_bouts: int = MIN_OPPONENT_UFC_BOUTS,
-    year_cap: float = RESUME_YEAR_CAP,
 ) -> pd.DataFrame:
     """Contenders actually beaten, priced by how far above the line they stood.
 
@@ -1237,8 +1290,9 @@ def contender_resume_ledger(
     printed Elite-wins column read -- and adding an offset to one side of an
     absolute comparison would move the line rather than correct it.
 
-    Returns the year-capped quality sum and the uncapped count of qualifying
-    wins, which is the auditable display fact beside it.
+    Returns one row per priced win: ``fighter``, ``event_date``, ``_year`` and
+    ``weight``, plus ``fight_url`` when the input carries it. The year cap is
+    applied by :func:`contender_resume_ledger`.
     """
     if (
         fights is None or fights.empty
@@ -1271,9 +1325,10 @@ def contender_resume_ledger(
         ],
         ignore_index=True,
         sort=False,
-    )[["fighter", "opponent", "event_date", "winner"]].dropna(
-        subset=["fighter", "opponent"]
     )
+    sides = sides[
+        [c for c in ("fight_url", "fighter", "opponent", "event_date", "winner") if c in sides.columns]
+    ].dropna(subset=["fighter", "opponent"])
     wins = sides[sides["winner"].eq(sides["fighter"])].sort_values("event_date")
     if wins.empty:
         return _empty_resume_ledger()
@@ -1308,28 +1363,7 @@ def contender_resume_ledger(
         ),
         _year=priced["event_date"].dt.year,
     )
-    per_year = (
-        priced.groupby(["fighter", "_year"])["weight"].sum().clip(upper=float(year_cap))
-    )
-    out = (
-        per_year.groupby("fighter")
-        .sum()
-        .rename("public_legacy_resume_quality")
-        .reset_index()
-    )
-    counts = (
-        priced.groupby("fighter")
-        .size()
-        .rename("public_legacy_contender_wins")
-        .reset_index()
-    )
-    out = out.merge(counts, on="fighter", how="left")
-    out["public_legacy_contender_wins"] = (
-        pd.to_numeric(out["public_legacy_contender_wins"], errors="coerce")
-        .fillna(0)
-        .astype(int)
-    )
-    return out[RESUME_LEDGER_COLUMNS]
+    return priced
 
 
 def public_legacy_score_rows(
