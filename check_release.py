@@ -11,7 +11,7 @@ from ratings.scope import DEFAULT_PUBLISHED_SCOPE, SCOPE_ARTIFACT, scope_sources
 
 # The snapshot behind README.md and RANKINGS.md. Every file in it is versioned,
 # so any checkout can rebuild, re-score or refit the published boards.
-PUBLISHED_SNAPSHOT = Path(__file__).resolve().parent / "data" / "snapshots" / "2026-08-13"
+PUBLISHED_SNAPSHOT = Path(__file__).resolve().parent / "data" / "snapshots" / "2026-10-14"
 
 
 def check(snapshot: Path, *, scope: str = DEFAULT_PUBLISHED_SCOPE, inputs_only: bool = False) -> dict:

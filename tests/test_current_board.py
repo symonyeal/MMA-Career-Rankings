@@ -10,15 +10,15 @@ screens and the exposure adjustment that answer that.
 """
 from __future__ import annotations
 
-from pathlib import Path
 
 import pandas as pd
 import pytest
 
 import build_boards
 from ratings.boards import completeness_gated_board, exposure_shrunk_level
+from check_release import PUBLISHED_SNAPSHOT
 
-SNAPSHOT = Path(__file__).resolve().parents[1] / "data" / "snapshots" / "2026-08-13"
+SNAPSHOT = PUBLISHED_SNAPSHOT
 
 
 # --- the exposure adjustment ------------------------------------------------
@@ -255,27 +255,31 @@ def test_recency_without_a_fight_table_reads_the_rated_date():
     assert got.loc[0, "months_inactive"] == pytest.approx(11.99)
 
 
-def test_no_published_fighter_is_withheld_for_recency_after_a_recent_recorded_fight():
+def test_the_published_window_rule_reads_every_recorded_ufc_bout():
     """The published board against the snapshot's own fight table.
 
-    Every row the rating run could see counts, rated or not: a no contest, an
-    overturned result and a bout with no recorded winner are all fights.
+    Since 2026-10-14 the rule is a UFC bout inside the window. Every UFC row the
+    rating run could see counts, rated or not -- a no contest, an overturned
+    result, a Sherdog-only UFC row -- and no other promotion's bout does.
     """
     board = _published()
     from loaders.combined_fights import load_combined_fights
+    from ratings.current_score import is_ufc_bout
 
     fights, _ = load_combined_fights(SNAPSHOT, scope="majors,pre_unified", label="test")
     dates = pd.to_datetime(fights["event_date"])
     rated = ~fights["is_excluded"].fillna(False).astype(bool)
     reference = dates[rated].max()
+    ufc = fights[is_ufc_bout(fights)]
     last = pd.concat(
-        [pd.DataFrame({"fighter": fights[side], "d": dates}) for side in ("fighter_a", "fighter_b")]
+        [pd.DataFrame({"fighter": ufc[side], "d": dates[ufc.index]}) for side in ("fighter_a", "fighter_b")]
     ).dropna().groupby("fighter")["d"].max()
     months = (reference - last).dt.days / 30.4375
     recent = set(months[months <= build_boards.CURRENT_MAX_MONTHS_INACTIVE].index)
     stale = board[board["status"].astype(str).str.startswith("not currently active")]
-    wrongly = sorted(set(stale["fighter"]) & recent)
-    assert wrongly == []
+    assert sorted(set(stale["fighter"]) & recent) == []
+    ranked = board[board["status"].eq("ranked")]
+    assert sorted(set(ranked["fighter"]) - recent) == []
 
 
 def test_the_layoff_charge_lives_in_the_pricing_layer():
@@ -299,12 +303,10 @@ def test_the_layoff_charge_lives_in_the_pricing_layer():
 
 
 def test_the_published_last_bout_is_the_date_the_recency_rule_read():
-    """A fighter on the board for a no contest must not print a date 25 months old.
-
-    The table's "Last bout" sits beside a rule that reads any recorded fight, so
-    it prints the same date. A snapshot without the recorded date falls back to
-    the last rated bout.
-    """
+    """The table prints the date the window rule read: the last UFC bout, of any
+    outcome. Tom Aspinall's is his 2025-10-25 no contest, not his last rated bout
+    of 2024-07-27. An older snapshot falls back to the last recorded bout, then
+    the last rated one."""
     gated = pd.DataFrame({
         "rank": [1, 2], "fighter": ["Aspinall", "Older"], "status": ["ranked", "ranked"],
         "score": [1909.0, 1900.0], "tested_opponent_wins": [9, 12],
@@ -312,9 +314,13 @@ def test_the_published_last_bout_is_the_date_the_recency_rule_read():
     current = pd.DataFrame({
         "fighter": ["Aspinall", "Older"],
         "whr_last_event_date": pd.to_datetime(["2024-07-27", "2026-01-10"]),
-        "last_recorded_event_date": pd.to_datetime(["2025-10-25", None]),
+        "last_ufc_event_date": pd.to_datetime(["2025-10-25", None]),
+        "current_title_wins": [0, 2],
+        "current_contender_wins": [0, 1],
     })
     table = build_boards.current_board_markdown(gated, current, rating_col="score")
+    header = table.splitlines()[0]
+    assert "Last UFC bout" in header and "Title wins" in header and "Score" in header
     assert "| 1 | Aspinall |" in table and "2025-10-25" in table
     assert "2024-07-27" not in table
     assert "2026-01-10" in table

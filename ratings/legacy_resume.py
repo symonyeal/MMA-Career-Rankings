@@ -961,6 +961,7 @@ def title_quality_ledger(
     ufc_debut_dates: pd.Series | None = None,
     pool_offset_elo: float = UFC_POOL_OFFSET_ELO,
     major_title_floor: float = TITLE_QUALITY_MAJOR_FLOOR,
+    since: pd.Timestamp | None = None,
 ) -> pd.DataFrame:
     """Title resume priced by the opponent actually beaten, bout by bout.
 
@@ -979,6 +980,10 @@ def title_quality_ledger(
     A win in a recognised major championship is floored at
     ``major_title_floor``; see the note above :data:`TITLE_QUALITY_MAJOR_FLOOR`
     for why, and pass ``0.0`` to reproduce the 2026-09-01 ledger.
+
+    ``since`` sums only the title wins on or after that date, for the Current
+    board. Every win is still priced against the whole history and the whole
+    fight table, so a window changes which wins count, never what one is worth.
 
     Returns one row per fighter with the summed quality and the count of wins
     that cleared the contender line.
@@ -1140,6 +1145,10 @@ def title_quality_ledger(
     # above their division's contender line. The SCORE uses the convex weight,
     # which never zeroes -- this count is what a reader wants to see beside it.
     priced["qualifying"] = priced["opponent_mu"] >= priced["bar"]
+    if since is not None:
+        priced = priced[priced["event_date"] >= pd.Timestamp(since)]
+        if priced.empty:
+            return _empty_quality_ledger()
 
     out = priced.groupby("fighter", sort=False).agg(
         public_legacy_title_quality=("weight", "sum"),
@@ -1188,6 +1197,7 @@ def contender_resume_ledger(
     contender_line: float = CONTENDER_LINE_MU,
     min_opponent_ufc_bouts: int = MIN_OPPONENT_UFC_BOUTS,
     year_cap: float = RESUME_YEAR_CAP,
+    since: pd.Timestamp | None = None,
 ) -> pd.DataFrame:
     """Contenders actually beaten, priced by how far above the line they stood.
 
@@ -1239,6 +1249,11 @@ def contender_resume_ledger(
 
     Returns the year-capped quality sum and the uncapped count of qualifying
     wins, which is the auditable display fact beside it.
+
+    ``since`` keeps only the wins on or after that date, for the Current board.
+    The opponent's rating going in and their tested UFC record are still read
+    from the whole history and the whole fight table: a fighter whose eight UFC
+    bouts all came before the window is still a tested opponent inside it.
     """
     if (
         fights is None or fights.empty
@@ -1299,6 +1314,8 @@ def contender_resume_ledger(
         priced["opponent"].map(tested).fillna(0).ge(int(min_opponent_ufc_bouts))
         & priced["opponent_mu"].ge(float(contender_line))
     ]
+    if since is not None:
+        priced = priced[priced["event_date"] >= pd.Timestamp(since)]
     if priced.empty:
         return _empty_resume_ledger()
 

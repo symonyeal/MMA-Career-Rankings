@@ -1,7 +1,6 @@
 """The elite-tested Prime board: a floor on proven record, not on volume."""
 from __future__ import annotations
 
-import pathlib
 
 import pandas as pd
 import pytest
@@ -10,6 +9,7 @@ from ratings import boards
 
 import build_boards
 from ratings.boards import completeness_gated_board
+from check_release import PUBLISHED_SNAPSHOT
 from ratings.opponent_quality import (
     best_elite_decade,
     CONTENDER_LINE_MU,
@@ -296,7 +296,7 @@ def test_a_level_at_the_anchor_earns_nothing_however_many_wins():
 
 def test_the_published_board_has_no_dominated_pairs():
     """Property check on the real artifact, if the snapshot is present."""
-    path = pathlib.Path("data/snapshots/2026-08-13/prime_elite_board.parquet")
+    path = PUBLISHED_SNAPSHOT / "prime_elite_board.parquet"
     if not path.exists():
         pytest.skip("snapshot artifact not present")
     board = pd.read_parquet(path)

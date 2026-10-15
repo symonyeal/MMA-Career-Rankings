@@ -525,6 +525,42 @@ def test_contender_resume_prices_the_opponent_before_the_bout_not_after():
     assert contender_resume_ledger(fights, history).empty
 
 
+def test_a_windowed_resume_still_reads_the_whole_record_to_price_a_win():
+    """Current sums only recent wins, but a win is still priced and screened
+    against everything known about the opponent. Contender's eight UFC bouts all
+    fell in 2015; cutting the fight table to the window would have made him
+    untested and zeroed every fighter's résumé."""
+    fights, history = _contender_fixture()
+    whole = contender_resume_ledger(fights, history).set_index("fighter")
+    recent = contender_resume_ledger(
+        fights, history, since=pd.Timestamp("2020-01-01")
+    ).set_index("fighter")
+    later = contender_resume_ledger(fights, history, since=pd.Timestamp("2021-01-01"))
+
+    assert recent.equals(whole)
+    assert later.empty
+
+
+def test_a_windowed_title_ledger_sums_only_title_wins_inside_the_window():
+    fights = pd.DataFrame([
+        _title_bout("t1", "UFC", winner="Champ", opponent="Old", date="2019-06-01"),
+        _title_bout("t2", "UFC", winner="Champ", opponent="New", date="2021-06-01"),
+    ])
+    history = pd.DataFrame([
+        {"fighter": "Old", "event_date": "2019-01-01", "mu_whr": 1900.0},
+        {"fighter": "New", "event_date": "2021-01-01", "mu_whr": 1900.0},
+        {"fighter": "Bar", "event_date": "2019-01-01", "mu_whr": 1700.0},
+        {"fighter": "Bar", "event_date": "2021-01-01", "mu_whr": 1700.0},
+    ])
+    whole = title_quality_ledger(fights, history, reference="mean").set_index("fighter")
+    recent = title_quality_ledger(
+        fights, history, reference="mean", since=pd.Timestamp("2020-01-01")
+    ).set_index("fighter")
+
+    one_win = float(whole.loc["Champ", "public_legacy_title_quality"]) / 2
+    assert float(recent.loc["Champ", "public_legacy_title_quality"]) == pytest.approx(one_win)
+
+
 def test_contender_resume_caps_a_year_at_one_contribution():
     """Single Entry: a year is worth at most one maximal win, however many fell."""
     rows = []

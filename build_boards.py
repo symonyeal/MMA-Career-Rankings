@@ -21,7 +21,7 @@ snapshot is finalized):
 
 Usage::
 
-    python build_boards.py data/snapshots/2026-08-13
+    python build_boards.py data/snapshots/2026-10-14
 """
 from __future__ import annotations
 
@@ -39,11 +39,11 @@ from ratings.boards import (
     UNRANKED_AT_FLOOR_STATUS,
     completeness_gated_board,
     elite_win_mass,
-    exposure_shrunk_level,
     integrity_discounted_board,
     integrity_ledger,
 )
 from ratings.constants import SUSTAINED_PEAK_MIN_FIGHTS  # board eligibility floor
+from ratings.current_score import CURRENT_WINDOW_MONTHS
 from ratings.layoff import attach_opponent_layoff
 from ratings.gender import (
     GENDER_GAUGE_NOTE,
@@ -96,46 +96,34 @@ README_CURRENT_WOMEN_END = "<!-- BOARD:CURRENTWOMEN10:END -->"
 README_RELEASE_BEGIN = "<!-- PUBLICATION:RELEASE:BEGIN -->"
 README_RELEASE_END = "<!-- PUBLICATION:RELEASE:END -->"
 
-# The Current board answers the third published question -- "how good are they
-# now" -- from the last fitted rating carried to the snapshot date through the
-# measured age-drift curve. Two properties make it a different board, not a
-# re-sort of the others:
+# The Current board answers the third published question -- "who is best right
+# now" -- and since 2026-10-14 it answers it the way the All-time board answers
+# "who had the best career": title, skill and résumé at the same weights, with
+# the title and résumé ledgers summing only the last 18 months. The score is
+# computed beside the All-time columns in ratings/current_score.py, which
+# records the three owner decisions behind it: titles count, a UFC bout inside
+# the window is required, and an unbeaten record's rating is capped at the best
+# opponent it beat.
 #
-# * It is a rating level, so like Prime it has no zero floor meaning "no
-#   evidence" and must NOT be added to RATING_FLOOR_IS_UNRANKED.
-# * It is the only board with a recency gate. The projection is shallow -- it
-#   charges Khabib Nurmagomedov 37 points for five years away and Georges
-#   St-Pierre 48 for nine -- so without the gate the board seated retired
-#   champions 4th and 21st and answered "how good were they" a third time.
+# It was a rating level until then, and that was the defect the owner named: a
+# rating has no ceiling from above, so Movsar Evloev (20-0, best win rated 1,949
+# going in) sat 2nd on 2,102 while Joshua Van, the flyweight champion with two
+# defenses, sat 19th.
 #
-# The bar is stated policy, set by the project owner at 18 months on
-# 2026-09-03. It is not fitted, and no accuracy measure selected it: it is the
-# answer to "how long can a fighter be away before a rating stops describing
-# them", which is a judgement about what the word "current" claims, not a
-# quantity in the data. The board withholds fighters beyond the bar; it does
-# not manufacture a lower rating for them.
-# A third property, and the one that decides who is on it. A rating alone is
-# the wrong quantity to rank "best right now": nothing in a Bradley-Terry model
-# caps an unbeaten record from above, so a fighter who has not lost in a weak
-# field rates alongside one who has beaten contenders. Ranked raw, this board
-# seated six Bellator/PFL fighters -- Usman Nurmagomedov 2nd, Nemkov 8th, Amosov
-# 12th, Eblen 18th -- plus several short unbeaten UFC records, above men who had
-# actually beaten the division. Both boards beside this one already answer that
-# question, and this one now answers it the same way, twice:
+# Like the All-time score it has a floor at zero meaning "nothing in the window
+# cleared the bar", so a fighter on it is told apart rather than ranked last.
 #
-# * a tested-record screen at MIN_OPPONENT_UFC_BOUTS, the same bar the Prime
-#   board applies to an OPPONENT before a win over them counts; and
-# * the exposure factor, applied on the interval scale a rating actually lives
-#   on -- see :func:`ratings.boards.exposure_shrunk_level`.
-#
-# The screen is what removes a career the corpus cannot place; the shrink is
-# what stops a thinly identified career inside the screen from being read at
-# full confidence.
+# The window is stated policy, set by the owner at 18 months on 2026-09-03 and
+# confirmed on 2026-10-14. It is not fitted. The other screens stay: 13 rated
+# appearances and MIN_OPPONENT_UFC_BOUTS UFC bouts, the bar the Prime board
+# applies to an opponent before a win over them counts.
 CURRENT_BOARD_TOP = 30
-CURRENT_MAX_MONTHS_INACTIVE = 18.0
+CURRENT_MAX_MONTHS_INACTIVE = CURRENT_WINDOW_MONTHS
 CURRENT_MIN_UFC_BOUTS = MIN_OPPONENT_UFC_BOUTS
 CURRENT_SCORE_COL = "current_board_score"
+CURRENT_SOURCE_COL = "current_score"
 CURRENT_TESTED_LABEL = "UFC bouts"
+CURRENT_RECENCY_COL = "months_since_ufc"
 
 # Time away is charged where a win is PRICED, not here.
 #
@@ -523,40 +511,25 @@ def write_board_artifacts(
                 target / f"prime_elite_board{suffix}.parquet", index=False
             )
 
-    # The Current board. Three gates and one adjustment, none of them new:
-    # the shared rating-period floor, the recency bar, the Prime board's
-    # tested-record bar, and the all-time board's exposure factor applied on the
-    # interval scale a rating lives on.
+    # The Current board ranks the score rate_snapshot stored beside the All-time
+    # columns (ratings/current_score.py). Three screens: the shared rating-period
+    # floor, the Prime board's tested-record bar, and a UFC bout inside the
+    # window. A snapshot scored before 2026-10-14 has no Current score and
+    # publishes no Current board rather than a rating-only one.
     current_boards: dict[str, pd.DataFrame] = {}
     current_col: str | None = None
-    try:
-        current_col = select_current_rating_col(current)
-    except ValueError:
-        current_col = None
-    if current_col is not None and "public_legacy_ufc_bouts" in current.columns:
+    if CURRENT_SOURCE_COL in current.columns and "public_legacy_ufc_bouts" in current.columns:
+        current_col = CURRENT_SOURCE_COL
         indexed = current.set_index("fighter")
-        months_idle = indexed["months_inactive"] if "months_inactive" in current.columns else None
+        months_idle = (
+            indexed[CURRENT_RECENCY_COL] if CURRENT_RECENCY_COL in current.columns else None
+        )
         ufc_bouts = indexed["public_legacy_ufc_bouts"]
         for gender, population in partition.items():
             if population is None or population.empty:
                 continue
-            # One discount here: how much of the career the corpus can
-            # identify. Time away is already inside the rating.
-            exposure = pd.to_numeric(
-                population.get(
-                    "public_legacy_exposure_factor",
-                    pd.Series(1.0, index=population.index),
-                ),
-                errors="coerce",
-            ).fillna(1.0)
             scored = population.assign(
-                **{
-                    CURRENT_SCORE_COL: exposure_shrunk_level(
-                        pd.to_numeric(population[current_col], errors="coerce"),
-                        exposure,
-                        anchor=CONTENDER_LINE_MU,
-                    )
-                }
+                **{CURRENT_SCORE_COL: pd.to_numeric(population[current_col], errors="coerce")}
             )
             frame = completeness_gated_board(
                 scored,
@@ -567,6 +540,8 @@ def write_board_artifacts(
                 tested_wins_label=CURRENT_TESTED_LABEL,
                 months_inactive=months_idle,
                 max_months_inactive=CURRENT_MAX_MONTHS_INACTIVE,
+                recency_label="UFC bout",
+                unranked_at_or_below=0.0,
             )
             if frame.empty:
                 continue
@@ -740,20 +715,19 @@ def current_board_markdown(
     rating_col: str,
     top: int = CURRENT_BOARD_TOP,
 ) -> str:
-    """Render the Current board: the rating, and the date it was last proved.
+    """Render the Current board: the score, what it was made of, and recency.
 
     It deliberately omits the Prime and all-time columns the other boards
-    carry. Those answer what a career was worth, and setting them beside a "how
-    good are they now" figure invites exactly the comparison the three boards
-    are separated to prevent.
+    carry. Those answer what a career was worth, and setting them beside a "who
+    is best now" figure invites exactly the comparison the three boards are
+    separated to prevent.
 
-    The columns it does print are the screens and the discounts, so the reader
-    can see them working: the UFC bout count the board gates on, and the date
-    of the last bout -- the date the recency rule read, which counts any
-    recorded fight. For Tom Aspinall on 2026-08-13 that is his 2025-10-25 no
-    contest, not his last rated bout of 2024-07-27; printing the rated date
-    beside an 18-month rule would show a qualifying fighter as 25 months idle.
-    A snapshot without the recorded date falls back to the last rated bout.
+    The columns it does print let the reader see the score working: title wins
+    and contender wins inside the window, the UFC bout count the board screens
+    on, and the date of the last UFC bout -- the date the window rule read, of
+    any outcome. For Tom Aspinall that is his 2025-10-25 no contest, not his
+    last rated bout of 2024-07-27. An older snapshot falls back to the last
+    recorded bout, then the last rated one.
     """
     ranked = gated[gated["status"].eq("ranked")].head(top).copy()
     if ranked.empty:
@@ -761,11 +735,18 @@ def current_board_markdown(
     lookup = current.set_index("fighter") if "fighter" in current.columns else current
     columns = getattr(lookup, "columns", [])
     last = pd.Series(pd.NaT, index=ranked.index, dtype="datetime64[ns]")
-    for date_col in ("last_recorded_event_date", "whr_last_event_date"):
+    for date_col in ("last_ufc_event_date", "last_recorded_event_date", "whr_last_event_date"):
         if date_col in columns:
             last = last.fillna(
                 pd.to_datetime(ranked["fighter"].map(lookup[date_col]), errors="coerce")
             )
+
+    def counts(col: str) -> list[str]:
+        if col not in columns:
+            return [""] * len(ranked)
+        values = pd.to_numeric(ranked["fighter"].map(lookup[col]), errors="coerce")
+        return ["" if pd.isna(v) else f"{v:.0f}" for v in values]
+
     bouts = pd.to_numeric(ranked.get("tested_opponent_wins"), errors="coerce")
     return _markdown_table(pd.DataFrame({
         "#": ranked["rank"].astype(int).to_numpy(),
@@ -773,9 +754,11 @@ def current_board_markdown(
         "Division": _division_column(
             ranked["fighter"], lookup, CURRENT_DIVISION_COL
         ),
-        "Rating": ranked[rating_col].round(0).astype(int).to_numpy(),
+        "Score": ranked[rating_col].round(0).astype(int).to_numpy(),
+        "Title wins": counts("current_title_wins"),
+        "Contender wins": counts("current_contender_wins"),
         "UFC bouts": ["" if pd.isna(v) else f"{v:.0f}" for v in bouts],
-        "Last bout": ["" if pd.isna(d) else d.strftime("%Y-%m-%d") for d in last],
+        "Last UFC bout": ["" if pd.isna(d) else d.strftime("%Y-%m-%d") for d in last],
     }))
 
 

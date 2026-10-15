@@ -3,7 +3,6 @@
 Synthetic unit tests lock the aggregation logic without a snapshot; a smoke test
 exercises every builder against the pinned snapshot when present.
 """
-from pathlib import Path
 
 import pandas as pd
 import pytest
@@ -25,8 +24,9 @@ from analysis.viz import (
     title_lineage_chart,
 )
 from ratings.prequential import CACHE_SCHEMA_VERSION
+from check_release import PUBLISHED_SNAPSHOT
 
-SNAPSHOT_DIR = Path("data/snapshots/2026-08-13")
+SNAPSHOT_DIR = PUBLISHED_SNAPSHOT
 
 
 # --- synthetic unit tests --------------------------------------------------

@@ -267,6 +267,53 @@ year and now fight twice — so charged in days past a fixed 270-day grace, a
 one, 4.8x. Divided by the era's own normal, mean charged excess runs 0.298
 turnarounds in 1995 against 0.369 in 2025.
 
+## Current board: the owner's decisions of 2026-10-14
+
+Until 2026-10-14 Current ranked a rating: the latest fitted rating, aged to the
+snapshot date and pulled toward 1,750 where coverage was thin. The owner judged
+that it did not read like the state of the sport. Movsar Evloev, unbeaten but
+without a title, was 2nd. Joshua Van, the flyweight champion with two defenses,
+was 19th, or 14th once the data was refreshed. The investigation is in
+`Useful Misc\Claude Status Reports\2026-10-14 UFC Current board investigation.md`
+in the owner's work folder. Three decisions followed, all board rules; none
+changes a rating.
+
+| Decision | Reason |
+| --- | --- |
+| A UFC bout within 18 months is required, of any outcome, from UFCStats or labelled UFC by Sherdog. | "Current" means current in the UFC. Under the old rule Francis Ngannou (5th) and Corey Anderson (23rd) were ranked only through bouts in other promotions. |
+| Titles count as they do on All-time: Current = 1,000 × (30% title + 17.5% skill + 52.5% résumé), with title and résumé summing only wins in the window. | One formula for both boards. A win in the window is priced exactly as All-time prices it, by the opponent's rating going in and the whole fight table (`since` in `title_quality_ledger` and `contender_resume_ledger`). |
+| Skill is capped at the rating, going in, of the best opponent the fighter ever beat. | A win shows a fighter is better than the person beaten; only a loss shows how far they fall short. The part of a rating above every beaten opponent is backed by no win. The cap needs no new constant. |
+
+The window stays at the 18 months the owner set on 2026-09-03. None of the three
+was fitted or chosen against the outside lists; they are stated policy, like the
+window.
+
+**Measured effect on the 2026-10-14 snapshot, rule against rule on the same
+data.** 21 of the top 30 stay. Leaving: Ngannou and Anderson (no UFC bout in the
+window), Arman Tsarukyan 6th to 48th, Magomed Ankalaev 20th to 49th, Gabriel
+Bonfim 18th to 31st, Lerone Murphy 24th to 70th, Sean Brady 26th to 44th, Tom
+Aspinall 29th to 52nd and Mario Bautista 30th to 37th. Entering: Alexander
+Volkov, Carlos Prates, Diego Lopes, Gregory Rodrigues, Jack Della Maddalena,
+Jean Silva, Manel Kape, Song Yadong and Umar Nurmagomedov. Justin Gaethje goes
+11th to 1st, Van 14th to 3rd and Evloev 2nd to 17th. 89 men and 10 women are
+ranked.
+
+**What to know before reading the board.**
+
+- A fighter with no title win and no contender win in the window scores on
+  skill alone, at 17.5% weight, so a top contender between big wins can sit
+  low. Tsarukyan is the clearest case. His two wins in the window are over Dan
+  Hooker, rated 1,724.6 going in (1,704.6 after the layoff discount), below the
+  1,750 line, and Mauricio Ruffy, rated 1,860.7 but with 7 UFC bouts, one short
+  of tested. Both fail All-time's existing contender rule, as intended.
+- The cap binds hardest on unbeaten or near-unbeaten records against modest
+  opposition: Evloev's skill level is capped at Lerone Murphy's 1,949.0,
+  Bonfim's at 1,845.3 and Murphy's at 1,799.6. A champion who has beaten the
+  division is rated near or below his best win and is not affected.
+- Current scores are now points, like All-time, not rating points. A gap
+  between two fighters is no longer a chance of winning; Prime is the board
+  that still reads that way.
+
 ## Tested and refused: the layoff charge does not belong in the rating
 
 Charging the layoff inside the WHR transition prior was implemented, measured on
@@ -510,9 +557,9 @@ first line below and the boards publish the old scores while the audit, which
 does recompute, publishes the new ones, and the two silently disagree:
 
 ```text
-python -m ratings.rate_snapshot --snapshot-dir data/snapshots/2026-08-13 --scope majors,pre_unified --career-only
-python build_boards.py data/snapshots/2026-08-13 --scope majors,pre_unified --write-readme
-python build_top100_audit.py data/snapshots/2026-08-13 --scope majors,pre_unified
+python -m ratings.rate_snapshot --snapshot-dir data/snapshots/2026-10-14 --scope majors,pre_unified --career-only
+python build_boards.py data/snapshots/2026-10-14 --scope majors,pre_unified --write-readme
+python build_top100_audit.py data/snapshots/2026-10-14 --scope majors,pre_unified
 python -m pytest -q
 python -m ruff check .
 ```
@@ -526,8 +573,8 @@ fifteen minutes:
 
 ```text
 python build_sherdog_careers.py --report-only
-python -c "from loaders.majors_scope import stage_majors_scope; stage_majors_scope('data/snapshots/2026-08-13')"
-python -m ratings.rate_snapshot --snapshot-dir data/snapshots/2026-08-13 --scope majors,pre_unified
+python -c "from loaders.majors_scope import stage_majors_scope; stage_majors_scope('data/snapshots/2026-10-14')"
+python -m ratings.rate_snapshot --snapshot-dir data/snapshots/2026-10-14 --scope majors,pre_unified
 ```
 
 then the board block above. Never hand-edit a generated table. After any change,
