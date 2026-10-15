@@ -7,9 +7,10 @@ from pathlib import Path
 
 import pandas as pd
 import pytest
+from check_release import PUBLISHED_SNAPSHOT
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-SNAPSHOT = PROJECT_ROOT / "data" / "snapshots" / "2026-08-13"
+SNAPSHOT = PUBLISHED_SNAPSHOT
 PUBLICATIONS = (PROJECT_ROOT / "README.md", PROJECT_ROOT / "RANKINGS.md")
 
 

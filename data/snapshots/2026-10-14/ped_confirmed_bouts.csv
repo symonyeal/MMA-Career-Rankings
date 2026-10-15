@@ -1,0 +1,6 @@
+fight_url,event_date,event_name,fighter_a,fighter_b,winner,ped_flagged_fighter,ped_confirmation_detail
+http://ufcstats.com/fight-details/6a9e343bd12dfa64,2007-07-07,UFC 73: Stacked,Sean Sherk,Hermes Franca,Sean Sherk,Sean Sherk,nandrolone; in_competition_positive_no_overturn; https://en.wikipedia.org/wiki/Sean_Sherk
+http://ufcstats.com/fight-details/b51d691b9f5603a8,2013-01-19,UFC on FX: Belfort vs Bisping,Vitor Belfort,Michael Bisping,Vitor Belfort,Vitor Belfort,elevated testosterone; out_of_competition_positive_window; https://en.wikipedia.org/wiki/Vitor_Belfort
+http://ufcstats.com/fight-details/110d18c0953bde1d,2013-05-18,UFC on FX: Belfort vs. Rockhold,Vitor Belfort,Luke Rockhold,Vitor Belfort,Vitor Belfort,elevated testosterone; out_of_competition_positive_window; https://en.wikipedia.org/wiki/Vitor_Belfort
+http://ufcstats.com/fight-details/1d34e2f80cb91188,2013-11-09,UFC Fight Night: Belfort vs Henderson 2,Vitor Belfort,Dan Henderson,Vitor Belfort,Vitor Belfort,elevated testosterone; out_of_competition_positive_window; https://en.wikipedia.org/wiki/Vitor_Belfort
+http://ufcstats.com/fight-details/37c732554828dcc3,2015-11-07,UFC Fight Night: Belfort vs Henderson 3,Gleison Tibau,Abel Trujillo,Abel Trujillo,Gleison Tibau,Rear Naked ChokeOverturned - Failed Drug Test by Tibau

@@ -55,7 +55,7 @@ corpus, after event-card precedence, and the full published scope was refitted.
 
 Usage::
 
-    python build_sherdog_careers.py --snapshot-dir data/snapshots/2026-08-13
+    python build_sherdog_careers.py --snapshot-dir data/snapshots/2026-10-14
     python build_sherdog_careers.py --report-only      # no network
 """
 
@@ -134,7 +134,7 @@ def coverage_table(
 
 def main() -> dict:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--snapshot-dir", default="data/snapshots/2026-08-13")
+    ap.add_argument("--snapshot-dir", default="data/snapshots/2026-10-14")
     ap.add_argument("--majors-dir", default=str(DEFAULT_MAJORS_DIR))
     ap.add_argument("--min-ufc-bouts", type=int, default=DEFAULT_MIN_UFC_BOUTS)
     ap.add_argument("--report-only", action="store_true",

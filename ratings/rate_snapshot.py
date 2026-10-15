@@ -50,6 +50,7 @@ from ratings.symon_score import (
     symon_prime_score,
 )
 from ratings.gender import GENDER_GAUGE_NOTE, GENDER_LABEL, partition_by_gender
+from ratings.current_score import CURRENT_SCORE_COLUMNS, current_score_rows
 from ratings.legacy_resume import _division_labels, public_legacy_score_rows
 from ratings.whr import production_score_kwargs, project_age_rating, run_whr
 from ratings.age import load_birth_dates
@@ -201,6 +202,7 @@ def refresh_career_columns(
             c for c in current.columns
             if (
                 c.startswith(("symon_career_", "symon_peak_", "public_legacy_"))
+                or (c in CURRENT_SCORE_COLUMNS and c != "fighter")
             )
         ],
         errors="ignore",
@@ -238,6 +240,18 @@ def refresh_career_columns(
             source_fights=source_fights,
             history=history,
             reference=reference,
+        ),
+        on="fighter",
+        how="left",
+    )
+    # Current reads the exposure factor the legacy columns just wrote.
+    current = current.merge(
+        current_score_rows(
+            current,
+            rated_fights=source_fights,
+            recorded_fights=recorded_fights,
+            history=history,
+            reference_date=pd.to_datetime(source_fights["event_date"]).max(),
         ),
         on="fighter",
         how="left",
@@ -783,6 +797,19 @@ def run(
             source_fights=rated_fights,
             history=whr_history,
             reference=career_reference,
+        ),
+        on="fighter",
+        how="left",
+    )
+    # Current reads the exposure factor the legacy columns just wrote, and the
+    # same reference date as the inactivity clock.
+    current = current.merge(
+        current_score_rows(
+            current,
+            rated_fights=rated_fights,
+            recorded_fights=fights,
+            history=whr_history,
+            reference_date=snapshot_max_date,
         ),
         on="fighter",
         how="left",

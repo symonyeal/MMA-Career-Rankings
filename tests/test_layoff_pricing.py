@@ -18,6 +18,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from check_release import PUBLISHED_SNAPSHOT
 from ratings.layoff import (
     MAX_EXCESS_TURNAROUNDS,
     OPPONENT_LAYOFF_ELO_PER_TURNAROUND,
@@ -177,7 +178,7 @@ def test_the_charge_is_not_written_back_to_the_opponents_rating():
 
 # --- the quoted Stipe figures, held to the snapshot ------------------------
 
-SNAPSHOT = Path(__file__).resolve().parents[1] / "data" / "snapshots" / "2026-08-13"
+SNAPSHOT = PUBLISHED_SNAPSHOT
 DECISIONS = Path(__file__).resolve().parents[1] / "docs" / "DECISIONS.md"
 
 CORMIER_WIN = pd.Timestamp("2018-07-07")

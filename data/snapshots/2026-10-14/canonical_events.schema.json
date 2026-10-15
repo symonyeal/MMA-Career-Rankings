@@ -1,0 +1,11 @@
+{
+  "primary_key": "event_url",
+  "source": "Greco/ufc_event_details.csv",
+  "row_grain": "one row per UFC event from UFC 28 onward",
+  "columns": {
+    "event_name": "Greco EVENT",
+    "event_url": "Greco URL",
+    "event_date": "Greco DATE parsed",
+    "event_location": "Greco LOCATION"
+  }
+}

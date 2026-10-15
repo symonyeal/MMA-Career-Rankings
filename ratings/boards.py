@@ -349,6 +349,7 @@ def completeness_gated_board(
     tested_wins_label: str = "wins over tested contenders",
     months_inactive: pd.Series | None = None,
     max_months_inactive: float | None = None,
+    recency_label: str = "bout",
     unranked_at_or_below: float | None = None,
     top: int | None = None,
 ) -> pd.DataFrame:
@@ -446,7 +447,7 @@ def completeness_gated_board(
         stale = idle.isna() | (idle > float(max_months_inactive))
         status[stale & status.eq("ranked")] = (
             "not currently active enough to rank "
-            f"(last bout over {float(max_months_inactive):g} months ago)")
+            f"(last {recency_label} over {float(max_months_inactive):g} months ago)")
     if unranked_at_or_below is not None:
         at_floor = rated.notna() & (rated <= float(unranked_at_or_below))
         status[at_floor & status.eq("ranked")] = UNRANKED_AT_FLOOR_STATUS

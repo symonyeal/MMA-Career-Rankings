@@ -1,5 +1,42 @@
 # Snapshot Changelog
 
+## 2026-10-14 - Release 2026-10-14, and a new Current board
+
+The published release moves from `2026-08-13` to `2026-10-14`, data through
+2026-10-10: 81,616 rated fights and 34,147 rated fighters. The UFC side is
+complete through UFC Fight Night: Allen vs. Duncan. Nine events since the
+previous release are added, including UFC 331, where Joshua Van beat Alexandre
+Pantoja. The Sherdog side was not re-crawled, so other promotions' bouts still
+end on 2026-08-30. 1,826 of 1,837 eligible fighters have whole-career rows
+(99.4%). The accuracy check (`prequential_*`) was not re-run on the new
+snapshot. `2026-08-13` stays committed as the previous release.
+
+- All-time: the top 10 is unchanged. Carlos Ulberg and Yoel Romero enter the
+  top 100, and Michael Chandler and Umar Nurmagomedov leave. 60 of the 98 who
+  stay move; the largest move is Van's, 22 places.
+- Prime: Mateusz Gamrot enters the top 50 and Anthony Hernandez leaves. 25 move;
+  the largest move is Brendan Allen's, 12 places. Qualifiers: 78 men and 2 women.
+- README: the "points total" paragraph is re-measured on the new release. Jones
+  3,714 against St-Pierre 2,104; Prime 2,205 against 2,073, a 132-point edge,
+  about 68%. The Prime figures quoted before (2,208, 2,073, 135, 69%) were
+  already not those of the 2026-08-13 release, which measures 2,205.0 against
+  2,072.8.
+
+**Current is rebuilt on the owner's decisions** (see "Current board: the owner's
+decisions of 2026-10-14" in `docs/DECISIONS.md`):
+
+- A UFC bout of any outcome within 18 months is required. Francis Ngannou and
+  Corey Anderson are no longer ranked.
+- Titles count as on All-time: Current = 1,000 × (30% title + 17.5% skill +
+  52.5% résumé), with title and résumé summing only wins in the window.
+- Skill is capped at the best opponent ever beaten, rated going in.
+
+Measured on the same data against the previous rule: 21 of the top 30 stay.
+Justin Gaethje goes 11th to 1st, Van 14th to 3rd and Movsar Evloev 2nd to 17th.
+Arman Tsarukyan goes 6th to 48th: neither of his wins in the window clears the
+contender rule. 89 men and 10 women are ranked. The table now shows the score,
+title and contender wins in the window, UFC bouts and the last UFC bout.
+
 ## 2026-10-14 - Current counts any recorded fight for recency
 
 The README promises that any recorded MMA fight within 18 months keeps a

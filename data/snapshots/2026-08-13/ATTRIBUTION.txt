@@ -1,8 +1,9 @@
 ATTRIBUTION
 -----------
-This folder is the published 2026-08-13 release: every input the rating fit
-reads, the fitted ratings, and the boards built from them. It is versioned so
-that any checkout can rebuild the published boards, re-score them, or refit
+This folder is the 2026-08-13 release, published until 2026-10-14: every
+input the rating fit reads, the fitted ratings, and the boards built from
+them. It is versioned so that any checkout can rebuild those boards, re-score
+them, or refit
 them without the local page caches the crawls left behind. Most files are
 output of this repository's own code. The rest are reshaped from third-party
 sources, and each source's terms are recorded where its raw data lives:

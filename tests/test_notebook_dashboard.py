@@ -15,8 +15,10 @@ from pathlib import Path
 
 import pytest
 
+from check_release import PUBLISHED_SNAPSHOT
+
 ROOT = Path(__file__).resolve().parents[1]
-SNAPSHOT_DIR = ROOT / "data" / "snapshots" / "2026-08-13"
+SNAPSHOT_DIR = PUBLISHED_SNAPSHOT
 
 pytest.importorskip("ipywidgets")
 pytest.importorskip("anywidget", reason="FigureWidget requires anywidget")

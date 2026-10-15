@@ -1,8 +1,8 @@
-from pathlib import Path
 
 import pandas as pd
 import pytest
 
+from check_release import PUBLISHED_SNAPSHOT
 from analysis.viz import (
     PEAK_VIEWS,
     PUBLIC_RANKING_VIEWS,
@@ -38,7 +38,7 @@ from analysis.viz import (
 )
 
 
-SNAPSHOT_DIR = Path("data/snapshots/2026-08-13")
+SNAPSHOT_DIR = PUBLISHED_SNAPSHOT
 
 
 @pytest.fixture(scope="module")
