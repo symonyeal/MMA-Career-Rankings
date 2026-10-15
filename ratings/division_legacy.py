@@ -1,7 +1,10 @@
-"""The All-time score by weight class.
+"""The All-time score by weight class, counted over UFC bouts.
 
 Let f be a fighter whose evidence items i -- title wins, contender wins, career years -- each
-carry a class d(i), or none. The All-time score is linear in three ledger totals,
+carry a class d(i), or none. An item has a class only if its bout is a UFC bout
+(:func:`ratings.current_score.is_ufc_bout`, the predicate Current uses); every other item, like
+open weight, counts toward the All-time score and toward no class. The All-time score is linear
+in three ledger totals,
 
     S(f) = 1000 [a T(f)/n_T + (1 - a)(s K(f)/n_K + (1 - s) R(f)/n_R)],
 
@@ -12,7 +15,7 @@ carry a class d(i), or none. The All-time score is linear in three ledger totals
 with n_T, n_K, n_R the board-wide normalisers (:func:`ratings.legacy_resume.legacy_norm`). The
 class score S_d(f) is the same expression over the items in class d with the same n's, so
 
-    sum_d S_d(f) = S(f)    exactly; items with no class sit under d = None.
+    sum_d S_d(f) = S(f)    exactly; items with no class, including every non-UFC item, sit under d = None.
 
 Two totals are not plain sums over items, so each needs a stated allocation rule:
     resume   a capped year is split pro rata, w -> w min(1, cap / sum of that year's w);
@@ -33,6 +36,7 @@ from ratings.legacy_resume import (
     RESUME_YEAR_CAP, TITLE_QUALITY_SCALE, _division_labels, contender_resume_rows, legacy_norm, title_quality_rows,
     ufc_debut_dates_from,
 )
+from ratings.current_score import is_ufc_bout
 from ratings.performance_adjustment import normalize_division_label, womens_division_label
 from ratings.symon_score import (
     DEFAULT_CAREER_REFERENCE, DEFAULT_DIVISION_REFERENCE, DEFAULT_HINGE_SPREAD_FRACTION, career_skill_years,
@@ -86,15 +90,17 @@ def class_ledger(
     per-fighter sums over division reproduce its title quality, career skill mass and resume quality.
     """
     gender = current.set_index("fighter")["gender"]
+    ufc = set(source_fights.loc[is_ufc_bout(source_fights), "fight_url"])
     a = appearances[["fight_url", "fighter", "event_date", "division"]].copy()
-    a["division"] = [weight_class(d, gender.get(f)) for d, f in zip(a["division"], a["fighter"])]
+    a["division"] = [weight_class(d, gender.get(f)) if u in ufc else None
+                     for d, f, u in zip(a["division"], a["fighter"], a["fight_url"])]
     a["year"] = pd.to_datetime(a["event_date"]).dt.year
     bout = a.drop_duplicates(["fight_url", "fighter"]).set_index(["fight_url", "fighter"])["division"]
     billed = source_fights.drop_duplicates("fight_url").set_index("fight_url")["weight_class"]
 
-    def of(x):  # the appearance's class, else the class the bout itself was billed at
+    def of(x):  # a UFC bout's class: the appearance's, else the one the bout was billed at
         d = bout.reindex(pd.MultiIndex.from_arrays([x["fight_url"], x["fighter"]])).to_numpy()
-        return [c if isinstance(c, str) else weight_class(billed.get(u), gender.get(f))
+        return [None if u not in ufc else c if isinstance(c, str) else weight_class(billed.get(u), gender.get(f))
                 for c, u, f in zip(d, x["fight_url"], x["fighter"])]
 
     labels = _division_labels(current)

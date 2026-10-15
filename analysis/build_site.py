@@ -29,10 +29,11 @@ sys.path.insert(0, str(ROOT))
 
 from analysis.viz import (
     DIV_SHORT, DIVISIONS, _division_strength_frame, add_division_to_fights, all_time_benchmark_table,
-    career_bar_ladder_chart, division_year_top_fighters_chart, integrity_ledger_table, title_lineage_chart,
-    win_streaks, yearly_rating_delta_scatter,
+    division_year_top_fighters_chart, integrity_ledger_table, title_lineage_chart, win_streaks,
+    yearly_rating_delta_scatter,
 )
 from build_boards import _division_column
+from ratings.current_score import is_ufc_bout
 from ratings.constants import (
     FIVE_YEAR_PEAK_MIN_FIGHTS, FIVE_YEAR_PEAK_WINDOW_DAYS, FIVE_YEAR_PEAK_WINDOW_LABEL, SUSTAINED_PEAK_MIN_FIGHTS,
 )
@@ -42,12 +43,13 @@ from ratings.legacy_resume import (
 from ratings.opponent_quality import CONTENDER_LINE_MU
 from ratings.symon_score import (
     DEFAULT_CAREER_REFERENCE, DEFAULT_DIVISION_MIN_POPULATION, DEFAULT_DIVISION_REFERENCE,
-    DEFAULT_HINGE_SPREAD_FRACTION, career_mass_family, division_year_reference, positive_part,
+    DEFAULT_HINGE_SPREAD_FRACTION, division_year_reference, positive_part,
     year_rating_spread, year_reference,
 )
 
 METHODS = ["KO/TKO", "Submission", "Decision - Unanimous", "Decision - Split", "Decision - Majority", "DQ", "Other"]
 TOP_NS = (5, 10, 15, 25)
+BAR_RAISE = tuple(range(0, 201, 25))  # rating points added to every year's bar
 EPOCH = pd.Timestamp("1970-01-01")
 
 
@@ -98,7 +100,7 @@ def receipt(whr, rc):
 
     Same steps as the production call in rate_snapshot (division bar at contender:5, sport-wide
     contender:60 fallback, soft hinge at 0.175 of the year's spread); returns
-    (fighter, year, annual_mean, field_mean, excess).
+    (fighter, year, annual_mean, field_mean, hinge, excess).
     """
     h = whr[["fighter", "event_date", "mu_whr"]].dropna().rename(columns={"mu_whr": "mu"})
     h["year"] = pd.to_datetime(h["event_date"]).dt.year
@@ -112,9 +114,23 @@ def receipt(whr, rc):
     local = division_year_reference(a, DEFAULT_DIVISION_REFERENCE, min_population=DEFAULT_DIVISION_MIN_POPULATION)
     keys = pd.MultiIndex.from_arrays([a["division"], a["year"]])
     a["field_mean"] = pd.Series(local.reindex(keys).to_numpy(), index=a.index).fillna(a["field_mean"])
-    s = a["year"].map(year_rating_spread(a)).fillna(0.0) * DEFAULT_HINGE_SPREAD_FRACTION
-    a["excess"] = positive_part(a["annual_mean"] - a["field_mean"], s)
+    a["hinge"] = a["year"].map(year_rating_spread(a)).fillna(0.0) * DEFAULT_HINGE_SPREAD_FRACTION
+    a["excess"] = positive_part(a["annual_mean"] - a["field_mean"], a["hinge"])
     return a
+
+
+def raised_bar(A, n=20):
+    """Career-mass ranks with every year's bar raised by d ∈ BAR_RAISE rating points.
+
+    m_d(f) = Σ_years positive_part(annual mean − (bar + d), hinge): the published functional with a
+    shifted bar, so m_0 is the published career mass. Ranks are over the fighters of A (one gender).
+    Returns the n highest at d = 0 as [fighter, [rank_d], [m_d]].
+    """
+    m = pd.DataFrame({d: A.assign(x=positive_part(A["annual_mean"] - A["field_mean"] - d, A["hinge"]))
+                      .groupby("fighter")["x"].sum() for d in BAR_RAISE})
+    r = m.rank(ascending=False, method="first").astype(int)
+    top = r.sort_values(0).index[:n]
+    return [[f, r.loc[f].tolist(), m.loc[f].round().astype(int).tolist()] for f in top]
 
 
 def build(snap):
@@ -197,29 +213,31 @@ def build(snap):
                        atol=1e-6), "career receipt does not sum to the published career skill mass"
     rec = {f: plain(g[["year", "annual_mean", "field_mean", "excess"]].round().to_numpy().tolist(), 0)
            for f, g in A[A["fighter"].isin(set(names))].groupby("fighter", sort=False)}
+    bar = {g: raised_bar(A[A["fighter"].isin(set(x.index[x["gender"].eq(g)]))]) for g in ("M", "F")}
 
-    # 4. Division frames (notebook: Weight Classes). Base WHR, end-of-year rating, top-N per class.
+    # 4. Division frames (notebook: Weight Classes), UFC bouts only: divisional views count the UFC, as the
+    # class boards and Current do. Base WHR, end-of-year rating, top-N per class.
+    U = bouts[is_ufc_bout(bouts)]
     years = sorted(y for y, c in pd.to_datetime(bouts["event_date"]).dt.year.value_counts().items() if c >= 100)
-    strength = {k: plain(_division_strength_frame(whr, bouts, rating_col="mu_whr", top_n_per_division=k)
+    uyears = sorted(y for y, c in pd.to_datetime(U["event_date"]).dt.year.value_counts().items() if c >= 30)
+    strength = {k: plain(_division_strength_frame(whr, U, rating_col="mu_whr", top_n_per_division=k)
                          .to_numpy().tolist()) for k in TOP_NS}
-    year_top = {y: fig(division_year_top_fighters_chart(whr, bouts, rating_col="mu_whr", year=y, top_n=5))
-                for y in years}
+    year_top = {y: fig(division_year_top_fighters_chart(whr, U, rating_col="mu_whr", year=y, top_n=5))
+                for y in uyears}
     # Movers among the board population only; over all 34k fighters the list is regional debutants.
     whrE = whr[whr["fighter"].isin(set(names))]
     movers = {y: fig(yearly_rating_delta_scatter(whrE, bouts, rating_col="mu_whr", year=y, n=12)) for y in years}
-    f = add_division_to_fights(bouts[~bouts["is_excluded"].fillna(False).astype(bool)])
+    f = add_division_to_fights(U[~U["is_excluded"].fillna(False).astype(bool)])
     f["year"] = pd.to_datetime(f["event_date"]).dt.year
     f["bucket"] = f["method_class"].map(
         lambda m: m if m in ("KO/TKO", "Submission") else "Decision" if str(m).startswith("Decision") else None)
     mix = f.dropna(subset=["bucket"]).groupby(["year", f["division"].fillna(""), "bucket"]).size()
-    ent = rd("division_entropy")
-    ent = ent[ent["division"].isin(DIVISIONS)][["year", "division", "entropy_normalized", "top_mu_mean"]]
 
     # 5. Title lineage per class, with and without interim belts.
     lineage = {d: [fig(title_lineage_chart(app, division=d, include_interim=i)) for i in (False, True)]
                for d in DIVISIONS[:13]}
 
-    # 6. Streaks over UFC bouts (notebook: Win Streaks), the external benchmark, integrity policy, bar ladder.
+    # 6. Streaks over UFC bouts (notebook: Win Streaks), the external benchmark, integrity policy.
     st = win_streaks(ufc, rc, min_len=3)
     st = st.assign(start_date=days(st["start_date"]), end_date=days(st["end_date"]))[
         ["fighter", "length", "start_date", "end_date", "division", "divisions", "title_wins", "finishes",
@@ -240,7 +258,6 @@ def build(snap):
         "ledger": plain(integrity_ledger_table(ia, integrity_ledger=il, n=None)
                         .replace("�", "—", regex=True).to_numpy().tolist()),  # source mis-decoded dash
     }
-    ladder = fig(career_bar_ladder_chart(career_mass_family(whr), n=15))
 
     # 7. Calibration of the pre-fight Glicko-2 forecast (ratings.diagnostics.calibration_residual_rows).
     cr = rd("calibration_residuals")
@@ -259,12 +276,12 @@ def build(snap):
             "min_periods": SUSTAINED_PEAK_MIN_FIGHTS, "contender": CONTENDER_LINE_MU,
             "a": a, "s": s, "scale": PUBLIC_LEGACY_DISPLAY_SCALE, "methods": METHODS,
             "peak": [FIVE_YEAR_PEAK_WINDOW_DAYS, FIVE_YEAR_PEAK_MIN_FIGHTS, FIVE_YEAR_PEAK_WINDOW_LABEL],
+            "bar_raise": BAR_RAISE,
         },
         "divisions": DIVISIONS, "short": DIV_SHORT, "F": F, "classes": classes, "N": N, "traj": traj, "receipt": rec,
-        "strength": strength, "year_top": year_top, "movers": movers,
-        "mix": plain([[*k, v] for k, v in mix.items()]), "entropy": plain(ent.to_numpy().tolist(), 3),
-        "lineage": lineage, "streaks": plain(st.to_numpy().tolist(), 0),
-        "bench": plain(bench.to_numpy().tolist(), 1), "integrity": integrity, "ladder": ladder, "calib": calib,
+        "strength": strength, "year_top": year_top, "movers": movers, "mix": plain([[*k, v] for k, v in mix.items()]),
+        "lineage": lineage, "streaks": plain(st.to_numpy().tolist(), 0), "bar": bar,
+        "bench": plain(bench.to_numpy().tolist(), 1), "integrity": integrity, "calib": calib,
     }
 
 

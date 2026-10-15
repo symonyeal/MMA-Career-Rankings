@@ -456,6 +456,16 @@ cost of aging.
     at open weight or with no weight class count toward no class (a median 0% of
     a top-100 score, at most 11.5%). Within a class, Prime and Current keep the
     published order, renumbered; they are restrictions, not new scores.
+
+    **Narrowed to UFC bouts on 2026-10-15, the owner's decision.** All-time and
+    Prime count every promotion; the class boards and Current count the UFC. An
+    item now has a class only if its bout passes `is_ufc_bout`, the predicate
+    Current already uses (UFC and pre-unified UFC). Every other item joins the
+    unclassed remainder, so `sum_d S_d(f) = S(f)` still holds with the remainder
+    under `d = None`, and `build_boards.py` still checks it. The All-time and Prime
+    boards do not move. On the 2026-10-14 snapshot the class rows fall from 8,259
+    to 2,648; Fedor Emelianenko leaves Heavyweight, and Atomweight and men's
+    Strawweight, which the UFC never staged, have no board.
 14. **A career year is still measured against the bar of the fighter's career
     class, not the class fought in that year.** Open. It is the remaining
     inconsistency under item 13: a fighter who moved up is credited at the new

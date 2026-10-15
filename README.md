@@ -18,14 +18,14 @@ fighters, minimum rated bouts) drives every section.
 
 | Feature | What you can do |
 | --- | --- |
-| [**Rankings**](https://symonyeal.github.io/UFC-Rank-Engine/#rankings) | All-time, Prime and Current, exactly as published below. Pick a weight class for that class's own board, whose scores add up to each fighter's All-time score. |
-| [**Weight-class boards**](https://symonyeal.github.io/UFC-Rank-Engine/#rankings) | A champion in two classes is ranked in both, with the share of their career earned in each. |
+| [**Rankings**](https://symonyeal.github.io/UFC-Rank-Engine/#rankings) | All-time, Prime and Current, exactly as published below. Pick a weight class for that class's own board: the All-time score earned in UFC bouts in that class. |
+| [**Weight-class boards**](https://symonyeal.github.io/UFC-Rank-Engine/#rankings) | UFC only. A champion in two classes is ranked in both, with the share of their All-time score earned in each. |
 | [**Score anatomy**](https://symonyeal.github.io/UFC-Rank-Engine/#anatomy) | See each score split into championships, career skill and contender résumé. Move two sliders to change the exchange rate and watch the board re-rank. |
 | [**Rank robustness**](https://symonyeal.github.io/UFC-Rank-Engine/#anatomy) | A heat map of one fighter's rank under every exchange rate, with the published choice marked. |
 | [**Career arcs and tale of the tape**](https://symonyeal.github.io/UFC-Rank-Engine/#fighters) | Overlay up to six fighters' ratings fight by fight and compare their records, ranks and class placements side by side. |
-| [**Where a career score comes from**](https://symonyeal.github.io/UFC-Rank-Engine/#careers) | A year-by-year receipt that sums to the career score, peak against longevity, and whether the order survives a higher bar. |
-| [**Risers, fallers and streaks**](https://symonyeal.github.io/UFC-Rank-Engine/#movers) | The biggest rating moves of any year and the longest unbeaten UFC runs, each with its timeline. |
-| [**Weight classes and eras**](https://symonyeal.github.io/UFC-Rank-Engine/#divisions) | How strong each class has been year by year, its top five in any year, how deep its elite is, and how fights end. |
+| [**Where a career score comes from**](https://symonyeal.github.io/UFC-Rank-Engine/#careers) | A year-by-year receipt that sums to the career score, and how the order holds when every year's bar is raised. |
+| [**Risers, fallers and streaks**](https://symonyeal.github.io/UFC-Rank-Engine/#movers) | The biggest rating moves of any year, and the longest UFC win streaks placed by length and by the strength of who they beat. |
+| [**Weight classes and eras**](https://symonyeal.github.io/UFC-Rank-Engine/#divisions) | UFC only: how strong each class has been year by year, its top five in any year, and how fights end. |
 | [**Title lineage**](https://symonyeal.github.io/UFC-Rank-Engine/#lineage) | Every reign in every class, with defences. |
 | [**Integrity policy and outside check**](https://symonyeal.github.io/UFC-Rank-Engine/#policy) | The PED, disqualification and missed-weight ledger, and where the board disagrees with FightMatrix. |
 | [**Forecast calibration**](https://symonyeal.github.io/UFC-Rank-Engine/#checks) | How often pre-fight favourites actually won, against the probability they were given, with 95% intervals. |
@@ -99,10 +99,12 @@ fighter has ever beaten so an unbeaten run against weak opposition cannot keep
 climbing. It needs 13 rated appearances, eight UFC bouts and a UFC bout within
 18 months. Integrity deductions never alter a published board.
 
-Each weight class has its own All-time board: the same score, counted only from
-the title wins, contender wins and career years earned in that class. A fighter's
-class scores add up exactly to their All-time score, so a champion in two classes
-is ranked in both and the class boards can never contradict the overall one.
+Each weight class has its own board, and it is UFC only: the All-time score counted
+only from the title wins, contender wins and career years earned in UFC bouts in
+that class. All-time and Prime count every promotion; the class boards and Current
+count the UFC. What a fighter earned outside the UFC stays in their All-time score
+but in no class, so their class scores add up to their All-time score less that
+remainder. A champion in two classes is ranked in both.
 
 ## What is published
 
