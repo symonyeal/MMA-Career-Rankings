@@ -1681,7 +1681,7 @@ def all_time_benchmark_chart(
         line={"color": THEME["border_strong"], "width": 2}, hoverinfo="skip",
     ))
     fig.add_trace(go.Scatter(
-        x=df["model_rank"], y=df["fighter"], mode="markers", name="Rank Engine",
+        x=df["model_rank"], y=df["fighter"], mode="markers", name="Career Rankings",
         marker={"color": THEME["primary"], "size": 10},
         customdata=np.stack([df["model_rating"].round(1), df["rank_gap"]], axis=-1),
         hovertemplate=("<b>%{y}</b><br>Engine rank %{x:.0f}<br>Rating %{customdata[0]:.1f}"

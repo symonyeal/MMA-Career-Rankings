@@ -20,7 +20,7 @@ from bs4 import BeautifulSoup
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 BASE_URL = "https://www.fightmatrix.com"
-USER_AGENT = "Symon-UFC-Rank-Engine/0.1 (+local research; polite cache)"
+USER_AGENT = "UFC-Career-Rankings/0.1 (+local research; polite cache)"
 
 DIVISION_URLS = {
     "heavyweight": "/mma-ranks/heavyweight/",

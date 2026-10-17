@@ -658,11 +658,11 @@ SECTIONS.benchmark = () => {
     { type: "scatter", mode: "markers", x: B.map((r) => r[2]), y: B.map((r) => r[0]), marker: { color: T.context, size: 9, symbol: "diamond" },
       customdata: B.map((r) => r[5]), hovertemplate: "<b>%{y}</b><br>FightMatrix #%{x}<br>%{customdata:,.0f} points<extra></extra>" },
     { type: "scatter", mode: "markers", x: B.map((r) => r[1]), y: B.map((r) => r[0]), marker: { color: B.map((r) => (r === far ? T.accent : T.text2)), size: 9 },
-      customdata: B.map((r) => [r[4], r[3]]), hovertemplate: "<b>%{y}</b><br>Rank Engine #%{x}<br>score %{customdata[0]:.1f}<br>gap %{customdata[1]:+d}<extra></extra>" },
+      customdata: B.map((r) => [r[4], r[3]]), hovertemplate: "<b>%{y}</b><br>Career Rankings #%{x}<br>score %{customdata[0]:.1f}<br>gap %{customdata[1]:+d}<extra></extra>" },
   ], { height: Math.max(420, 22 * B.length + 80), xaxis: { range: [Math.max(...B.flatMap((r) => [r[1], r[2]])) + 1, 0], title: { text: "Rank (1 is best)" } },
     yaxis: { automargin: true }, margin: { l: 8 } });
   ex("bm-chart", `ρ = ${fmt(rho(B.map((r) => r[1]), B.map((r) => r[2])), 2)} over ${B.length} matched; biggest gap ${esc(far[0])}, #${far[1]} here, #${far[2]} there.`,
-    `Dot: Rank Engine · diamond: FightMatrix.`);
+    `Dot: Career Rankings · diamond: FightMatrix.`);
 };
 
 // ---- wiring --------------------------------------------------------------------------------------------------
