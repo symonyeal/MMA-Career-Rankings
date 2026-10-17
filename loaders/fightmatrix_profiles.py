@@ -31,7 +31,7 @@ from project_helpers import bout_fingerprint, normalize_name_key
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 BASE_URL = "https://www.fightmatrix.com"
-USER_AGENT = "Symon-UFC-Rank-Engine/0.2 (+local research; polite bounded cache)"
+USER_AGENT = "UFC-Career-Rankings/0.2 (+local research; polite bounded cache)"
 DEFAULT_PROFILE_CACHE_DIR = PROJECT_ROOT / "data" / "external" / "fightmatrix" / "profiles"
 PROFILE_KIND = "profiles"
 
