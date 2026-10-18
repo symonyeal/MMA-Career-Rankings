@@ -9,10 +9,25 @@
 
 [![The interactive site: the published boards, filtered by roster, weight class and depth](docs/site/rankings.png)](https://symonyeal.github.io/UFC-Career-Rankings/)
 
-This project fits recorded MMA careers together, then answers three different
-questions: career, peak and current strength. The site above is the way to
-read the answers. One set of controls (men or women, weight class, how many
-fighters, minimum rated bouts) drives every section.
+## In plain terms
+
+Who is the greatest UFC fighter? The answer depends on the question, so this project
+answers three: the best career of all time, the best fighter at their peak, and the best
+fighter right now. Men and women are ranked separately.
+
+Every recorded professional MMA fight (over 81,000 fights between 34,000 fighters) goes into
+one rating model, which works like chess ratings. Beating a strong opponent raises a rating
+more than beating a weak one, and later results can revise how strong past opponents really
+were. A career score then adds up three things: title fights won, wins over top
+contenders, and how far the fighter's rating stood above contender level, year by year.
+
+By this measure Jon Jones ranks first for both career and peak. Islam Makhachev and
+Georges St-Pierre fill the next two places on both lists. On the site you can change how
+much each part of the score counts and watch the order change.
+
+The site above is the way to read the answers. One set of controls (men or women, weight
+class, how many fighters, minimum rated bouts) drives every section. The rest of this page
+gives the exact rules.
 
 ## What the site does
 
