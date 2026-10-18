@@ -19,6 +19,7 @@ from ratings.current_score import (
 )
 from ratings.legacy_resume import (
     LEGACY_ACHIEVEMENT_WEIGHT,
+    LEGACY_PART_POWER,
     LEGACY_QUALITY_SKILL_SHARE,
     PUBLIC_LEGACY_DISPLAY_SCALE,
 )
@@ -119,7 +120,7 @@ def test_the_score_is_the_all_time_formula_over_the_window():
         reference_date=REF,
     ).set_index("fighter")
     s = got[["current_title_score", "current_skill_score", "current_resume_score"]]
-    scaled = s / s[s > 0].mean().where(lambda m: m > 0, 1.0)
+    scaled = (s / s[s > 0].mean().where(lambda m: m > 0, 1.0)) ** LEGACY_PART_POWER
     expected = PUBLIC_LEGACY_DISPLAY_SCALE * (
         LEGACY_ACHIEVEMENT_WEIGHT * scaled["current_title_score"]
         + (1 - LEGACY_ACHIEVEMENT_WEIGHT) * (

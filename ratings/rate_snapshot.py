@@ -52,6 +52,7 @@ from ratings.symon_score import (
 from ratings.gender import GENDER_GAUGE_NOTE, GENDER_LABEL, partition_by_gender
 from ratings.current_score import CURRENT_SCORE_COLUMNS, current_score_rows
 from ratings.legacy_resume import _division_labels, public_legacy_score_rows
+from ratings.era import ERA_COL, era_rated, with_era
 from ratings.whr import production_score_kwargs, project_age_rating, run_whr
 from ratings.age import load_birth_dates
 from ratings.performance_adjustment import build_performance_appearances
@@ -194,9 +195,13 @@ def refresh_career_columns(
             "career-only refresh scope does not match the persisted WHR fit: "
             f"requested {scope!r}, fitted {fitted_scope!r}"
         )
-    history = pd.read_parquet(snapshot_dir / "ratings_history_whr.parquet")
+    history_path = snapshot_dir / "ratings_history_whr.parquet"
     current_path = snapshot_dir / "ratings_current.parquet"
     current = pd.read_parquet(current_path)
+    history = with_era(pd.read_parquet(history_path).drop(columns=[ERA_COL], errors="ignore"),
+                       current.set_index("fighter")["gender"])
+    history.to_parquet(history_path, index=False)
+    era = era_rated(history)
     current = current.drop(
         columns=[
             c for c in current.columns
@@ -212,7 +217,7 @@ def refresh_career_columns(
     current = current.merge(
         _career_columns(
             career_skill_mass(
-                history,
+                era,
                 reference=reference,
                 divisions=_division_labels(current),
                 division_reference=DEFAULT_DIVISION_REFERENCE,
@@ -238,13 +243,13 @@ def refresh_career_columns(
             current,
             appearances,
             source_fights=source_fights,
-            history=history,
+            history=era,
             reference=reference,
         ),
         on="fighter",
         how="left",
     )
-    # Current reads the exposure factor the legacy columns just wrote.
+    # Current reads the exposure factor the legacy columns just wrote, and the unadjusted ratings.
     current = current.merge(
         current_score_rows(
             current,
@@ -709,11 +714,14 @@ def run(
     whr_current["whr_age_inactivity_adjustment"] = (
         whr_current["mu_whr_age_activity_adjusted"] - whr_current["mu_whr"]
     )
-    whr_history.to_parquet(snapshot_dir / "ratings_history_whr.parquet", index=False)
     current = current.merge(whr_current, on="fighter", how="left")
 
     current = _attach_record(current, rated_fights)
     current = _attach_recent_division_gender(current, rated_fights)
+    # The era-adjusted reading (ratings.era) needs gender, so the history is persisted after it.
+    whr_history = with_era(whr_history, current.set_index("fighter")["gender"])
+    whr_history.to_parquet(snapshot_dir / "ratings_history_whr.parquet", index=False)
+    whr_era = era_rated(whr_history)
 
     # Prime reads only WHR history, but its empirical-Bayes cohort must follow
     # the same disconnected-component boundary as every published board. Score
@@ -761,7 +769,7 @@ def run(
     current = current.merge(
         _career_columns(
             career_skill_mass(
-                whr_history,
+                whr_era,
                 reference=career_reference,
                 divisions=_division_labels(current),
                 division_reference=DEFAULT_DIVISION_REFERENCE,
@@ -795,14 +803,14 @@ def run(
             current,
             perf_app,
             source_fights=rated_fights,
-            history=whr_history,
+            history=whr_era,
             reference=career_reference,
         ),
         on="fighter",
         how="left",
     )
-    # Current reads the exposure factor the legacy columns just wrote, and the
-    # same reference date as the inactivity clock.
+    # Current reads the exposure factor the legacy columns just wrote, the
+    # same reference date as the inactivity clock, and the unadjusted ratings.
     current = current.merge(
         current_score_rows(
             current,

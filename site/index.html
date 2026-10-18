@@ -14,7 +14,7 @@ addEventListener("error", (e) => {
 }, true);
 </script>
 <script src="https://cdn.jsdelivr.net/npm/plotly.js-dist-min@4.1.1/plotly.min.js"></script>
-<script src="data.js?v=61d6fb395d"></script>
+<script src="data.js?v=a334c0efab"></script>
 </head>
 <body>
 <header class="top">
@@ -63,8 +63,9 @@ addEventListener("error", (e) => {
 
   <section id="anatomy">
     <h2>An All-time score is three weighted parts.</h2>
-    <p class="note"><code>1000 × (a·championships + (1 − a)·(s·career skill + (1 − s)·contender résumé))</code>, each part
-      scaled by its own top-100 mean. Move the rates to re-rank.</p>
+    <p class="note"><code>1000 × (a·√championships + (1 − a)·(s·√career skill + (1 − s)·√contender résumé))</code>, each
+      part scaled by its own top-100 mean before the square root, so a career is paid for breadth more than for one
+      extreme part. Ratings are read against their own era. Move the rates to re-rank.</p>
     <div class="row">
       <label>Championships weight a <input id="w-a" type="range" min="0" max="1" step="0.025"><output id="o-a"></output></label>
       <label>Career-skill share s <input id="w-s" type="range" min="0" max="1" step="0.025"><output id="o-s"></output></label>
@@ -78,10 +79,12 @@ addEventListener("error", (e) => {
 
   <section id="fighters">
     <h2>Every career has its own shape.</h2>
-    <p class="note">Rating after each bout, up to six fighters.</p>
+    <p class="note">Era-adjusted rating after each bout, up to six fighters: each year is shifted by how far its
+      contender line sat from the average year's, so careers in different eras share one scale. Later bouts revise
+      earlier ratings, so an early-career point is read with hindsight.</p>
     <div class="row"><label>Add fighter <input id="sel-add" list="names" class="pick" placeholder="Type a name"></label>
       <div id="sel-chips" class="chips"></div></div>
-    <figure><h3>Rating after each bout</h3><p class="insight" id="arc-chart-i"></p><div id="arc-chart" class="chart"></div><figcaption id="arc-chart-s"></figcaption></figure>
+    <figure><h3>Era-adjusted rating after each bout</h3><p class="insight" id="arc-chart-i"></p><div id="arc-chart" class="chart"></div><figcaption id="arc-chart-s"></figcaption></figure>
     <div id="cards" class="cards"></div>
   </section>
 
@@ -167,6 +170,6 @@ addEventListener("error", (e) => {
   </footer>
 </main>
 <datalist id="names"></datalist>
-<script src="app.js?v=09d424f471"></script>
+<script src="app.js?v=c0badceb9e"></script>
 </body>
 </html>

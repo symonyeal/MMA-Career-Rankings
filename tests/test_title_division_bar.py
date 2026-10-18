@@ -156,6 +156,7 @@ def _synthetic_snapshot(snapshot_dir: Path) -> None:
 
 def test_run_scores_the_public_resume_after_the_division_columns_exist(tmp_path: Path):
     """The persisted board must equal the division-bar pricing, not the fallback."""
+    from ratings.era import era_rated
     from ratings.rate_snapshot import _source_fights_for_public_resume
     from ratings.rate_snapshot import run as run_ratings
 
@@ -169,7 +170,7 @@ def test_run_scores_the_public_resume_after_the_division_columns_exist(tmp_path:
     divisions = _division_labels(current)
     assert divisions is not None, "the resume was scored before divisions existed"
 
-    history = pd.read_parquet(snap / "ratings_history_whr.parquet")
+    history = era_rated(pd.read_parquet(snap / "ratings_history_whr.parquet"))  # what the run priced on
     fights = _source_fights_for_public_resume(snap, "ufc")
 
     def _quality(*, floor: float, **kwargs) -> pd.Series:

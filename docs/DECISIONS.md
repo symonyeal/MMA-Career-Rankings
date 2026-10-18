@@ -281,7 +281,7 @@ changes a rating.
 | Decision | Reason |
 | --- | --- |
 | A UFC bout within 18 months is required, of any outcome, from UFCStats or labelled UFC by Sherdog. | "Current" means current in the UFC. Under the old rule Francis Ngannou (5th) and Corey Anderson (23rd) were ranked only through bouts in other promotions. |
-| Titles count as they do on All-time: Current = 1,000 × (30% title + 17.5% skill + 52.5% résumé), with title and résumé summing only wins in the window. | One formula for both boards. A win in the window is priced exactly as All-time prices it, by the opponent's rating going in and the whole fight table (`since` in `title_quality_ledger` and `contender_resume_ledger`). |
+| Titles count as they do on All-time: Current = 1,000 × (30% title + 17.5% skill + 52.5% résumé), with title and résumé summing only wins in the window. Since 2026-10-16 each part is square-rooted, as on All-time (below). | One formula for both boards. A win in the window is priced exactly as All-time prices it, by the opponent's rating going in and the whole fight table (`since` in `title_quality_ledger` and `contender_resume_ledger`). |
 | Skill is capped at the rating, going in, of the best opponent the fighter ever beat. | A win shows a fighter is better than the person beaten; only a loss shows how far they fall short. The part of a rating above every beaten opponent is backed by no win. The cap needs no new constant. |
 
 The window stays at the 18 months the owner set on 2026-09-03. None of the three
@@ -313,6 +313,23 @@ ranked.
 - Current scores are now points, like All-time, not rating points. A gap
   between two fighters is no longer a chance of winning; Prime is the board
   that still reads that way.
+
+## The score reads era-adjusted ratings: the owner's decisions of 2026-10-16
+
+Two board rules, both owner policy; neither changes the fit.
+
+| Decision | Reason |
+| --- | --- |
+| All-time and Prime read every rating against its own year's contender line, `mu_era = mu_whr − (E_g(y) − E_g*)` (`ratings/era.py`). Current reads unadjusted ratings. | The smoother does not hold the top of its scale fixed over time. On the 2026-10-14 fit the 60th-best man stood at 1,834 in 2007, 1,865 in 2011 and 1,918 in 2023. Title and skill already measured against a division-year line; the résumé and the Prime gate measured against a fixed 1,750, so a 2023 win was priced on a scale some 85 points higher than a 2007 win. Adding any c(y) to every rating of one gender in year y moves `mu_era` only by a constant, so scale drift cannot reach a board that reads it. Current's fighters are contemporaries: an era shift would only move its line by the reading for an unfinished season. |
+| Each normalised part enters the score as x^p with p = 0.5 (`LEGACY_PART_POWER`): All-time = 1,000 × (30% √title + 17.5% √skill + 52.5% √résumé), each part first divided by its top-100 mean. Current uses the same form. Class scores split each part's points by the share of that part earned in the class, so they still sum to the All-time score. | The top of the linear board read as a two-man tier. Diminishing returns inside a part credit breadth across the three parts rather than an extreme in one. A part at its normaliser (1.0, a typical top-100 career) is worth the same at every p, and p = 1 reproduces the linear score published until 2026-10-16. |
+
+**Measured effect on the 2026-10-14 snapshot, both rules together.** The top
+three of All-time are unchanged: Jon Jones, Islam Makhachev, Georges St-Pierre.
+Jones goes from 3,714 to 1,855 and St-Pierre from 2,104 to 1,554, so the gap
+between them falls from 1,610 to 301 points; Anderson Silva rises from 9th to
+4th. The 1,750 Prime contender threshold is reached by 25.3% of established
+fighters, against 19.4% before, and Prime qualifies 65 men and 4 women, against
+78 and 2.
 
 ## Tested and refused: the layoff charge does not belong in the rating
 

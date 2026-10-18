@@ -6,9 +6,13 @@ with two defenses sat 19th:
 
 * **Titles count, like the rest of it.** Current uses the All-time formula and
   its exact parts -- title, skill, résumé at 30% / 17.5% / 52.5%, each divided by
-  the mean of its own top hundred -- but the title and résumé ledgers sum only
-  wins inside the window. A win is still priced against everything known about
-  the opponent (:func:`ratings.legacy_resume.contender_resume_ledger`, ``since``).
+  the mean of its own top hundred and raised to the same power
+  (:func:`ratings.legacy_resume.legacy_points`) -- but the title and résumé ledgers
+  sum only wins inside the window. A win is still priced against everything known
+  about the opponent (:func:`ratings.legacy_resume.contender_resume_ledger`,
+  ``since``). Current reads the unadjusted ratings, not the era-adjusted ones
+  All-time reads (:mod:`ratings.era`): every fighter on it is a contemporary, so an
+  era shift would only move the 1,750 line by the reading for an unfinished season.
 * **A UFC bout inside the window is required.** "Current" means current in the
   UFC: any UFC bout counts, of any outcome, from UFCStats or labelled as UFC by
   Sherdog. The window is the 18 months the board already used.
@@ -34,14 +38,11 @@ import pandas as pd
 
 from ratings.boards import exposure_shrunk_level
 from ratings.legacy_resume import (
-    LEGACY_ACHIEVEMENT_WEIGHT,
-    LEGACY_QUALITY_SKILL_SHARE,
-    PUBLIC_LEGACY_DISPLAY_SCALE,
     RESUME_QUALITY_SCALE,
     TITLE_QUALITY_SCALE,
     _division_labels,
-    _scale,
     contender_resume_ledger,
+    legacy_points,
     title_quality_ledger,
     ufc_debut_dates_from,
 )
@@ -193,13 +194,8 @@ def current_score_rows(
         (out["current_skill_level"] - CONTENDER_LINE_MU).clip(lower=0.0).fillna(0.0)
     )
 
-    out["current_score"] = PUBLIC_LEGACY_DISPLAY_SCALE * (
-        LEGACY_ACHIEVEMENT_WEIGHT * _scale(out["current_title_score"])
-        + (1.0 - LEGACY_ACHIEVEMENT_WEIGHT) * (
-            LEGACY_QUALITY_SKILL_SHARE * _scale(out["current_skill_score"])
-            + (1.0 - LEGACY_QUALITY_SKILL_SHARE) * _scale(out["current_resume_score"])
-        )
-    )
+    out["current_score"] = sum(legacy_points(
+        out["current_title_score"], out["current_skill_score"], out["current_resume_score"]))
 
     last = out["fighter"].map(last_ufc_dates(recorded_fights))
     out["last_ufc_event_date"] = pd.to_datetime(last)

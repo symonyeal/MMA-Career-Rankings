@@ -8,6 +8,7 @@ import pytest
 from analysis.viz import all_time_score_anatomy_chart
 from ratings.legacy_resume import (
     LEGACY_ACHIEVEMENT_WEIGHT,
+    LEGACY_PART_POWER,
     LEGACY_QUALITY_SKILL_SHARE,
     PUBLIC_LEGACY_DISPLAY_SCALE,
 )
@@ -19,7 +20,7 @@ def _fixture() -> pd.DataFrame:
     resume = pd.Series([11.0, 8.0, 5.0, 6.0])
 
     def normalise(values: pd.Series) -> pd.Series:
-        return values / values.mean()
+        return (values / values.mean()) ** LEGACY_PART_POWER
 
     quality_weight = 1.0 - LEGACY_ACHIEVEMENT_WEIGHT
     score = PUBLIC_LEGACY_DISPLAY_SCALE * (

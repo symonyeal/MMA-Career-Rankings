@@ -87,7 +87,7 @@ def test_readme_explains_the_rules_that_change_the_rankings():
     for implemented_rule in (
         "UFC is `1.00`",  # article varies with the sentence; the value does not
         "virtual bout",
-        "All-time = 1,000 × (30% title + 17.5% skill + 52.5% résumé)",
+        "All-time = 1,000 × (30% √title + 17.5% √skill + 52.5% √résumé)",
         "and needs five",
         "eight UFC bouts",
         "within 18 months",
@@ -139,6 +139,7 @@ def test_readme_policy_constants_are_the_ones_the_code_uses():
     )
     from ratings.legacy_resume import (
         LEGACY_ACHIEVEMENT_WEIGHT,
+        LEGACY_PART_POWER,
         LEGACY_QUALITY_SKILL_SHARE,
         ORG_FACTOR_BY_CANONICAL,
         TITLE_QUALITY_MAJOR_FLOOR,
@@ -154,11 +155,12 @@ def test_readme_policy_constants_are_the_ones_the_code_uses():
     # Wrapped prose puts line breaks mid-phrase, so match on one flat line.
     readme = " ".join((PROJECT_ROOT / "README.md").read_text(encoding="utf-8").split())
     quality = 1.0 - LEGACY_ACHIEVEMENT_WEIGHT
+    root = {1.0: "", 0.5: "√"}[LEGACY_PART_POWER]  # the README writes x^p as √x
 
     expected = {
-        "achievement weight": f"{LEGACY_ACHIEVEMENT_WEIGHT:.0%} title",
-        "career skill share": f"{quality * LEGACY_QUALITY_SKILL_SHARE:.1%} skill",
-        "resume share": f"{quality * (1 - LEGACY_QUALITY_SKILL_SHARE):.1%} résumé",
+        "achievement weight": f"{LEGACY_ACHIEVEMENT_WEIGHT:.0%} {root}title",
+        "career skill share": f"{quality * LEGACY_QUALITY_SKILL_SHARE:.1%} {root}skill",
+        "resume share": f"{quality * (1 - LEGACY_QUALITY_SKILL_SHARE):.1%} {root}résumé",
         "finish score": f"submission scores `{METHOD_SCORE_FINISH:.2f}`",
         "unanimous score": f"unanimous decision `{METHOD_SCORE_UNANIMOUS:.2f}`",
         "split score": f"majority decision `{METHOD_SCORE_NON_UNANIMOUS_DECISION:.2f}`",
