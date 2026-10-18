@@ -35,9 +35,8 @@ from ratings.constants import (
 from ratings.gender import DEFAULT_GENDER, select_gender
 from ratings.legacy_resume import (
     LEGACY_ACHIEVEMENT_WEIGHT,
-    LEGACY_NORMALISER_TOP_N,
     LEGACY_QUALITY_SKILL_SHARE,
-    PUBLIC_LEGACY_DISPLAY_SCALE,
+    legacy_points,
 )
 
 # ---------------------------------------------------------------------------
@@ -1946,8 +1945,9 @@ def all_time_score_anatomy_chart(
     """Reconstruct the published All-time score as auditable contributions.
 
     The score combines three columns after normalising each by the mean of its
-    top ``LEGACY_NORMALISER_TOP_N`` positive values. This chart repeats that
-    exact arithmetic and stacks the resulting display points. Bar length says
+    top ``LEGACY_NORMALISER_TOP_N`` positive values and raising it to
+    ``LEGACY_PART_POWER`` (:func:`ratings.legacy_resume.legacy_points`). This
+    chart stacks the resulting display points. Bar length says
     *how much* a career earned; colour says *where it came from*. Raw title,
     career-year, and contender-win counts remain in hover text so the figure is
     an evidence receipt rather than a second unexplained leaderboard.
@@ -1978,32 +1978,9 @@ def all_time_score_anatomy_chart(
     for column in ("public_legacy_score", *components.values()):
         population[column] = pd.to_numeric(population[column], errors="coerce").fillna(0.0)
 
-    def _normalise(values: pd.Series) -> pd.Series:
-        positive = values[values > 0]
-        if positive.empty:
-            return values * 0.0
-        top = positive.nlargest(min(LEGACY_NORMALISER_TOP_N, len(positive)))
-        scale = float(top.mean())
-        return values / scale if scale > 0 else values * 0.0
-
     quality_weight = 1.0 - LEGACY_ACHIEVEMENT_WEIGHT
-    population["_title_points"] = (
-        PUBLIC_LEGACY_DISPLAY_SCALE
-        * LEGACY_ACHIEVEMENT_WEIGHT
-        * _normalise(population[components["title"]])
-    )
-    population["_skill_points"] = (
-        PUBLIC_LEGACY_DISPLAY_SCALE
-        * quality_weight
-        * LEGACY_QUALITY_SKILL_SHARE
-        * _normalise(population[components["skill"]])
-    )
-    population["_resume_points"] = (
-        PUBLIC_LEGACY_DISPLAY_SCALE
-        * quality_weight
-        * (1.0 - LEGACY_QUALITY_SKILL_SHARE)
-        * _normalise(population[components["resume"]])
-    )
+    population["_title_points"], population["_skill_points"], population["_resume_points"] = legacy_points(
+        *(population[c] for c in components.values()))
 
     df = population
     if gender is not None:

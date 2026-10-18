@@ -44,6 +44,7 @@ from ratings.boards import (
 )
 from ratings.constants import SUSTAINED_PEAK_MIN_FIGHTS  # board eligibility floor
 from ratings.current_score import CURRENT_WINDOW_MONTHS
+from ratings.era import ERA_COL, era_rated
 from ratings.layoff import attach_opponent_layoff
 from ratings.gender import (
     GENDER_GAUGE_NOTE,
@@ -349,9 +350,11 @@ def _elite_decade_map(snapshot_dir: Path) -> pd.DataFrame | None:
             "fight_url", "fighter", "opponent", "event_date", "event_name", "is_winner",
         ],
     )
-    history = pd.read_parquet(
-        history_path, columns=["fighter", "event_date", "event_name", "mu_whr"]
-    )
+    # Era-adjusted (ratings.era), as the résumé reads it: the gate and the level are both read
+    # against the opponent's and the fighter's own era.
+    history = era_rated(pd.read_parquet(
+        history_path, columns=["fighter", "event_date", "event_name", "mu_whr", ERA_COL]
+    ))
     appearances["event_date"] = pd.to_datetime(appearances["event_date"])
     history["event_date"] = pd.to_datetime(history["event_date"])
     rated = (
@@ -623,7 +626,7 @@ def class_board_frame(
     scores = class_scores(current, class_ledger(
         current, pd.read_parquet(snap / "performance_appearances.parquet"),
         source_fights=_source_fights_for_public_resume(snap, scope),
-        history=pd.read_parquet(snap / "ratings_history_whr.parquet"),
+        history=era_rated(pd.read_parquet(snap / "ratings_history_whr.parquet")),
     ))
     total = scores.groupby("fighter")["score"].sum().reindex(current["fighter"]).fillna(0.0)
     gap = (total.to_numpy() - pd.to_numeric(current["public_legacy_score"], errors="coerce").fillna(0.0).to_numpy())
@@ -826,18 +829,18 @@ def current_board_markdown(
 
 
 def peak_levels(snapshot_dir: Path) -> pd.Series:
-    """Fighter -> highest rating they ever reached, on the published trajectory.
+    """Fighter -> highest era-adjusted rating they ever reached (:mod:`ratings.era`).
 
     The board's own score is a resume figure on no familiar scale. Printing the
     peak rating beside it puts every published fighter on the same scale as the
     contender line, so a reader can see what the line is worth without leaving
-    the table.
+    the table. The line is read against each year's era, so the peak is too.
     """
     path = Path(snapshot_dir) / "ratings_history_whr.parquet"
     if not path.exists():
         return pd.Series(dtype="float64")
-    history = pd.read_parquet(path, columns=["fighter", "mu_whr"])
-    return history.groupby("fighter")["mu_whr"].max()
+    history = pd.read_parquet(path, columns=["fighter", ERA_COL])
+    return history.groupby("fighter")[ERA_COL].max()
 
 
 def contender_line_reach(snapshot_dir: Path, current: pd.DataFrame) -> float | None:

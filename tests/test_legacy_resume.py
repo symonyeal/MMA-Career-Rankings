@@ -491,7 +491,7 @@ def test_top100_audit_fallback_builds_the_full_public_score(tmp_path, monkeypatc
             "rating_periods": [3],
         }
     ).to_parquet(tmp_path / "ratings_current.parquet", index=False)
-    history.to_parquet(tmp_path / "ratings_history_whr.parquet", index=False)
+    history.assign(mu_era=history["mu_whr"]).to_parquet(tmp_path / "ratings_history_whr.parquet", index=False)
     monkeypatch.setattr(
         build_top100_audit.PQ,
         "load_fight_table",

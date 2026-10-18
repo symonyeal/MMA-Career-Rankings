@@ -40,8 +40,10 @@ from ratings.current_score import is_ufc_bout
 from ratings.constants import (
     FIVE_YEAR_PEAK_MIN_FIGHTS, FIVE_YEAR_PEAK_WINDOW_DAYS, FIVE_YEAR_PEAK_WINDOW_LABEL, SUSTAINED_PEAK_MIN_FIGHTS,
 )
+from ratings.era import ERA_COL, era_rated
 from ratings.legacy_resume import (
-    LEGACY_ACHIEVEMENT_WEIGHT, LEGACY_QUALITY_SKILL_SHARE, PUBLIC_LEGACY_DISPLAY_SCALE, _division_labels, _scale,
+    LEGACY_ACHIEVEMENT_WEIGHT, LEGACY_PART_POWER, LEGACY_QUALITY_SKILL_SHARE, PUBLIC_LEGACY_DISPLAY_SCALE,
+    _division_labels, _scale, legacy_points,
 )
 from ratings.opponent_quality import CONTENDER_LINE_MU
 from ratings.symon_score import (
@@ -142,11 +144,14 @@ def build(snap):
         "ratings_current", "ratings_history_whr", "combined_fights", "canonical_fights", "performance_appearances"))
     run = json.loads((snap / "rating_run.json").read_text(encoding="utf-8"))
 
-    # 1. All-time = 1000 (a T + (1-a)(s S + (1-s) R)), each term over the mean of its top 100.
+    # 1. All-time = 1000 (a T + (1-a)(s S + (1-s) R)), each term its part over the mean of its top 100,
+    # raised to p (ratings.legacy_resume.legacy_points). The page re-weights T, S, R linearly.
     a, s = LEGACY_ACHIEVEMENT_WEIGHT, LEGACY_QUALITY_SKILL_SHARE
-    T, S, R = (_scale(rc[f"public_legacy_{c}_score"]) for c in ("title", "skill", "resume"))
+    parts = [rc[f"public_legacy_{c}_score"] for c in ("title", "skill", "resume")]
+    T, S, R = (_scale(x) ** LEGACY_PART_POWER for x in parts)
     assert np.allclose(PUBLIC_LEGACY_DISPLAY_SCALE * (a * T + (1 - a) * (s * S + (1 - s) * R)),
                        rc["public_legacy_score"].fillna(0)), "All-time score does not reconstruct"
+    assert np.allclose(sum(legacy_points(*parts)), rc["public_legacy_score"].fillna(0))
 
     E = rc[rc["rating_periods"] >= SUSTAINED_PEAK_MIN_FIGHTS].sort_values("public_legacy_score", ascending=False)
     names = E["fighter"].tolist()
@@ -156,7 +161,7 @@ def build(snap):
                                             "elite_window_start", "elite_window_end"])
     cu = board(snap, "current_board", ["rank", "current_board_score", "tested_opponent_wins"])
     dom = rd("fighter_dominance").set_index("fighter")
-    peak = whr.groupby("fighter")["mu_whr"].max()
+    peak = whr.groupby("fighter")[ERA_COL].max()
     x = E.set_index("fighter")
     yr = lambda c: pd.to_datetime(c, errors="coerce").dt.year
     F = {
@@ -182,7 +187,7 @@ def build(snap):
     }
     F = {k: plain(pd.Series(list(v)) if not isinstance(v, list) else v, 3 if k in "TSR" else 1) for k, v in F.items()}
 
-    # Class boards (ratings.division_legacy): components back on the normalised scale, so the page
+    # Class boards (ratings.division_legacy): components back on the scale of T, S, R above, so the page
     # re-weights a class exactly as it re-weights the All-time board; sum over classes = All-time.
     cb = rd("class_board")
     cb = cb[cb["fighter"].isin(set(names))]
@@ -192,7 +197,8 @@ def build(snap):
     classes = plain([[idx0[f], d, r, t / w[0], k / w[1], q / w[2]]
                      for f, d, r, t, k, q in cb[cols].itertuples(index=False)], 4)
 
-    # 2. Trajectories: one point per WHR appearance, joined to its bout by (fighter, date, event, k).
+    # 2. Trajectories: one point per WHR appearance, era-adjusted (ratings.era), joined to its bout by
+    # (fighter, date, event, k).
     key = ["fighter", "event_date", "event_name"]
     h = whr[whr["fighter"].isin(set(names))].sort_values(key, kind="stable")
     p = app[app["fighter"].isin(set(names))].sort_values(key, kind="stable")
@@ -205,12 +211,12 @@ def build(snap):
     t["m"] = t["method_class"].map({m: str(i) for i, m in enumerate(METHODS)}).fillna("-")
     t["day"], t["o"] = days(t["event_date"]), t["opponent"].map(idx).fillna(-1).astype(int)
     # Per fighter: [first day, day increments, rating, method codes, results W/L/D/N, opponent index].
-    traj = {f: [int(g["day"].iloc[0]), plain(g["day"].diff().fillna(0).astype(int)), plain(g["mu_whr"].round()),
+    traj = {f: [int(g["day"].iloc[0]), plain(g["day"].diff().fillna(0).astype(int)), plain(g[ERA_COL].round()),
                 "".join(g["m"]), "".join(g["r"]), plain(g["o"])]
             for f, g in t.groupby("fighter", sort=False)}
 
     # 3. Career receipt; certificate: per-fighter sum equals the published career skill mass.
-    A = receipt(whr, rc)
+    A = receipt(era_rated(whr), rc)
     mass = A.groupby("fighter")["excess"].sum()
     assert np.allclose(mass.reindex(names).fillna(0), x["symon_career_skill_mass"].reindex(names).fillna(0),
                        atol=1e-6), "career receipt does not sum to the published career skill mass"

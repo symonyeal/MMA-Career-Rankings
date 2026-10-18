@@ -18,6 +18,7 @@ from build_boards import (
 from ratings import prequential as PQ
 from ratings.age import load_birth_dates
 from ratings.connectivity import connectivity
+from ratings.era import era_rated
 from ratings.legacy_resume import public_legacy_score_rows
 from ratings.scope import DEFAULT_PUBLISHED_SCOPE
 
@@ -245,7 +246,7 @@ def _current_with_legacy(snapshot: Path, scope: str) -> pd.DataFrame:
                 current,
                 appearance_rows,
                 source_fights=PQ.load_fight_table(snapshot, scope=scope),
-                history=pd.read_parquet(history_path),
+                history=era_rated(pd.read_parquet(history_path)),
             ),
             on="fighter",
             how="left",

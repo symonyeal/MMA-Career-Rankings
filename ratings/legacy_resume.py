@@ -298,6 +298,13 @@ LEGACY_NORMALISER_TOP_N = 100
 
 PUBLIC_LEGACY_DISPLAY_SCALE = 1000.0
 
+# Each normalised part enters the score as x**p: diminishing returns inside a part, so a career
+# is credited for breadth across the three parts rather than for an extreme in one. Owner policy,
+# 2026-10-16, after the top of the board read as a two-man tier; see docs/DECISIONS.md, "The score
+# reads era-adjusted ratings". p = 1 reproduces the linear score published until then. A part at
+# its normaliser (x = 1, a typical top-100 career) is worth the same at every p.
+LEGACY_PART_POWER = 0.5
+
 # A division-year thinner than this cannot describe its own title bar. Kept
 # separate from symon_score.DEFAULT_DIVISION_MIN_POPULATION because the two
 # lines are, for now, deliberately different statistics -- see the note in
@@ -329,6 +336,17 @@ def legacy_norm(values: pd.Series, *, top_n: int = LEGACY_NORMALISER_TOP_N) -> f
     v = pd.to_numeric(values, errors="coerce").fillna(0.0)
     positive = v[v > 0]
     return float(positive.nlargest(min(top_n, len(positive))).mean()) if len(positive) else 0.0
+
+
+def legacy_points(title: pd.Series, skill: pd.Series, resume: pd.Series, *,
+                  p: float = LEGACY_PART_POWER) -> list[pd.Series]:
+    """Points from each part, 1000 w_i (X_i / n_i)**p with w = (a, (1 - a)s, (1 - a)(1 - s)).
+
+    n_i is the part's own normaliser (:func:`_scale`). The three sum to the score.
+    """
+    a, s = LEGACY_ACHIEVEMENT_WEIGHT, LEGACY_QUALITY_SKILL_SHARE
+    w = (a, (1.0 - a) * s, (1.0 - a) * (1.0 - s))
+    return [PUBLIC_LEGACY_DISPLAY_SCALE * w_i * _scale(x) ** p for w_i, x in zip(w, (title, skill, resume))]
 
 
 def _empty_quality_ledger() -> pd.DataFrame:
@@ -1406,7 +1424,11 @@ def public_legacy_score_rows(
     probability. Each component is first divided by :func:`_scale`, the mean of
     its own top hundred values, so the weights mean what they say -- see the note
     above :data:`LEGACY_ACHIEVEMENT_WEIGHT` for what the previous divide-by-max
-    silently did instead.
+    silently did instead -- and then raised to :data:`LEGACY_PART_POWER`
+    (:func:`legacy_points`).
+
+    ``history`` is the era-adjusted trajectory (:func:`ratings.era.era_rated`) in
+    every published call, so the résumé's contender line moves with the era.
 
     ``source_fights`` and ``history`` are required. Omitting either used to
     produce a plausible but different skill-only board, so an omitted input now
@@ -1519,13 +1541,6 @@ def public_legacy_score_rows(
         * out["public_legacy_exposure_factor"]
     )
     # Achievement against quality of work, at one stated exchange rate.
-    achievement = _scale(out["public_legacy_title_score"])
-    quality = (
-        LEGACY_QUALITY_SKILL_SHARE * _scale(out["public_legacy_skill_score"])
-        + (1.0 - LEGACY_QUALITY_SKILL_SHARE) * _scale(out["public_legacy_resume_score"])
-    )
-    out["public_legacy_score"] = PUBLIC_LEGACY_DISPLAY_SCALE * (
-        LEGACY_ACHIEVEMENT_WEIGHT * achievement
-        + (1.0 - LEGACY_ACHIEVEMENT_WEIGHT) * quality
-    )
+    out["public_legacy_score"] = sum(legacy_points(
+        out["public_legacy_title_score"], out["public_legacy_skill_score"], out["public_legacy_resume_score"]))
     return out[LEGACY_SCORE_COLUMNS]

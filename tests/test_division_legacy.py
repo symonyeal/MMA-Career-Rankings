@@ -4,10 +4,7 @@ import pandas as pd
 import pytest
 
 from ratings.division_legacy import class_board, class_scores, pro_rata, weight_class
-from ratings.legacy_resume import (
-    LEGACY_ACHIEVEMENT_WEIGHT as a, LEGACY_QUALITY_SKILL_SHARE as s, PUBLIC_LEGACY_DISPLAY_SCALE as k,
-    RESUME_QUALITY_SCALE, TITLE_QUALITY_SCALE, _scale,
-)
+from ratings.legacy_resume import RESUME_QUALITY_SCALE, TITLE_QUALITY_SCALE, legacy_points
 
 
 @pytest.mark.parametrize("division, gender, expected", [
@@ -41,8 +38,8 @@ def _current(rng, n=120):
     cur["public_legacy_title_score"] = TITLE_QUALITY_SCALE * t
     cur["public_legacy_skill_score"] = m * cur["public_legacy_exposure_factor"]
     cur["public_legacy_resume_score"] = RESUME_QUALITY_SCALE * r * cur["public_legacy_exposure_factor"]
-    cur["public_legacy_score"] = k * (a * _scale(cur["public_legacy_title_score"]) + (1 - a) * (
-        s * _scale(cur["public_legacy_skill_score"]) + (1 - s) * _scale(cur["public_legacy_resume_score"])))
+    cur["public_legacy_score"] = sum(legacy_points(*(cur[f"public_legacy_{c}_score"]
+                                                     for c in ("title", "skill", "resume"))))
     return cur
 
 

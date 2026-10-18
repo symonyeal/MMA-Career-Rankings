@@ -176,7 +176,7 @@ def test_quality_wins_are_unique_and_inside_the_selected_prime_window(tmp_path):
                             event_name="Earlier event")
     # A same-event tournament state used to duplicate bout-0 in the merge.
     history = pd.concat([before, history, history.iloc[[0]]], ignore_index=True)
-    history.to_parquet(tmp_path / "ratings_history_whr.parquet", index=False)
+    history.assign(mu_era=history["mu_whr"]).to_parquet(tmp_path / "ratings_history_whr.parquet", index=False)
 
     ufc_rows = []
     for opponent in opponents:
@@ -215,7 +215,8 @@ def test_an_opponent_is_priced_going_in_not_after_the_loss(tmp_path):
     pd.DataFrame({"fighter": ["O0", "O0", "O1", "O1"],
                   "event_date": [d[0] - pd.Timedelta(days=90), d[0], d[1] - pd.Timedelta(days=90), d[1]],
                   "event_name": ["P0", "E0", "P1", "E1"],
-                  "mu_whr": [CONTENDER_LINE_MU + 20, CONTENDER_LINE_MU - 20] * 2}
+                  "mu_whr": [CONTENDER_LINE_MU + 20, CONTENDER_LINE_MU - 20] * 2,
+                  "mu_era": [CONTENDER_LINE_MU + 20, CONTENDER_LINE_MU - 20] * 2}
                  ).to_parquet(tmp_path / "ratings_history_whr.parquet", index=False)
     pd.DataFrame({"fighter_a": [o for o in ["O0", "O1"] for _ in range(8)], "fighter_b": "X",
                   "source_corpus": "ufc", "is_model_bout": True}
@@ -321,6 +322,7 @@ def _snapshot_with_history(tmp_path):
             ["2020-01-01", "2021-01-01", "2022-01-01", "2020-01-01", "2021-01-01"]
         ),
         "mu_whr": [1700.0, 1900.0, 1800.0, 1600.0, 1650.0],
+        "mu_era": [1700.0, 1900.0, 1800.0, 1600.0, 1650.0],
     }).to_parquet(snap / "ratings_history_whr.parquet", index=False)
     return snap
 

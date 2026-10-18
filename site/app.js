@@ -348,7 +348,7 @@ SECTIONS.fighters = () => {
   plot("arc-chart", data, {
     height: 500, annotations: [...ann, ...ends.map(([x, , text, c], k) => label(x, ey[k], text, c, { xanchor: "left", xshift: 6 })),
       ...(near ? [label(1, M.contender, `contender line ${fmt(M.contender)}`, T.muted, { xref: "paper", xanchor: "right", yanchor: "bottom" })] : [])],
-    shapes: near ? [contender()] : [], yaxis: { title: { text: "Base WHR skill" } }, margin: { r: 90 },
+    shapes: near ? [contender()] : [], yaxis: { title: { text: "Era-adjusted rating" } }, margin: { r: 90 },
     xaxis: { title: { text: "Event date" }, type: "date", range: [iso(Math.min(...days) - 180), iso(Math.max(...days) + 180)] },
   });
   const p = argmax(peaks, (q) => q[1]);

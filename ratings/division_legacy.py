@@ -3,19 +3,23 @@
 Let f be a fighter whose evidence items i -- title wins, contender wins, career years -- each
 carry a class d(i), or none. An item has a class only if its bout is a UFC bout
 (:func:`ratings.current_score.is_ufc_bout`, the predicate Current uses); every other item, like
-open weight, counts toward the All-time score and toward no class. The All-time score is linear
-in three ledger totals,
+open weight, counts toward the All-time score and toward no class. The All-time score is a sum of
+three parts, each a power of a ledger total,
 
-    S(f) = 1000 [a T(f)/n_T + (1 - a)(s K(f)/n_K + (1 - s) R(f)/n_R)],
+    S(f) = 1000 [a (T/n_T)^p + (1 - a)(s (K/n_K)^p + (1 - s)(R/n_R)^p)],
 
     T = title scale * sum of title-win weights,
     K = exposure * sum over years of skill excess,
     R = resume scale * exposure * sum over years of min(sum of contender-win weights, cap),
 
-with n_T, n_K, n_R the board-wide normalisers (:func:`ratings.legacy_resume.legacy_norm`). The
-class score S_d(f) is the same expression over the items in class d with the same n's, so
+with n_T, n_K, n_R the board-wide normalisers (:func:`ratings.legacy_resume.legacy_norm`) and p
+:data:`ratings.legacy_resume.LEGACY_PART_POWER`. The class score S_d(f) splits each part's points
+by the share of that part's total earned in class d: with X in {T, K, R} and X_d its items in d,
 
-    sum_d S_d(f) = S(f)    exactly; items with no class, including every non-UFC item, sit under d = None.
+    S_d(f) = sum_X 1000 w_X (X/n_X)^p X_d/X,    so    sum_d S_d(f) = S(f)    exactly;
+
+items with no class, including every non-UFC item, sit under d = None. At p = 1 this is the same
+expression over the items in d, as it was before 2026-10-16.
 
 Two totals are not plain sums over items, so each needs a stated allocation rule:
     resume   a capped year is split pro rata, w -> w min(1, cap / sum of that year's w);
@@ -32,9 +36,8 @@ import numpy as np
 import pandas as pd
 
 from ratings.legacy_resume import (
-    LEGACY_ACHIEVEMENT_WEIGHT, LEGACY_QUALITY_SKILL_SHARE, PUBLIC_LEGACY_DISPLAY_SCALE, RESUME_QUALITY_SCALE,
-    RESUME_YEAR_CAP, TITLE_QUALITY_SCALE, _division_labels, contender_resume_rows, legacy_norm, title_quality_rows,
-    ufc_debut_dates_from,
+    RESUME_QUALITY_SCALE, RESUME_YEAR_CAP, TITLE_QUALITY_SCALE, _division_labels, contender_resume_rows,
+    legacy_points, title_quality_rows, ufc_debut_dates_from,
 )
 from ratings.current_score import is_ufc_bout
 from ratings.performance_adjustment import normalize_division_label, womens_division_label
@@ -126,16 +129,16 @@ def class_ledger(
 def class_scores(current: pd.DataFrame, ledger: pd.DataFrame) -> pd.DataFrame:
     """(fighter, division, title, skill, resume, score) in All-time points; sum over division = score.
 
-    ``current`` carries the published per-fighter columns, which fix the exposure factor and the
-    three normalisers.
+    ``current`` carries the published per-fighter columns, which fix the exposure factor, the
+    three part totals X and their normalisers.
     """
-    a, s, k = LEGACY_ACHIEVEMENT_WEIGHT, LEGACY_QUALITY_SKILL_SHARE, PUBLIC_LEGACY_DISPLAY_SCALE
-    n = {c: legacy_norm(current[f"public_legacy_{c}_score"]) for c in ("title", "skill", "resume")}
-    x = ledger.merge(current[["fighter", "public_legacy_exposure_factor"]], on="fighter", how="left")
-    e = x["public_legacy_exposure_factor"].fillna(1.0)
-    x["title"] = k * a * TITLE_QUALITY_SCALE * x["title"] / n["title"]
-    x["skill"] = k * (1 - a) * s * e * x["skill"] / n["skill"]
-    x["resume"] = k * (1 - a) * (1 - s) * RESUME_QUALITY_SCALE * e * x["resume"] / n["resume"]
+    c = current.drop_duplicates("fighter").set_index("fighter")
+    e = c["public_legacy_exposure_factor"].fillna(1.0)
+    X = {i: c[f"public_legacy_{i}_score"].fillna(0.0) for i in ("title", "skill", "resume")}
+    unit = {"title": TITLE_QUALITY_SCALE, "skill": e, "resume": RESUME_QUALITY_SCALE * e}  # ledger -> score units
+    x = ledger.copy()
+    for (i, Xi), P in zip(X.items(), legacy_points(*X.values())):
+        x[i] = x[i] * x["fighter"].map((P / Xi).where(Xi > 0, 0.0) * unit[i]).fillna(0.0)  # 1000 w (X/n)^p / X
     x["score"] = x["title"] + x["skill"] + x["resume"]
     return x[CLASS_COLUMNS]
 
