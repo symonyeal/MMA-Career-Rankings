@@ -1,0 +1,6 @@
+{
+  "name": "ufc-career-rankings",
+  "private": true,
+  "scripts": { "test": "node --test tests/site_browser.cjs" },
+  "devDependencies": { "playwright": "1.59.1" }
+}

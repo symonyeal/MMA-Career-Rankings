@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>UFC Career Rankings</title>
 <meta name="description" content="The UFC Career Rankings boards (All-time, Prime, Current) and the evidence behind them, interactive.">
-<link rel="stylesheet" href="style.css?v=4387dd9591">
+<link rel="stylesheet" href="style.css?v=0dbe5f18fb">
 <script>
 addEventListener("error", (e) => {
   const m = e.message || "could not load " + (e.target.src || e.target.href);
@@ -17,33 +17,39 @@ addEventListener("error", (e) => {
 <script src="data.js?v=a334c0efab"></script>
 </head>
 <body>
+<a class="skip-link" href="#rankings">Skip to rankings</a>
 <header class="top">
   <div class="wrap">
-    <a class="brand" href="#top">UFC Career Rankings</a>
-    <nav>
+    <a class="brand" href="#top"><span class="brand-mark" aria-hidden="true">CR</span><span>UFC <b>Career Rankings</b></span></a>
+    <nav aria-label="Analysis sections">
       <a href="#rankings">Rankings</a><a href="#anatomy">Score</a><a href="#fighters">Fighters</a>
       <a href="#careers">Careers</a><a href="#movers">Movers</a><a href="#streaks">Streaks</a>
       <a href="#divisions">Weight classes</a><a href="#lineage">Titles</a><a href="#dominance">Dominance</a>
-      <a href="#policy">Policy</a><a href="#checks">Checks</a>
+      <a href="#policy">Policy</a><a href="#checks">Checks</a><a href="#benchmark">Benchmark</a>
     </nav>
   </div>
+  <details class="filter-panel" open>
+  <summary>Explore the rankings <span>Roster, weight class &amp; depth</span></summary>
   <div class="controls wrap" id="controls">
-    <span class="label">Every section</span>
+    <span class="label">Explore</span>
     <div class="seg" id="c-gender"><button data-v="M" class="on">Men</button><button data-v="F">Women</button></div>
     <label>Weight class <select id="c-div"></select></label>
     <label>Show top <input id="c-top" type="range" min="5" max="100" step="5" value="30"><output id="o-top">30</output></label>
     <label>Min rated bouts <input id="c-min" type="range" min="13" max="40" step="1" value="13"><output id="o-min">13</output></label>
   </div>
+  </details>
 </header>
 
 <main class="wrap" id="top">
-  <p id="fail" class="callout" hidden>Part of the page failed; a hard reload (Ctrl+F5) usually fixes it.</p>
+  <p id="fail" class="callout" role="alert" hidden>Part of the page failed; a hard reload (Ctrl+F5) usually fixes it.</p>
   <section class="hero">
-    <h1>Three ways to rank a fighter: the career, the prime, and now.</h1>
+    <div class="hero-topline"><span class="eyebrow">The career. The peak. The present.</span><span id="release-label" class="release-label"></span></div>
+    <h1>Greatness has<br>more than <em>one measure.</em></h1>
     <p class="lede">One rating model is fitted to every recorded bout, then read three ways: what a career was worth
       (<b>All-time</b>), the best ten years (<b>Prime</b>) and form now (<b>Current</b>). All-time and Prime count every
       promotion; Current and the weight-class views count the UFC.</p>
-    <div class="facts" id="facts"></div>
+    <a class="hero-link" href="#rankings">Explore the boards <span aria-hidden="true">↘</span></a>
+    <div class="facts" id="facts" aria-label="Published board leaders"></div>
   </section>
 
   <section id="rankings">
@@ -55,10 +61,10 @@ addEventListener("error", (e) => {
       <div class="seg" id="c-view">
         <button data-v="all_time" class="on">All-time</button><button data-v="prime">Prime</button><button data-v="current">Current</button>
       </div>
-      <input id="c-search" type="search" placeholder="Find a fighter on this board">
+      <label class="search-field"><span>Find a fighter</span><input id="c-search" type="search" placeholder="Search this board…" aria-controls="board"></label>
     </div>
-    <div id="board" class="table-wrap"></div>
-    <p class="note" id="board-s"></p>
+    <div id="board" class="table-wrap" role="region" aria-label="Rankings, scroll for more columns" tabindex="0"></div>
+    <p class="note" id="board-s" role="status"></p>
   </section>
 
   <section id="anatomy">
@@ -111,7 +117,7 @@ addEventListener("error", (e) => {
       <label>Sort <select id="st-sort"><option value="length">Longest</option><option value="quality">Toughest schedule</option><option value="title_wins">Most title wins</option></select></label>
       <label>Min wins <input id="st-min" type="range" min="3" max="15" value="5"><output id="o-st-min">5</output></label>
     </div>
-    <div id="st-table" class="table-wrap short"></div>
+    <div id="st-table" class="table-wrap short" role="region" aria-label="Win streaks" tabindex="0"></div>
     <figure><h3>Length against opposition</h3><p class="insight" id="st-chart-i"></p><div id="st-chart" class="chart"></div><figcaption id="st-chart-s"></figcaption></figure>
   </section>
 
@@ -148,7 +154,7 @@ addEventListener("error", (e) => {
     <h2>Integrity debits are a stated judgement, kept off the boards.</h2>
     <p class="note">Fixed debits for wins with a confirmed PED violation, a disqualification or a missed weight.</p>
     <figure><h3>Rank before and after the debits</h3><p class="insight" id="pol-chart-i"></p><div id="pol-chart" class="chart"></div><figcaption id="pol-chart-s"></figcaption></figure>
-    <div id="pol-table" class="table-wrap short"></div>
+    <div id="pol-table" class="table-wrap short" role="region" aria-label="Integrity ledger" tabindex="0"></div>
   </section>
 
   <section id="checks">
@@ -166,10 +172,10 @@ addEventListener("error", (e) => {
 
   <footer>
     <p id="foot"></p>
-    <p>Rebuild the data with <code>python analysis/build_site.py data/snapshots/&lt;date&gt;</code>.</p>
+    <p><a href="https://github.com/symonyeal/UFC-Career-Rankings">About the model &amp; source code ↗</a><span>Independent analysis · Not affiliated with the UFC</span></p>
   </footer>
 </main>
 <datalist id="names"></datalist>
-<script src="app.js?v=c0badceb9e"></script>
+<script src="app.js?v=1840f696c9"></script>
 </body>
 </html>

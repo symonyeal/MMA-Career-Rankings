@@ -81,7 +81,7 @@ const S = {
 const VIEWS = {
   all_time: { rank: "at", val: "score", label: "All-time score", div: "div", name: "All-time" },
   prime: { rank: "pr", val: "plevel", label: "Prime level", div: "div", name: "Prime" },
-  current: { rank: "cr", val: "cur", label: "Current rating", div: "cdiv", name: "Current" },
+  current: { rank: "cr", val: "cur", label: "Current score", div: "cdiv", name: "Current" },
 };
 
 // Class rows (ratings.division_legacy): the All-time score split by the class it was earned in.
@@ -117,10 +117,11 @@ function flush() {
   }
 }
 function seg(id, key, after) {
+  $(id).querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(b.classList.contains("on"))));
   $(id).addEventListener("click", (e) => {
     const b = e.target.closest("button");
     if (!b) return;
-    $(id).querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === b));
+    $(id).querySelectorAll("button").forEach((x) => { x.classList.toggle("on", x === b); x.setAttribute("aria-pressed", String(x === b)); });
     S[key] = b.dataset.v;
     after();
   });
@@ -178,7 +179,7 @@ function boardTable() {
   const bar = (v, d) => `<td class="num bar"><i style="width:${(100 * v / (vmax || 1)).toFixed(1)}%"></i><span>${fmt(v, d)}</span></td>`;
   const now = (i) => F.cdiv[i] && F.cdiv[i] !== F.div[i] ? ` <span class="dim">→ now ${esc(short(F.cdiv[i]))}</span>` : "";
   const name = (i) => `<td class="name"><button class="namebtn" data-f="${esc(F.name[i])}">${esc(F.name[i])}</button></td>`;
-  const cls = S.div !== "All", pos = new Map(rows.map((i, k) => [i, k + 1]));
+  const cls = S.div !== "All", pos = new Map(all.map((i, k) => [i, k + 1]));
   const cols = {
     all_time: [["#", (i) => `<td>${chip(F.at[i])}</td>`], ["Fighter", name], ["Division", (i) => `<td>${esc(F.div[i])}${now(i)}</td>`],
       ["Score", (i) => bar(F.score[i], 1)], ["Prime", (i) => `<td class="num">${fmt(F.plevel[i])}</td>`],
@@ -189,7 +190,7 @@ function boardTable() {
       ["Best decade", (i) => `<td class="dim">${F.p0[i] ?? ""}–${F.p1[i] ?? ""}</td>`], ["Prime #", (i) => `<td class="num dim">${F.pr[i] ?? ""}</td>`],
       ["All-time rank", (i) => `<td class="num dim">${F.at[i] ?? ""}</td>`]],
     current: [["#", (i) => `<td>${chip(cls ? pos.get(i) : F.cr[i])}</td>`], ["Fighter", name], ["Division", (i) => `<td>${esc(F.cdiv[i])}</td>`],
-      ["Rating", (i) => bar(F.cur[i], 0)], ["UFC bouts", (i) => `<td class="num">${F.ufc[i] ?? ""}</td>`],
+      ["Score", (i) => bar(F.cur[i], 0)], ["UFC bouts", (i) => `<td class="num">${F.ufc[i] ?? ""}</td>`],
       ["Last bout", (i) => `<td class="dim">${F.last[i] ?? ""}</td>`], ["Current #", (i) => `<td class="num dim">${F.cr[i] ?? ""}</td>`],
       ["All-time rank", (i) => `<td class="num dim">${F.at[i] ?? ""}</td>`]],
   }[S.view].filter(([h]) => cls || !/^(Prime|Current) #$/.test(h));
@@ -305,7 +306,7 @@ function addFighter(f, go = false) {
   if (!I.has(f)) return;
   if (!S.sel.includes(f)) S.sel = [...S.sel, f].slice(-6);
   mark("fighters");
-  if (go) $("fighters").scrollIntoView({ behavior: "smooth" });
+  if (go) $("fighters").scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth" });
 }
 const RES = { W: "Win", L: "Loss", D: "Draw", N: "No result" };
 // Best five-year stretch: rolling mean over (t − W, t] with at least minN bouts (viz.trajectory_chart).
@@ -323,7 +324,7 @@ function bestStretch(t) {
 const contender = () => ({ type: "line", xref: "paper", x0: 0, x1: 1, y0: M.contender, y1: M.contender, line: { color: T.muted, dash: "dash", width: 1 } });
 SECTIONS.fighters = () => {
   const colors = S.sel.map((_, k) => CAT[k]);
-  $("sel-chips").innerHTML = S.sel.map((f, k) => `<span class="chip"><i style="background:${colors[k]}"></i>${esc(f)}<button data-f="${esc(f)}" aria-label="remove">×</button></span>`).join("");
+  $("sel-chips").innerHTML = S.sel.map((f, k) => `<span class="chip"><i style="background:${colors[k]}"></i>${esc(f)}<button data-f="${esc(f)}" aria-label="Remove ${esc(f)}">×</button></span>`).join("");
   if (!S.sel.length) { empty("arc-chart", "Add a fighter to draw their career."); $("cards").innerHTML = ""; return; }
   const data = [], ann = [], peaks = [], ends = [];
   S.sel.forEach((f, k) => {
@@ -504,7 +505,7 @@ const DV = { y0: Math.max(2000, dvYears[0]), y1: dvYears[dvYears.length - 1] };
 $("dv-y0").value = DV.y0; $("dv-y1").value = DV.y1;
 $("dv-year").min = Math.min(...Object.keys(D.year_top)); $("dv-year").max = Math.max(...Object.keys(D.year_top));
 $("dv-year").value = $("o-dv-year").textContent = $("dv-year").max;
-$("dv-chips").innerHTML = D.divisions.map((d) => `<span class="chip ${S.dv.has(d) ? "on" : ""}" data-d="${esc(d)}">${esc(short(d))}</span>`).join("");
+$("dv-chips").innerHTML = D.divisions.map((d) => `<button type="button" class="chip ${S.dv.has(d) ? "on" : ""}" data-d="${esc(d)}" aria-pressed="${S.dv.has(d)}" aria-label="${esc(d)}">${esc(short(d))}</button>`).join("");
 SECTIONS.divisions = () => {
   const sel = D.divisions.filter((d) => S.dv.has(d)), y0 = Math.min(DV.y0, DV.y1), y1 = Math.max(DV.y0, DV.y1);
   const rows = D.strength[S.k].filter((r) => S.dv.has(r[0]) && r[1] >= y0 && r[1] <= y1);
@@ -567,6 +568,7 @@ $("dv-chips").addEventListener("click", (e) => {
   if (!c) return;
   S.dv.has(c.dataset.d) ? S.dv.delete(c.dataset.d) : S.dv.add(c.dataset.d);
   c.classList.toggle("on");
+  c.setAttribute("aria-pressed", String(S.dv.has(c.dataset.d)));
   mark("divisions");
 });
 ["y0", "y1"].forEach((k) => $("dv-" + k).addEventListener("change", (e) => { DV[k] = +e.target.value; mark("divisions"); }));
@@ -666,6 +668,10 @@ SECTIONS.benchmark = () => {
 };
 
 // ---- wiring --------------------------------------------------------------------------------------------------
+const phoneLayout = matchMedia('(max-width: 720px)');
+const filterPanel = document.querySelector('.filter-panel');
+filterPanel.open = !phoneLayout.matches;
+phoneLayout.addEventListener('change', e => { filterPanel.open = !e.matches; });
 seg("c-gender", "g", () => { divisionOptions(); mark(); });
 $("c-div").addEventListener("change", (e) => { S.div = e.target.value; mark(); });
 slider("c-top", "o-top", "top", () => mark());
@@ -674,11 +680,26 @@ slider("st-min", "o-st-min", "stMin", () => mark("streaks"));
 slider("dm-min", "o-dm-min", "dmMin", () => mark("dominance"));
 slider("bar-d", "o-bar-d", "raise", () => barChart());
 $("w-a").value = S.a; $("w-s").value = S.s; $("o-a").textContent = fmt(S.a, 3); $("o-s").textContent = fmt(S.s, 3);
+$("release-label").textContent = `Published ${M.snapshot}`;
 $("foot").textContent = `${SNAP}. The rankings are the published boards; see README.md and RANKINGS.md.`;
 $("names").innerHTML = F.name.map((f) => `<option value="${esc(f)}">`).join("");
 divisionOptions();
 facts();
 matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { theme(); mark(); });
+// Keep navigation in step with the section being read.
+const navObserver = new IntersectionObserver((entries) => {
+  const current = entries.filter(e => e.isIntersecting).sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
+  if (!current) return;
+  document.querySelectorAll('nav a').forEach(a => {
+    if (a.hash === '#' + current.target.id) a.setAttribute('aria-current', 'location');
+    else a.removeAttribute('aria-current');
+  });
+}, { rootMargin: '-15% 0px -65% 0px' });
+document.querySelectorAll('main section[id]').forEach(section => navObserver.observe(section));
+const headerSize = new ResizeObserver(([entry]) => {
+  document.documentElement.style.setProperty('--header-height', `${entry.target.getBoundingClientRect().height}px`);
+});
+headerSize.observe(document.querySelector('.top'));
 const io = new IntersectionObserver((es) => {
   es.forEach((e) => (e.isIntersecting ? visible.add(e.target.id) : visible.delete(e.target.id)));
   flush();
