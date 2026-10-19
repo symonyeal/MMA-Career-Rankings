@@ -73,6 +73,11 @@ input[type=checkbox] { accent-color: var(--accent); width: 18px; height: 18px; }
 h1 { font: 700 clamp(2rem, 4vw, 3.3rem)/1.1 var(--display); letter-spacing: -.045em; margin: 24px 0 22px; max-width: 20ch; }
 h1 em { font-family: Georgia, serif; font-weight: 400; letter-spacing: -.055em; color: var(--accent); }
 .lede { color: var(--text-2); max-width: 76ch; font-size: 1.03rem; }
+.reading-guide { margin-top: 28px; padding-block: 24px 4px; border-top: 1px solid var(--border-strong); }
+.reading-guide h2 { font-size: 1.2rem; }
+.reading-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 32px; }
+.reading-columns h3 { margin: 8px 0; font-size: .9rem; }
+.reading-columns p { color: var(--text-2); font-size: .85rem; margin: 8px 0 14px; max-width: 65ch; }
 .hero-link { display: inline-flex; align-items: center; gap: 26px; font-size: .85rem; font-weight: 700; margin-top: 8px; }
 .hero-link span { font-size: 1.5rem; }
 .facts { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); margin-top: 30px; border: 1px solid var(--border-strong); border-radius: 10px; overflow: hidden; background: var(--bg); }
@@ -162,6 +167,7 @@ footer p:last-child { display: flex; flex-wrap: wrap; justify-content: space-bet
   .release-label { font-size: .65rem; }
   h1 { margin-block: 20px; font-size: clamp(1.9rem,8vw,2.8rem); }
   .lede { font-size: .9rem; }
+  .reading-columns { grid-template-columns: 1fr; gap: 4px; }
   .facts { grid-template-columns: repeat(2,minmax(0,1fr)); margin-top: 24px; }
   .facts div { padding: 16px 14px; }
   .facts div:nth-child(3) { border-left: 0; }
