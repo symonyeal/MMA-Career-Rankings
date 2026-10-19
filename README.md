@@ -48,6 +48,14 @@ gives the exact rules.
 Each section heading states the section's point. Under every chart, one line computed from the data gives the
 finding for the current controls. The page follows the reader's light or dark setting.
 
+On a phone, open **Explore the rankings** to change the filters. Wide tables scroll
+inside their panels. Weight-class buttons work with a keyboard, and the page follows
+the reader's reduced-motion setting.
+
+To check the interface locally, run `npm ci`, `npx playwright install chromium`, then
+`npm test`. The browser checks cover search positions, roster filters, fighter
+comparisons, analysis charts, phone layouts and dark mode. They also run in CI.
+
 | Weight-class board | Score anatomy and exchange rates |
 | --- | --- |
 | [![Heavyweight class board](docs/site/class-board.png)](https://symonyeal.github.io/UFC-Career-Rankings/#rankings) | [![Score anatomy](docs/site/score-anatomy.png)](https://symonyeal.github.io/UFC-Career-Rankings/#anatomy) |

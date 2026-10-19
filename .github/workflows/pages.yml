@@ -1,8 +1,8 @@
 name: pages
 
 # Publishes site/ as it stands on main. site/data.js is generated locally by
-# analysis/build_site.py from a snapshot that is not versioned, so it is
-# committed rather than rebuilt here.
+# analysis/build_site.py from a versioned snapshot. The generated data is
+# committed so deployment only needs to upload the static site.
 on:
   push:
     branches: [main]
