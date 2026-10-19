@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>UFC Career Rankings</title>
 <meta name="description" content="The UFC Career Rankings boards (All-time, Prime, Current) and the evidence behind them, interactive.">
-<link rel="stylesheet" href="style.css?v=afbafd7fbc">
+<link rel="stylesheet" href="style.css?v=e8c5c0711c">
 <script>
 addEventListener("error", (e) => {
   const m = e.message || "could not load " + (e.target.src || e.target.href);
@@ -48,6 +48,31 @@ addEventListener("error", (e) => {
     <p class="lede">Rank fighters by career (<b>All-time</b>), best ten years (<b>Prime</b>), or recent form (<b>Current</b>).
       One model rates every recorded bout. All-time and Prime include all promotions;
       Current and weight-class boards use UFC bouts.</p>
+    <div class="reading-guide" aria-labelledby="reading-title">
+      <h2 id="reading-title">How to read the scores</h2>
+      <div class="reading-columns">
+        <div>
+          <h3>How All-time is calculated</h3>
+          <p>The score combines championships (30%), career skill (17.5%) and contender wins (52.5%).
+            Title and contender wins are weighted by opponent quality. Career skill measures active years
+            above the division's contender level.</p>
+          <p>Each part is divided by the average of its own 100 highest positive values, then square-rooted
+            and weighted. The total is multiplied by 1,000. The square root limits how much one extreme
+            part can dominate. These weights are chosen scoring rules. A score is a points total,
+            not a percentage advantage over another fighter.</p>
+        </div>
+        <div>
+          <h3>Why a rating can fall after a win</h3>
+          <p>The career chart shows estimated skill at each bout, not accumulated points. The model fits
+            whole careers, so later results can revise earlier estimates.</p>
+          <p>The chart also adjusts each year against that year's contender baseline. If the baseline rises
+            faster than a fighter's raw rating, the plotted line falls even after a win. This happens in
+            GSP's career. A downward step does not necessarily mean the win hurt him.</p>
+          <p>The top-100 normalization applies to the All-time score, not this line. Between releases,
+            a retired fighter's score can fall as the comparison pool improves or the model revises past ratings.</p>
+        </div>
+      </div>
+    </div>
     <a class="hero-link" href="#rankings">View rankings <span aria-hidden="true">↘</span></a>
     <div class="facts" id="facts" aria-label="Published board leaders"></div>
   </section>
@@ -85,12 +110,12 @@ addEventListener("error", (e) => {
 
   <section id="fighters">
     <h2>Fighter comparisons</h2>
-    <p class="note">Era-adjusted rating after each bout, up to six fighters: each year is shifted by how far its
+    <p class="note">Estimated skill at each bout, up to six fighters: each year is shifted by how far its
       contender line sat from the average year's, so careers in different eras share one scale. Later bouts revise
-      earlier ratings, so an early-career point is read with hindsight.</p>
+      earlier ratings. This is a hindsight estimate, not a running points total; it can fall after a win.</p>
     <div class="row"><label>Add fighter <input id="sel-add" list="names" class="pick" placeholder="Type a name"></label>
       <div id="sel-chips" class="chips"></div></div>
-    <figure><h3>Era-adjusted rating after each bout</h3><p class="insight" id="arc-chart-i"></p><div id="arc-chart" class="chart"></div><figcaption id="arc-chart-s"></figcaption></figure>
+    <figure><h3>Estimated skill at each bout, adjusted for era</h3><p class="insight" id="arc-chart-i"></p><div id="arc-chart" class="chart"></div><figcaption id="arc-chart-s"></figcaption></figure>
     <div id="cards" class="cards"></div>
   </section>
 
