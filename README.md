@@ -45,8 +45,8 @@ gives the exact rules.
 | [**Integrity policy and outside check**](https://symonyeal.github.io/UFC-Career-Rankings/#policy) | The PED, disqualification and missed-weight ledger, and where the board disagrees with FightMatrix. |
 | [**Forecast calibration**](https://symonyeal.github.io/UFC-Career-Rankings/#checks) | How often pre-fight favourites actually won, against the probability they were given, with 95% intervals. |
 
-Each section heading states the section's point. Under every chart, one line computed from the data gives the
-finding for the current controls. The page follows the reader's light or dark setting.
+Each chart includes a finding calculated from the data under the current controls.
+The page follows the reader's light or dark setting.
 
 On a phone, open **Explore the rankings** to change the filters. Wide tables scroll
 inside their panels. Weight-class buttons work with a keyboard, and the page follows
