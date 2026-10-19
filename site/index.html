@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>UFC Career Rankings</title>
 <meta name="description" content="The UFC Career Rankings boards (All-time, Prime, Current) and the evidence behind them, interactive.">
-<link rel="stylesheet" href="style.css?v=0dbe5f18fb">
+<link rel="stylesheet" href="style.css?v=afbafd7fbc">
 <script>
 addEventListener("error", (e) => {
   const m = e.message || "could not load " + (e.target.src || e.target.href);
@@ -43,17 +43,17 @@ addEventListener("error", (e) => {
 <main class="wrap" id="top">
   <p id="fail" class="callout" role="alert" hidden>Part of the page failed; a hard reload (Ctrl+F5) usually fixes it.</p>
   <section class="hero">
-    <div class="hero-topline"><span class="eyebrow">The career. The peak. The present.</span><span id="release-label" class="release-label"></span></div>
-    <h1>Greatness has<br>more than <em>one measure.</em></h1>
-    <p class="lede">One rating model is fitted to every recorded bout, then read three ways: what a career was worth
-      (<b>All-time</b>), the best ten years (<b>Prime</b>) and form now (<b>Current</b>). All-time and Prime count every
-      promotion; Current and the weight-class views count the UFC.</p>
-    <a class="hero-link" href="#rankings">Explore the boards <span aria-hidden="true">↘</span></a>
+    <div class="hero-topline"><span id="release-label" class="release-label"></span></div>
+    <h1>UFC Career Rankings</h1>
+    <p class="lede">Rank fighters by career (<b>All-time</b>), best ten years (<b>Prime</b>), or recent form (<b>Current</b>).
+      One model rates every recorded bout. All-time and Prime include all promotions;
+      Current and weight-class boards use UFC bouts.</p>
+    <a class="hero-link" href="#rankings">View rankings <span aria-hidden="true">↘</span></a>
     <div class="facts" id="facts" aria-label="Published board leaders"></div>
   </section>
 
   <section id="rankings">
-    <h2>Three boards, three questions.</h2>
+    <h2>Rankings</h2>
     <p class="note">The published boards. A weight class on the All-time board shows that class's board, earned in UFC
       bouts only. A blank Prime rank means the fighter did not qualify. Click a name to add it to
       <a href="#fighters">Fighters</a>.</p>
@@ -68,7 +68,7 @@ addEventListener("error", (e) => {
   </section>
 
   <section id="anatomy">
-    <h2>An All-time score is three weighted parts.</h2>
+    <h2>Score breakdown</h2>
     <p class="note"><code>1000 × (a·√championships + (1 − a)·(s·√career skill + (1 − s)·√contender résumé))</code>, each
       part scaled by its own top-100 mean before the square root, so a career is paid for breadth more than for one
       extreme part. Ratings are read against their own era. Move the rates to re-rank.</p>
@@ -80,11 +80,11 @@ addEventListener("error", (e) => {
     <div id="anat-summary" class="callout"></div>
     <figure><h3>Score by part</h3><p class="insight" id="anat-chart-i"></p><div id="anat-chart" class="chart"></div><figcaption id="anat-chart-s"></figcaption></figure>
     <div class="row"><label>Fighter <input id="rob-pick" list="names" class="pick"></label></div>
-    <figure><h3>One fighter's rank at every exchange rate</h3><p class="insight" id="rob-chart-i"></p><div id="rob-chart" class="chart"></div><figcaption id="rob-chart-s"></figcaption></figure>
+    <figure><h3>Rank sensitivity to score weights</h3><p class="insight" id="rob-chart-i"></p><div id="rob-chart" class="chart"></div><figcaption id="rob-chart-s"></figcaption></figure>
   </section>
 
   <section id="fighters">
-    <h2>Every career has its own shape.</h2>
+    <h2>Fighter comparisons</h2>
     <p class="note">Era-adjusted rating after each bout, up to six fighters: each year is shifted by how far its
       contender line sat from the average year's, so careers in different eras share one scale. Later bouts revise
       earlier ratings, so an early-career point is read with hindsight.</p>
@@ -95,23 +95,23 @@ addEventListener("error", (e) => {
   </section>
 
   <section id="careers">
-    <h2>Career mass rewards years spent above the contender bar.</h2>
-    <p class="note">Each active year adds how far the fighter's average rating stood above that year's bar; no year subtracts.</p>
+    <h2>Career scores by year</h2>
+    <p class="note">Career mass adds, for each active year, how far the fighter's average rating stood above that year's bar; no year subtracts.</p>
     <div class="row"><label>Fighter <input id="rec-pick" list="names" class="pick"></label></div>
     <figure><h3>Credit by year</h3><p class="insight" id="rec-chart-i"></p><div id="rec-chart" class="chart"></div><figcaption id="rec-chart-s"></figcaption></figure>
     <div class="row"><label>Raise every year's bar by <input id="bar-d" type="range" min="0" max="200" step="25"><output id="o-bar-d"></output> points</label></div>
-    <figure><h3>Does the order survive a higher bar?</h3><p class="insight" id="ladder-chart-i"></p><div id="ladder-chart" class="chart"></div><figcaption id="ladder-chart-s"></figcaption></figure>
+    <figure><h3>Rankings at higher contender thresholds</h3><p class="insight" id="ladder-chart-i"></p><div id="ladder-chart" class="chart"></div><figcaption id="ladder-chart-s"></figcaption></figure>
     <figure><h3>All-time against Prime</h3><p class="insight" id="lp-chart-i"></p><div id="lp-chart" class="chart"></div><figcaption id="lp-chart-s"></figcaption></figure>
   </section>
 
   <section id="movers">
-    <h2>One year can remake a rating.</h2>
+    <h2>Annual rating changes</h2>
     <div class="row"><label>Year <select id="mov-year"></select></label></div>
     <figure><h3>Biggest rises and falls</h3><p class="insight" id="mov-chart-i"></p><div id="mov-chart" class="chart"></div><figcaption id="mov-chart-s"></figcaption></figure>
   </section>
 
   <section id="streaks">
-    <h2>Long streaks differ in who they beat.</h2>
+    <h2>UFC win streaks</h2>
     <p class="note">Unbroken UFC win runs; a draw or loss ends one. Click a row to mark it.</p>
     <div class="row">
       <label>Sort <select id="st-sort"><option value="length">Longest</option><option value="quality">Toughest schedule</option><option value="title_wins">Most title wins</option></select></label>
@@ -122,7 +122,7 @@ addEventListener("error", (e) => {
   </section>
 
   <section id="divisions">
-    <h2>The strongest weight class changes over time.</h2>
+    <h2>Weight-class strength</h2>
     <p class="note">UFC bouts only. These chips and years apply to this section.</p>
     <div class="row"><div id="dv-chips" class="chips toggles"></div></div>
     <div class="row">
@@ -137,28 +137,28 @@ addEventListener("error", (e) => {
   </section>
 
   <section id="lineage">
-    <h2>A few reigns last years; most do not.</h2>
+    <h2>Title reigns</h2>
     <div class="row"><label>Class <select id="tl-div"></select></label>
       <label><input id="tl-int" type="checkbox"> Include interim belts</label></div>
-    <figure><h3>The belt, reign by reign</h3><p class="insight" id="tl-chart-i"></p><div id="tl-chart" class="chart"></div><figcaption id="tl-chart-s"></figcaption></figure>
+    <figure><h3>Title history</h3><p class="insight" id="tl-chart-i"></p><div id="tl-chart" class="chart"></div><figcaption id="tl-chart-s"></figcaption></figure>
   </section>
 
   <section id="dominance">
-    <h2>Some fighters win far more one-sidedly.</h2>
+    <h2>Dominance in wins</h2>
     <p class="note">Strike differential, control time and submission attempts per win. Not a rating input.</p>
     <div class="row"><label>Min wins <input id="dm-min" type="range" min="3" max="20" value="8"><output id="o-dm-min">8</output></label></div>
     <figure><h3>Mean dominance per win</h3><p class="insight" id="dm-chart-i"></p><div id="dm-chart" class="chart"></div><figcaption id="dm-chart-s"></figcaption></figure>
   </section>
 
   <section id="policy">
-    <h2>Integrity debits are a stated judgement, kept off the boards.</h2>
-    <p class="note">Fixed debits for wins with a confirmed PED violation, a disqualification or a missed weight.</p>
+    <h2>Integrity policy</h2>
+    <p class="note">Judgement-based deductions for wins with a confirmed PED violation, a disqualification or a missed weight. These do not affect the published boards.</p>
     <figure><h3>Rank before and after the debits</h3><p class="insight" id="pol-chart-i"></p><div id="pol-chart" class="chart"></div><figcaption id="pol-chart-s"></figcaption></figure>
     <div id="pol-table" class="table-wrap short" role="region" aria-label="Integrity ledger" tabindex="0"></div>
   </section>
 
   <section id="checks">
-    <h2>Pre-fight forecasts, checked against results.</h2>
+    <h2>Forecast accuracy</h2>
     <p class="note">Each bout's pre-fight win probability against how often those fighters won. Only earlier bouts inform
       a forecast.</p>
     <div class="row"><label>Bouts <select id="cal-seg"></select></label></div>
@@ -166,8 +166,8 @@ addEventListener("error", (e) => {
   </section>
 
   <section id="benchmark">
-    <h2>A check against FightMatrix, not a target.</h2>
-    <figure><h3>All-time rank here and there</h3><p class="insight" id="bm-chart-i"></p><div id="bm-chart" class="chart"></div><figcaption id="bm-chart-s"></figcaption></figure>
+    <h2>FightMatrix comparison</h2>
+    <figure><h3>All-time ranks compared with FightMatrix</h3><p class="insight" id="bm-chart-i"></p><div id="bm-chart" class="chart"></div><figcaption id="bm-chart-s"></figcaption></figure>
   </section>
 
   <footer>
