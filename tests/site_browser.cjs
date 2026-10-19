@@ -116,6 +116,7 @@ test('all analysis sections render, filters and comparisons remain usable', asyn
     await page.locator('#fighters').scrollIntoViewIfNeeded();
     await page.locator('#sel-add').fill('Anderson Silva');
     await page.locator('#sel-add').dispatchEvent('change');
+    await page.waitForFunction(() => document.getElementById('sel-chips').textContent.includes('Anderson Silva'));
     assert.match(await page.locator('#sel-chips').textContent(), /Anderson Silva/);
     assert.deepEqual(errors, []);
     assert.equal(await page.locator('#fail').isVisible(), false);
