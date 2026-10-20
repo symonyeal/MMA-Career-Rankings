@@ -387,6 +387,7 @@ conflict. See the [decision register](docs/DECISIONS.md).
 | `ratings/` / `loaders/` | Model / data assembly |
 | `data/snapshots/<date>/` | The release: inputs, fitted ratings and boards, all versioned |
 | [`docs/`](docs/) | Method and decisions |
+| [`docs/RELEASE_CHECK.md`](docs/RELEASE_CHECK.md) | Source freshness, fresh-checkout reproduction and the limits of current predictive evidence |
 | [`site/`](site/) | Interactive analysis site, published at <https://symonyeal.github.io/UFC-Career-Rankings/>; open `site/index.html` locally |
 | `tests/` | Verification |
 
@@ -396,14 +397,14 @@ Use the system Python:
 python -m pip install -r requirements.txt
 python -m pytest -q
 python check_release.py
-python build_boards.py data/snapshots/2026-08-13 --scope majors,pre_unified --write-readme
+python build_boards.py data/snapshots/2026-10-14 --scope majors,pre_unified --write-readme
 ```
 
 The site draws the notebook's analyses from one snapshot. Its data file, `site/data.js`, is
 generated; rebuild it after the boards change:
 
 ```text
-python analysis/build_site.py data/snapshots/2026-08-13
+python analysis/build_site.py data/snapshots/2026-10-14
 ```
 
 `index.html` loads each asset as `name?v=<content hash>`, so a browser never pairs the page with a

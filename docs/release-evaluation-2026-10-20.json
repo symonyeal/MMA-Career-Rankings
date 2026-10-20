@@ -1,0 +1,92 @@
+{
+  "checked": "2026-10-20",
+  "revision": "acf3128",
+  "command": "python build_prequential_evaluation.py data/snapshots/2026-10-14 --events 12 --calibration-events 12 --variants canonical --scope majors,pre_unified --out-dir /path/to/persistent/evaluation --artifact-dir /path/to/persistent/evaluation",
+  "configuration": {
+    "snapshot": "2026-10-14",
+    "scope": "majors,pre_unified",
+    "cache_schema_version": 9,
+    "rated_bouts": 81616,
+    "eval_events": 12,
+    "calibration_events": 12,
+    "eval_mode": "recent",
+    "since_year": null,
+    "min_prior_fights": 3,
+    "min_n_for_conclusions": 200,
+    "with_crossorg_experimental": false,
+    "variants": [
+      "canonical"
+    ],
+    "scored_bouts_per_variant": 92,
+    "cpu_seconds": {
+      "inputs": 529.3,
+      "sweep": 24.6,
+      "total": 555.4
+    },
+    "wall_seconds": 887.2
+  },
+  "combined_fights_sha256": "4996fd5908c4f35405cd2c66608cd868cfc7da92eaf1f094e1a563a4405e0136",
+  "overall_scores": [
+    {
+      "variant": "bench_naive",
+      "segment_type": "overall",
+      "segment_value": "all",
+      "log_loss": 0.6931471805599454,
+      "brier": 0.25,
+      "accuracy": 0.5108695652173914,
+      "auc": 0.5,
+      "n": 92,
+      "calibration_error": 0.010869565217391353,
+      "prob_column": "p_a",
+      "n_sufficient": false
+    },
+    {
+      "variant": "canonical",
+      "segment_type": "overall",
+      "segment_value": "all",
+      "log_loss": 0.7287633987385361,
+      "brier": 0.266984683392073,
+      "accuracy": 0.4891304347826087,
+      "auc": 0.49692671394799054,
+      "n": 92,
+      "calibration_error": 0.13499011178793663,
+      "prob_column": "p_a",
+      "n_sufficient": false
+    },
+    {
+      "variant": "bench_naive",
+      "segment_type": "overall",
+      "segment_value": "all",
+      "log_loss": 0.6931471805599454,
+      "brier": 0.25,
+      "accuracy": 0.5108695652173914,
+      "auc": 0.5,
+      "n": 92,
+      "calibration_error": 0.010869565217391353,
+      "prob_column": "p_a_calibrated",
+      "n_sufficient": false
+    },
+    {
+      "variant": "canonical",
+      "segment_type": "overall",
+      "segment_value": "all",
+      "log_loss": 0.7579091138246173,
+      "brier": 0.27873949332746556,
+      "accuracy": 0.4891304347826087,
+      "auc": 0.49692671394799054,
+      "n": 92,
+      "calibration_error": 0.15630513485917394,
+      "prob_column": "p_a_calibrated",
+      "n_sufficient": false
+    }
+  ],
+  "evaluation_date_range": [
+    "2026-08-08 00:00:00",
+    "2026-10-10 00:00:00"
+  ],
+  "unique_bouts_per_variant": {
+    "bench_naive": 92,
+    "canonical": 92
+  },
+  "limit": "Causal Glicko baseline only; no WHR fit or comparison. Sample below the configured floor for conclusions."
+}
