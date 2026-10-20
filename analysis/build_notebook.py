@@ -1537,7 +1537,7 @@ subscribe("integrity_ledger", draw_integrity, {"top_n"})
 
 CELLS = [
     md("""
-# UFC Career Rankings — Interactive Dashboard
+# MMA Career Rankings — Interactive Dashboard
 
 The **Control Room** picks one ranking question — All-time, Prime, or
 Current skill — plus weight class and board depth. The opening board defaults
