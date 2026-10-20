@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>UFC Career Rankings</title>
-<meta name="description" content="The UFC Career Rankings boards (All-time, Prime, Current) and the evidence behind them, interactive.">
+<title>MMA Career Rankings</title>
+<meta name="description" content="MMA career rankings (All-time, Prime, Current) built from every recorded professional fight, and the evidence behind them, interactive.">
 <link rel="stylesheet" href="style.css?v=e8c5c0711c">
 <script>
 addEventListener("error", (e) => {
@@ -14,15 +14,15 @@ addEventListener("error", (e) => {
 }, true);
 </script>
 <script src="https://cdn.jsdelivr.net/npm/plotly.js-dist-min@4.1.1/plotly.min.js"></script>
-<script src="data.js?v=d419863603"></script>
+<script src="data.js?v=c967a5d087"></script>
 </head>
 <body>
 <a class="skip-link" href="#rankings">Skip to rankings</a>
 <header class="top">
   <div class="wrap">
-    <a class="brand" href="#top"><span class="brand-mark" aria-hidden="true">CR</span><span>UFC <b>Career Rankings</b></span></a>
+    <a class="brand" href="#top"><span class="brand-mark" aria-hidden="true">CR</span><span>MMA <b>Career Rankings</b></span></a>
     <nav aria-label="Analysis sections">
-      <a href="#rankings">Rankings</a><a href="#anatomy">Score</a><a href="#fighters">Fighters</a>
+      <a href="#rankings">Rankings</a><a href="#anatomy">Score</a><a href="#math">Math</a><a href="#fighters">Fighters</a>
       <a href="#careers">Careers</a><a href="#movers">Movers</a><a href="#streaks">Streaks</a>
       <a href="#divisions">Weight classes</a><a href="#lineage">Titles</a><a href="#dominance">Dominance</a>
       <a href="#policy">Policy</a><a href="#checks">Checks</a><a href="#benchmark">Benchmark</a>
@@ -44,9 +44,10 @@ addEventListener("error", (e) => {
   <p id="fail" class="callout" role="alert" hidden>Part of the page failed; a hard reload (Ctrl+F5) usually fixes it.</p>
   <section class="hero">
     <div class="hero-topline"><span id="release-label" class="release-label"></span></div>
-    <h1>UFC Career Rankings</h1>
+    <h1>MMA Career Rankings</h1>
     <p class="lede">Rank fighters by career (<b>All-time</b>), best ten years (<b>Prime</b>), or recent form (<b>Current</b>).
-      One model rates every recorded bout. All-time and Prime include all promotions;
+      One model rates every recorded professional MMA fight, from every promotion. All-time and Prime
+      rank careers from the UFC and the other major promotions, so a fighter can rank without a UFC fight.
       Current and weight-class boards use UFC bouts.</p>
     <div class="reading-guide" aria-labelledby="reading-title">
       <h2 id="reading-title">How to read the scores</h2>
@@ -106,6 +107,45 @@ addEventListener("error", (e) => {
     <figure><h3>Score by part</h3><p class="insight" id="anat-chart-i"></p><div id="anat-chart" class="chart"></div><figcaption id="anat-chart-s"></figcaption></figure>
     <div class="row"><label>Fighter <input id="rob-pick" list="names" class="pick"></label></div>
     <figure><h3>Rank sensitivity to score weights</h3><p class="insight" id="rob-chart-i"></p><div id="rob-chart" class="chart"></div><figcaption id="rob-chart-s"></figcaption></figure>
+  </section>
+
+  <section id="math" class="reading-guide">
+    <h2>The math, in plain terms</h2>
+    <div class="reading-columns">
+      <div>
+        <h3>Whole-History Rating</h3>
+        <p>A chess-style rating fitted to every career at once (Coulom, 2008). The gap between two ratings gives
+          each fighter's chance of winning. Because nothing is fixed one fight at a time, a win counts for more
+          when the opponent later proves to be great, and fighters from different decades share one scale.</p>
+        <h3>A neutral starting bout</h3>
+        <p>Each fighter starts with the weight of one imaginary fight against an average opponent, half won and
+          half lost. Without it, a short unbeaten record has no upper limit and could top the board.</p>
+        <h3>Graded results</h3>
+        <p>A finish counts as a full win; decisions and disqualifications count slightly less, and a draw counts
+          as half. A knockout says more about who was better than a split decision does.</p>
+        <h3>A contender line for each year</h3>
+        <p>Every rating is read against its division's fifth-best fighter that year. The rating scale drifts upward
+          over time, so this compares a 2007 win and a 2023 win fairly.</p>
+      </div>
+      <div>
+        <h3>Win probability raised to a power</h3>
+        <p>A win is valued by the chance the beaten opponent would have beaten a contender: to the fourth power for
+          a title win, the third power for other contender wins. One elite win is worth about five borderline ones,
+          without letting a single win carry a career. The third power was chosen after testing powers 1 to 6.</p>
+        <h3>Promotion weights, pulled toward average</h3>
+        <p>The rating never looks at the promotion. Afterwards, skill and contender-win points are scaled by where
+          they were earned, between 0.20 and 1.00 (UFC 1.00). A career with few promotion-labelled fights is pulled
+          toward the average, so a handful of fights cannot decide it.</p>
+        <h3>Square roots on a common scale</h3>
+        <p>Titles, contender wins and skill are each measured against their top-100 average, square-rooted, then
+          weighted. A career strong in all three beats one huge number in a single part.</p>
+        <h3>Best ten-year window</h3>
+        <p>Prime finds the ten-year stretch with the most wins over contenders and needs at least four. Each win beyond
+          that adds to the score. A ten-year window keeps a peak from being diluted by a long career before or after it.</p>
+      </div>
+    </div>
+    <p class="note">The model has not yet been shown to predict fights better than a simpler rating. These are
+      measured judgements of careers, not betting odds.</p>
   </section>
 
   <section id="fighters">
@@ -201,6 +241,6 @@ addEventListener("error", (e) => {
   </footer>
 </main>
 <datalist id="names"></datalist>
-<script src="app.js?v=1840f696c9"></script>
+<script src="app.js?v=335c9ef43c"></script>
 </body>
 </html>

@@ -1,5 +1,25 @@
 # Snapshot Changelog
 
+## 2026-10-20 - Prime needs four contender wins, not five
+
+Board rebuild only; no score or rating changed. See "Prime needs four contender
+wins" in `docs/DECISIONS.md`.
+
+- Prime qualifiers: 65 to 102 men, 4 to 6 women.
+- Men's top 50: Khabib Nurmagomedov (23rd), Ilia Topuria (30th), Movsar Evloev
+  (33rd), Khamzat Chimaev (38th) and Ciryl Gane (46th) enter; Gegard Mousasi,
+  Aljamain Sterling, Ryan Bader, Tito Ortiz and Alexander Volkov leave. Anderson
+  Silva moves above Islam Makhachev to third.
+- Women: Joanna Jedrzejczyk enters at 4th and Carla Esparza at 6th.
+- The All-time table's Prime rank column follows the new board.
+
+## 2026-10-20 - Site: MMA title, the math section, and the rankings always draw
+
+The site is titled MMA Career Rankings and carries the README's plain-terms math
+section after the score breakdown. The rankings table now draws on load instead
+of waiting to scroll into view; on a phone the page header is taller than the
+screen, which left the table empty and failed the two phone browser checks.
+
 ## 2026-10-20 - Contender wins priced at the third power
 
 A win over a contender is now worth `q³` instead of `q⁴`; title wins stay at

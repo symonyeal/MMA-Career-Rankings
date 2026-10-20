@@ -88,7 +88,7 @@ def test_readme_explains_the_rules_that_change_the_rankings():
         "UFC is `1.00`",  # article varies with the sentence; the value does not
         "virtual bout",
         "All-time = 1,000 × (30% √title + 17.5% √skill + 52.5% √résumé)",
-        "and needs five",
+        "and needs four",
         "eight UFC bouts",
         "within 18 months",
         "fifth-best",
@@ -180,7 +180,7 @@ def test_readme_policy_constants_are_the_ones_the_code_uses():
     # Spelled out in prose; pin the word and the constant behind it together.
     spelled = [
         (MIN_OPPONENT_UFC_BOUTS, 8, "eight or more UFC bouts"),
-        (MIN_QUALITY_WINS, 5, "and needs five"),
+        (MIN_QUALITY_WINS, 4, "and needs four"),
         (MAX_EXCESS_TURNAROUNDS, 4, "up to four"),
     ]
     for constant, value, phrase in spelled:
