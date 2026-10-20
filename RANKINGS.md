@@ -346,7 +346,7 @@ A class board is therefore the UFC part of the All-time board, split by class, n
 a second opinion beside it. A fighter appears in every class where they earned UFC
 credit, and **Share of All-time** is the part of their All-time score earned in
 that class. Classes with fewer than ten ranked fighters are not printed; the
-[interactive site](https://symonyeal.github.io/UFC-Career-Rankings/) shows every class
+[interactive site](https://symonyeal.github.io/MMA-Career-Rankings/) shows every class
 in full.
 
 <!-- BOARD:CLASS:BEGIN -->
