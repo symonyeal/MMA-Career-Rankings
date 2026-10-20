@@ -55,6 +55,7 @@ measured judgement of careers, not a betting model.
 | [**Rankings**](https://symonyeal.github.io/UFC-Career-Rankings/#rankings) | All-time, Prime and Current, exactly as published below. Pick a weight class for that class's own board: the All-time score earned in UFC bouts in that class. |
 | [**Weight-class boards**](https://symonyeal.github.io/UFC-Career-Rankings/#rankings) | UFC only. A champion in two classes is ranked in both, with the share of their All-time score earned in each. |
 | [**Score anatomy**](https://symonyeal.github.io/UFC-Career-Rankings/#anatomy) | See each score split into championships, career skill and contender résumé. Move two sliders to change the exchange rate and watch the board re-rank. |
+| [**The math, in plain terms**](https://symonyeal.github.io/UFC-Career-Rankings/#math) | Each method behind the rankings, what it does and why it was chosen, in ordinary words. |
 | [**Rank robustness**](https://symonyeal.github.io/UFC-Career-Rankings/#anatomy) | A heat map of one fighter's rank under every exchange rate, with the published choice marked. |
 | [**Career arcs and tale of the tape**](https://symonyeal.github.io/UFC-Career-Rankings/#fighters) | Overlay up to six fighters' ratings fight by fight and compare their records, ranks and class placements side by side. |
 | [**Where a career score comes from**](https://symonyeal.github.io/UFC-Career-Rankings/#careers) | A year-by-year receipt that sums to the career score, and how the order holds when every year's bar is raised. |
