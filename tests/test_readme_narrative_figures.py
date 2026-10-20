@@ -187,6 +187,13 @@ def test_readme_policy_constants_are_the_ones_the_code_uses():
         assert constant == value, f"{phrase!r} spells out {value}, code now says {constant}"
         assert phrase in readme, f"README no longer says {phrase!r}"
 
+    # The README writes q**k with a superscript; the two win types use different k.
+    from ratings.legacy_resume import RESUME_QUALITY_EXPONENT, TITLE_QUALITY_EXPONENT
+
+    power = {3.0: "³", 4.0: "⁴"}
+    assert f"Each title win is worth `q{power[TITLE_QUALITY_EXPONENT]}`" in readme
+    assert f"Each is worth `q{power[RESUME_QUALITY_EXPONENT]}` against" in readme
+
     for org, factor in ORG_FACTOR_BY_CANONICAL.items():
         assert org in readme, f"README omits promotion {org}"
         assert f"`{factor:.2f}`" in readme, f"README omits the {org} factor {factor:.2f}"

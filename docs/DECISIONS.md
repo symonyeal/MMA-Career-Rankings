@@ -331,6 +331,51 @@ between them falls from 1,610 to 301 points; Anderson Silva rises from 9th to
 fighters, against 19.4% before, and Prime qualifies 65 men and 4 women, against
 78 and 2.
 
+## Contender wins are priced at the third power: the owner's decision of 2026-10-20
+
+A contender win is now worth `q³` (`RESUME_QUALITY_EXPONENT`); a title win stays at
+`q⁴` (`TITLE_QUALITY_EXPONENT`). Until now the résumé reused the title exponent,
+and the 2026-08-25 sweep that chose 4 had priced title wins only.
+
+Re-measured on the 2026-10-14 fit, men's board, every pair of exponents from
+{1, 2, 3, 4, 6} for titles and résumé, on one fixed population (the top 100
+published before the change):
+
+| Résumé exponent (title at 4) | Top 100 with one win over half their contender credit | Agreement, elite wins | Agreement, Prime | Leave the top 100 | Elite ÷ borderline win |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 6 | 28 | 0.569 | 0.600 | 6 | 24× |
+| 4 — replaced | 15 | 0.627 | 0.615 | — | 8.3× |
+| **3 — shipped** | **8** | **0.655** | **0.622** | **1** | **4.9×** |
+| 2 | 7 | 0.676 | 0.620 | 4 | 2.9× |
+| 1 | 8 | 0.683 | 0.607 | 5 | 1.7× |
+
+"Elite ÷ borderline" compares a win over an opponent 300 points above the
+contender line with one at the line. The title exponent barely moves the board at
+any résumé setting, so it stays where its own sweep put it.
+
+Why 3: it halves the number of top-100 careers resting on a single win, no lower
+exponent improves on that, and it moves the board least of the settings that do.
+Exponent 2 is closest to how much harder the elite win is (a contender beats the
++300 opponent about 15% of the time and a borderline one half the time, about 3.3
+times harder), but it buys nothing further on single-win careers and moves four
+fighters out of the top 100. Part of the rise in elite-win agreement as the
+exponent falls is built in, because a flatter weight makes the résumé behave more
+like a count of elite wins; it is not offered as the reason.
+
+**The outside check could not detect this.** Against the replaced setting:
+Tapology −0.024 [−0.248, +0.190], ESPN 0.000, The 100 Greatest −0.011 [−0.050,
++0.025], FightMatrix −0.006 [−0.058, +0.045]. Every interval includes zero, so
+this ships on mechanism.
+
+**Measured effect after the re-score.** All-time: Georges St-Pierre and Islam
+Makhachev swap second and third; Dominick Cruz enters the top 10 and Fedor
+Emelianenko drops to 11th. Johny Hendricks enters the top 100 and Michael Bisping
+leaves it. Jones goes from 1,855 to 1,814 and St-Pierre from 1,554 to 1,569. Prime
+is unchanged. Current keeps the same top 30 in a new order. Title scores change
+only by floating-point rounding. Harness:
+`Claude Func Folder\ufc-q-exponent-20261020\sweep.py`, which refuses to run unless
+the replaced setting reproduces the published score.
+
 ## Tested and refused: the layoff charge does not belong in the rating
 
 Charging the layoff inside the WHR transition prior was implemented, measured on

@@ -35,106 +35,106 @@ qualify, not that they placed last.
 
 | # | Fighter | Division | Score | Prime | Prime rank | Elite wins |
 | ---: | --- | --- | ---: | ---: | ---: | ---: |
-| 1 | Jon Jones | Light Heavyweight | 1855.3 | 2192 | 1 | 11 |
-| 2 | Islam Makhachev | Lightweight | 1594.2 | 2152 | 3 | 8 |
-| 3 | Georges St-Pierre | Welterweight | 1553.9 | 2110 | 2 | 12 |
-| 4 | Anderson Silva | Middleweight | 1361.4 | 1955 | 4 | 14 |
-| 5 | Daniel Cormier | Light Heavyweight | 1349.4 | 2054 | 6 | 8 |
-| 6 | Jose Aldo | Featherweight | 1348.3 | 1914 | 13 | 9 |
-| 7 | Demetrious Johnson | Flyweight | 1341.1 | 1951 | 29 | 5 |
-| 8 | Alexander Volkanovski | Featherweight | 1240.0 | 2007 | 7 | 9 |
-| 9 | Stipe Miocic | Heavyweight | 1235.2 | 1949 | 23 | 6 |
-| 10 | Fedor Emelianenko | Heavyweight | 1227.7 | 2085 | 5 | 9 |
-| 11 | Dominick Cruz | Bantamweight | 1223.8 | 1934 | 35 | 5 |
-| 12 | Matt Hughes | Welterweight | 1197.9 | 1976 |  | 4 |
-| 13 | Lyoto Machida | Light Heavyweight | 1158.7 | 2011 | 9 | 7 |
-| 14 | Francis Ngannou | Heavyweight | 1151.4 | 1993 | 15 | 6 |
-| 15 | Randy Couture | Heavyweight | 1115.8 | 1879 | 21 | 9 |
-| 16 | Ilia Topuria | Featherweight | 1105.5 | 2078 |  | 4 |
-| 17 | Khabib Nurmagomedov | Lightweight | 1072.7 | 2131 |  | 4 |
-| 18 | Tito Ortiz | Light Heavyweight | 1056.6 | 1869 | 49 | 6 |
-| 19 | BJ Penn | Lightweight | 1049.8 | 1888 | 17 | 9 |
-| 20 | Max Holloway | Featherweight | 1047.9 | 1920 | 12 | 9 |
-| 21 | Dan Henderson | Middleweight | 1044.1 | 1946 | 16 | 7 |
-| 22 | Chuck Liddell | Light Heavyweight | 1033.0 | 1883 | 19 | 9 |
-| 23 | Israel Adesanya | Middleweight | 1023.8 | 1880 | 33 | 7 |
-| 24 | Benson Henderson | Lightweight | 1005.1 | 1852 | 43 | 7 |
-| 25 | Antonio Rodrigo Nogueira | Heavyweight | 995.0 | 2041 | 8 | 7 |
-| 26 | Justin Gaethje | Lightweight | 981.9 | 1953 | 28 | 5 |
-| 27 | Frankie Edgar | Lightweight | 965.0 | 1911 | 10 | 10 |
-| 28 | Mauricio Rua | Light Heavyweight | 962.3 | 1854 | 41 | 7 |
-| 29 | Cain Velasquez | Heavyweight | 958.3 | 1963 | 20 | 6 |
-| 30 | Merab Dvalishvili | Bantamweight | 957.9 | 1930 | 25 | 6 |
-| 31 | Junior Dos Santos | Heavyweight | 942.7 | 1909 | 30 | 6 |
-| 32 | Sean Strickland | Middleweight | 930.0 | 1876 | 26 | 8 |
-| 33 | Aljamain Sterling | Bantamweight | 925.0 | 1904 | 46 | 5 |
-| 34 | Wanderlei Silva | Light Heavyweight | 923.0 | 1892 |  | 4 |
-| 35 | Alex Pereira | Light Heavyweight | 922.8 | 1920 | 38 | 5 |
-| 36 | Dricus Du Plessis | Middleweight | 911.7 | 2004 | 14 | 6 |
-| 37 | Chris Weidman | Middleweight | 879.5 | 1853 | 42 | 7 |
-| 38 | Kamaru Usman | Welterweight | 870.3 | 1924 | 22 | 7 |
-| 39 | Charles Oliveira | Lightweight | 866.0 | 1937 | 24 | 6 |
-| 40 | Vitor Belfort | Middleweight | 864.9 | 1812 | 58 | 5 |
-| 41 | Khamzat Chimaev | Middleweight | 856.8 | 2047 |  | 4 |
-| 42 | Mark Coleman | Heavyweight | 830.5 | 1873 |  | 3 |
-| 43 | Henry Cejudo | Flyweight | 825.6 | 1836 |  | 4 |
-| 44 | Ciryl Gane | Heavyweight | 822.2 | 2012 |  | 4 |
-| 45 | Sean Sherk | Lightweight | 820.0 | 1984 | 11 | 7 |
-| 46 | Anthony Pettis | Lightweight | 819.9 | 1756 | 63 | 5 |
-| 47 | Petr Yan | Bantamweight | 814.9 | 1904 |  | 3 |
-| 48 | Rashad Evans | Light Heavyweight | 812.9 | 1873 | 34 | 7 |
-| 49 | Dustin Poirier | Lightweight | 810.8 | 1895 |  | 4 |
-| 50 | Mirko Filipovic | Heavyweight | 810.2 | 1865 | 53 | 5 |
-| 51 | Quinton Jackson | Light Heavyweight | 808.9 | 1873 | 45 | 6 |
-| 52 | Gegard Mousasi | Middleweight | 808.7 | 1918 | 39 | 5 |
-| 53 | Ryan Bader | Light Heavyweight | 806.2 | 1904 | 47 | 5 |
-| 54 | Conor McGregor | Featherweight | 802.9 | 1805 |  | 4 |
-| 55 | Patricio Freire | Featherweight | 802.8 | 1907 |  | 3 |
-| 56 | Vadim Nemkov | Light Heavyweight | 794.0 | 2023 | 18 | 5 |
-| 57 | Fabricio Werdum | Heavyweight | 784.9 | 1908 | 32 | 6 |
-| 58 | Rich Franklin | Middleweight | 784.7 | 1908 | 31 | 6 |
-| 59 | Josh Barnett | Heavyweight | 765.8 | 1994 |  | 4 |
-| 60 | Andrei Arlovski | Heavyweight | 755.7 | 1811 | 59 | 5 |
-| 61 | Sean O'Malley | Bantamweight | 750.9 | 1920 |  | 4 |
-| 62 | Eddie Alvarez | Lightweight | 746.5 | 1724 |  | 4 |
-| 63 | Matt Serra | Welterweight | 743.0 | 1766 |  | 3 |
-| 64 | Joshua Van | Flyweight | 724.4 | 1951 |  | 3 |
-| 65 | Luke Rockhold | Middleweight | 718.4 | 1841 | 56 | 5 |
-| 66 | Phil Davis | Light Heavyweight | 716.0 | 1934 |  | 4 |
-| 67 | Jens Pulver | Lightweight | 705.7 | 1715 | 65 | 5 |
-| 68 | Jake Shields | Welterweight | 701.4 | 1833 | 48 | 8 |
-| 69 | Kevin Randleman | Heavyweight | 689.3 | 1703 |  | 4 |
-| 70 | Tim Sylvia | Heavyweight | 680.0 | 1856 |  | 3 |
-| 71 | Tom Aspinall | Heavyweight | 671.9 | 1893 |  | 3 |
-| 72 | Forrest Griffin | Light Heavyweight | 671.4 | 1850 | 51 | 6 |
-| 73 | Ricardo Arona |  | 668.3 | 1925 | 37 | 5 |
-| 74 | Frank Shamrock | Light Heavyweight | 655.9 | 1781 |  | 2 |
-| 75 | Carlos Condit | Welterweight | 651.5 | 1704 |  | 4 |
-| 76 | Tyron Woodley | Welterweight | 648.9 | 1763 |  | 4 |
-| 77 | Urijah Faber | Bantamweight | 645.4 | 1800 |  | 3 |
-| 78 | Kazushi Sakuraba | Welterweight | 640.8 | 1779 |  | 3 |
-| 79 | Deiveson Figueiredo | Flyweight | 639.2 | 1774 |  | 4 |
-| 80 | Robert Whittaker | Middleweight | 637.6 | 1844 | 52 | 6 |
-| 81 | Frank Mir | Heavyweight | 631.8 | 1758 |  | 4 |
-| 82 | Pedro Rizzo | Heavyweight | 631.7 | 1834 |  | 4 |
-| 83 | Rafael Dos Anjos | Lightweight | 630.6 | 1726 | 64 | 6 |
-| 84 | Movsar Evloev | Featherweight | 626.2 | 2060 |  | 4 |
-| 85 | Renan Barao | Bantamweight | 624.4 | 1617 |  | 3 |
-| 86 | Leon Edwards | Welterweight | 621.7 | 1801 |  | 2 |
-| 87 | Jan Blachowicz | Light Heavyweight | 612.3 | 1751 |  | 3 |
-| 88 | Anthony Johnson | Light Heavyweight | 609.5 | 1921 | 27 | 6 |
-| 89 | Demian Maia | Welterweight | 594.9 | 1847 | 36 | 8 |
-| 90 | TJ Dillashaw | Bantamweight | 594.7 | 1804 |  | 3 |
-| 91 | Jeremy Horn | Middleweight | 594.5 | 1874 | 44 | 6 |
-| 92 | Rogerio Nogueira | Light Heavyweight | 581.6 | 1863 | 54 | 5 |
-| 93 | Robbie Lawler | Welterweight | 576.1 | 1670 |  | 3 |
-| 94 | Mike Brown | Featherweight | 575.9 | 1683 |  | 2 |
-| 95 | Alexander Volkov | Heavyweight | 574.4 | 1868 | 50 | 6 |
-| 96 | Magomed Ankalaev | Light Heavyweight | 569.5 | 1928 |  | 2 |
-| 97 | Diego Sanchez | Welterweight | 569.5 | 1807 |  | 4 |
-| 98 | Alistair Overeem | Heavyweight | 561.4 | 1781 |  | 4 |
-| 99 | Michael Bisping | Middleweight | 559.9 | 1822 |  | 2 |
-| 100 | Johnny Eblen | Middleweight | 557.1 | 1995 |  | 2 |
+| 1 | Jon Jones | Light Heavyweight | 1814.0 | 2192 | 1 | 11 |
+| 2 | Georges St-Pierre | Welterweight | 1569.2 | 2110 | 2 | 12 |
+| 3 | Islam Makhachev | Lightweight | 1551.0 | 2152 | 3 | 8 |
+| 4 | Anderson Silva | Middleweight | 1391.0 | 1955 | 4 | 14 |
+| 5 | Jose Aldo | Featherweight | 1368.6 | 1914 | 13 | 9 |
+| 6 | Daniel Cormier | Light Heavyweight | 1349.9 | 2054 | 6 | 8 |
+| 7 | Demetrious Johnson | Flyweight | 1335.0 | 1951 | 29 | 5 |
+| 8 | Alexander Volkanovski | Featherweight | 1259.5 | 2007 | 7 | 9 |
+| 9 | Stipe Miocic | Heavyweight | 1217.1 | 1949 | 23 | 6 |
+| 10 | Dominick Cruz | Bantamweight | 1213.3 | 1934 | 35 | 5 |
+| 11 | Fedor Emelianenko | Heavyweight | 1196.4 | 2085 | 5 | 9 |
+| 12 | Matt Hughes | Welterweight | 1145.4 | 1976 |  | 4 |
+| 13 | Lyoto Machida | Light Heavyweight | 1136.3 | 2011 | 9 | 7 |
+| 14 | Francis Ngannou | Heavyweight | 1133.2 | 1993 | 15 | 6 |
+| 15 | Randy Couture | Heavyweight | 1100.3 | 1879 | 21 | 9 |
+| 16 | Ilia Topuria | Featherweight | 1087.6 | 2078 |  | 4 |
+| 17 | Khabib Nurmagomedov | Lightweight | 1073.6 | 2131 |  | 4 |
+| 18 | Max Holloway | Featherweight | 1072.5 | 1920 | 12 | 9 |
+| 19 | BJ Penn | Lightweight | 1056.6 | 1888 | 17 | 9 |
+| 20 | Chuck Liddell | Light Heavyweight | 1049.4 | 1883 | 19 | 9 |
+| 21 | Israel Adesanya | Middleweight | 1047.6 | 1880 | 33 | 7 |
+| 22 | Tito Ortiz | Light Heavyweight | 1032.7 | 1869 | 49 | 6 |
+| 23 | Benson Henderson | Lightweight | 1008.3 | 1852 | 43 | 7 |
+| 24 | Dan Henderson | Middleweight | 1001.3 | 1946 | 16 | 7 |
+| 25 | Frankie Edgar | Lightweight | 993.9 | 1911 | 10 | 10 |
+| 26 | Cain Velasquez | Heavyweight | 973.3 | 1963 | 20 | 6 |
+| 27 | Justin Gaethje | Lightweight | 965.6 | 1953 | 28 | 5 |
+| 28 | Antonio Rodrigo Nogueira | Heavyweight | 965.5 | 2041 | 8 | 7 |
+| 29 | Merab Dvalishvili | Bantamweight | 959.7 | 1930 | 25 | 6 |
+| 30 | Mauricio Rua | Light Heavyweight | 955.1 | 1854 | 41 | 7 |
+| 31 | Junior Dos Santos | Heavyweight | 938.6 | 1909 | 30 | 6 |
+| 32 | Aljamain Sterling | Bantamweight | 935.5 | 1904 | 46 | 5 |
+| 33 | Sean Strickland | Middleweight | 932.3 | 1876 | 26 | 8 |
+| 34 | Dricus Du Plessis | Middleweight | 929.6 | 2004 | 14 | 6 |
+| 35 | Alex Pereira | Light Heavyweight | 923.9 | 1920 | 38 | 5 |
+| 36 | Chris Weidman | Middleweight | 907.7 | 1853 | 42 | 7 |
+| 37 | Kamaru Usman | Welterweight | 903.5 | 1924 | 22 | 7 |
+| 38 | Wanderlei Silva | Light Heavyweight | 893.0 | 1892 |  | 4 |
+| 39 | Charles Oliveira | Lightweight | 879.0 | 1937 | 24 | 6 |
+| 40 | Khamzat Chimaev | Middleweight | 850.6 | 2047 |  | 4 |
+| 41 | Vitor Belfort | Middleweight | 848.6 | 1812 | 58 | 5 |
+| 42 | Sean Sherk | Lightweight | 841.5 | 1984 | 11 | 7 |
+| 43 | Henry Cejudo | Flyweight | 837.7 | 1836 |  | 4 |
+| 44 | Ciryl Gane | Heavyweight | 827.9 | 2012 |  | 4 |
+| 45 | Patricio Freire | Featherweight | 825.9 | 1907 |  | 3 |
+| 46 | Rashad Evans | Light Heavyweight | 820.2 | 1873 | 34 | 7 |
+| 47 | Anthony Pettis | Lightweight | 819.4 | 1756 | 63 | 5 |
+| 48 | Gegard Mousasi | Middleweight | 817.6 | 1918 | 39 | 5 |
+| 49 | Petr Yan | Bantamweight | 815.5 | 1904 |  | 3 |
+| 50 | Fabricio Werdum | Heavyweight | 812.9 | 1908 | 32 | 6 |
+| 51 | Ryan Bader | Light Heavyweight | 812.6 | 1904 | 47 | 5 |
+| 52 | Dustin Poirier | Lightweight | 812.1 | 1895 |  | 4 |
+| 53 | Rich Franklin | Middleweight | 809.3 | 1908 | 31 | 6 |
+| 54 | Vadim Nemkov | Light Heavyweight | 807.3 | 2023 | 18 | 5 |
+| 55 | Conor McGregor | Featherweight | 806.7 | 1805 |  | 4 |
+| 56 | Quinton Jackson | Light Heavyweight | 803.9 | 1873 | 45 | 6 |
+| 57 | Mark Coleman | Heavyweight | 799.7 | 1873 |  | 3 |
+| 58 | Mirko Filipovic | Heavyweight | 793.3 | 1865 | 53 | 5 |
+| 59 | Sean O'Malley | Bantamweight | 759.3 | 1920 |  | 4 |
+| 60 | Josh Barnett | Heavyweight | 754.3 | 1994 |  | 4 |
+| 61 | Eddie Alvarez | Lightweight | 748.9 | 1724 |  | 4 |
+| 62 | Andrei Arlovski | Heavyweight | 748.1 | 1811 | 59 | 5 |
+| 63 | Joshua Van | Flyweight | 740.8 | 1951 |  | 3 |
+| 64 | Luke Rockhold | Middleweight | 734.1 | 1841 | 56 | 5 |
+| 65 | Jake Shields | Welterweight | 725.2 | 1833 | 48 | 8 |
+| 66 | Phil Davis | Light Heavyweight | 722.0 | 1934 |  | 4 |
+| 67 | Matt Serra | Welterweight | 713.8 | 1766 |  | 3 |
+| 68 | Jens Pulver | Lightweight | 706.6 | 1715 | 65 | 5 |
+| 69 | Forrest Griffin | Light Heavyweight | 688.9 | 1850 | 51 | 6 |
+| 70 | Tim Sylvia | Heavyweight | 685.8 | 1856 |  | 3 |
+| 71 | Tyron Woodley | Welterweight | 680.2 | 1763 |  | 4 |
+| 72 | Tom Aspinall | Heavyweight | 677.6 | 1893 |  | 3 |
+| 73 | Deiveson Figueiredo | Flyweight | 675.8 | 1774 |  | 4 |
+| 74 | Robert Whittaker | Middleweight | 675.6 | 1844 | 52 | 6 |
+| 75 | Carlos Condit | Welterweight | 668.9 | 1704 |  | 4 |
+| 76 | Kevin Randleman | Heavyweight | 665.2 | 1703 |  | 4 |
+| 77 | Rafael Dos Anjos | Lightweight | 662.8 | 1726 | 64 | 6 |
+| 78 | Ricardo Arona |  | 654.1 | 1925 | 37 | 5 |
+| 79 | Renan Barao | Bantamweight | 651.4 | 1617 |  | 3 |
+| 80 | Demian Maia | Welterweight | 645.8 | 1847 | 36 | 8 |
+| 81 | Urijah Faber | Bantamweight | 642.9 | 1800 |  | 3 |
+| 82 | Frank Mir | Heavyweight | 639.9 | 1758 |  | 4 |
+| 83 | Movsar Evloev | Featherweight | 633.4 | 2060 |  | 4 |
+| 84 | Frank Shamrock | Light Heavyweight | 631.3 | 1781 |  | 2 |
+| 85 | TJ Dillashaw | Bantamweight | 625.8 | 1804 |  | 3 |
+| 86 | Leon Edwards | Welterweight | 622.9 | 1801 |  | 2 |
+| 87 | Kazushi Sakuraba | Welterweight | 616.1 | 1779 |  | 3 |
+| 88 | Jan Blachowicz | Light Heavyweight | 614.9 | 1751 |  | 3 |
+| 89 | Anthony Johnson | Light Heavyweight | 612.9 | 1921 | 27 | 6 |
+| 90 | Alexander Volkov | Heavyweight | 610.5 | 1868 | 50 | 6 |
+| 91 | Pedro Rizzo | Heavyweight | 600.9 | 1834 |  | 4 |
+| 92 | Robbie Lawler | Welterweight | 598.1 | 1670 |  | 3 |
+| 93 | Diego Sanchez | Welterweight | 595.5 | 1807 |  | 4 |
+| 94 | Rogerio Nogueira | Light Heavyweight | 586.8 | 1863 | 54 | 5 |
+| 95 | Alistair Overeem | Heavyweight | 583.1 | 1781 |  | 4 |
+| 96 | Mike Brown | Featherweight | 581.2 | 1683 |  | 2 |
+| 97 | Jeremy Horn | Middleweight | 577.8 | 1874 | 44 | 6 |
+| 98 | Johny Hendricks | Welterweight | 573.8 | 1777 | 62 | 5 |
+| 99 | Magomed Ankalaev | Light Heavyweight | 573.4 | 1928 |  | 2 |
+| 100 | Johnny Eblen | Middleweight | 571.3 | 1995 |  | 2 |
 
 <!-- BOARD:TOP100:END -->
 
@@ -146,16 +146,16 @@ Men and women do not compete against each other, so the engine publishes separat
 
 | # | Fighter | Division | Score | Prime | Prime rank | Elite wins |
 | ---: | --- | --- | ---: | ---: | ---: | ---: |
-| 1 | Amanda Nunes | Women's Bantamweight | 1312.6 | 1969 | 1 | 6 |
-| 2 | Valentina Shevchenko | Women's Flyweight | 1140.4 | 1932 | 2 | 7 |
-| 3 | Rose Namajunas | Women's Strawweight | 874.4 | 1759 | 4 | 5 |
-| 4 | Ronda Rousey | Women's Bantamweight | 823.5 | 1998 | 3 | 5 |
-| 5 | Zhang Weili | Women's Strawweight | 818.4 | 1853 |  | 3 |
-| 6 | Cristiane Justino | Women's Featherweight | 750.1 | 2005 |  | 1 |
-| 7 | Joanna Jedrzejczyk | Women's Strawweight | 675.7 | 1819 |  | 4 |
-| 8 | Alexa Grasso | Women's Flyweight | 669.5 | 1826 |  | 3 |
-| 9 | Julianna Pena | Women's Bantamweight | 626.5 | 1713 |  | 1 |
-| 10 | Holly Holm | Women's Bantamweight | 611.2 | 1759 |  | 1 |
+| 1 | Amanda Nunes | Women's Bantamweight | 1311.6 | 1969 | 1 | 6 |
+| 2 | Valentina Shevchenko | Women's Flyweight | 1173.9 | 1932 | 2 | 7 |
+| 3 | Rose Namajunas | Women's Strawweight | 893.6 | 1759 | 4 | 5 |
+| 4 | Ronda Rousey | Women's Bantamweight | 866.0 | 1998 | 3 | 5 |
+| 5 | Zhang Weili | Women's Strawweight | 840.2 | 1853 |  | 3 |
+| 6 | Cristiane Justino | Women's Featherweight | 764.2 | 2005 |  | 1 |
+| 7 | Joanna Jedrzejczyk | Women's Strawweight | 712.9 | 1819 |  | 4 |
+| 8 | Alexa Grasso | Women's Flyweight | 674.7 | 1826 |  | 3 |
+| 9 | Julianna Pena | Women's Bantamweight | 610.2 | 1713 |  | 1 |
+| 10 | Carla Esparza | Women's Strawweight | 607.1 | 1746 |  | 4 |
 
 <!-- BOARD:WOMEN10:END -->
 
@@ -280,36 +280,36 @@ fitted settings.
 
 | # | Fighter | Division | Score | Title wins | Contender wins | UFC bouts | Last UFC bout |
 | ---: | --- | --- | ---: | ---: | ---: | ---: | ---: |
-| 1 | Justin Gaethje | Lightweight | 2075 | 2 | 2 | 16 | 2026-06-14 |
-| 2 | Islam Makhachev | Welterweight | 1950 | 2 | 2 | 19 | 2026-08-15 |
-| 3 | Joshua Van | Flyweight | 1810 | 3 | 4 | 12 | 2026-09-19 |
-| 4 | Sean Strickland | Middleweight | 1718 | 1 | 2 | 25 | 2026-05-09 |
-| 5 | Merab Dvalishvili | Bantamweight | 1536 | 2 | 2 | 17 | 2025-12-06 |
-| 6 | Khamzat Chimaev | Middleweight | 1531 | 1 | 1 | 10 | 2026-05-09 |
-| 7 | Petr Yan | Bantamweight | 1458 | 1 | 1 | 16 | 2025-12-06 |
-| 8 | Ilia Topuria | Lightweight | 1418 | 1 | 1 | 10 | 2026-06-14 |
-| 9 | Alexander Volkanovski | Featherweight | 1397 | 2 | 2 | 18 | 2026-01-31 |
-| 10 | Alex Pereira | Light Heavyweight | 1310 | 1 | 1 | 13 | 2026-06-14 |
-| 11 | Ciryl Gane | Heavyweight | 1270 | 1 | 1 | 13 | 2026-06-14 |
-| 12 | Carlos Ulberg | Light Heavyweight | 1184 | 1 | 2 | 11 | 2026-04-11 |
-| 13 | Jack Della Maddalena | Welterweight | 1058 | 1 | 1 | 10 | 2026-05-02 |
-| 14 | Charles Oliveira | Lightweight | 1018 | 0 | 2 | 36 | 2026-03-07 |
-| 15 | Ian Machado Garry | Welterweight | 927 | 0 | 2 | 12 | 2026-08-15 |
-| 16 | Carlos Prates | Welterweight | 821 | 0 | 2 | 8 | 2026-05-02 |
-| 17 | Movsar Evloev | Featherweight | 810 | 0 | 1 | 10 | 2026-03-21 |
-| 18 | Nassourdine Imavov | Middleweight | 809 | 0 | 1 | 11 | 2025-09-06 |
-| 19 | Sean O'Malley | Bantamweight | 796 | 0 | 2 | 15 | 2026-06-14 |
-| 20 | Diego Lopes | Featherweight | 794 | 0 | 2 | 10 | 2026-06-14 |
-| 21 | Song Yadong | Bantamweight | 791 | 0 | 1 | 18 | 2026-08-29 |
-| 22 | Umar Nurmagomedov | Bantamweight | 772 | 0 | 1 | 10 | 2026-08-29 |
-| 23 | Manel Kape | Flyweight | 768 | 0 | 2 | 11 | 2026-06-20 |
-| 24 | Jean Silva | Featherweight | 746 | 0 | 2 | 8 | 2026-09-12 |
-| 25 | Alexander Volkov | Heavyweight | 734 | 0 | 2 | 19 | 2026-05-09 |
-| 26 | Gregory Rodrigues | Middleweight | 712 | 0 | 2 | 14 | 2026-08-22 |
-| 27 | Max Holloway | Featherweight | 688 | 0 | 1 | 33 | 2026-07-11 |
-| 28 | Brendan Allen | Middleweight | 687 | 0 | 2 | 20 | 2026-10-10 |
-| 29 | Dricus Du Plessis | Middleweight | 669 | 0 | 1 | 11 | 2026-07-18 |
-| 30 | Aljamain Sterling | Bantamweight | 640 | 0 | 2 | 23 | 2026-04-25 |
+| 1 | Justin Gaethje | Lightweight | 1936 | 2 | 2 | 16 | 2026-06-14 |
+| 2 | Islam Makhachev | Welterweight | 1871 | 2 | 2 | 19 | 2026-08-15 |
+| 3 | Joshua Van | Flyweight | 1829 | 3 | 4 | 12 | 2026-09-19 |
+| 4 | Sean Strickland | Middleweight | 1636 | 1 | 2 | 25 | 2026-05-09 |
+| 5 | Merab Dvalishvili | Bantamweight | 1517 | 2 | 2 | 17 | 2025-12-06 |
+| 6 | Khamzat Chimaev | Middleweight | 1449 | 1 | 1 | 10 | 2026-05-09 |
+| 7 | Alexander Volkanovski | Featherweight | 1411 | 2 | 2 | 18 | 2026-01-31 |
+| 8 | Petr Yan | Bantamweight | 1399 | 1 | 1 | 16 | 2025-12-06 |
+| 9 | Ilia Topuria | Lightweight | 1370 | 1 | 1 | 10 | 2026-06-14 |
+| 10 | Alex Pereira | Light Heavyweight | 1267 | 1 | 1 | 13 | 2026-06-14 |
+| 11 | Ciryl Gane | Heavyweight | 1231 | 1 | 1 | 13 | 2026-06-14 |
+| 12 | Carlos Ulberg | Light Heavyweight | 1190 | 1 | 2 | 11 | 2026-04-11 |
+| 13 | Jack Della Maddalena | Welterweight | 1054 | 1 | 1 | 10 | 2026-05-02 |
+| 14 | Charles Oliveira | Lightweight | 994 | 0 | 2 | 36 | 2026-03-07 |
+| 15 | Ian Machado Garry | Welterweight | 924 | 0 | 2 | 12 | 2026-08-15 |
+| 16 | Carlos Prates | Welterweight | 823 | 0 | 2 | 8 | 2026-05-02 |
+| 17 | Sean O'Malley | Bantamweight | 820 | 0 | 2 | 15 | 2026-06-14 |
+| 18 | Diego Lopes | Featherweight | 794 | 0 | 2 | 10 | 2026-06-14 |
+| 19 | Manel Kape | Flyweight | 781 | 0 | 2 | 11 | 2026-06-20 |
+| 20 | Nassourdine Imavov | Middleweight | 777 | 0 | 1 | 11 | 2025-09-06 |
+| 21 | Movsar Evloev | Featherweight | 775 | 0 | 1 | 10 | 2026-03-21 |
+| 22 | Jean Silva | Featherweight | 771 | 0 | 2 | 8 | 2026-09-12 |
+| 23 | Alexander Volkov | Heavyweight | 766 | 0 | 2 | 19 | 2026-05-09 |
+| 24 | Song Yadong | Bantamweight | 756 | 0 | 1 | 18 | 2026-08-29 |
+| 25 | Umar Nurmagomedov | Bantamweight | 747 | 0 | 1 | 10 | 2026-08-29 |
+| 26 | Gregory Rodrigues | Middleweight | 738 | 0 | 2 | 14 | 2026-08-22 |
+| 27 | Brendan Allen | Middleweight | 720 | 0 | 2 | 20 | 2026-10-10 |
+| 28 | Max Holloway | Featherweight | 694 | 0 | 1 | 33 | 2026-07-11 |
+| 29 | Aljamain Sterling | Bantamweight | 692 | 0 | 2 | 23 | 2026-04-25 |
+| 30 | Dricus Du Plessis | Middleweight | 672 | 0 | 1 | 11 | 2026-07-18 |
 
 <!-- BOARD:CURRENT30:END -->
 
@@ -320,10 +320,10 @@ fitted settings.
 | # | Fighter | Division | Score | Title wins | Contender wins | UFC bouts | Last UFC bout |
 | ---: | --- | --- | ---: | ---: | ---: | ---: | ---: |
 | 1 | Valentina Shevchenko | Women's Flyweight | 1462 | 2 | 2 | 19 | 2025-11-15 |
-| 2 | Natalia Silva | Women's Flyweight | 914 | 1 | 2 | 9 | 2026-10-03 |
-| 3 | Mackenzie Dern | Women's Strawweight | 792 | 2 | 1 | 17 | 2026-08-15 |
-| 4 | Alexa Grasso | Women's Flyweight | 741 | 0 | 2 | 16 | 2026-09-12 |
-| 5 | Manon Fiorot | Women's Flyweight | 493 | 0 | 1 | 10 | 2026-09-12 |
+| 2 | Natalia Silva | Women's Flyweight | 945 | 1 | 2 | 9 | 2026-10-03 |
+| 3 | Mackenzie Dern | Women's Strawweight | 830 | 2 | 1 | 17 | 2026-08-15 |
+| 4 | Alexa Grasso | Women's Flyweight | 766 | 0 | 2 | 16 | 2026-09-12 |
+| 5 | Manon Fiorot | Women's Flyweight | 522 | 0 | 1 | 10 | 2026-09-12 |
 | 6 | Zhang Weili | Women's Strawweight | 149 | 0 | 0 | 13 | 2025-11-15 |
 | 7 | Jasmine Jasudavicius | Women's Flyweight | 92 | 0 | 0 | 12 | 2026-04-18 |
 | 8 | Tatiana Suarez | Women's Strawweight | 90 | 0 | 0 | 10 | 2026-04-11 |
@@ -353,161 +353,161 @@ in full.
 
 | # | Fighter | Class score | Share of All-time | All-time # |
 | ---: | --- | ---: | ---: | ---: |
-| 1 | Stipe Miocic | 1213.5 | 98% | 9 |
-| 2 | Francis Ngannou | 1080.2 | 94% | 14 |
-| 3 | Cain Velasquez | 927.4 | 97% | 29 |
-| 4 | Junior Dos Santos | 885.8 | 94% | 31 |
-| 5 | Ciryl Gane | 789.6 | 96% | 44 |
-| 6 | Tom Aspinall | 670.7 | 100% | 71 |
-| 7 | Andrei Arlovski | 643.9 | 85% | 60 |
-| 8 | Frank Mir | 631.3 | 100% | 81 |
-| 9 | Randy Couture | 597.0 | 54% | 15 |
-| 10 | Pedro Rizzo | 580.2 | 92% | 82 |
+| 1 | Stipe Miocic | 1195.4 | 98% | 9 |
+| 2 | Francis Ngannou | 1062.0 | 94% | 14 |
+| 3 | Cain Velasquez | 942.4 | 97% | 26 |
+| 4 | Junior Dos Santos | 881.7 | 94% | 31 |
+| 5 | Ciryl Gane | 795.3 | 96% | 44 |
+| 6 | Tom Aspinall | 676.4 | 100% | 72 |
+| 7 | Frank Mir | 639.4 | 100% | 82 |
+| 8 | Andrei Arlovski | 614.5 | 82% | 62 |
+| 9 | Randy Couture | 595.5 | 54% | 15 |
+| 10 | Pedro Rizzo | 549.5 | 91% | 91 |
 
 #### Men — Light Heavyweight
 
 | # | Fighter | Class score | Share of All-time | All-time # |
 | ---: | --- | ---: | ---: | ---: |
-| 1 | Jon Jones | 1539.5 | 83% | 1 |
-| 2 | Tito Ortiz | 959.6 | 91% | 18 |
-| 3 | Chuck Liddell | 831.8 | 81% | 22 |
-| 4 | Rashad Evans | 724.0 | 89% | 48 |
-| 5 | Daniel Cormier | 650.8 | 48% | 5 |
-| 6 | Frank Shamrock | 623.9 | 95% | 74 |
-| 7 | Lyoto Machida | 620.7 | 54% | 13 |
-| 8 | Jan Blachowicz | 604.5 | 99% | 87 |
-| 9 | Alex Pereira | 597.7 | 65% | 35 |
-| 10 | Forrest Griffin | 575.4 | 86% | 72 |
+| 1 | Jon Jones | 1514.2 | 83% | 1 |
+| 2 | Tito Ortiz | 935.7 | 91% | 22 |
+| 3 | Chuck Liddell | 850.6 | 81% | 20 |
+| 4 | Rashad Evans | 731.3 | 89% | 46 |
+| 5 | Daniel Cormier | 649.9 | 48% | 6 |
+| 6 | Lyoto Machida | 621.0 | 55% | 13 |
+| 7 | Jan Blachowicz | 607.1 | 99% | 88 |
+| 8 | Frank Shamrock | 599.3 | 95% | 84 |
+| 9 | Alex Pereira | 595.3 | 64% | 35 |
+| 10 | Forrest Griffin | 588.1 | 85% | 69 |
 
 #### Men — Middleweight
 
 | # | Fighter | Class score | Share of All-time | All-time # |
 | ---: | --- | ---: | ---: | ---: |
-| 1 | Anderson Silva | 1089.6 | 80% | 4 |
-| 2 | Israel Adesanya | 901.3 | 88% | 23 |
-| 3 | Dricus Du Plessis | 843.5 | 93% | 36 |
-| 4 | Chris Weidman | 779.3 | 89% | 37 |
-| 5 | Sean Strickland | 701.1 | 75% | 32 |
-| 6 | Khamzat Chimaev | 700.6 | 82% | 41 |
-| 7 | Robert Whittaker | 597.1 | 94% | 80 |
-| 8 | Vitor Belfort | 486.3 | 56% | 40 |
-| 9 | Rich Franklin | 455.3 | 58% | 58 |
-| 10 | Yoel Romero | 442.7 | 94% | 133 |
+| 1 | Anderson Silva | 1112.2 | 80% | 4 |
+| 2 | Israel Adesanya | 925.1 | 88% | 21 |
+| 3 | Dricus Du Plessis | 861.3 | 93% | 34 |
+| 4 | Chris Weidman | 798.3 | 88% | 36 |
+| 5 | Sean Strickland | 689.5 | 74% | 33 |
+| 6 | Khamzat Chimaev | 681.9 | 80% | 40 |
+| 7 | Robert Whittaker | 635.2 | 94% | 74 |
+| 8 | Yoel Romero | 477.5 | 94% | 121 |
+| 9 | Rich Franklin | 475.6 | 59% | 53 |
+| 10 | Vitor Belfort | 456.4 | 54% | 41 |
 
 #### Men — Welterweight
 
 | # | Fighter | Class score | Share of All-time | All-time # |
 | ---: | --- | ---: | ---: | ---: |
-| 1 | Georges St-Pierre | 1404.5 | 90% | 3 |
-| 2 | Matt Hughes | 998.7 | 83% | 12 |
-| 3 | Kamaru Usman | 853.1 | 98% | 38 |
-| 4 | Matt Serra | 669.8 | 90% | 63 |
-| 5 | Leon Edwards | 615.2 | 99% | 86 |
-| 6 | Tyron Woodley | 586.1 | 90% | 76 |
-| 7 | Robbie Lawler | 534.8 | 93% | 93 |
-| 8 | Belal Muhammad | 499.8 | 97% | 114 |
-| 9 | Johny Hendricks | 493.2 | 93% | 105 |
-| 10 | Carlos Condit | 465.0 | 71% | 75 |
+| 1 | Georges St-Pierre | 1415.3 | 90% | 2 |
+| 2 | Matt Hughes | 942.6 | 82% | 12 |
+| 3 | Kamaru Usman | 886.4 | 98% | 37 |
+| 4 | Matt Serra | 623.9 | 87% | 67 |
+| 5 | Tyron Woodley | 617.4 | 91% | 71 |
+| 6 | Leon Edwards | 616.5 | 99% | 86 |
+| 7 | Robbie Lawler | 556.8 | 93% | 92 |
+| 8 | Johny Hendricks | 534.0 | 93% | 98 |
+| 9 | Belal Muhammad | 507.3 | 97% | 113 |
+| 10 | Carlos Condit | 482.4 | 72% | 75 |
 
 #### Men — Lightweight
 
 | # | Fighter | Class score | Share of All-time | All-time # |
 | ---: | --- | ---: | ---: | ---: |
-| 1 | Islam Makhachev | 1132.0 | 71% | 2 |
-| 2 | Khabib Nurmagomedov | 952.5 | 89% | 17 |
-| 3 | Justin Gaethje | 882.7 | 90% | 26 |
-| 4 | Charles Oliveira | 847.3 | 98% | 39 |
-| 5 | Dustin Poirier | 683.3 | 84% | 49 |
-| 6 | Benson Henderson | 623.9 | 62% | 24 |
-| 7 | BJ Penn | 602.2 | 57% | 19 |
-| 8 | Jens Pulver | 581.1 | 82% | 67 |
-| 9 | Frankie Edgar | 574.3 | 60% | 27 |
-| 10 | Rafael Dos Anjos | 544.0 | 86% | 83 |
+| 1 | Islam Makhachev | 1101.0 | 71% | 3 |
+| 2 | Khabib Nurmagomedov | 953.4 | 89% | 17 |
+| 3 | Justin Gaethje | 866.4 | 90% | 27 |
+| 4 | Charles Oliveira | 860.2 | 98% | 39 |
+| 5 | Dustin Poirier | 682.7 | 84% | 52 |
+| 6 | Benson Henderson | 637.6 | 63% | 23 |
+| 7 | BJ Penn | 636.1 | 60% | 19 |
+| 8 | Frankie Edgar | 600.4 | 60% | 25 |
+| 9 | Jens Pulver | 562.7 | 80% | 68 |
+| 10 | Rafael Dos Anjos | 556.0 | 84% | 77 |
 
 #### Men — Featherweight
 
 | # | Fighter | Class score | Share of All-time | All-time # |
 | ---: | --- | ---: | ---: | ---: |
-| 1 | Alexander Volkanovski | 1153.8 | 93% | 8 |
-| 2 | Jose Aldo | 961.0 | 71% | 6 |
-| 3 | Max Holloway | 818.3 | 78% | 20 |
-| 4 | Ilia Topuria | 746.4 | 68% | 16 |
-| 5 | Conor McGregor | 705.0 | 88% | 54 |
-| 6 | Movsar Evloev | 516.8 | 83% | 84 |
-| 7 | Cub Swanson | 330.7 | 85% | 171 |
-| 8 | Diego Lopes | 271.5 | 100% | 271 |
-| 9 | Chan Sung Jung | 269.9 | 93% | 243 |
-| 10 | Yair Rodriguez | 260.7 | 94% | 262 |
+| 1 | Alexander Volkanovski | 1173.3 | 93% | 8 |
+| 2 | Jose Aldo | 970.9 | 71% | 5 |
+| 3 | Max Holloway | 855.4 | 80% | 18 |
+| 4 | Ilia Topuria | 732.7 | 67% | 16 |
+| 5 | Conor McGregor | 708.8 | 88% | 55 |
+| 6 | Movsar Evloev | 523.9 | 83% | 83 |
+| 7 | Cub Swanson | 332.2 | 85% | 171 |
+| 8 | Brian Ortega | 282.8 | 81% | 194 |
+| 9 | Yair Rodriguez | 281.6 | 94% | 248 |
+| 10 | Diego Lopes | 281.3 | 100% | 274 |
 
 #### Men — Bantamweight
 
 | # | Fighter | Class score | Share of All-time | All-time # |
 | ---: | --- | ---: | ---: | ---: |
-| 1 | Merab Dvalishvili | 954.3 | 100% | 30 |
-| 2 | Aljamain Sterling | 804.3 | 87% | 33 |
-| 3 | Sean O'Malley | 718.0 | 96% | 61 |
-| 4 | Petr Yan | 685.4 | 84% | 47 |
-| 5 | Dominick Cruz | 673.8 | 55% | 11 |
-| 6 | TJ Dillashaw | 581.8 | 98% | 90 |
-| 7 | Renan Barao | 553.6 | 89% | 85 |
-| 8 | Cody Garbrandt | 387.0 | 90% | 152 |
-| 9 | Umar Nurmagomedov | 345.9 | 85% | 160 |
-| 10 | Raphael Assuncao | 288.8 | 60% | 127 |
+| 1 | Merab Dvalishvili | 956.1 | 100% | 29 |
+| 2 | Aljamain Sterling | 803.1 | 86% | 32 |
+| 3 | Sean O'Malley | 726.3 | 96% | 59 |
+| 4 | Petr Yan | 686.0 | 84% | 49 |
+| 5 | Dominick Cruz | 681.6 | 56% | 10 |
+| 6 | TJ Dillashaw | 612.8 | 98% | 85 |
+| 7 | Renan Barao | 580.5 | 89% | 79 |
+| 8 | Cody Garbrandt | 395.9 | 91% | 151 |
+| 9 | Umar Nurmagomedov | 352.8 | 85% | 164 |
+| 10 | Cory Sandhagen | 303.4 | 95% | 216 |
 
 #### Men — Flyweight
 
 | # | Fighter | Class score | Share of All-time | All-time # |
 | ---: | --- | ---: | ---: | ---: |
-| 1 | Demetrious Johnson | 1206.8 | 90% | 7 |
-| 2 | Henry Cejudo | 714.6 | 87% | 43 |
-| 3 | Joshua Van | 702.2 | 97% | 64 |
-| 4 | Brandon Moreno | 533.8 | 100% | 104 |
-| 5 | Alexandre Pantoja | 475.8 | 91% | 112 |
-| 6 | Deiveson Figueiredo | 468.6 | 73% | 79 |
-| 7 | Manel Kape | 344.4 | 75% | 138 |
-| 8 | Joseph Benavidez | 313.1 | 64% | 123 |
-| 9 | Muhammad Mokaev | 246.0 | 67% | 178 |
-| 10 | Charles Johnson | 230.9 | 91% | 301 |
+| 1 | Demetrious Johnson | 1200.6 | 90% | 7 |
+| 2 | Henry Cejudo | 726.8 | 87% | 43 |
+| 3 | Joshua Van | 718.6 | 97% | 63 |
+| 4 | Brandon Moreno | 550.2 | 100% | 105 |
+| 5 | Alexandre Pantoja | 505.0 | 91% | 104 |
+| 6 | Deiveson Figueiredo | 498.4 | 74% | 73 |
+| 7 | Manel Kape | 356.5 | 75% | 136 |
+| 8 | Joseph Benavidez | 325.6 | 65% | 123 |
+| 9 | Muhammad Mokaev | 256.5 | 68% | 177 |
+| 10 | Jussier Formiga | 234.5 | 44% | 111 |
 
 #### Women — Women's Featherweight
 
 | # | Fighter | Class score | Share of All-time | All-time # |
 | ---: | --- | ---: | ---: | ---: |
-| 1 | Cristiane Justino | 327.9 | 44% | 6 |
-| 2 | Germaine de Randamie | 272.6 | 78% | 20 |
-| 3 | Amanda Nunes | 218.6 | 17% | 1 |
-| 4 | Macy Chiasson | 211.0 | 91% | 30 |
-| 5 | Holly Holm | 15.9 | 3% | 10 |
+| 1 | Cristiane Justino | 342.1 | 45% | 6 |
+| 2 | Germaine de Randamie | 289.9 | 79% | 20 |
+| 3 | Macy Chiasson | 231.2 | 92% | 30 |
+| 4 | Amanda Nunes | 218.6 | 17% | 1 |
+| 5 | Holly Holm | 15.9 | 3% | 11 |
 
 #### Women — Women's Bantamweight
 
 | # | Fighter | Class score | Share of All-time | All-time # |
 | ---: | --- | ---: | ---: | ---: |
-| 1 | Amanda Nunes | 1079.8 | 82% | 1 |
-| 2 | Julianna Pena | 626.1 | 100% | 9 |
-| 3 | Ronda Rousey | 598.4 | 73% | 4 |
-| 4 | Holly Holm | 567.8 | 93% | 10 |
-| 5 | Miesha Tate | 378.5 | 96% | 16 |
+| 1 | Amanda Nunes | 1078.8 | 82% | 1 |
+| 2 | Ronda Rousey | 632.8 | 73% | 4 |
+| 3 | Julianna Pena | 609.8 | 100% | 9 |
+| 4 | Holly Holm | 546.8 | 93% | 11 |
+| 5 | Miesha Tate | 402.0 | 96% | 16 |
 
 #### Women — Women's Flyweight
 
 | # | Fighter | Class score | Share of All-time | All-time # |
 | ---: | --- | ---: | ---: | ---: |
-| 1 | Valentina Shevchenko | 963.4 | 84% | 2 |
-| 2 | Alexa Grasso | 592.9 | 89% | 8 |
-| 3 | Natalia Silva | 380.2 | 100% | 17 |
-| 4 | Manon Fiorot | 324.0 | 86% | 18 |
-| 5 | Roxanne Modafferi | 174.3 | 99% | 37 |
+| 1 | Valentina Shevchenko | 989.4 | 84% | 2 |
+| 2 | Alexa Grasso | 598.2 | 89% | 8 |
+| 3 | Natalia Silva | 402.0 | 100% | 17 |
+| 4 | Manon Fiorot | 335.3 | 87% | 18 |
+| 5 | Roxanne Modafferi | 186.3 | 99% | 36 |
 
 #### Women — Women's Strawweight
 
 | # | Fighter | Class score | Share of All-time | All-time # |
 | ---: | --- | ---: | ---: | ---: |
-| 1 | Rose Namajunas | 857.1 | 98% | 3 |
-| 2 | Zhang Weili | 752.3 | 92% | 5 |
-| 3 | Joanna Jedrzejczyk | 597.5 | 88% | 7 |
-| 4 | Carla Esparza | 527.8 | 92% | 11 |
-| 5 | Tatiana Suarez | 457.7 | 86% | 12 |
+| 1 | Rose Namajunas | 876.3 | 98% | 3 |
+| 2 | Zhang Weili | 774.1 | 92% | 5 |
+| 3 | Joanna Jedrzejczyk | 634.7 | 89% | 7 |
+| 4 | Carla Esparza | 558.6 | 92% | 10 |
+| 5 | Tatiana Suarez | 478.0 | 87% | 12 |
 
 <!-- BOARD:CLASS:END -->
 

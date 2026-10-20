@@ -99,6 +99,18 @@ TITLE_QUALITY_SCALE = 1000.0
 # artifact returns (at q**6 Matt Serra climbs back to 42nd).
 TITLE_QUALITY_EXPONENT = 4.0
 
+# Convexity of the contender-win weight, set apart from the title exponent on
+# 2026-10-20 (owner decision). The 2026-08-25 sweep above priced title wins only;
+# the contender résumé reused its exponent untested. Re-swept on the 2026-10-14
+# fit over title {1,2,3,4,6} x résumé {1,2,3,4,6}: the title exponent barely
+# moves the board, the résumé exponent does. At 4, 15 of the men's top 100 drew
+# more than half their contender credit from one win; at 3 that falls to 8 and
+# no lower exponent improves it, while one fighter leaves the top 100 and
+# agreement with elite wins (0.627 -> 0.655) and with Prime (0.615 -> 0.622)
+# both rise. No outside-list interval excluded zero, so this ships on mechanism.
+# Harness: ``Claude Func Folder\ufc-q-exponent-20261020\sweep.py``.
+RESUME_QUALITY_EXPONENT = 3.0
+
 # Minimum credit for winning a recognised major championship, adopted
 # 2026-09-02. A title win is priced ``floor + (1 - floor) * q**4``, so the convex
 # opponent-quality ordering above the floor is untouched and only the bottom is
@@ -458,18 +470,25 @@ def _empty_exposure_ledger() -> pd.DataFrame:
     return pd.DataFrame(columns=EXPOSURE_LEDGER_COLUMNS)
 
 
-def title_quality(opponent_mu: pd.Series, bar: pd.Series) -> pd.Series:
+def title_quality(
+    opponent_mu: pd.Series,
+    bar: pd.Series,
+    *,
+    exponent: float = TITLE_QUALITY_EXPONENT,
+) -> pd.Series:
     """Value of beating an opponent rated ``opponent_mu`` against ``bar``.
 
     ``q`` is the logistic probability that a contender-level fighter loses to
-    that opponent; the weight is ``q ** TITLE_QUALITY_EXPONENT``. Strictly
+    that opponent; the weight is ``q ** exponent``, which is
+    :data:`TITLE_QUALITY_EXPONENT` for a title win and
+    :data:`RESUME_QUALITY_EXPONENT` for a contender win. Strictly
     positive everywhere -- beating a weak champion is worth little, never
     nothing -- and strongly convex, so an elite opponent dominates a merely
     contender-level one. See the note above :data:`TITLE_QUALITY_SCALE`.
     """
     gap = pd.to_numeric(opponent_mu, errors="coerce") - pd.to_numeric(bar, errors="coerce")
     q = 1.0 / (1.0 + np.power(10.0, -gap / 400.0))
-    return q ** TITLE_QUALITY_EXPONENT
+    return q ** exponent
 
 
 def ufc_debut_dates_from(fights: pd.DataFrame | None) -> pd.Series:
@@ -1303,9 +1322,10 @@ def contender_resume_rows(
     UFC bouts of their own. Both halves are load-bearing and neither is new --
     see :data:`ratings.opponent_quality.MIN_OPPONENT_UFC_BOUTS`.
 
-    Pricing reuses :func:`title_quality` against the contender line, so one
-    function prices both ledgers and a win just past the line is worth a
-    sixteenth of one 400 points above it. That answers the other half of the old
+    Pricing reuses :func:`title_quality` against the contender line with its own
+    exponent, :data:`RESUME_QUALITY_EXPONENT`, so one function prices both
+    ledgers and a win just past the line is worth about a sixth of one 400
+    points above it (an eighth at the limit). That answers the other half of the old
     component's defect, recorded in ``docs/DECISIONS.md``: it
     counted ranked wins inside an 8% band rather than pricing them.
 
@@ -1392,7 +1412,8 @@ def contender_resume_rows(
 
     priced = priced.assign(
         weight=title_quality(
-            priced["opponent_mu"], pd.Series(float(contender_line), index=priced.index)
+            priced["opponent_mu"], pd.Series(float(contender_line), index=priced.index),
+            exponent=RESUME_QUALITY_EXPONENT,
         ),
         _year=priced["event_date"].dt.year,
     )
