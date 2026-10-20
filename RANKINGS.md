@@ -1,4 +1,4 @@
-# Published UFC Rankings
+# Published MMA Rankings
 
 These are the current All-time, Prime and Current rankings. One build refreshes
 the release facts and every table, and refuses a partial update.
