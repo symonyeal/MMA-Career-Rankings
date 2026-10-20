@@ -376,6 +376,24 @@ only by floating-point rounding. Harness:
 `Claude Func Folder\ufc-q-exponent-20261020\sweep.py`, which refuses to run unless
 the replaced setting reproduces the published score.
 
+## Prime needs four contender wins: the owner's decision of 2026-10-20
+
+`MIN_QUALITY_WINS` goes from 5 to 4. A fighter needs at least four wins over
+contenders inside the ten-year window to be ranked on Prime; the ordering above
+that gate is unchanged: qualifying wins times the window's level above the weakest
+qualifier's level, so each further win compounds. Owner policy, like the original
+five; no accuracy measure selected either number.
+
+Because the anchor is the weakest qualifier, admitting more qualifiers lowers it,
+which gives the win count more weight against the level. Measured on the
+2026-10-14 snapshot: Prime qualifiers go from 65 to 102 men and from 4 to 6 women.
+Khabib Nurmagomedov enters at 23rd, Ilia Topuria at 30th, Movsar Evloev at 33rd,
+Khamzat Chimaev at 38th and Ciryl Gane at 46th; Gegard Mousasi, Aljamain Sterling,
+Ryan Bader, Tito Ortiz and Alexander Volkov leave the top 50. Anderson Silva
+(14 wins) moves above Islam Makhachev (8) to third. Among the women, Joanna
+Jedrzejczyk enters at 4th and Carla Esparza at 6th. All-time and Current do not
+read this gate and are unchanged.
+
 ## Tested and refused: the layoff charge does not belong in the rating
 
 Charging the layoff inside the WHR transition prior was implemented, measured on

@@ -700,8 +700,11 @@ const headerSize = new ResizeObserver(([entry]) => {
   document.documentElement.style.setProperty('--header-height', `${entry.target.getBoundingClientRect().height}px`);
 });
 headerSize.observe(document.querySelector('.top'));
+// The rankings table is cheap and is the page's purpose, so it always draws; on a phone the
+// hero is taller than the screen and the table would otherwise wait for a scroll.
+const ALWAYS_DRAWN = new Set(["rankings"]);
 const io = new IntersectionObserver((es) => {
-  es.forEach((e) => (e.isIntersecting ? visible.add(e.target.id) : visible.delete(e.target.id)));
+  es.forEach((e) => (e.isIntersecting || ALWAYS_DRAWN.has(e.target.id) ? visible.add(e.target.id) : visible.delete(e.target.id)));
   flush();
 }, { rootMargin: "400px 0px" });
 Object.keys(SECTIONS).forEach((id) => { dirty.add(id); io.observe($(id)); });

@@ -233,8 +233,11 @@ MIN_OPPONENT_UFC_BOUTS = 8
 # The contender line and the number of wins over it are stated policy, set by
 # the project owner on 2026-08-31 after reading the qualifying names at several
 # candidate lines. They are not fitted, and no accuracy measure selected them.
+# The win count was lowered from five to four by the owner on 2026-10-20; the
+# Prime ordering above the gate (wins times level above the weakest qualifier)
+# is unchanged and compounds from four.
 CONTENDER_LINE_MU = 1750.0
-MIN_QUALITY_WINS = 5
+MIN_QUALITY_WINS = 4
 QUALITY_WIN_COLUMNS = ["fighter", "quality_wins", "quality_bouts"]
 
 

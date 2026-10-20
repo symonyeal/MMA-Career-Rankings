@@ -23,8 +23,8 @@ Fedor Emelianenko ranks eleventh without a UFC fight. The Current board and the 
 boards are UFC only, because those are the divisions and title lines a "right now" ranking
 has to follow.
 
-By this measure Jon Jones ranks first for both career and peak. Georges St-Pierre and
-Islam Makhachev fill the next two places on both lists. On the site you can change how
+By this measure Jon Jones ranks first for both career and peak, and Georges St-Pierre
+second on both. Islam Makhachev is third for career and Anderson Silva third at peak. On the site you can change how
 much each part of the score counts and watch the order change.
 
 The site above is the way to read the answers. One set of controls (men or women, weight
@@ -42,7 +42,7 @@ gives the exact rules.
 | **Win probability raised to a power** | A win is valued by the chance the beaten opponent would have beaten a contender, raised to the fourth power for a title win and the third power for any other win over a contender. | One win over an elite contender is worth about five wins over borderline ones, so a long run of borderline wins cannot outscore a few elite ones. A higher power let a single win carry too much of a career; the third power was chosen after testing powers from 1 to 6. |
 | **Promotion weights, pulled toward average** | The rating never looks at the promotion. Afterwards, a career's skill and contender-win points are scaled by where it was fought, between 0.20 and 1.00 (the UFC is 1.00), and a career with few promotion-labelled fights is pulled toward the average. | Keeping promotion out of the rating lets results decide how strong each pool was. The weight then accounts for depth of competition, and pulling thin evidence toward the average stops a handful of labelled fights from deciding a whole career. |
 | **Square roots on a common scale** | The three parts (titles, contender wins, skill) are each measured against their top-100 average, square-rooted, then weighted. | It puts the three parts on one scale and rewards a career that is strong in all three more than one huge number in a single part. |
-| **Best ten-year window** | Prime looks for the ten-year stretch with the most wins over contenders. | It measures a peak without punishing a fighter for a long career before or after it. |
+| **Best ten-year window** | Prime looks for the ten-year stretch with the most wins over contenders, and needs at least four. Each win beyond that adds to the score. | It measures a peak without punishing a fighter for a long career before or after it. |
 
 The model has not yet been shown to predict fights better than a simpler rating; that test
 is recorded as open in the [release check](docs/RELEASE_CHECK.md). The rankings are a
@@ -139,7 +139,7 @@ Sherk at 189. For who was better at their best, read Prime: 2,192 against 2,110,
 an 82-point edge, which the rating turns into about a 62% chance of winning.
 
 Prime takes the ten-year stretch with the most wins over contenders, using the
-same contender rule as the résumé, and needs five. It ranks by those wins times
+same contender rule as the résumé, and needs four. It ranks by those wins times
 the stretch's average rating above the lowest qualifying average. Current uses
 the All-time formula over the last 18 months: title wins and contender wins in
 that window, plus the latest rating above 1,750, capped at the best opponent the
@@ -173,7 +173,7 @@ the three women's boards and the weight-class boards.
 | Available fight records | 83,016 |
 | Whole-career coverage | 1,826 of 1,837 eligible fighters (99.4%) |
 | Prime contender threshold | 1,750 — reached by 25.3% of established fighters |
-| Prime qualifiers | 65 men; 4 women |
+| Prime qualifiers | 102 men; 6 women |
 
 <!-- PUBLICATION:RELEASE:END -->
 
@@ -189,102 +189,102 @@ qualify, not that they placed last.
 | ---: | --- | --- | ---: | ---: | ---: | ---: |
 | 1 | Jon Jones | Light Heavyweight | 1814.0 | 2192 | 1 | 11 |
 | 2 | Georges St-Pierre | Welterweight | 1569.2 | 2110 | 2 | 12 |
-| 3 | Islam Makhachev | Lightweight | 1551.0 | 2152 | 3 | 8 |
-| 4 | Anderson Silva | Middleweight | 1391.0 | 1955 | 4 | 14 |
-| 5 | Jose Aldo | Featherweight | 1368.6 | 1914 | 13 | 9 |
-| 6 | Daniel Cormier | Light Heavyweight | 1349.9 | 2054 | 6 | 8 |
-| 7 | Demetrious Johnson | Flyweight | 1335.0 | 1951 | 29 | 5 |
-| 8 | Alexander Volkanovski | Featherweight | 1259.5 | 2007 | 7 | 9 |
-| 9 | Stipe Miocic | Heavyweight | 1217.1 | 1949 | 23 | 6 |
-| 10 | Dominick Cruz | Bantamweight | 1213.3 | 1934 | 35 | 5 |
+| 3 | Islam Makhachev | Lightweight | 1551.0 | 2152 | 4 | 8 |
+| 4 | Anderson Silva | Middleweight | 1391.0 | 1955 | 3 | 14 |
+| 5 | Jose Aldo | Featherweight | 1368.6 | 1914 | 12 | 9 |
+| 6 | Daniel Cormier | Light Heavyweight | 1349.9 | 2054 | 7 | 8 |
+| 7 | Demetrious Johnson | Flyweight | 1335.0 | 1951 | 41 | 5 |
+| 8 | Alexander Volkanovski | Featherweight | 1259.5 | 2007 | 6 | 9 |
+| 9 | Stipe Miocic | Heavyweight | 1217.1 | 1949 | 25 | 6 |
+| 10 | Dominick Cruz | Bantamweight | 1213.3 | 1934 | 44 | 5 |
 | 11 | Fedor Emelianenko | Heavyweight | 1196.4 | 2085 | 5 | 9 |
-| 12 | Matt Hughes | Welterweight | 1145.4 | 1976 |  | 4 |
-| 13 | Lyoto Machida | Light Heavyweight | 1136.3 | 2011 | 9 | 7 |
-| 14 | Francis Ngannou | Heavyweight | 1133.2 | 1993 | 15 | 6 |
-| 15 | Randy Couture | Heavyweight | 1100.3 | 1879 | 21 | 9 |
-| 16 | Ilia Topuria | Featherweight | 1087.6 | 2078 |  | 4 |
-| 17 | Khabib Nurmagomedov | Lightweight | 1073.6 | 2131 |  | 4 |
-| 18 | Max Holloway | Featherweight | 1072.5 | 1920 | 12 | 9 |
-| 19 | BJ Penn | Lightweight | 1056.6 | 1888 | 17 | 9 |
-| 20 | Chuck Liddell | Light Heavyweight | 1049.4 | 1883 | 19 | 9 |
-| 21 | Israel Adesanya | Middleweight | 1047.6 | 1880 | 33 | 7 |
-| 22 | Tito Ortiz | Light Heavyweight | 1032.7 | 1869 | 49 | 6 |
+| 12 | Matt Hughes | Welterweight | 1145.4 | 1976 | 58 | 4 |
+| 13 | Lyoto Machida | Light Heavyweight | 1136.3 | 2011 | 10 | 7 |
+| 14 | Francis Ngannou | Heavyweight | 1133.2 | 1993 | 19 | 6 |
+| 15 | Randy Couture | Heavyweight | 1100.3 | 1879 | 16 | 9 |
+| 16 | Ilia Topuria | Featherweight | 1087.6 | 2078 | 30 | 4 |
+| 17 | Khabib Nurmagomedov | Lightweight | 1073.6 | 2131 | 23 | 4 |
+| 18 | Max Holloway | Featherweight | 1072.5 | 1920 | 11 | 9 |
+| 19 | BJ Penn | Lightweight | 1056.6 | 1888 | 14 | 9 |
+| 20 | Chuck Liddell | Light Heavyweight | 1049.4 | 1883 | 15 | 9 |
+| 21 | Israel Adesanya | Middleweight | 1047.6 | 1880 | 29 | 7 |
+| 22 | Tito Ortiz | Light Heavyweight | 1032.7 | 1869 | 51 | 6 |
 | 23 | Benson Henderson | Lightweight | 1008.3 | 1852 | 43 | 7 |
-| 24 | Dan Henderson | Middleweight | 1001.3 | 1946 | 16 | 7 |
-| 25 | Frankie Edgar | Lightweight | 993.9 | 1911 | 10 | 10 |
-| 26 | Cain Velasquez | Heavyweight | 973.3 | 1963 | 20 | 6 |
-| 27 | Justin Gaethje | Lightweight | 965.6 | 1953 | 28 | 5 |
+| 24 | Dan Henderson | Middleweight | 1001.3 | 1946 | 18 | 7 |
+| 25 | Frankie Edgar | Lightweight | 993.9 | 1911 | 9 | 10 |
+| 26 | Cain Velasquez | Heavyweight | 973.3 | 1963 | 22 | 6 |
+| 27 | Justin Gaethje | Lightweight | 965.6 | 1953 | 39 | 5 |
 | 28 | Antonio Rodrigo Nogueira | Heavyweight | 965.5 | 2041 | 8 | 7 |
-| 29 | Merab Dvalishvili | Bantamweight | 959.7 | 1930 | 25 | 6 |
-| 30 | Mauricio Rua | Light Heavyweight | 955.1 | 1854 | 41 | 7 |
-| 31 | Junior Dos Santos | Heavyweight | 938.6 | 1909 | 30 | 6 |
-| 32 | Aljamain Sterling | Bantamweight | 935.5 | 1904 | 46 | 5 |
-| 33 | Sean Strickland | Middleweight | 932.3 | 1876 | 26 | 8 |
-| 34 | Dricus Du Plessis | Middleweight | 929.6 | 2004 | 14 | 6 |
-| 35 | Alex Pereira | Light Heavyweight | 923.9 | 1920 | 38 | 5 |
+| 29 | Merab Dvalishvili | Bantamweight | 959.7 | 1930 | 27 | 6 |
+| 30 | Mauricio Rua | Light Heavyweight | 955.1 | 1854 | 40 | 7 |
+| 31 | Junior Dos Santos | Heavyweight | 938.6 | 1909 | 34 | 6 |
+| 32 | Aljamain Sterling | Bantamweight | 935.5 | 1904 | 56 | 5 |
+| 33 | Sean Strickland | Middleweight | 932.3 | 1876 | 21 | 8 |
+| 34 | Dricus Du Plessis | Middleweight | 929.6 | 2004 | 17 | 6 |
+| 35 | Alex Pereira | Light Heavyweight | 923.9 | 1920 | 50 | 5 |
 | 36 | Chris Weidman | Middleweight | 907.7 | 1853 | 42 | 7 |
-| 37 | Kamaru Usman | Welterweight | 903.5 | 1924 | 22 | 7 |
-| 38 | Wanderlei Silva | Light Heavyweight | 893.0 | 1892 |  | 4 |
-| 39 | Charles Oliveira | Lightweight | 879.0 | 1937 | 24 | 6 |
-| 40 | Khamzat Chimaev | Middleweight | 850.6 | 2047 |  | 4 |
-| 41 | Vitor Belfort | Middleweight | 848.6 | 1812 | 58 | 5 |
-| 42 | Sean Sherk | Lightweight | 841.5 | 1984 | 11 | 7 |
-| 43 | Henry Cejudo | Flyweight | 837.7 | 1836 |  | 4 |
-| 44 | Ciryl Gane | Heavyweight | 827.9 | 2012 |  | 4 |
+| 37 | Kamaru Usman | Welterweight | 903.5 | 1924 | 20 | 7 |
+| 38 | Wanderlei Silva | Light Heavyweight | 893.0 | 1892 | 69 | 4 |
+| 39 | Charles Oliveira | Lightweight | 879.0 | 1937 | 26 | 6 |
+| 40 | Khamzat Chimaev | Middleweight | 850.6 | 2047 | 38 | 4 |
+| 41 | Vitor Belfort | Middleweight | 848.6 | 1812 | 71 | 5 |
+| 42 | Sean Sherk | Lightweight | 841.5 | 1984 | 13 | 7 |
+| 43 | Henry Cejudo | Flyweight | 837.7 | 1836 | 76 | 4 |
+| 44 | Ciryl Gane | Heavyweight | 827.9 | 2012 | 46 | 4 |
 | 45 | Patricio Freire | Featherweight | 825.9 | 1907 |  | 3 |
-| 46 | Rashad Evans | Light Heavyweight | 820.2 | 1873 | 34 | 7 |
-| 47 | Anthony Pettis | Lightweight | 819.4 | 1756 | 63 | 5 |
-| 48 | Gegard Mousasi | Middleweight | 817.6 | 1918 | 39 | 5 |
+| 46 | Rashad Evans | Light Heavyweight | 820.2 | 1873 | 32 | 7 |
+| 47 | Anthony Pettis | Lightweight | 819.4 | 1756 | 84 | 5 |
+| 48 | Gegard Mousasi | Middleweight | 817.6 | 1918 | 53 | 5 |
 | 49 | Petr Yan | Bantamweight | 815.5 | 1904 |  | 3 |
-| 50 | Fabricio Werdum | Heavyweight | 812.9 | 1908 | 32 | 6 |
-| 51 | Ryan Bader | Light Heavyweight | 812.6 | 1904 | 47 | 5 |
-| 52 | Dustin Poirier | Lightweight | 812.1 | 1895 |  | 4 |
-| 53 | Rich Franklin | Middleweight | 809.3 | 1908 | 31 | 6 |
-| 54 | Vadim Nemkov | Light Heavyweight | 807.3 | 2023 | 18 | 5 |
-| 55 | Conor McGregor | Featherweight | 806.7 | 1805 |  | 4 |
-| 56 | Quinton Jackson | Light Heavyweight | 803.9 | 1873 | 45 | 6 |
+| 50 | Fabricio Werdum | Heavyweight | 812.9 | 1908 | 36 | 6 |
+| 51 | Ryan Bader | Light Heavyweight | 812.6 | 1904 | 57 | 5 |
+| 52 | Dustin Poirier | Lightweight | 812.1 | 1895 | 68 | 4 |
+| 53 | Rich Franklin | Middleweight | 809.3 | 1908 | 35 | 6 |
+| 54 | Vadim Nemkov | Light Heavyweight | 807.3 | 2023 | 24 | 5 |
+| 55 | Conor McGregor | Featherweight | 806.7 | 1805 | 83 | 4 |
+| 56 | Quinton Jackson | Light Heavyweight | 803.9 | 1873 | 48 | 6 |
 | 57 | Mark Coleman | Heavyweight | 799.7 | 1873 |  | 3 |
-| 58 | Mirko Filipovic | Heavyweight | 793.3 | 1865 | 53 | 5 |
-| 59 | Sean O'Malley | Bantamweight | 759.3 | 1920 |  | 4 |
-| 60 | Josh Barnett | Heavyweight | 754.3 | 1994 |  | 4 |
-| 61 | Eddie Alvarez | Lightweight | 748.9 | 1724 |  | 4 |
-| 62 | Andrei Arlovski | Heavyweight | 748.1 | 1811 | 59 | 5 |
+| 58 | Mirko Filipovic | Heavyweight | 793.3 | 1865 | 63 | 5 |
+| 59 | Sean O'Malley | Bantamweight | 759.3 | 1920 | 65 | 4 |
+| 60 | Josh Barnett | Heavyweight | 754.3 | 1994 | 54 | 4 |
+| 61 | Eddie Alvarez | Lightweight | 748.9 | 1724 | 95 | 4 |
+| 62 | Andrei Arlovski | Heavyweight | 748.1 | 1811 | 72 | 5 |
 | 63 | Joshua Van | Flyweight | 740.8 | 1951 |  | 3 |
-| 64 | Luke Rockhold | Middleweight | 734.1 | 1841 | 56 | 5 |
-| 65 | Jake Shields | Welterweight | 725.2 | 1833 | 48 | 8 |
-| 66 | Phil Davis | Light Heavyweight | 722.0 | 1934 |  | 4 |
+| 64 | Luke Rockhold | Middleweight | 734.1 | 1841 | 66 | 5 |
+| 65 | Jake Shields | Welterweight | 725.2 | 1833 | 37 | 8 |
+| 66 | Phil Davis | Light Heavyweight | 722.0 | 1934 | 62 | 4 |
 | 67 | Matt Serra | Welterweight | 713.8 | 1766 |  | 3 |
-| 68 | Jens Pulver | Lightweight | 706.6 | 1715 | 65 | 5 |
-| 69 | Forrest Griffin | Light Heavyweight | 688.9 | 1850 | 51 | 6 |
+| 68 | Jens Pulver | Lightweight | 706.6 | 1715 | 93 | 5 |
+| 69 | Forrest Griffin | Light Heavyweight | 688.9 | 1850 | 59 | 6 |
 | 70 | Tim Sylvia | Heavyweight | 685.8 | 1856 |  | 3 |
-| 71 | Tyron Woodley | Welterweight | 680.2 | 1763 |  | 4 |
+| 71 | Tyron Woodley | Welterweight | 680.2 | 1763 | 91 | 4 |
 | 72 | Tom Aspinall | Heavyweight | 677.6 | 1893 |  | 3 |
-| 73 | Deiveson Figueiredo | Flyweight | 675.8 | 1774 |  | 4 |
-| 74 | Robert Whittaker | Middleweight | 675.6 | 1844 | 52 | 6 |
-| 75 | Carlos Condit | Welterweight | 668.9 | 1704 |  | 4 |
-| 76 | Kevin Randleman | Heavyweight | 665.2 | 1703 |  | 4 |
-| 77 | Rafael Dos Anjos | Lightweight | 662.8 | 1726 | 64 | 6 |
-| 78 | Ricardo Arona |  | 654.1 | 1925 | 37 | 5 |
+| 73 | Deiveson Figueiredo | Flyweight | 675.8 | 1774 | 89 | 4 |
+| 74 | Robert Whittaker | Middleweight | 675.6 | 1844 | 60 | 6 |
+| 75 | Carlos Condit | Welterweight | 668.9 | 1704 | 99 | 4 |
+| 76 | Kevin Randleman | Heavyweight | 665.2 | 1703 | 100 | 4 |
+| 77 | Rafael Dos Anjos | Lightweight | 662.8 | 1726 | 87 | 6 |
+| 78 | Ricardo Arona |  | 654.1 | 1925 | 49 | 5 |
 | 79 | Renan Barao | Bantamweight | 651.4 | 1617 |  | 3 |
-| 80 | Demian Maia | Welterweight | 645.8 | 1847 | 36 | 8 |
+| 80 | Demian Maia | Welterweight | 645.8 | 1847 | 28 | 8 |
 | 81 | Urijah Faber | Bantamweight | 642.9 | 1800 |  | 3 |
-| 82 | Frank Mir | Heavyweight | 639.9 | 1758 |  | 4 |
-| 83 | Movsar Evloev | Featherweight | 633.4 | 2060 |  | 4 |
+| 82 | Frank Mir | Heavyweight | 639.9 | 1758 | 92 | 4 |
+| 83 | Movsar Evloev | Featherweight | 633.4 | 2060 | 33 | 4 |
 | 84 | Frank Shamrock | Light Heavyweight | 631.3 | 1781 |  | 2 |
 | 85 | TJ Dillashaw | Bantamweight | 625.8 | 1804 |  | 3 |
 | 86 | Leon Edwards | Welterweight | 622.9 | 1801 |  | 2 |
 | 87 | Kazushi Sakuraba | Welterweight | 616.1 | 1779 |  | 3 |
 | 88 | Jan Blachowicz | Light Heavyweight | 614.9 | 1751 |  | 3 |
-| 89 | Anthony Johnson | Light Heavyweight | 612.9 | 1921 | 27 | 6 |
-| 90 | Alexander Volkov | Heavyweight | 610.5 | 1868 | 50 | 6 |
-| 91 | Pedro Rizzo | Heavyweight | 600.9 | 1834 |  | 4 |
+| 89 | Anthony Johnson | Light Heavyweight | 612.9 | 1921 | 31 | 6 |
+| 90 | Alexander Volkov | Heavyweight | 610.5 | 1868 | 52 | 6 |
+| 91 | Pedro Rizzo | Heavyweight | 600.9 | 1834 | 77 | 4 |
 | 92 | Robbie Lawler | Welterweight | 598.1 | 1670 |  | 3 |
-| 93 | Diego Sanchez | Welterweight | 595.5 | 1807 |  | 4 |
-| 94 | Rogerio Nogueira | Light Heavyweight | 586.8 | 1863 | 54 | 5 |
-| 95 | Alistair Overeem | Heavyweight | 583.1 | 1781 |  | 4 |
+| 93 | Diego Sanchez | Welterweight | 595.5 | 1807 | 82 | 4 |
+| 94 | Rogerio Nogueira | Light Heavyweight | 586.8 | 1863 | 64 | 5 |
+| 95 | Alistair Overeem | Heavyweight | 583.1 | 1781 | 88 | 4 |
 | 96 | Mike Brown | Featherweight | 581.2 | 1683 |  | 2 |
-| 97 | Jeremy Horn | Middleweight | 577.8 | 1874 | 44 | 6 |
-| 98 | Johny Hendricks | Welterweight | 573.8 | 1777 | 62 | 5 |
+| 97 | Jeremy Horn | Middleweight | 577.8 | 1874 | 47 | 6 |
+| 98 | Johny Hendricks | Welterweight | 573.8 | 1777 | 79 | 5 |
 | 99 | Magomed Ankalaev | Light Heavyweight | 573.4 | 1928 |  | 2 |
 | 100 | Johnny Eblen | Middleweight | 571.3 | 1995 |  | 2 |
 
@@ -300,54 +300,54 @@ The table prints both inputs instead of the internal ordering index.
 | ---: | --- | --- | ---: | ---: |
 | 1 | Jon Jones | Light Heavyweight | 2192 | 11 |
 | 2 | Georges St-Pierre | Welterweight | 2110 | 12 |
-| 3 | Islam Makhachev | Lightweight | 2152 | 8 |
-| 4 | Anderson Silva | Middleweight | 1955 | 14 |
+| 3 | Anderson Silva | Middleweight | 1955 | 14 |
+| 4 | Islam Makhachev | Lightweight | 2152 | 8 |
 | 5 | Fedor Emelianenko | Heavyweight | 2085 | 9 |
-| 6 | Daniel Cormier | Light Heavyweight | 2054 | 8 |
-| 7 | Alexander Volkanovski | Featherweight | 2007 | 9 |
+| 6 | Alexander Volkanovski | Featherweight | 2007 | 9 |
+| 7 | Daniel Cormier | Light Heavyweight | 2054 | 8 |
 | 8 | Antonio Rodrigo Nogueira | Heavyweight | 2041 | 7 |
-| 9 | Lyoto Machida | Light Heavyweight | 2011 | 7 |
-| 10 | Frankie Edgar | Lightweight | 1911 | 10 |
-| 11 | Sean Sherk | Lightweight | 1984 | 7 |
-| 12 | Max Holloway | Featherweight | 1920 | 9 |
-| 13 | Jose Aldo | Featherweight | 1914 | 9 |
-| 14 | Dricus Du Plessis | Middleweight | 2004 | 6 |
-| 15 | Francis Ngannou | Heavyweight | 1993 | 6 |
-| 16 | Dan Henderson | Middleweight | 1946 | 7 |
-| 17 | BJ Penn | Lightweight | 1888 | 9 |
-| 18 | Vadim Nemkov | Light Heavyweight | 2023 | 5 |
-| 19 | Chuck Liddell | Light Heavyweight | 1883 | 9 |
-| 20 | Cain Velasquez | Heavyweight | 1963 | 6 |
-| 21 | Randy Couture | Heavyweight | 1879 | 9 |
-| 22 | Kamaru Usman | Welterweight | 1924 | 7 |
-| 23 | Stipe Miocic | Heavyweight | 1949 | 6 |
-| 24 | Charles Oliveira | Lightweight | 1937 | 6 |
-| 25 | Merab Dvalishvili | Bantamweight | 1930 | 6 |
-| 26 | Sean Strickland | Middleweight | 1876 | 8 |
-| 27 | Anthony Johnson | Light Heavyweight | 1921 | 6 |
-| 28 | Justin Gaethje | Lightweight | 1953 | 5 |
-| 29 | Demetrious Johnson | Flyweight | 1951 | 5 |
-| 30 | Junior Dos Santos | Heavyweight | 1909 | 6 |
-| 31 | Rich Franklin | Middleweight | 1908 | 6 |
-| 32 | Fabricio Werdum | Heavyweight | 1908 | 6 |
-| 33 | Israel Adesanya | Middleweight | 1880 | 7 |
-| 34 | Rashad Evans | Light Heavyweight | 1873 | 7 |
-| 35 | Dominick Cruz | Bantamweight | 1934 | 5 |
-| 36 | Demian Maia | Welterweight | 1847 | 8 |
-| 37 | Ricardo Arona |  | 1925 | 5 |
-| 38 | Alex Pereira | Light Heavyweight | 1920 | 5 |
-| 39 | Gegard Mousasi | Middleweight | 1918 | 5 |
-| 40 | Curtis Blaydes | Heavyweight | 1879 | 6 |
-| 41 | Mauricio Rua | Light Heavyweight | 1854 | 7 |
+| 9 | Frankie Edgar | Lightweight | 1911 | 10 |
+| 10 | Lyoto Machida | Light Heavyweight | 2011 | 7 |
+| 11 | Max Holloway | Featherweight | 1920 | 9 |
+| 12 | Jose Aldo | Featherweight | 1914 | 9 |
+| 13 | Sean Sherk | Lightweight | 1984 | 7 |
+| 14 | BJ Penn | Lightweight | 1888 | 9 |
+| 15 | Chuck Liddell | Light Heavyweight | 1883 | 9 |
+| 16 | Randy Couture | Heavyweight | 1879 | 9 |
+| 17 | Dricus Du Plessis | Middleweight | 2004 | 6 |
+| 18 | Dan Henderson | Middleweight | 1946 | 7 |
+| 19 | Francis Ngannou | Heavyweight | 1993 | 6 |
+| 20 | Kamaru Usman | Welterweight | 1924 | 7 |
+| 21 | Sean Strickland | Middleweight | 1876 | 8 |
+| 22 | Cain Velasquez | Heavyweight | 1963 | 6 |
+| 23 | Khabib Nurmagomedov | Lightweight | 2131 | 4 |
+| 24 | Vadim Nemkov | Light Heavyweight | 2023 | 5 |
+| 25 | Stipe Miocic | Heavyweight | 1949 | 6 |
+| 26 | Charles Oliveira | Lightweight | 1937 | 6 |
+| 27 | Merab Dvalishvili | Bantamweight | 1930 | 6 |
+| 28 | Demian Maia | Welterweight | 1847 | 8 |
+| 29 | Israel Adesanya | Middleweight | 1880 | 7 |
+| 30 | Ilia Topuria | Featherweight | 2078 | 4 |
+| 31 | Anthony Johnson | Light Heavyweight | 1921 | 6 |
+| 32 | Rashad Evans | Light Heavyweight | 1873 | 7 |
+| 33 | Movsar Evloev | Featherweight | 2060 | 4 |
+| 34 | Junior Dos Santos | Heavyweight | 1909 | 6 |
+| 35 | Rich Franklin | Middleweight | 1908 | 6 |
+| 36 | Fabricio Werdum | Heavyweight | 1908 | 6 |
+| 37 | Jake Shields | Welterweight | 1833 | 8 |
+| 38 | Khamzat Chimaev | Middleweight | 2047 | 4 |
+| 39 | Justin Gaethje | Lightweight | 1953 | 5 |
+| 40 | Mauricio Rua | Light Heavyweight | 1854 | 7 |
+| 41 | Demetrious Johnson | Flyweight | 1951 | 5 |
 | 42 | Chris Weidman | Middleweight | 1853 | 7 |
 | 43 | Benson Henderson | Lightweight | 1852 | 7 |
-| 44 | Jeremy Horn | Middleweight | 1874 | 6 |
-| 45 | Quinton Jackson | Light Heavyweight | 1873 | 6 |
-| 46 | Aljamain Sterling | Bantamweight | 1904 | 5 |
-| 47 | Ryan Bader | Light Heavyweight | 1904 | 5 |
-| 48 | Jake Shields | Welterweight | 1833 | 8 |
-| 49 | Tito Ortiz | Light Heavyweight | 1869 | 6 |
-| 50 | Alexander Volkov | Heavyweight | 1868 | 6 |
+| 44 | Dominick Cruz | Bantamweight | 1934 | 5 |
+| 45 | Curtis Blaydes | Heavyweight | 1879 | 6 |
+| 46 | Ciryl Gane | Heavyweight | 2012 | 4 |
+| 47 | Jeremy Horn | Middleweight | 1874 | 6 |
+| 48 | Quinton Jackson | Light Heavyweight | 1873 | 6 |
+| 49 | Ricardo Arona |  | 1925 | 5 |
+| 50 | Alex Pereira | Light Heavyweight | 1920 | 5 |
 
 <!-- BOARD:ELITEPRIME50:END -->
 
