@@ -1,5 +1,27 @@
 # Snapshot Changelog
 
+## 2026-10-20 - Contender wins priced at the third power
+
+A win over a contender is now worth `q³` instead of `q⁴`; title wins stay at
+`q⁴`. Re-scored with `--career-only` against the saved 2026-10-14 fit: the ratings
+history is identical, and the only changed columns in `ratings_current.parquet`
+are the All-time and Current score columns (title columns move by rounding only).
+The reasons and the full comparison are in "Contender wins are priced at the
+third power" in `docs/DECISIONS.md`.
+
+- All-time men: the top 10 now reads Jones, St-Pierre, Makhachev, Silva, Aldo,
+  Cormier, Johnson, Volkanovski, Miocic, Cruz. Johny Hendricks enters the top 100
+  and Michael Bisping leaves. 77 of the 99 who stay move; the largest moves are
+  Mark Coleman 42nd to 57th and Patricio Freire 55th to 45th.
+- All-time women: the same top 25; six move one place, and Carla Esparza
+  replaces Holly Holm at 10th.
+- Prime: unchanged for men and women.
+- Current men: the same top 30; 16 move, the largest Manel Kape 23rd to 19th and
+  Movsar Evloev 17th to 21st. Current women: unchanged in the top 10.
+- README: the "points total" paragraph is re-measured: Jones 1,814 against
+  St-Pierre 1,569 (title 618 against 486, résumé 811 against 780, skill 385
+  against 304). The worked contender-win values are now 0.13, 0.26 and 0.61.
+
 ## 2026-10-14 - Release 2026-10-14, and a new Current board
 
 The published release moves from `2026-08-13` to `2026-10-14`, data through
