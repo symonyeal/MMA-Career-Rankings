@@ -1,4 +1,4 @@
-# UFC Career Rankings
+# MMA Career Rankings
 
 <p align="center">
   <a href="https://symonyeal.github.io/UFC-Career-Rankings/"><img alt="Open the interactive rankings site" src="https://img.shields.io/badge/Interactive%20rankings-Open%20the%20site-38bdf8?style=for-the-badge"></a>
@@ -11,15 +11,17 @@
 
 ## In plain terms
 
-Who is the greatest UFC fighter? The answer depends on the question, so this project
-answers three: the best career of all time, the best fighter at their peak, and the best
-fighter right now. Men and women are ranked separately.
+Who is the greatest mixed martial artist? The answer depends on the question, so this
+project answers three: the best career of all time, the best fighter at their peak, and the
+best fighter right now. Men and women are ranked separately.
 
-Every recorded professional MMA fight (over 81,000 fights between 34,000 fighters) goes into
-one rating model, which works like chess ratings. Beating a strong opponent raises a rating
-more than beating a weak one, and later results can revise how strong past opponents really
-were. A career score then adds up three things: title fights won, wins over top
-contenders, and how far the fighter's rating stood above contender level, year by year.
+These are MMA rankings, not UFC-only rankings. Every recorded professional MMA fight (over
+81,000 fights between 34,000 fighters, from every promotion and the regional circuit) goes
+into one rating model. The All-time and Prime boards rank careers from the UFC and the
+other major promotions (PRIDE, WEC, Strikeforce, Affliction, Bellator, RIZIN), which is why
+Fedor Emelianenko ranks tenth without a UFC fight. The Current board and the weight-class
+boards are UFC only, because those are the divisions and title lines a "right now" ranking
+has to follow.
 
 By this measure Jon Jones ranks first for both career and peak. Islam Makhachev and
 Georges St-Pierre fill the next two places on both lists. On the site you can change how
@@ -28,6 +30,23 @@ much each part of the score counts and watch the order change.
 The site above is the way to read the answers. One set of controls (men or women, weight
 class, how many fighters, minimum rated bouts) drives every section. The rest of this page
 gives the exact rules.
+
+## The math, in plain terms
+
+| Method | What it does | Why this one |
+| --- | --- | --- |
+| **Whole-History Rating** (Coulom, 2008) | A chess-style rating: the gap between two ratings gives each fighter's chance of winning. It fits every career at once instead of one fight at a time. | A one-pass rating like Elo never goes back. If an opponent you beat later becomes a champion, that win should count for more, and here it does. Fitting all careers together also keeps fighters from different decades on one scale. |
+| **A neutral starting bout** | Every fighter starts with the weight of one imaginary fight against an average opponent, half won and half lost. | Without it, a fighter at 2-0 has no upper limit and can top the board. With it, an unbeaten record has to keep growing against real opposition to climb. |
+| **Graded results** | A finish counts as a full win; decisions and disqualifications count for slightly less, and a draw counts as half. | A knockout says more about who was better than a split decision does. |
+| **A contender line for each year** | Every rating is read against its division's fifth-best fighter that year. | The rating scale drifts upward over time. Measuring against that year's contenders compares a 2007 win and a 2023 win fairly. |
+| **Win probability to the fourth power** | A win is valued by the chance the beaten opponent would have beaten a contender, raised to the fourth power. | It makes one win over an elite opponent worth about eight wins over borderline contenders. A long run of wins over borderline contenders cannot outscore a few elite ones. |
+| **Promotion weights, pulled toward average** | The rating never looks at the promotion. Afterwards, a career's skill and contender-win points are scaled by where it was fought, between 0.20 and 1.00 (the UFC is 1.00), and a career with few promotion-labelled fights is pulled toward the average. | Keeping promotion out of the rating lets results decide how strong each pool was. The weight then accounts for depth of competition, and pulling thin evidence toward the average stops a handful of labelled fights from deciding a whole career. |
+| **Square roots on a common scale** | The three parts (titles, contender wins, skill) are each measured against their top-100 average, square-rooted, then weighted. | It puts the three parts on one scale and rewards a career that is strong in all three more than one huge number in a single part. |
+| **Best ten-year window** | Prime looks for the ten-year stretch with the most wins over contenders. | It measures a peak without punishing a fighter for a long career before or after it. |
+
+The model has not yet been shown to predict fights better than a simpler rating; that test
+is recorded as open in the [release check](docs/RELEASE_CHECK.md). The rankings are a
+measured judgement of careers, not a betting model.
 
 ## What the site does
 
@@ -138,7 +157,7 @@ remainder. A champion in two classes is ranked in both.
 ## What is published
 
 The men's headline boards are published below so the rankings are visible on
-the repository front page. The full [Published UFC Rankings](RANKINGS.md) adds
+the repository front page. The full [Published MMA Rankings](RANKINGS.md) adds
 the three women's boards and the weight-class boards.
 
 <!-- PUBLICATION:RELEASE:BEGIN -->
