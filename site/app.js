@@ -100,9 +100,11 @@ function units(g, div) {
     ? range(NF).filter((i) => F.g[i] === g && F.at[i] != null).map((i) => ({ f: i, d: "All", rank: F.at[i], t: F.T[i], k: F.S[i], r: F.R[i] }))
     : C.filter((u) => F.g[u.f] === g && u.d === div);
 }
+// A board in one class keeps the board's order, restricted to careers fought mostly in that class (career_division).
 function boardRows(view = S.view, useDiv = true, g = S.g, div = S.div, min = S.min) {
   const r = VIEWS[view].rank;
-  return pool(view, useDiv, g, div, min).filter((i) => F[r][i] != null).sort((a, b) => F[r][a] - F[r][b]);
+  return range(NF).filter((i) => F.g[i] === g && F.n[i] >= min && F[r][i] != null && (!useDiv || div === "All" || F.div[i] === div))
+    .sort((a, b) => F[r][a] - F[r][b]);
 }
 
 const SECTIONS = {}, dirty = new Set(), visible = new Set();
@@ -133,10 +135,11 @@ function slider(id, out, key, after) {
   el.addEventListener("input", () => { S[key] = Number(el.value); $(out).textContent = el.value; after(); });
 }
 function divisionOptions() {
-  const have = new Set([...C.filter((u) => F.g[u.f] === S.g).map((u) => u.d), ...F.cdiv.filter((d, i) => F.g[i] === S.g && d)]);
+  const have = new Set([...C.filter((u) => F.g[u.f] === S.g).map((u) => u.d), ...[F.div, F.cdiv].flatMap((v) => v.filter((d, i) => F.g[i] === S.g && d))]);
   const order = [...have].sort((a, b) => ((D.divisions.indexOf(a) + 99) % 99) - ((D.divisions.indexOf(b) + 99) % 99) || a.localeCompare(b));
   if (!have.has(S.div)) S.div = "All";
-  $("c-div").innerHTML = ["All", ...order].map((d) => `<option ${d === S.div ? "selected" : ""}>${esc(d)}</option>`).join("");
+  const html = ["All", ...order].map((d) => `<option value="${esc(d)}" ${d === S.div ? "selected" : ""}>${d === "All" ? "All classes" : esc(d)}</option>`).join("");
+  $("c-div").innerHTML = $("c-class").innerHTML = html;
 }
 if (!window.Plotly) document.querySelector(".hero").insertAdjacentHTML("beforeend",
   `<p class="callout">Charts need plotly.js from cdn.jsdelivr.net, which did not load. Tables still work.</p>`);
@@ -169,10 +172,7 @@ function facts() {
 }
 
 // ---- 1. rankings --------------------------------------------------------------------------------------------
-SECTIONS.rankings = () => {
-  const out = S.view === "all_time" && S.div !== "All" ? classTable() : boardTable();
-  $("board-s").textContent = out;
-};
+SECTIONS.rankings = () => { $("board-s").textContent = boardTable(); };
 function boardTable() {
   const all = boardRows(), rows = all.filter((i) => !S.q || F.name[i].toLowerCase().includes(S.q)).slice(0, S.top);
   const V = VIEWS[S.view], vmax = Math.max(...rows.map((i) => F[V.val][i]));
@@ -181,40 +181,26 @@ function boardTable() {
   const name = (i) => `<td class="name"><button class="namebtn" data-f="${esc(F.name[i])}">${esc(F.name[i])}</button></td>`;
   const cls = S.div !== "All", pos = new Map(all.map((i, k) => [i, k + 1]));
   const cols = {
-    all_time: [["#", (i) => `<td>${chip(F.at[i])}</td>`], ["Fighter", name], ["Division", (i) => `<td>${esc(F.div[i])}${now(i)}</td>`],
+    all_time: [["#", (i) => `<td>${chip(cls ? pos.get(i) : F.at[i])}</td>`], ["Fighter", name], ["Division", (i) => `<td>${esc(F.div[i])}${now(i)}</td>`],
       ["Score", (i) => bar(F.score[i], 1)], ["Prime", (i) => `<td class="num">${fmt(F.plevel[i])}</td>`],
       ["Prime rank", (i) => `<td class="num">${F.pr[i] ?? ""}</td>`], ["Elite wins", (i) => `<td class="num">${F.pwins[i] ?? ""}</td>`],
-      ["Rated bouts", (i) => `<td class="num dim">${F.n[i]}</td>`], ["Last bout", (i) => `<td class="dim">${F.last[i] ?? ""}</td>`]],
+      ["Rated bouts", (i) => `<td class="num dim">${F.n[i]}</td>`], ["Last bout", (i) => `<td class="dim">${F.last[i] ?? ""}</td>`],
+      ["All-time #", (i) => `<td class="num dim">${F.at[i] ?? ""}</td>`]],
     prime: [["#", (i) => `<td>${chip(cls ? pos.get(i) : F.pr[i])}</td>`], ["Fighter", name], ["Division", (i) => `<td>${esc(F.div[i])}</td>`],
       ["Prime", (i) => bar(F.plevel[i], 0)], ["Elite wins", (i) => `<td class="num">${F.pwins[i] ?? ""}</td>`],
       ["Best decade", (i) => `<td class="dim">${F.p0[i] ?? ""}–${F.p1[i] ?? ""}</td>`], ["Prime #", (i) => `<td class="num dim">${F.pr[i] ?? ""}</td>`],
       ["All-time rank", (i) => `<td class="num dim">${F.at[i] ?? ""}</td>`]],
-    current: [["#", (i) => `<td>${chip(cls ? pos.get(i) : F.cr[i])}</td>`], ["Fighter", name], ["Division", (i) => `<td>${esc(F.cdiv[i])}</td>`],
+    current: [["#", (i) => `<td>${chip(cls ? pos.get(i) : F.cr[i])}</td>`], ["Fighter", name],
+      ["Division", (i) => `<td>${cls ? esc(F.div[i]) + now(i) : esc(F.cdiv[i])}</td>`],
       ["Score", (i) => bar(F.cur[i], 0)], ["UFC bouts", (i) => `<td class="num">${F.ufc[i] ?? ""}</td>`],
       ["Last bout", (i) => `<td class="dim">${F.last[i] ?? ""}</td>`], ["Current #", (i) => `<td class="num dim">${F.cr[i] ?? ""}</td>`],
       ["All-time rank", (i) => `<td class="num dim">${F.at[i] ?? ""}</td>`]],
-  }[S.view].filter(([h]) => cls || !/^(Prime|Current) #$/.test(h));
+  }[S.view].filter(([h]) => cls || !/^(All-time|Prime|Current) #$/.test(h));
   $("board").innerHTML = rows.length
     ? `<table><thead><tr>${cols.map(([h]) => `<th class="${/^(#|Fighter|Division|Best|Last)/.test(h) ? "" : "num"}">${h}</th>`).join("")}</tr></thead><tbody>` +
       rows.map((i) => `<tr>${cols.map(([, c]) => c(i)).join("")}</tr>`).join("") + "</tbody></table>"
     : `<p class="note" style="padding:10px 14px">No ranked fighters match the current filters.</p>`;
-  return `Showing ${rows.length} of ${all.length}.`;
-}
-function classTable() {
-  const all = units(S.g, S.div).filter((u) => F.n[u.f] >= S.min);
-  const U = all.filter((u) => !S.q || F.name[u.f].toLowerCase().includes(S.q)).sort((x, y) => x.rank - y.rank).slice(0, S.top);
-  if (!U.length) { $("board").innerHTML = `<p class="note" style="padding:10px 14px">No ranked fighters in this class.</p>`; return ""; }
-  const v = U.map((u) => uscore(u)), vmax = Math.max(...v);
-  const other = (u) => [...member.get(u.f)].filter(([d]) => d !== u.d).map(([d, w]) => `${short(d)} #${w.rank}`).join(", ");
-  $("board").innerHTML = `<table><thead><tr><th>#</th><th>Fighter</th><th class="num">Class score</th><th class="num">Share of All-time</th>
-    <th class="num">Championships</th><th class="num">Career skill</th><th class="num">Résumé</th><th class="num">All-time #</th><th>Also ranked</th></tr></thead><tbody>` +
-    U.map((u, k) => { const p = upts(u); return `<tr><td>${chip(u.rank)}</td>
-      <td class="name"><button class="namebtn" data-f="${esc(F.name[u.f])}">${esc(F.name[u.f])}</button></td>
-      <td class="num bar"><i style="width:${(100 * v[k] / vmax).toFixed(1)}%"></i><span>${fmt(v[k], 1)}</span></td>
-      <td class="num">${fmt(100 * v[k] / F.score[u.f])}%</td><td class="num dim">${fmt(p[0])}</td><td class="num dim">${fmt(p[1])}</td>
-      <td class="num dim">${fmt(p[2])}</td><td class="num dim">${F.at[u.f] ?? ""}</td><td class="dim">${esc(other(u))}</td></tr>`; }).join("") +
-    "</tbody></table>";
-  return `Showing ${U.length} of ${all.length}; UFC bouts only.`;
+  return `Showing ${rows.length} of ${all.length}${cls ? ` whose UFC career was mostly at ${S.div}` : ""}.`;
 }
 $("board").addEventListener("click", (e) => {
   const b = e.target.closest(".namebtn");
@@ -673,7 +659,10 @@ const filterPanel = document.querySelector('.filter-panel');
 filterPanel.open = !phoneLayout.matches;
 phoneLayout.addEventListener('change', e => { filterPanel.open = !e.matches; });
 seg("c-gender", "g", () => { divisionOptions(); mark(); });
-$("c-div").addEventListener("change", (e) => { S.div = e.target.value; mark(); });
+["c-div", "c-class"].forEach((id) => $(id).addEventListener("change", (e) => {
+  S.div = $("c-div").value = $("c-class").value = e.target.value;
+  mark();
+}));
 slider("c-top", "o-top", "top", () => mark());
 slider("c-min", "o-min", "min", () => mark());
 slider("st-min", "o-st-min", "stMin", () => mark("streaks"));

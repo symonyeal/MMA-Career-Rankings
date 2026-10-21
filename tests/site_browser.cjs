@@ -84,6 +84,22 @@ test('search preserves a fighter’s position within a weight class', async () =
   } finally { await page.close(); }
 });
 
+test('the weight-class filter beside the views restricts every board to that career class', async () => {
+  const page = await open();
+  try {
+    await page.locator('#c-class').selectOption('Welterweight');
+    assert.equal(await page.locator('#c-div').inputValue(), 'Welterweight');
+    for (const v of ['all_time', 'prime', 'current']) {
+      await page.locator(`#c-view [data-v="${v}"]`).click();
+      const rows = page.locator('#board tbody tr');
+      assert.ok(await rows.count(), `${v}: empty`);
+      const cells = await rows.evaluateAll((R) => R.map((r) => [r.cells[0].textContent, r.cells[2].textContent]));
+      cells.forEach(([k, d], j) => { assert.equal(+k, j + 1, `${v}: rank ${k} at row ${j + 1}`); assert.match(d, /^Welterweight/, `${v}: ${d}`); });
+      if (v === 'all_time') assert.match(await page.locator('#board').textContent(), /Georges St-Pierre/);
+    }
+  } finally { await page.close(); }
+});
+
 test('weight-class toggles work with a keyboard and expose their state', async () => {
   const page = await open();
   try {
