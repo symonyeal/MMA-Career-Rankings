@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>MMA Career Rankings</title>
 <meta name="description" content="MMA career rankings (All-time, Prime, Current) built from every recorded professional fight, and the evidence behind them, interactive.">
-<link rel="stylesheet" href="style.css?v=e8c5c0711c">
+<link rel="stylesheet" href="style.css?v=1154b7c14e">
 <script>
 addEventListener("error", (e) => {
   const m = e.message || "could not load " + (e.target.src || e.target.href);
@@ -80,13 +80,15 @@ addEventListener("error", (e) => {
 
   <section id="rankings">
     <h2>Rankings</h2>
-    <p class="note">The published boards. A weight class on the All-time board shows that class's board, earned in UFC
-      bouts only. A blank Prime rank means the fighter did not qualify. Click a name to add it to
+    <p class="note">The published boards. A weight class keeps each board's order and shows only the fighters whose
+      UFC career was mostly fought in that class; a fighter who moved divisions stays in the class of most of their
+      fights. A blank Prime rank means the fighter did not qualify. Click a name to add it to
       <a href="#fighters">Fighters</a>.</p>
     <div class="row">
       <div class="seg" id="c-view">
         <button data-v="all_time" class="on">All-time</button><button data-v="prime">Prime</button><button data-v="current">Current</button>
       </div>
+      <label class="class-field">Weight class <select id="c-class" aria-controls="board"></select></label>
       <label class="search-field"><span>Find a fighter</span><input id="c-search" type="search" placeholder="Search this board…" aria-controls="board"></label>
     </div>
     <div id="board" class="table-wrap" role="region" aria-label="Rankings, scroll for more columns" tabindex="0"></div>
@@ -241,6 +243,6 @@ addEventListener("error", (e) => {
   </footer>
 </main>
 <datalist id="names"></datalist>
-<script src="app.js?v=335c9ef43c"></script>
+<script src="app.js?v=a7746bec5b"></script>
 </body>
 </html>
