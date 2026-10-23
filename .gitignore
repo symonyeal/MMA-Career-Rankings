@@ -52,3 +52,6 @@ _archive/**/generated-data/
 # Accidental pip install artifacts (e.g. pip install pkg ==version)
 =*
 node_modules/
+
+# Rust build output for rust/whr_rs.
+rust/whr_rs/target/

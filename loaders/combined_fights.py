@@ -177,14 +177,15 @@ def _tag_availability(
     this column preserves.
     """
     memberships: dict[str, set[str]] = {}
-    for fingerprint, corpus in zip(combined["bout_fingerprint"], combined["source_corpus"]):
+    # .tolist(), not iteration: Arrow-backed string columns iterate ~10x slower.
+    for fingerprint, corpus in zip(combined["bout_fingerprint"].tolist(), combined["source_corpus"].tolist()):
         memberships.setdefault(str(fingerprint), set()).add(str(corpus))
 
     empty_base = combined.iloc[:0]
     for corpus in scope_sources(scope):
         staged = pd.read_parquet(Path(snapshot_dir) / SCOPE_ARTIFACT[corpus])
         eligible, _ = scope_guard(staged, empty_base, source=corpus, strict=False)
-        for fingerprint in bout_fingerprint(eligible).drop_duplicates():
+        for fingerprint in bout_fingerprint(eligible).drop_duplicates().tolist():
             key = str(fingerprint)
             if key in memberships:
                 memberships[key].add(corpus)
@@ -194,14 +195,13 @@ def _tag_availability(
         # parse; carry the lower corpus's membership onto that same survivor
         # instead of making the dedupe erase its provenance.
         drift_matches = canonical_date_drift_matches(eligible, combined)
-        for prior_index in drift_matches["prior_index"]:
-            key = str(combined.loc[prior_index, "bout_fingerprint"])
-            memberships[key].add(corpus)
+        for fingerprint in combined["bout_fingerprint"].loc[drift_matches["prior_index"]].tolist():
+            memberships[str(fingerprint)].add(corpus)
 
     out = combined.copy()
     out[AVAILABLE_IN_CORPORA] = [
         ",".join(sorted(memberships[str(fingerprint)]))
-        for fingerprint in out["bout_fingerprint"]
+        for fingerprint in out["bout_fingerprint"].tolist()
     ]
     return out
 

@@ -324,29 +324,61 @@ def best_elite_decade(
     if qualifying_wins is None or qualifying_wins.empty:
         return empty
     span = pd.Timedelta(days=round(365.25 * span_years))
-    levels = {
-        name: group.sort_values("event_date")
-        for name, group in history.groupby("fighter", sort=False)
-    }
+    span_np = span.to_timedelta64()
+
+    # Group once with stable sorts, not one pandas groupby / sort_values per fighter. Only fighters with qualifying
+    # wins need their history, and a group keeps its rows in input order, as ``groupby`` yields them.
+    w_code, fighters = pd.factorize(qualifying_wins["fighter"])  # first-appearance order; NaN is -1
+    w_dates = qualifying_wins["event_date"].to_numpy()
+    w_rows = np.flatnonzero(w_code >= 0)
+    w_rows = w_rows[np.argsort(w_code[w_rows], kind="stable")]
+    w_cut = np.searchsorted(w_code[w_rows], np.arange(len(fighters) + 1))
+    h_code = fighters.get_indexer(history["fighter"])
+    h_rows = np.flatnonzero(h_code >= 0)
+    h_rows = h_rows[np.argsort(h_code[h_rows], kind="stable")]
+    h_cut = np.searchsorted(h_code[h_rows], np.arange(len(fighters) + 1))
+    h_dates = history["event_date"].to_numpy()
+    h_mu = history["mu_whr"].to_numpy(dtype=float)
+
+    def mean(x: np.ndarray) -> float:
+        # Series.mean() on float64: NaN is zero-filled and uncounted, then one pairwise numpy sum
+        nan = np.isnan(x)
+        n = x.size - int(nan.sum())
+        return float(np.where(nan, 0.0, x).sum() / np.float64(n)) if n else float("nan")
+
     rows: list[dict[str, object]] = []
-    for fighter, group in qualifying_wins.groupby("fighter", sort=False):
-        dates = group["event_date"].sort_values().to_numpy()
-        own = levels.get(fighter)
+    for g, fighter in enumerate(fighters.tolist()):
+        dates = np.sort(w_dates[w_rows[w_cut[g]:w_cut[g + 1]]])
+        valid = dates[~np.isnat(dates)]
+        ends = valid + span_np
+        count = np.searchsorted(valid, ends, side="right") - np.searchsorted(valid, valid, side="left")
+        if h_cut[g + 1] > h_cut[g]:
+            r = h_rows[h_cut[g]:h_cut[g + 1]]
+            ev = h_dates[r]
+            # the order sort_values gives equal dates fixes the summation order of their ratings, so reproduce its
+            # exact call: an unstable argsort of the non-NaT dates, NaT last
+            nat = np.isnat(ev)
+            keep = np.flatnonzero(~nat)
+            own_dates = ev[keep]
+            mu = h_mu[r[keep[own_dates.argsort(kind="quicksort")]]]
+            own_dates = np.sort(own_dates)
+            lo = np.searchsorted(own_dates, valid, side="left")
+            hi = np.searchsorted(own_dates, ends, side="right")
+        else:
+            lo = hi = np.zeros(valid.size, dtype=np.intp)
         best: tuple[int, float, object, object] | None = None
-        for start in dates:
-            end = start + span
-            count = int(((dates >= start) & (dates <= end)).sum())
+        for i, start in enumerate(dates):
             level = float("nan")
-            if own is not None:
-                inside = own.loc[own["event_date"].between(start, end), "mu_whr"]
-                if not inside.empty:
-                    level = float(inside.mean())
+            if i < valid.size:
+                if hi[i] > lo[i]:
+                    level = mean(mu[lo[i]:hi[i]])
+                c = int(count[i])
+            else:
+                c = 0
             # Most wins first; a tie goes to the stronger stretch.
-            key = (count, -1e18 if pd.isna(level) else level)
+            key = (c, -1e18 if pd.isna(level) else level)
             if best is None or key > (best[0], best[1]):
-                best = (count, key[1], start, end)
-        if best is None:
-            continue
+                best = (c, key[1], start, start + span)
         rows.append({
             "fighter": fighter,
             "elite_wins": best[0],

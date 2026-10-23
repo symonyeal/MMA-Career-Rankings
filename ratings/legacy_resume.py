@@ -547,6 +547,8 @@ def _organization_factor(canonical_organization: object, tier: object) -> float:
     org = str(canonical_organization or "Unknown")
     if org in ORG_FACTOR_BY_CANONICAL:
         return ORG_FACTOR_BY_CANONICAL[org]
+    if isinstance(tier, (int, np.integer)) and not isinstance(tier, bool) and -(1 << 62) < tier < (1 << 62):
+        return ORG_FACTOR_BY_TIER.get(int(tier), ORG_FACTOR_BY_TIER[4])  # what the Series round trip below returns
     tier_num = pd.to_numeric(pd.Series([tier]), errors="coerce").iloc[0]
     if pd.isna(tier_num):
         return ORG_FACTOR_BY_TIER[4]
@@ -589,10 +591,8 @@ def _organization_context(fights: pd.DataFrame) -> pd.DataFrame:
     ).astype(str)
     work["_year"] = work["event_date"].dt.year.fillna(0).astype(int)
 
-    keys = (
-        work.groupby(["_org_label", "_event_label", "_year"], dropna=False, as_index=False)
-        .agg(sample_date=("event_date", "median"))
-    )
+    grp = work.groupby(["_org_label", "_event_label", "_year"], dropna=False, as_index=False, sort=False)
+    keys = grp.agg(sample_date=("event_date", "median"))
     records = []
     for org_label, event_label, year, sample_date in keys[
         ["_org_label", "_event_label", "_year", "sample_date"]
@@ -621,21 +621,21 @@ def _organization_context(fights: pd.DataFrame) -> pd.DataFrame:
                 ),
             }
         )
-    mapped = work.merge(
-        pd.DataFrame(records),
-        on=["_org_label", "_event_label", "_year"],
-        how="left",
-    )
+    # Each bout takes the record of its own group: a positional take, the left merge on the three keys without
+    # hashing 81k string pairs. Keys are unique per group, so no bout is dropped or repeated.
+    rec = pd.DataFrame(records).iloc[grp.ngroup().to_numpy()].reset_index(drop=True)
+    mapped = pd.concat([work["fight_url"].reset_index(drop=True), rec[columns[1:]]], axis=1)
     return mapped[columns].drop_duplicates("fight_url")
 
 
-def _major_title_bouts(fights: pd.DataFrame) -> pd.Series:
+def _major_title_bouts(fights: pd.DataFrame, context: pd.DataFrame | None = None) -> pd.Series:
     """``fight_url -> was this bout staged by a recognised major promotion``.
 
     False where the promotion cannot be resolved. An unlabelled event is missing
     evidence, not evidence of a major championship, so it is never floored.
     """
-    context = _organization_context(fights)
+    if context is None:
+        context = _organization_context(fights)
     if context.empty or "fight_url" not in context.columns:
         return pd.Series(dtype=bool)
     tier = pd.to_numeric(context["organization_tier"], errors="coerce")
@@ -645,12 +645,35 @@ def _major_title_bouts(fights: pd.DataFrame) -> pd.Series:
     )
 
 
-def organization_exposure_ledger(fights: pd.DataFrame) -> pd.DataFrame:
-    """Evaluate how much of each career was proven in top organization context."""
+def _top_quartile_means(codes: np.ndarray, v: np.ndarray, n: int) -> np.ndarray:
+    """Per group code 0..n-1, the mean of its largest ceil(m / 4) non-NaN values (m of them), 0.2 for none.
+
+    One sort for all groups; groups with the same top-slice length k are summed together as the rows of a
+    (groups, k) matrix. ``sum(axis=1)`` is numpy's pairwise add per row, the one ``Series.mean()`` uses, so the
+    sums agree bit for bit. ``np.add.reduceat`` does not (it differs from k = 7), so it is not used.
+    """
+    keep = ~np.isnan(v) & (codes >= 0)
+    c, v = codes[keep], v[keep]
+    v = v[np.lexsort((-v, c))]
+    m = np.bincount(c, minlength=n)
+    k = np.where(m > 0, np.maximum(1, np.ceil(m * 0.25)), 0).astype(np.int64)
+    first = np.cumsum(m) - m
+    out = np.full(n, ORG_FACTOR_BY_TIER[4])
+    for width in np.unique(k[k > 0]):
+        g = np.flatnonzero(k == width)
+        out[g] = v[first[g, None] + np.arange(width)].sum(axis=1) / width
+    return out
+
+
+def organization_exposure_ledger(fights: pd.DataFrame, context: pd.DataFrame | None = None) -> pd.DataFrame:
+    """Evaluate how much of each career was proven in top organization context.
+
+    ``context`` is ``_organization_context(fights)`` when the caller has it already."""
     if fights is None or fights.empty or "fighter_a" not in fights.columns:
         return _empty_exposure_ledger()
 
-    context = _organization_context(fights)
+    if context is None:
+        context = _organization_context(fights)
     sides = pd.concat(
         [
             fights[["fight_url", "fighter_a"]].rename(columns={"fighter_a": "fighter"}),
@@ -670,21 +693,20 @@ def organization_exposure_ledger(fights: pd.DataFrame) -> pd.DataFrame:
     sides["_is_ufc"] = sides["canonical_organization"].eq("UFC")
     sides["_is_top_org"] = sides["public_legacy_org_factor"].ge(0.82)
 
-    def _top_quartile_mean(values: pd.Series) -> float:
-        clean = pd.to_numeric(values, errors="coerce").dropna().sort_values(ascending=False)
-        if clean.empty:
-            return ORG_FACTOR_BY_TIER[4]
-        return float(clean.head(max(1, int(np.ceil(len(clean) * 0.25)))).mean())
-
     grouped = sides.groupby("fighter", sort=False)
     out = grouped.agg(
         _mean_factor=("public_legacy_org_factor", "mean"),
-        _top_quartile_factor=("public_legacy_org_factor", _top_quartile_mean),
         _identified_bouts=("public_legacy_org_factor", "count"),
         public_legacy_ufc_bouts=("_is_ufc", "sum"),
         public_legacy_top_org_bouts=("_is_top_org", "sum"),
         public_legacy_unknown_org_bouts=("_is_unknown_org", "sum"),
     ).reset_index()
+    codes, firsts = pd.factorize(sides["fighter"], sort=False)
+    top_q = _top_quartile_means(
+        codes, pd.to_numeric(sides["public_legacy_org_factor"], errors="coerce").to_numpy(float, na_value=np.nan),
+        len(firsts),
+    )
+    out["_top_quartile_factor"] = top_q[pd.Index(firsts).get_indexer(out["fighter"])]
 
     # The prior is the pooled mean over every identified bout in the corpus --
     # the complete-pooling end of the same estimator, not the tier-4 floor. The
@@ -792,7 +814,7 @@ def championship_resume_ledger(appearances: pd.DataFrame) -> pd.DataFrame:
     return out[columns]
 
 
-def source_title_resume_ledger(fights: pd.DataFrame) -> pd.DataFrame:
+def source_title_resume_ledger(fights: pd.DataFrame, context: pd.DataFrame | None = None) -> pd.DataFrame:
     """Count title resume from source fight rows.
 
     ``performance_appearances`` deliberately narrows championship context to
@@ -805,7 +827,7 @@ def source_title_resume_ledger(fights: pd.DataFrame) -> pd.DataFrame:
         return _empty_title_ledger()
 
     f = fights.copy()
-    f = f.merge(_organization_context(f), on="fight_url", how="left")
+    f = f.merge(_organization_context(f) if context is None else context, on="fight_url", how="left")
     idx = f.index
     raw_title = f.get("is_title_fight", pd.Series(False, index=idx)).fillna(False).astype(bool)
     ufc_org = f["canonical_organization"].eq("UFC")
@@ -1023,6 +1045,7 @@ def title_quality_rows(
     pool_offset_elo: float = UFC_POOL_OFFSET_ELO,
     major_title_floor: float = TITLE_QUALITY_MAJOR_FLOOR,
     since: pd.Timestamp | None = None,
+    context: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     """Title resume priced by the opponent actually beaten, bout by bout.
 
@@ -1045,6 +1068,8 @@ def title_quality_rows(
     ``since`` keeps only the title wins on or after that date, for the Current
     board. Every win is still priced against the whole history and the whole
     fight table, so a window changes which wins count, never what one is worth.
+
+    ``context`` is ``_organization_context(fights)`` when the caller already holds it.
 
     Returns one row per priced title win: ``fighter``, ``event_date``, ``weight``
     (its quality) and ``qualifying`` (cleared the contender line), plus
@@ -1192,7 +1217,7 @@ def title_quality_rows(
     # is not asserted to be a major title and keeps the pure convex weight.
     if "fight_url" in priced.columns:
         major = (
-            _major_title_bouts(fights)
+            _major_title_bouts(fights, context)
             .reindex(priced["fight_url"])
             .fillna(False)
             .to_numpy(dtype=bool)
@@ -1473,6 +1498,11 @@ def public_legacy_score_rows(
         if ufc_debut_dates is not None
         else ufc_debut_dates_from(source_fights)
     )
+    # One organisation context serves the three ledgers below. Built only where organization_exposure_ledger,
+    # which always runs, would build it, so a frame it cannot read fails as before.
+    ctx = None
+    if source_fights is not None and not source_fights.empty and "fighter_a" in source_fights.columns:
+        ctx = _organization_context(source_fights)
     quality_ledger = title_quality_ledger(
         source_fights,
         history,
@@ -1480,15 +1510,16 @@ def public_legacy_score_rows(
         divisions=_division_labels(current),
         ufc_debut_dates=debuts,
         pool_offset_elo=pool_offset_elo,
+        context=ctx,
     )
     resume_ledger = contender_resume_ledger(source_fights, history)
     ledger = _combine_title_ledgers(
         championship_resume_ledger(appearances),
-        source_title_resume_ledger(source_fights) if source_fights is not None else _empty_title_ledger(),
+        source_title_resume_ledger(source_fights, ctx) if source_fights is not None else _empty_title_ledger(),
     )
     out = out.merge(ledger, on="fighter", how="left")
     exposure = (
-        organization_exposure_ledger(source_fights)
+        organization_exposure_ledger(source_fights, ctx)
         if source_fights is not None
         else _empty_exposure_ledger()
     )

@@ -1,0 +1,38 @@
+{
+  "baseline": "c0072b493cfbe2427d0c14744e7031dbd876ac74",
+  "backend": "rust",
+  "scope": "majors,pre_unified",
+  "evaluation_years": [
+    2024,
+    2025
+  ],
+  "iterations": 50,
+  "w2_per_day": 0.0004,
+  "birth_dates": 6012,
+  "limitation": "Production fit and age projection; no temperature calibration.",
+  "input_sha256": "27f5cdaa0d745f1202f51cefaeb71064af98f9aaef1027d25d28fcc9db7accb3",
+  "metrics": [
+    {
+      "baseline": "baseline",
+      "challenger": "corrected",
+      "metric": "log_loss",
+      "n": 962,
+      "n_events": 85,
+      "delta": 0.009321798978870229,
+      "lo": 0.0016619134730357235,
+      "hi": 0.017164884915715842,
+      "favours": "baseline"
+    },
+    {
+      "baseline": "baseline",
+      "challenger": "corrected",
+      "metric": "brier",
+      "n": 962,
+      "n_events": 85,
+      "delta": 0.004743435892843616,
+      "lo": 0.0011912005857501917,
+      "hi": 0.00841761293152065,
+      "favours": "baseline"
+    }
+  ]
+}

@@ -6,6 +6,7 @@ import unicodedata
 from functools import lru_cache
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 # P_ID_ALIAS : project-owned source-id/name override table
@@ -82,6 +83,23 @@ def _basic_name_key(name: str | None, *, compact: bool = False) -> str:
     return text
 
 
+def _alias_key(name: str, aliases: dict[str, str], compact: bool) -> str:
+    key = _basic_name_key(name, compact=False)
+    if key:
+        key = aliases.get(key, key)
+    if compact:
+        key = "".join(ch for ch in key if ch.isalnum())
+    return key
+
+
+# M_NK : name -> alias-applied key, one dict per ``compact`` flag, valid for the alias map object held in M_MAP.
+# A name occurs in millions of rows but is only a few tens of thousands of distinct strings; the key is a pure
+# function of (name, compact, alias map), and str is immutable, so sharing the stored result is safe.
+M_NK: tuple[dict[str, str], dict[str, str]] = ({}, {})
+M_MAP: list[dict[str, str] | None] = [None]
+M_CAP = 1 << 21
+
+
 def normalize_name_key(name: str | None, *, compact: bool = False, apply_aliases: bool = True) -> str:
     """Lowercase, strip, and ASCII-fold names for fuzzy joins.
 
@@ -92,13 +110,34 @@ def normalize_name_key(name: str | None, *, compact: bool = False, apply_aliases
     so e.g. ``"Francisco Figueredo"`` collapses to the same key as
     ``"Francisco Figueiredo"``. The map is loaded once and cached.
     """
-    key = _basic_name_key(name, compact=False)
-    if apply_aliases and key:
-        aliases = _load_alias_map()
-        key = aliases.get(key, key)
-    if compact:
-        key = "".join(ch for ch in key if ch.isalnum())
+    if not isinstance(name, str):
+        return ""
+    if not apply_aliases:
+        key = _basic_name_key(name, compact=False)
+        return "".join(ch for ch in key if ch.isalnum()) if compact else key
+    aliases = _load_alias_map()
+    if aliases is not M_MAP[0]:  # alias map reloaded or replaced: every stored key is stale
+        M_NK[0].clear()
+        M_NK[1].clear()
+        M_MAP[0] = aliases
+    memo = M_NK[bool(compact)]
+    key = memo.get(name)
+    if key is None:
+        if len(memo) >= M_CAP:
+            memo.clear()
+        key = memo[name] = _alias_key(name, aliases, bool(compact))
     return key
+
+
+def compact_name_keys(names: pd.Series) -> list[str]:
+    """``normalize_name_key(n, compact=True)`` per element, computed once per distinct name.
+
+    Factorizing first matters: iterating an Arrow-backed string column costs more than the key itself.
+    Missing values get code -1, which indexes the trailing ``""``, as ``normalize_name_key(NaN)`` does.
+    """
+    codes, uniq = pd.factorize(names)
+    k = np.array([normalize_name_key(n, compact=True) for n in uniq] + [""], dtype=object)
+    return k[codes].tolist()
 
 
 def bout_fingerprint(frame: pd.DataFrame) -> pd.Series:
@@ -109,12 +148,16 @@ def bout_fingerprint(frame: pd.DataFrame) -> pd.Series:
     not the URL, not the event name, not the spelling of the method. Two rows
     sharing a fingerprint are the same bout and must not both update a rating.
     """
-    dates = pd.to_datetime(frame["event_date"], errors="coerce").dt.strftime("%Y%m%d").fillna("")
+    dates = pd.to_datetime(frame["event_date"], errors="coerce")
+    codes, uniq = pd.factorize(dates)  # a card's bouts share one date: format each distinct date once
+    if len(uniq):
+        s = np.array(list(pd.Series(uniq).dt.strftime("%Y%m%d")) + [np.nan], dtype=object)
+        dates = pd.Series(s[codes].tolist(), index=frame.index).fillna("")
+    else:  # all-NaT or empty: the list route would infer object, not str, dtype
+        dates = dates.dt.strftime("%Y%m%d").fillna("")
     pairs = [
-        "::".join(sorted([
-            normalize_name_key(a, compact=True), normalize_name_key(b, compact=True),
-        ]))
-        for a, b in zip(frame["fighter_a"], frame["fighter_b"])
+        f"{x}::{y}" if x <= y else f"{y}::{x}"
+        for x, y in zip(compact_name_keys(frame["fighter_a"]), compact_name_keys(frame["fighter_b"]))
     ]
     return dates + "::" + pd.Series(pairs, index=frame.index)
 

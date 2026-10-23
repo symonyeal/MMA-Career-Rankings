@@ -821,54 +821,50 @@ def prefight_ranking_context(canonical_fights: pd.DataFrame, ratings_history: pd
     interim_champ_b = np.zeros(n, dtype=bool)
 
     event_starts, event_stops = _group_bounds(f["event_date"], f["event_name"])
+    id_a_l, id_b_l, code_l = id_a.tolist(), id_b.tolist(), division_code.tolist()
+
+    def _field(x: int, mu: np.ndarray, ids: np.ndarray) -> float:
+        # 1-based position of fighter ``x`` in a field sorted by ``(-mu, id)``.
+        m = state_mu[x]
+        return float(1 + np.count_nonzero(mu > m) + np.count_nonzero((mu == m) & (ids < x)))
+
     for lo, hi in zip(event_starts, event_stops):
         cutoff_day = event_days[lo] - RANK_CONTEXT_ACTIVE_DAYS
         active = np.flatnonzero(state_last_day >= cutoff_day)
-        if active.size:
-            # Global P4P order, then division order read off the same sweep.
-            order = active[np.lexsort((active, -state_mu[active]))]
-            p4p = np.full(n_fighters, np.nan)
-            p4p[order] = np.arange(1, order.size + 1, dtype=float)
-
-            div_of_order = state_division[order]
-            by_div = np.argsort(div_of_order, kind="stable")
-            grouped = div_of_order[by_div]
-            starts = np.flatnonzero(np.concatenate(([True], grouped[1:] != grouped[:-1])))
-            sizes = np.diff(np.concatenate((starts, [grouped.size])))
-            within = np.arange(grouped.size) - np.repeat(starts, sizes)
-            div_rank = np.full(n_fighters, np.nan)
-            div_rank[order[by_div]] = within + 1.0
-            div_pool = np.full(n_fighters, np.nan)
-            div_pool[order[by_div]] = np.repeat(sizes, sizes).astype(float)
-            # A fighter whose recorded division is unknown is in no division board.
-            div_rank[order[div_of_order < 0]] = np.nan
-            div_pool[order[div_of_order < 0]] = np.nan
-        else:
-            p4p = np.full(n_fighters, np.nan)
-            div_rank = np.full(n_fighters, np.nan)
-            div_pool = np.full(n_fighters, np.nan)
-
-        rows = slice(lo, hi)
-        ra, rb = id_a[rows], id_b[rows]
-        p4p_rank_a[rows] = np.where(ra >= 0, p4p[ra], np.nan)
-        p4p_rank_b[rows] = np.where(rb >= 0, p4p[rb], np.nan)
-        # A bout only carries a divisional rank when the bout's own division
-        # matches the division the fighter is currently ranked in.
-        same_div_a = (ra >= 0) & (state_division[ra] == division_code[rows]) & (division_code[rows] >= 0)
-        same_div_b = (rb >= 0) & (state_division[rb] == division_code[rows]) & (division_code[rows] >= 0)
-        div_rank_a[rows] = np.where(same_div_a, div_rank[ra], np.nan)
-        div_rank_b[rows] = np.where(same_div_b, div_rank[rb], np.nan)
-        div_pool_a[rows] = np.where(same_div_a, div_pool[ra], np.nan)
-        div_pool_b[rows] = np.where(same_div_b, div_pool[rb], np.nan)
+        # Ranks are read only for the fighters on this card, by counting who sorts ahead,
+        # instead of sorting the whole active field once per card. Every active fighter
+        # has a non-NaN mu: state is only ever written together with one.
+        act_mu = state_mu[active]
+        act_div = state_division[active]
+        by_div: dict[int, tuple[np.ndarray, np.ndarray]] = {}
 
         for k in range(lo, hi):
-            d = division_code[k]
+            d = code_l[k]
+            for x, p4p_out, rank_out, pool_out in (
+                (id_a_l[k], p4p_rank_a, div_rank_a, div_pool_a),
+                (id_b_l[k], p4p_rank_b, div_rank_b, div_pool_b),
+            ):
+                if x < 0 or state_last_day[x] < cutoff_day:
+                    continue
+                p4p_out[k] = _field(x, act_mu, active)
+                # A bout only carries a divisional rank when the bout's own division
+                # matches the division the fighter is currently ranked in.
+                if d >= 0 and state_division[x] == d:
+                    field = by_div.get(d)
+                    if field is None:
+                        in_div = act_div == d
+                        field = by_div[d] = (act_mu[in_div], active[in_div])
+                    rank_out[k] = _field(x, *field)
+                    pool_out[k] = float(field[0].size)
+
+        for k in range(lo, hi):
+            d = code_l[k]
             if d < 0:
                 continue
-            champ_a[k] = champions.get(d, -1) == id_a[k]
-            champ_b[k] = champions.get(d, -1) == id_b[k]
-            interim_champ_a[k] = interim_champions.get(d, -1) == id_a[k]
-            interim_champ_b[k] = interim_champions.get(d, -1) == id_b[k]
+            champ_a[k] = champions.get(d, -1) == id_a_l[k]
+            champ_b[k] = champions.get(d, -1) == id_b_l[k]
+            interim_champ_a[k] = interim_champions.get(d, -1) == id_a_l[k]
+            interim_champ_b[k] = interim_champions.get(d, -1) == id_b_l[k]
 
         # Advance title lineage after all pre-fight context for the event is
         # captured, so same-card title bouts cannot leak into each other.
@@ -884,6 +880,8 @@ def prefight_ranking_context(canonical_fights: pd.DataFrame, ratings_history: pd
 
         # State advances in bout order, a then b, so a fighter twice on one
         # card carries the later bout's division — as the row loop did.
+        rows = slice(lo, hi)
+        ra, rb = id_a[rows], id_b[rows]
         seq_ids = np.empty(2 * (hi - lo), dtype=np.int64)
         seq_ids[0::2], seq_ids[1::2] = ra, rb
         seq_mu = np.empty(2 * (hi - lo))
@@ -963,42 +961,48 @@ def prefight_weight_class_context(canonical_fights: pd.DataFrame) -> pd.DataFram
     f["fighter_current_weight_limit_lb"] = f["division"].map(_division_limit)
     f = f.sort_values(["event_date", "event_name"]).reset_index(drop=True)
 
+    # Plain Python lists per column: ``iterrows`` built a Series per bout, which was nearly all of the time.
+    # ``groupby`` drops rows with a null event key, so those rows get no output row.
+    keep = f["event_date"].notna() & f["event_name"].notna()
+    if not keep.all():
+        f = f[keep]
+    cols = {c: (f[c].tolist() if c in f.columns else [None] * len(f))
+            for c in ("fight_url", "division", "fighter_a", "fighter_b")}
+    # Rows of one event are contiguous because ``f`` is sorted by the event key.
+    ev = f[["event_date", "event_name"]]
+    starts, stops = _group_bounds(ev["event_date"], ev["event_name"])
+
     previous_division: dict[str, str | None] = {}
-    rows: list[dict] = []
-    for (_event_date, _event_name), group in f.groupby(["event_date", "event_name"], sort=False):
-        for _, row in group.iterrows():
-            current_limit = _division_limit(row.get("division"))
-            a = row.get("fighter_a")
-            b = row.get("fighter_b")
-            a_prev = previous_division.get(a)
-            b_prev = previous_division.get(b)
+    out = {c: [] for c in columns}
+    for lo, hi in zip(starts.tolist(), stops.tolist()):
+        for i in range(lo, hi):
+            current_limit = _division_limit(cols["division"][i])
+            a_prev = previous_division.get(cols["fighter_a"][i])
+            b_prev = previous_division.get(cols["fighter_b"][i])
             a_prev_limit = _division_limit(a_prev)
             b_prev_limit = _division_limit(b_prev)
             a_move = _movement_label(a_prev_limit, current_limit)
             b_move = _movement_label(b_prev_limit, current_limit)
-            rows.append({
-                "fight_url": row.get("fight_url"),
-                "fighter_a_previous_division": a_prev,
-                "fighter_b_previous_division": b_prev,
-                "fighter_a_previous_weight_limit_lb": a_prev_limit,
-                "fighter_b_previous_weight_limit_lb": b_prev_limit,
-                "fighter_current_weight_limit_lb": current_limit,
-                "fighter_a_weight_class_move": a_move,
-                "fighter_b_weight_class_move": b_move,
-                "fighter_a_weight_class_change_fight": a_move in {"up", "down"},
-                "fighter_b_weight_class_change_fight": b_move in {"up", "down"},
-            })
+            out["fight_url"].append(cols["fight_url"][i])
+            out["fighter_a_previous_division"].append(a_prev)
+            out["fighter_b_previous_division"].append(b_prev)
+            out["fighter_a_previous_weight_limit_lb"].append(a_prev_limit)
+            out["fighter_b_previous_weight_limit_lb"].append(b_prev_limit)
+            out["fighter_current_weight_limit_lb"].append(current_limit)
+            out["fighter_a_weight_class_move"].append(a_move)
+            out["fighter_b_weight_class_move"].append(b_move)
+            out["fighter_a_weight_class_change_fight"].append(a_move in {"up", "down"})
+            out["fighter_b_weight_class_change_fight"].append(b_move in {"up", "down"})
 
-        for _, row in group.iterrows():
-            division = row.get("division")
+        for i in range(lo, hi):
+            division = cols["division"][i]
             if not _division_limit(division):
                 continue
-            for side in ("fighter_a", "fighter_b"):
-                fighter = row.get(side)
+            for fighter in (cols["fighter_a"][i], cols["fighter_b"][i]):
                 if fighter:
                     previous_division[fighter] = division
 
-    return pd.DataFrame(rows, columns=columns)
+    return pd.DataFrame(out, columns=columns)
 
 
 # ---------------------------------------------------------------------------

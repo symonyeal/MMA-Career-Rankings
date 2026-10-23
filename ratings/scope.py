@@ -29,9 +29,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
-from project_helpers import bout_fingerprint, normalize_name_key
+from project_helpers import bout_fingerprint, compact_name_keys, normalize_name_key
 
 # scope name -> the snapshot artifact holding its non-UFC bouts
 SCOPE_ARTIFACT: dict[str, str] = {
@@ -157,26 +158,29 @@ def _pair_key(fights: pd.DataFrame) -> pd.Series:
     if fights.empty:
         return pd.Series(index=fights.index, dtype=object)
     return pd.Series(
-        [
-            "::".join(
-                sorted(
-                    [
-                        normalize_name_key(a, compact=True),
-                        normalize_name_key(b, compact=True),
-                    ]
-                )
-            )
-            for a, b in zip(fights["fighter_a"], fights["fighter_b"])
-        ],
+        [f"{x}::{y}" if x <= y else f"{y}::{x}"
+         for x, y in zip(compact_name_keys(fights["fighter_a"]), compact_name_keys(fights["fighter_b"]))],
         index=fights.index,
         dtype=object,
     )
 
 
+def map_distinct(values: pd.Series, f) -> pd.Series:
+    """``values.map(f)`` calling ``f`` once per distinct value (NaN included), same dtype inference as ``map``.
+
+    The distinct values are the first occurrences themselves, not ``factorize``'s uniques, which turn every NA into
+    NaN. The difference is visible: a string-dtype column turns the ``None`` that ``_winner_key`` returns into NaN,
+    which the ``if value`` test in ``_result_key`` then reads as a winner, while an object column keeps ``None``.
+    """
+    codes, _ = pd.factorize(values, use_na_sentinel=False)
+    first = np.unique(codes, return_index=True)[1]
+    return values.iloc[first].map(f).take(codes).set_axis(values.index)
+
+
 def _result_key(fights: pd.DataFrame) -> pd.Series:
     """Comparable decided result, including draws and no-contests."""
-    winner = fights.get("winner", pd.Series(pd.NA, index=fights.index)).map(_winner_key)
-    result = winner.map(lambda value: f"winner::{value}" if value else pd.NA)
+    winner = map_distinct(fights.get("winner", pd.Series(pd.NA, index=fights.index)), _winner_key)
+    result = map_distinct(winner, lambda value: f"winner::{value}" if value else pd.NA)
     draws = fights.get("is_draw", pd.Series(False, index=fights.index)).fillna(False).astype(bool)
     no_contests = fights.get("is_nc", pd.Series(False, index=fights.index)).fillna(False).astype(bool)
     result.loc[draws] = "draw"
@@ -336,9 +340,10 @@ def scope_guard(
             out = out[~is_ufc]
 
     if not out.empty and {"fighter_a", "fighter_b", "event_date"} <= set(out.columns):
-        seen = set() if ufc_fights.empty else set(bout_fingerprint(ufc_fights))
+        seen = set() if ufc_fights.empty else set(bout_fingerprint(ufc_fights).tolist())
         out = out.assign(_fp=bout_fingerprint(out))
-        duplicate = out["_fp"].isin(seen)
+        # a set lookup per row: Arrow-backed ``isin`` against 80k strings costs more than the whole drift check
+        duplicate = pd.Series([fp in seen for fp in out["_fp"].tolist()], index=out.index, dtype=bool)
         if int(duplicate.sum()):
             dropped["already_in_ufc_table"] = int(duplicate.sum())
             out = out[~duplicate]
@@ -350,7 +355,7 @@ def scope_guard(
             out = out.drop(index=drifted)
 
         out["_bout_key"] = bout_dedupe_key(out, out["_fp"])
-        out["_winner_key"] = out["winner"].map(_winner_key)
+        out["_winner_key"] = map_distinct(out["winner"], _winner_key)
         repeated = out["_bout_key"].duplicated(keep=False)
         if int(repeated.sum()):
             # Only a row that names a winner can contradict another. A draw, a
