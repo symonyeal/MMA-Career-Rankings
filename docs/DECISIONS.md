@@ -174,8 +174,8 @@ Where the data comes from is [Source Matrix](../data/SOURCE_MATRIX.md).
    resolved improvement and there is none. Harness:
    `Claude Func Folder\ufc_whr_drift_recalibration.py`.
 
-**The WHR solver: the published fit still re-centres every pass, and the exact
-solver waits for its held-out test.** The fit subtracts the average rating after
+**The WHR solver: the published fit re-centres every pass, and the exact solver
+lost its held-out test on 2026-10-23.** The fit subtracts the average rating after
 every pass. The anchor and virtual-game priors already fix where the scale sits,
 so the shift pulls the fit away from the posterior it claims to solve, and a
 fight between two fighters can move the ratings of fighters they never met. In
@@ -186,7 +186,7 @@ the shift; it is the setting `WHR_CENTER_EACH_PASS = False` in
 `ratings/constants.py`, and `tests/test_whr_joint_map.py` checks that it reaches
 the posterior's stationary point and that unconnected fights leave existing
 ratings unchanged. The default stays `True`, the solver every published board
-and every tuned setting was fitted with, until the test below resolves.
+and every tuned setting was fitted with; the held-out test below favours it.
 
 Three smaller repairs from the same review shipped and stay shipped. None of them
 moves a published rank: with them in place and re-centring on, a refit of the
@@ -234,13 +234,35 @@ and 88–89. The second machine had rebuilt 43 fewer birth dates and none of the
 odds rows, and that moved those two pairs; the solver moved everything else.
 Evidence: [`validation/solver-refit-2026-10-14/`](validation/solver-refit-2026-10-14/).
 
-**To promote the exact solver.** Run the held-out comparison on the published
-inputs, which every checkout now has (several hours):
-`python analysis/check_whr_solver.py data/snapshots/2026-08-13 --years 2024 2025
---workers 6 --out docs/validation/whr-solver-<date>`. Only if it resolves better:
-set `WHR_CENTER_EACH_PASS = False`, refit, check the score constants and the
-outside lists against the new ratings, and publish. Do not tune the constants
-around the solver to make the boards look like the old ones.
+**The held-out test was run on 2026-10-23 and the exact solver lost it. The
+re-centred solver stays.** The command registered here was run as written, on
+the 2026-08-13 inputs with 6,012 birth dates and the production age projection,
+scoring every UFC card of 2024 and 2025: 962 bouts on 85 cards. The exact solver
+predicted worse on both measures, and both intervals exclude zero:
+
+| Measure | Exact minus re-centred | 95% interval (cards resampled) |
+| --- | ---: | --- |
+| Log loss | +0.0093 | +0.0017 to +0.0172 |
+| Brier score | +0.0047 | +0.0012 to +0.0084 |
+
+Higher is worse on both, so the result favours the published solver. This
+settles the question the setting was kept for: `WHR_CENTER_EACH_PASS` stays
+`True` because it predicts better on held-out fights, and not only because every
+constant was tuned against it. The re-centring still has the defect described
+above, where unconnected fights can move each other. That defect is now a known
+property of the better-predicting solver, not a reason to switch.
+
+Both solvers ran in the Rust backend (`--backend rust`), and the whole run took
+about fifteen minutes; the numpy version had been estimated at several hours.
+Before scoring any card, the script refitted the bouts before the first card
+with the baseline revision `c0072b4`'s own numpy code and with the Rust
+re-centred solver, and required the two to match bit for bit. They did. Evidence:
+[`validation/whr-solver-2026-10-23/`](validation/whr-solver-2026-10-23/).
+
+To re-run it: `python analysis/check_whr_solver.py data/snapshots/2026-08-13
+--years 2024 2025 --workers 4 --backend rust --out docs/validation/whr-solver-<date>`.
+A new solver candidate has to win this comparison before it is promoted. Do not
+tune the constants around a solver to make the boards look like the old ones.
 
 **A win over a fighter returning from a long absence is priced lower.** Shipped
 2026-09-03, in the ledgers, after the rating-layer version was built and
@@ -686,8 +708,12 @@ python -m ruff check .
 not match the fit that produced it, so it cannot quietly re-score one scope's
 board from another scope's ratings.
 
-A data or rating change needs the full path, and `rate_snapshot` takes about
-fifteen minutes:
+A data or rating change needs the full path. With the Rust solver installed,
+`rate_snapshot` took 170.9 seconds on the 2026-10-14 release (measured 2026-10-23 on
+the work laptop while other checks were running). An earlier unprofiled run of the
+previous code on the same release recorded 479.4 seconds. These timings are not a
+controlled speed comparison. The Python hot-spot changes also contribute;
+the new pipeline's total runtime without Rust has not been measured:
 
 ```text
 python build_sherdog_careers.py --report-only

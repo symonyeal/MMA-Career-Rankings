@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from collections import Counter
 from pathlib import Path
 
 import numpy as np
@@ -763,9 +764,18 @@ def normalize_division(weight_class: str | None) -> str | None:
     return w  # Catch-all (Catch Weight, Open Weight, etc.)
 
 
+def _map_unique(s: pd.Series, fn, none=None) -> np.ndarray:
+    """fn over the distinct values of s only (a few dozen labels in 10^5 rows); NaN rows get ``none``."""
+    codes, uniq = pd.factorize(s)
+    vals = np.empty(len(uniq) + 1, dtype=object)
+    vals[:-1] = [fn(u) for u in uniq]
+    vals[-1] = none  # code -1 is the last slot
+    return vals[codes]
+
+
 def add_division_to_fights(fights: pd.DataFrame) -> pd.DataFrame:
     out = fights.copy()
-    out["division"] = out["weight_class"].apply(normalize_division)
+    out["division"] = _map_unique(out["weight_class"], normalize_division)
     return out
 
 
@@ -2162,23 +2172,10 @@ def yearly_rating_delta_scatter(
         joined["_result"] = pd.NA
 
     # Aggregate per fighter
-    rows = []
-    for fighter, g in joined.groupby("fighter"):
-        total = float(g["_fight_delta"].sum())
-        lines = []
-        for _, row in g.sort_values("event_date").iterrows():
-            opp = str(row.get("opponent") or "?")
-            res = str(row.get("_result") or "?")
-            d = float(row["_fight_delta"])
-            lines.append(f"vs {opp}  {res}  Δ{d:+.1f}")
-        rows.append({
-            "fighter": fighter,
-            "total_delta": total,
-            "n_fights": len(g),
-            "hover_lines": "<br>".join(lines),
-        })
-
-    df = pd.DataFrame(rows)
+    by_fighter = joined.groupby("fighter")
+    # Series.sum per group, not groupby.sum: the latter's Kahan summation can differ in the last bit.
+    df = pd.DataFrame([{"fighter": fighter, "total_delta": float(s.sum()), "n_fights": len(s)}
+                       for fighter, s in by_fighter["_fight_delta"]])
     if df.empty:
         return _empty_figure(f"no qualified fighters in {year}", title=title)
     df = df[df["total_delta"].abs() > 0.05]
@@ -2191,6 +2188,17 @@ def yearly_rating_delta_scatter(
     keep = pd.concat([risers, fallers]).drop_duplicates("fighter")
     keep = keep.sort_values("total_delta").reset_index(drop=True)
     colors = np.where(keep["total_delta"] >= 0, THEME["positive"], THEME["negative"])
+
+    hover = []  # per-fight lines only for the 2n fighters drawn
+    for fighter in keep["fighter"]:
+        lines = []
+        for _, row in by_fighter.get_group(fighter).sort_values("event_date").iterrows():
+            opp = str(row.get("opponent") or "?")
+            res = str(row.get("_result") or "?")
+            d = float(row["_fight_delta"])
+            lines.append(f"vs {opp}  {res}  Δ{d:+.1f}")
+        hover.append("<br>".join(lines))
+    keep["hover_lines"] = hover
 
     fig = go.Figure(go.Bar(
         x=keep["total_delta"],
@@ -3123,7 +3131,11 @@ def win_streaks(
         if len(run) < min_len:
             return
         divisions = [r.division for r in run if isinstance(r.division, str)]
-        modal_div = pd.Series(divisions).mode().iloc[0] if divisions else None
+        modal_div = None
+        if divisions:  # Series.mode() order: most frequent, ties to the smallest label
+            tally = Counter(divisions)
+            top = max(tally.values())
+            modal_div = min(d for d, c in tally.items() if c == top)
         opp_ratings = [opp_mu.get(r.opponent) for r in run]
         opp_ratings = [v for v in opp_ratings if v is not None and not pd.isna(v)]
         records.append({
@@ -3870,14 +3882,15 @@ def title_lineage_chart(
     title = f"Title lineage — {division}"
     if performance_appearances is None or performance_appearances.empty or not division:
         return _empty_figure("title data unavailable", title=title)
-    df = performance_appearances.copy()
+    df = performance_appearances  # filtered, never written: the first mask below already copies
     if "is_championship_bout" not in df.columns:
         return _empty_figure("championship flags not present", title=title)
     df = df[df["is_championship_bout"].fillna(False).astype(bool)]
     if not include_interim and "is_interim_title_bout" in df.columns:
         df = df[~df["is_interim_title_bout"].fillna(False).astype(bool)]
     if "division" in df.columns:
-        df = df[df["division"].apply(lambda v: normalize_division(v) == division if isinstance(v, str) else False)]
+        in_div = _map_unique(df["division"], lambda v: isinstance(v, str) and normalize_division(v) == division, False)
+        df = df[in_div.astype(bool)]
     df = df[df["is_winner"].fillna(False).astype(bool)].copy()
     df["event_date"] = pd.to_datetime(df["event_date"], errors="coerce")
     df = df.dropna(subset=["event_date"]).sort_values("event_date").reset_index(drop=True)

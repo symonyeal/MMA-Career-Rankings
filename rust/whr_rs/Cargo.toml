@@ -1,0 +1,18 @@
+[package]
+name = "whr_rs"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+name = "whr_rs"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.30", features = ["extension-module", "abi3-py312"] }
+
+[profile.release]
+# Fused multiply-add or reassociation would change the last bits of every
+# rating, and the numpy solver is the reference the release was fitted with.
+codegen-units = 1
+lto = true

@@ -46,6 +46,7 @@ from ratings.performance_adjustment import (
     prefight_ratings,
     prefight_ranking_context,
 )
+from ratings.scope import map_distinct
 
 
 PEAK_APPEARANCE_COLUMNS = [
@@ -88,7 +89,7 @@ def peak_appearance_quality(
     f["event_date"] = pd.to_datetime(f["event_date"], errors="coerce")
     context = prefight_ranking_context(f, canonical_history)
     f = f.merge(context, on="fight_url", how="left")
-    f["division"] = f.get("weight_class", pd.Series(index=f.index)).map(normalize_division_label)
+    f["division"] = map_distinct(f.get("weight_class", pd.Series(index=f.index)), normalize_division_label)
     f["division_weight_limit_lb"] = f["division"].map(DIVISION_WEIGHT_LIMIT_LB)
 
     prior = _prefight_mu_table(canonical_history)

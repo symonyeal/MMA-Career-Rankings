@@ -65,12 +65,12 @@ backtest (Brier / log-loss); the default is a reasonable MMA prior.
 """
 from __future__ import annotations
 
-from collections import defaultdict
 
 import numpy as np
 import pandas as pd
 
 from ratings.constants import (
+    WHR_BACKEND,
     WHR_CENTER_EACH_PASS,
     WHR_ITERATIONS,
     WHR_PRIOR_VAR,
@@ -79,6 +79,12 @@ from ratings.constants import (
     WHR_W2_PER_DAY,
     WHR_WINNER_SCORE_COL,
 )
+
+try:
+    import whr_rs  # noqa: F401 -- built from rust/whr_rs
+    _HAVE_WHR_RS = True
+except ImportError:
+    _HAVE_WHR_RS = False
 
 # Natural-scale rating -> Elo-like display scale.
 _ELO_PER_NAT = 400.0 / np.log(10.0)
@@ -264,33 +270,30 @@ def _build_appearances(
     else:
         winner_score_arr = np.full(n, np.nan, dtype=float)
 
-    for i in range(n):
-        na, nb = 2 * i, 2 * i + 1
-        app_fighter[na] = fighter_a[i]
-        app_fighter[nb] = fighter_b[i]
-        app_event[na] = event_name[i]
-        app_event[nb] = event_name[i]
-        app_day[na] = days[i]
-        app_day[nb] = days[i]
-        app_opp[na] = nb
-        app_opp[nb] = na
-        app_weight[na] = app_weight[nb] = bout_weight[i]
-        if bool(is_draw[i]):
-            app_score[na] = app_score[nb] = 0.5
-        elif winner[i] == fighter_a[i]:
-            s_win = winner_score_arr[i] if not np.isnan(winner_score_arr[i]) else 1.0
-            app_score[na] = float(s_win)
-            app_score[nb] = float(1.0 - s_win)
-        elif winner[i] == fighter_b[i]:
-            s_win = winner_score_arr[i] if not np.isnan(winner_score_arr[i]) else 1.0
-            app_score[na] = float(1.0 - s_win)
-            app_score[nb] = float(s_win)
-        else:  # no recorded winner (treated as a draw for rating purposes)
-            app_score[na] = app_score[nb] = 0.5
+    # Appearance 2i is fighter_a of bout i and 2i+1 is fighter_b. A draw wins
+    # over a recorded winner, and a bout whose winner is neither fighter scores
+    # as a draw.
+    app_fighter[0::2], app_fighter[1::2] = fighter_a, fighter_b
+    app_event[0::2] = app_event[1::2] = event_name
+    app_day[0::2] = app_day[1::2] = days
+    app_opp[0::2] = np.arange(1, 2 * n, 2)
+    app_opp[1::2] = np.arange(0, 2 * n, 2)
+    app_weight[0::2] = app_weight[1::2] = bout_weight
+    draw = np.array([bool(x) for x in is_draw], dtype=bool)
+    a_won = ~draw & np.array([w == a for w, a in zip(winner, fighter_a)], dtype=bool)
+    b_won = ~draw & ~a_won & np.array([w == b for w, b in zip(winner, fighter_b)], dtype=bool)
+    s_win = np.where(np.isnan(winner_score_arr), 1.0, winner_score_arr)
+    app_score[0::2] = np.where(a_won, s_win, np.where(b_won, 1.0 - s_win, 0.5))
+    app_score[1::2] = np.where(a_won, 1.0 - s_win, np.where(b_won, s_win, 0.5))
 
-    by_fighter: dict[str, list[int]] = defaultdict(list)
-    for node in range(2 * n):  # appended in chronological bout order -> sorted
-        by_fighter[app_fighter[node]].append(node)
+    # Fighters in order of first appearance, each with its nodes ascending,
+    # which is chronological: the dict order is the Gauss--Seidel update order.
+    codes, names = pd.factorize(app_fighter)
+    order = np.argsort(codes, kind="stable")
+    cuts = np.cumsum(np.bincount(codes, minlength=len(names)))[:-1]
+    by_fighter: dict[str, list[int]] = {
+        name: nodes.tolist() for name, nodes in zip(names, np.split(order, cuts))
+    }
 
     return app_fighter, app_event, app_day, app_score, app_opp, app_weight, by_fighter
 
@@ -320,6 +323,53 @@ def production_score_kwargs(fights: pd.DataFrame | None) -> dict[str, str]:
     return {"winner_score_col": WHR_WINNER_SCORE_COL}
 
 
+def _passes_rust(
+    fighter_node_arrays: dict[object, np.ndarray],
+    fighter_gaps: dict[object, np.ndarray],
+    transition_bins: dict[object, np.ndarray],
+    app_opp: np.ndarray,
+    app_score: np.ndarray,
+    app_weight: np.ndarray,
+    *,
+    w2_per_day: float,
+    inv_prior: float,
+    vg_total: float,
+    step_clip: float,
+    fit_passes: int,
+    age_drift: bool,
+    center_each_pass: bool,
+) -> tuple[np.ndarray, np.ndarray]:
+    """The numpy pass loop of :func:`run_whr`, run by ``whr_rs``; returns ratings and drift per day.
+
+    Fighters keep their dict order: the passes are Gauss--Seidel, so the order
+    fighters are updated in is part of the result.
+    """
+    import whr_rs
+
+    fs = list(fighter_node_arrays)
+    ks = np.array([len(fighter_node_arrays[f]) for f in fs], dtype=np.int64)
+    pt = np.zeros(len(fs) + 1, dtype=np.int64)
+    pt[1:] = np.cumsum(ks)
+    ix = np.concatenate([fighter_node_arrays[f] for f in fs]).astype(np.int64)
+    gp = np.zeros(len(ix), dtype=float)
+    bn = np.full(len(ix), -1, dtype=np.int64)
+    for i, f in enumerate(fs):
+        lo, k = int(pt[i]), int(ks[i])
+        if k > 1:
+            gp[lo:lo + k - 1] = fighter_gaps[f]
+            if age_drift:
+                bn[lo:lo + k - 1] = transition_bins[f]
+    r, dr = whr_rs.fit(
+        app_opp.astype("<i8").tobytes(), app_score.astype("<f8").tobytes(),
+        app_weight.astype("<f8").tobytes(), pt.astype("<i8").tobytes(), ix.astype("<i8").tobytes(),
+        gp.astype("<f8").tobytes(), bn.astype("<i8").tobytes(),
+        float(w2_per_day), float(inv_prior), float(vg_total), float(step_clip), int(fit_passes),
+        bool(age_drift), bool(center_each_pass), len(AGE_BIN_LABELS),
+        25.0 / (_ELO_PER_NAT * _DAYS_PER_YEAR),
+    )
+    return np.frombuffer(r, dtype="<f8").copy(), np.frombuffer(dr, dtype="<f8").copy()
+
+
 def run_whr(
     fights: pd.DataFrame,
     *,
@@ -334,6 +384,7 @@ def run_whr(
     birth_dates: dict[str, object] | pd.Series | None = None,
     age_drift: bool = False,
     center_each_pass: bool = WHR_CENTER_EACH_PASS,
+    backend: str | None = None,
 ) -> pd.DataFrame:
     """Run the WHR smoother over a canonical fight table.
 
@@ -363,7 +414,17 @@ def run_whr(
 
     ``center_each_pass`` re-centres the appearance mean after every pass, as
     every published fit has; ``False`` solves the exact posterior mode.
+
+    ``backend`` (default :data:`WHR_BACKEND`) picks where the passes run:
+    ``"python"`` here, ``"rust"`` in the ``whr_rs`` extension, which repeats
+    the same floating-point operations in the same order, and ``"auto"`` the
+    extension when it is installed.
     """
+    backend = WHR_BACKEND if backend is None else backend
+    if backend == "auto":
+        backend = "rust" if _HAVE_WHR_RS else "python"
+    if backend not in ("python", "rust"):
+        raise ValueError(f"unknown WHR backend: {backend!r}")
     cols = ["fighter", "event_date", "event_name", out_col]
     if fights is None or fights.empty:
         return pd.DataFrame(columns=cols)
@@ -421,97 +482,104 @@ def run_whr(
 
     fit_passes = int(iterations)
     total_passes = fit_passes * (2 if age_drift else 1)
-    for pass_index in range(total_passes):
-        for fighter, nodes in fighter_node_arrays.items():
-            k = len(nodes)
-            if k == 0:
-                continue
-            r = ratings[nodes]
-            opp = ratings[app_opp[nodes]]
-            s = app_score[nodes]
-            w = app_weight[nodes]  # per-fight likelihood sleeve weights
-
-            # Bradley-Terry likelihood — scaled by sleeve weight so each fight
-            # contributes w times as much evidence to the global estimation.
-            p = 1.0 / (1.0 + np.exp(-(r - opp)))
-            g = w * (s - p)
-            h_diag = w * (-p * (1.0 - p))
-
-            # Priors carry a fixed mass per fighter, spread over the career, so
-            # they do not scale with career length the way the likelihood does.
-            anchor = inv_prior / k
-            g -= r * anchor
-            h_diag -= anchor
-
-            # Virtual games against an average opponent (rating 0): half won,
-            # half lost. Unbiased at r = 0, and the only term that gives an
-            # undefeated record a finite maximum that grows with the evidence.
-            if vg_total > 0.0:
-                vg = vg_total / k
-                p0 = 1.0 / (1.0 + np.exp(-r))
-                g += vg * (0.5 - p0)
-                h_diag -= vg * p0 * (1.0 - p0)
-
-            # Wiener-process prior between consecutive appearances — unweighted.
-            if k > 1:
-                gaps = fighter_gaps[fighter]
-                inv_v = 1.0 / (w2_per_day * gaps)
-                residual = r[1:] - r[:-1]
-                if age_drift:
-                    bins = transition_bins[fighter]
-                    known = bins >= 0
-                    expected = np.zeros_like(gaps)
-                    expected[known] = drift_per_day[bins[known]] * gaps[known]
-                    residual = residual - expected
-                g[:-1] += residual * inv_v
-                g[1:] -= residual * inv_v
-                h_diag[:-1] -= inv_v
-                h_diag[1:] -= inv_v
-                off = inv_v  # H[i][i+1]; for the (-H) system this is -inv_v
-                a_off = -off
-            else:
-                a_off = np.zeros(0)
-
-            # Newton step: solve (-H) step = g  (-H is positive-definite).
-            a_diag = -h_diag
-            step = _thomas(a_diag, a_off, g)
-            np.clip(step, -step_clip, step_clip, out=step)
-            ratings[nodes] = r + step
-
-        if center_each_pass:
-            ratings -= ratings.mean()
-
-        if age_drift and pass_index == fit_passes - 1:
-            change_sum = np.zeros(len(AGE_BIN_LABELS), dtype=float)
-            day_sum = np.zeros(len(AGE_BIN_LABELS), dtype=float)
+    if backend == "rust":
+        ratings, drift_per_day = _passes_rust(
+            fighter_node_arrays, fighter_gaps, transition_bins, app_opp, app_score, app_weight,
+            w2_per_day=w2_per_day, inv_prior=inv_prior, vg_total=vg_total, step_clip=step_clip,
+            fit_passes=fit_passes, age_drift=age_drift, center_each_pass=center_each_pass,
+        )
+    else:
+        for pass_index in range(total_passes):
             for fighter, nodes in fighter_node_arrays.items():
-                if len(nodes) < 2:
+                k = len(nodes)
+                if k == 0:
                     continue
-                bins = transition_bins[fighter]
-                gaps = fighter_gaps[fighter]
-                changes = ratings[nodes][1:] - ratings[nodes][:-1]
-                for bucket in range(len(AGE_BIN_LABELS)):
-                    take = bins == bucket
-                    if take.any():
-                        change_sum[bucket] += float(changes[take].sum())
-                        day_sum[bucket] += float(gaps[take].sum())
-            raw = np.divide(
-                change_sum,
-                day_sum,
-                out=np.zeros_like(change_sum),
-                where=day_sum > 0,
-            )
-            # The common offset is confounded with scale and roster churn. Age
-            # is identified by the difference from the youngest observed bin.
-            baseline = raw[0] if day_sum[0] > 0 else 0.0
-            target = raw - baseline
-            target[day_sum == 0] = 0.0
-            limit = 25.0 / (_ELO_PER_NAT * _DAYS_PER_YEAR)
-            drift_per_day = np.clip(target, -limit, limit)
-            # Refit from the neutral initialization under the now-estimated
-            # prior mean. Re-estimating from the already drifted trajectory
-            # creates positive feedback and is not a valid empirical prior.
-            ratings.fill(0.0)
+                r = ratings[nodes]
+                opp = ratings[app_opp[nodes]]
+                s = app_score[nodes]
+                w = app_weight[nodes]  # per-fight likelihood sleeve weights
+
+                # Bradley-Terry likelihood — scaled by sleeve weight so each fight
+                # contributes w times as much evidence to the global estimation.
+                p = 1.0 / (1.0 + np.exp(-(r - opp)))
+                g = w * (s - p)
+                h_diag = w * (-p * (1.0 - p))
+
+                # Priors carry a fixed mass per fighter, spread over the career, so
+                # they do not scale with career length the way the likelihood does.
+                anchor = inv_prior / k
+                g -= r * anchor
+                h_diag -= anchor
+
+                # Virtual games against an average opponent (rating 0): half won,
+                # half lost. Unbiased at r = 0, and the only term that gives an
+                # undefeated record a finite maximum that grows with the evidence.
+                if vg_total > 0.0:
+                    vg = vg_total / k
+                    p0 = 1.0 / (1.0 + np.exp(-r))
+                    g += vg * (0.5 - p0)
+                    h_diag -= vg * p0 * (1.0 - p0)
+
+                # Wiener-process prior between consecutive appearances — unweighted.
+                if k > 1:
+                    gaps = fighter_gaps[fighter]
+                    inv_v = 1.0 / (w2_per_day * gaps)
+                    residual = r[1:] - r[:-1]
+                    if age_drift:
+                        bins = transition_bins[fighter]
+                        known = bins >= 0
+                        expected = np.zeros_like(gaps)
+                        expected[known] = drift_per_day[bins[known]] * gaps[known]
+                        residual = residual - expected
+                    g[:-1] += residual * inv_v
+                    g[1:] -= residual * inv_v
+                    h_diag[:-1] -= inv_v
+                    h_diag[1:] -= inv_v
+                    off = inv_v  # H[i][i+1]; for the (-H) system this is -inv_v
+                    a_off = -off
+                else:
+                    a_off = np.zeros(0)
+
+                # Newton step: solve (-H) step = g  (-H is positive-definite).
+                a_diag = -h_diag
+                step = _thomas(a_diag, a_off, g)
+                np.clip(step, -step_clip, step_clip, out=step)
+                ratings[nodes] = r + step
+
+            if center_each_pass:
+                ratings -= ratings.mean()
+
+            if age_drift and pass_index == fit_passes - 1:
+                change_sum = np.zeros(len(AGE_BIN_LABELS), dtype=float)
+                day_sum = np.zeros(len(AGE_BIN_LABELS), dtype=float)
+                for fighter, nodes in fighter_node_arrays.items():
+                    if len(nodes) < 2:
+                        continue
+                    bins = transition_bins[fighter]
+                    gaps = fighter_gaps[fighter]
+                    changes = ratings[nodes][1:] - ratings[nodes][:-1]
+                    for bucket in range(len(AGE_BIN_LABELS)):
+                        take = bins == bucket
+                        if take.any():
+                            change_sum[bucket] += float(changes[take].sum())
+                            day_sum[bucket] += float(gaps[take].sum())
+                raw = np.divide(
+                    change_sum,
+                    day_sum,
+                    out=np.zeros_like(change_sum),
+                    where=day_sum > 0,
+                )
+                # The common offset is confounded with scale and roster churn. Age
+                # is identified by the difference from the youngest observed bin.
+                baseline = raw[0] if day_sum[0] > 0 else 0.0
+                target = raw - baseline
+                target[day_sum == 0] = 0.0
+                limit = 25.0 / (_ELO_PER_NAT * _DAYS_PER_YEAR)
+                drift_per_day = np.clip(target, -limit, limit)
+                # Refit from the neutral initialization under the now-estimated
+                # prior mean. Re-estimating from the already drifted trajectory
+                # creates positive feedback and is not a valid empirical prior.
+                ratings.fill(0.0)
 
     mu_whr = _ELO_ANCHOR + ratings * _ELO_PER_NAT
     data = {

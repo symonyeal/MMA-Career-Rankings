@@ -78,6 +78,11 @@ def pro_rata(rows: pd.DataFrame, cap: float) -> pd.Series:
     return rows["weight"] * np.minimum(1.0, cap / W)
 
 
+def _lookup(s: pd.Series):
+    """``s.get`` as a dict lookup: a ``Series.get`` per bout costs ~25 microseconds, a dict ~0.1."""
+    return s.get if not s.index.is_unique or s.index.hasnans else s.to_dict().get
+
+
 def class_ledger(
     current: pd.DataFrame,
     appearances: pd.DataFrame,
@@ -92,19 +97,23 @@ def class_ledger(
     The inputs are those of :func:`ratings.legacy_resume.public_legacy_score_rows`, so the
     per-fighter sums over division reproduce its title quality, career skill mass and resume quality.
     """
-    gender = current.set_index("fighter")["gender"]
-    ufc = set(source_fights.loc[is_ufc_bout(source_fights), "fight_url"])
+    gender = _lookup(current.set_index("fighter")["gender"])
+    # .tolist(), not iteration: Arrow-backed string columns iterate ~10x slower
+    ufc = set(source_fights.loc[is_ufc_bout(source_fights), "fight_url"].tolist())
     a = appearances[["fight_url", "fighter", "event_date", "division"]].copy()
-    a["division"] = [weight_class(d, gender.get(f)) if u in ufc else None
-                     for d, f, u in zip(a["division"], a["fighter"], a["fight_url"])]
+    urls, fighters = a["fight_url"].tolist(), a["fighter"].tolist()
+    a["division"] = classes = [weight_class(d, gender(f)) if u in ufc else None
+                               for d, f, u in zip(a["division"].tolist(), fighters, urls)]
     a["year"] = pd.to_datetime(a["event_date"]).dt.year
-    bout = a.drop_duplicates(["fight_url", "fighter"]).set_index(["fight_url", "fighter"])["division"]
-    billed = source_fights.drop_duplicates("fight_url").set_index("fight_url")["weight_class"]
+    bout: dict[tuple, str | None] = {}  # first appearance of each (fight_url, fighter)
+    for key, c in zip(zip(urls, fighters), classes):
+        bout.setdefault(key, c)
+    billed = _lookup(source_fights.drop_duplicates("fight_url").set_index("fight_url")["weight_class"])
 
     def of(x):  # a UFC bout's class: the appearance's, else the one the bout was billed at
-        d = bout.reindex(pd.MultiIndex.from_arrays([x["fight_url"], x["fighter"]])).to_numpy()
-        return [None if u not in ufc else c if isinstance(c, str) else weight_class(billed.get(u), gender.get(f))
-                for c, u, f in zip(d, x["fight_url"], x["fighter"])]
+        us, fs = x["fight_url"].tolist(), x["fighter"].tolist()
+        return [None if u not in ufc else c if isinstance(c := bout.get((u, f)), str)
+                else weight_class(billed(u), gender(f)) for u, f in zip(us, fs)]
 
     labels = _division_labels(current)
     T = title_quality_rows(source_fights, history, reference=reference, divisions=labels,

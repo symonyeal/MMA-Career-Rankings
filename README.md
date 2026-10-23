@@ -405,6 +405,7 @@ conflict. See the [decision register](docs/DECISIONS.md).
 | --- | --- |
 | [`RANKINGS.md`](RANKINGS.md) | Full rankings |
 | `ratings/` / `loaders/` | Model / data assembly |
+| `rust/whr_rs/` | The rating solver's inner loop in Rust; gives the same ratings as the Python version, bit for bit |
 | `data/snapshots/<date>/` | The release: inputs, fitted ratings and boards, all versioned |
 | [`docs/`](docs/) | Method and decisions |
 | [`docs/RELEASE_CHECK.md`](docs/RELEASE_CHECK.md) | Source freshness, fresh-checkout reproduction and the limits of current predictive evidence |
@@ -415,10 +416,17 @@ Use the system Python:
 
 ```text
 python -m pip install -r requirements.txt
+python -m pip install maturin ./rust/whr_rs
 python -m pytest -q
 python check_release.py
 python build_boards.py data/snapshots/2026-10-14 --scope majors,pre_unified --write-readme
 ```
+
+The second line needs a Rust toolchain ([rustup](https://rustup.rs)). It is optional: without it
+the rating solver runs in Python. Tests require the two backends to give the same ratings bit for bit.
+
+Refresh the narrative figures after rebuilding a release:
+`python analysis/readme_figures.py --write-readme`. The tests check these figures against the data.
 
 The site draws the notebook's analyses from one snapshot. Its data file, `site/data.js`, is
 generated; rebuild it after the boards change:

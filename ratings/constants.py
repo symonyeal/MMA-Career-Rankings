@@ -448,10 +448,20 @@ WHR_STEP_CLIP: float = 1.5
 #   coordinate pass. Every published board, and every constant tuned above
 #   and in the score layer, was fitted with this solver. False solves the
 #   stated posterior exactly (the 2026-10-09 repair): unconnected fight graphs
-#   stop moving each other, but the boards move a long way and the change has
-#   not passed a held-out test on production inputs. It stays off until it
-#   does; see "The WHR solver" in docs/DECISIONS.md.
+#   stop moving each other, but the boards move a long way, and on 2026-10-23
+#   it lost the held-out test on production inputs (2024-25 UFC cards: log
+#   loss +0.0093, 95% interval +0.0017 to +0.0172). It stays True; see "The
+#   WHR solver" in docs/DECISIONS.md.
 WHR_CENTER_EACH_PASS: bool = True
+
+# * WHR_BACKEND — "python" runs the coordinate passes in numpy; "rust" runs the
+#   same passes in the compiled `whr_rs` extension (rust/whr_rs), written in
+#   numpy's floating-point order; "auto" takes rust when it is installed.
+#   tests/test_whr_backend.py holds the two to bit-identical ratings, and on
+#   2026-10-23 the production fit of the 2026-10-14 release matched exactly
+#   (163,232 appearances and the age-drift profile; 3.6 s against 161.7 s).
+#   The numpy solver stays the reference.
+WHR_BACKEND: str = "auto"
 
 # * WHR_VIRTUAL_GAMES — prior evidence, in bouts, that every fighter carries
 #   against an average opponent: half a win and half a loss per virtual game.

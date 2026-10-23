@@ -238,41 +238,39 @@ def _rank_order(df: pd.DataFrame, secondary: str) -> pd.DataFrame:
 
 def _best_window(
     fighter: object,
-    group: pd.DataFrame,
+    dates: np.ndarray,
+    mu: np.ndarray,
     *,
-    window_days: int,
+    span: int,
     min_fights: int,
 ) -> dict[str, object] | None:
-    g = group.sort_values(["event_date", "event_name"], kind="mergesort").reset_index(drop=True)
-    dates = g["event_date"].to_numpy(dtype="datetime64[ns]")
-    mu = g["mu"].to_numpy(dtype="float64")
-    cs = np.concatenate(([0.0], np.cumsum(mu, dtype="float64")))
-    span = np.timedelta64(window_days, "D")
+    """``dates`` (int64 ns) and ``mu`` of one fighter, already in (date, event name) order; ``span`` in ns."""
+    # Plain lists: the loop is scalar, and Python floats are the same doubles as numpy's.
+    # np.cumsum is sequential (only np.sum is pairwise), so the running sums keep the old order.
+    d = dates.tolist()
+    cs = np.concatenate(([0.0], np.cumsum(mu, dtype="float64"))).tolist()
+    m = len(d)
 
-    best: tuple[float, int, np.datetime64, np.datetime64, int, int] | None = None
+    best: tuple[float, int, int, int, int, int] | None = None
     i = 0
-    for j in range(len(g)):
+    for j in range(m):
         # A calendar window cannot stop between two bouts on the same date.
         # Evaluating a partial tournament lets the row order decide whether a
         # later same-day loss belongs to the peak. Start boundaries already move
         # by date; make the end boundary date-atomic as well.
-        if j + 1 < len(g) and dates[j + 1] == dates[j]:
+        if j + 1 < m and d[j + 1] == d[j]:
             continue
-        floor = dates[j] - span
-        while dates[i] < floor:
+        floor = d[j] - span
+        while d[i] < floor:
             i += 1
         n = j - i + 1
         if n < min_fights:
             continue
-        mean = float((cs[j + 1] - cs[i]) / n)
-        candidate = (mean, n, dates[i], dates[j], i, j)
-        if best is None:
-            best = candidate
-            continue
-        if mean > best[0] or mean == best[0] and (
-            n > best[1] or (n == best[1] and dates[i] < best[2])
+        mean = (cs[j + 1] - cs[i]) / n
+        if best is None or mean > best[0] or mean == best[0] and (
+            n > best[1] or (n == best[1] and d[i] < best[2])
         ):
-            best = candidate
+            best = (mean, n, d[i], d[j], i, j)
 
     if best is None:
         return None
@@ -285,8 +283,8 @@ def _best_window(
         "fighter": fighter,
         "raw_mean": raw_mean,
         "window_fights": int(n),
-        "window_start": pd.Timestamp(start),
-        "window_end": pd.Timestamp(end),
+        "window_start": pd.Timestamp(np.datetime64(start, "ns")),
+        "window_end": pd.Timestamp(np.datetime64(end, "ns")),
         "within_var": within_var,
         "sampling_var": sampling_var,
     }
@@ -339,14 +337,29 @@ def symon_period_score(
     if h.empty:
         return _empty(PERIOD_COLUMNS)
 
+    # One pass instead of a pandas sort per fighter. Fighter codes are numbered by first appearance, which is the
+    # row order of groupby(sort=False); lexsort is stable, so within a fighter the order is (date, event name,
+    # original row) exactly as the per-group mergesort gave.
+    codes, uniques = pd.factorize(h["fighter"])
+    count = np.bincount(codes)
+    # A fighter with fewer rows than min_fights can never fill a window.
+    keep = count[codes] >= int(min_fights)
+    if not keep.any():
+        return _empty(PERIOD_COLUMNS)
+    codes = codes[keep]
+    ns = h["event_date"].to_numpy(dtype="datetime64[ns]")[keep].astype("int64")
+    name = pd.factorize(h["event_name"].to_numpy()[keep], sort=True)[0]
+    mu = h["mu"].to_numpy(dtype="float64")[keep]
+    o = np.lexsort((name, ns, codes))
+    codes, ns, mu = codes[o], ns[o], mu[o]
+    cut = np.flatnonzero(np.diff(codes)) + 1
+    lo = np.concatenate(([0], cut)).tolist()
+    hi = np.concatenate((cut, [len(codes)])).tolist()
+    span = int(np.timedelta64(int(window_days), "D").astype("timedelta64[ns]").astype("int64"))
+
     rows = []
-    for fighter, group in h.groupby("fighter", sort=False):
-        row = _best_window(
-            fighter,
-            group,
-            window_days=int(window_days),
-            min_fights=int(min_fights),
-        )
+    for a, b in zip(lo, hi):
+        row = _best_window(uniques[codes[a]], ns[a:b], mu[a:b], span=span, min_fights=int(min_fights))
         if row is not None:
             rows.append(row)
     if not rows:

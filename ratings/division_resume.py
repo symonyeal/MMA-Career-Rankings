@@ -340,37 +340,53 @@ def primary_division_rows(division_resume: pd.DataFrame) -> pd.DataFrame:
     # without a title win never win the "most recent title win" tie-break.
     d["_last_title_win"] = last_title_win.fillna(pd.Timestamp.min)
 
-    rows: list[dict] = []
-    for fighter, group in d.groupby("fighter", sort=False):
-        candidates = group[group["division"].isin(REAL_DIVISIONS)]
-        if candidates.empty:
-            candidates = group  # catchweight-only resume: fall back to all rows
+    # One stable lexsort per pick over the whole frame instead of a pandas sort per fighter. Stability is what made
+    # ``sort_values`` break ties by input order; NaN scores sort last, as ``sort_values`` places them.
+    code, fighters = pd.factorize(d["fighter"])  # first-appearance order, as ``groupby(sort=False)``; NaN is -1
+    live = code >= 0
+    real = d["division"].isin(REAL_DIVISIONS).to_numpy()
+    has_real = np.zeros(len(fighters), dtype=bool)
+    has_real[code[live & real]] = True
+    cand = live & (real | ~has_real[code])  # catchweight-only resume: fall back to all rows
+    eff = d["division_effective_fights"].to_numpy(dtype=float)
+    rec = d["division_recency_weight"].to_numpy(dtype=float)
+    score = d["division_score_whr"].to_numpy(dtype=float)
+    last_win = pd.factorize(d["_last_title_win"], sort=True)[0]
 
-        # Career: simple majority of effective fights, recency as tiebreak. One
-        # cameo up or down a class never displaces a long-tenured division.
-        career_pick = candidates.sort_values(
-            ["division_effective_fights", "division_recency_weight", "division_score_whr"],
-            ascending=[False, False, False],
-        ).iloc[0]
+    def first_per_fighter(mask: np.ndarray, *desc: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """Row of each fighter that sorts first among ``mask`` rows with every key in ``desc`` descending."""
+        rows = np.flatnonzero(mask)
+        if not rows.size:
+            return rows, rows
+        keys = [code[rows]]
+        for x in desc:
+            x = x[rows]
+            nan = np.isnan(x) if x.dtype.kind == "f" else np.zeros(len(rows), dtype=bool)
+            keys += [nan, -np.where(nan, 0, x)]
+        order = rows[np.lexsort(keys[::-1])]
+        c = code[order]
+        head = np.flatnonzero(np.r_[True, c[1:] != c[:-1]])
+        return c[head], order[head]
 
-        # Current: most recent UFC title-fight win (the permanent-move signal).
-        # If the fighter never won a UFC title, there is no permanent move and
-        # current collapses to career — the user's principle is that a couple of
-        # bouts up or down a class never relocates a non-champion.
-        champion = candidates[candidates["division_title_wins"] > 0]
-        if not champion.empty:
-            current_pick = champion.sort_values(
-                ["_last_title_win", "division_effective_fights", "division_score_whr"],
-                ascending=[False, False, False],
-            ).iloc[0]
-        else:
-            current_pick = career_pick
+    f_career, r_career = first_per_fighter(cand, eff, rec, score)
+    career = np.full(len(fighters), -1)
+    career[f_career] = r_career
+    current = career.copy()
+    f_champ, r_champ = first_per_fighter(cand & (d["division_title_wins"].to_numpy() > 0), last_win, eff, score)
+    current[f_champ] = r_champ
 
-        rows.append({
-            "fighter": fighter,
-            "career_division": career_pick["division"],
-            "career_division_reliability": float(career_pick["division_score_reliability"]),
-            "current_division": current_pick["division"],
-            "current_division_reliability": float(current_pick["division_score_reliability"]),
-        })
+    div = d["division"].to_numpy(dtype=object)
+    rel = d["division_score_reliability"].to_numpy(dtype=float)
+    rows = [
+        {
+            "fighter": f,
+            "career_division": cd,
+            "career_division_reliability": cr,
+            "current_division": ud,
+            "current_division_reliability": ur,
+        }
+        for f, cd, cr, ud, ur in zip(
+            fighters.tolist(), div[career].tolist(), rel[career].tolist(), div[current].tolist(), rel[current].tolist()
+        )
+    ]
     return pd.DataFrame(rows, columns=columns)

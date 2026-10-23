@@ -30,7 +30,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from project_helpers import normalize_name_key
+from project_helpers import compact_name_keys, normalize_name_key
 
 # sid : Sherdog fighter id
 # nm  : source display name
@@ -224,14 +224,15 @@ def align_identities(x: pd.DataFrame, y: pd.DataFrame) -> pd.DataFrame:
     def anchors(frame: pd.DataFrame) -> dict[tuple, list[tuple]]:
         dates = pd.to_datetime(frame["event_date"], errors="coerce")
         found: dict[tuple, list[tuple]] = {}
-        for i in frame.index:
-            if pd.isna(dates.loc[i]):
+        # Row-wise zip, not .loc/.at per cell: same values and insertion order, at a fraction of the cost.
+        ka, kb = compact_name_keys(frame["fighter_a"]), compact_name_keys(frame["fighter_b"])
+        for i, d, a, b in zip(frame.index, dates, ka, kb):
+            if pd.isna(d):
                 continue
-            day = dates.loc[i].normalize()
-            for side, other in (("a", "b"), ("b", "a")):
-                key = normalize_name_key(frame.at[i, f"fighter_{other}"], compact=True)
+            day = d.normalize()
+            for col, key in (("fighter_a", b), ("fighter_b", a)):
                 if key:
-                    found.setdefault((day, key), []).append((i, f"fighter_{side}"))
+                    found.setdefault((day, key), []).append((i, col))
         return found
 
     ix = anchors(out)

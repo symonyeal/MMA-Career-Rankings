@@ -442,28 +442,32 @@ def whr_predictions(
             .set_index("fighter")
         )
         last = last_rows["mu_whr"]
+        ev_bouts = decided_all[
+            (decided_all["event_date"] == cutoff) & (decided_all["event_name"] == ev["event_name"])
+        ]
         if variant.project_age_inactivity:
             if not variant.use_age_drift:
                 raise ValueError("age-inactivity projection requires use_age_drift=True")
             profile = hist.attrs.get("age_drift_elo_per_year")
             if profile is None:
                 raise ValueError("age-aware WHR history is missing its learned drift profile")
+            # Only the card's fighters are forecast. Projecting all ~34,000 per
+            # fold through iterrows cost more than the refit itself.
+            card = pd.unique(np.concatenate([ev_bouts["fighter_a"].to_numpy(), ev_bouts["fighter_b"].to_numpy()]))
             last = pd.Series(
                 {
                     fighter: project_age_rating(
-                        float(row["mu_whr"]),
-                        last_date=row["event_date"],
+                        float(last_rows.at[fighter, "mu_whr"]),
+                        last_date=last_rows.at[fighter, "event_date"],
                         target_date=cutoff,
                         birth_date=inputs.birth_dates.get(str(fighter)),
                         drift_elo_per_year=profile,
                     )
-                    for fighter, row in last_rows.iterrows()
-                }
+                    for fighter in card if fighter in last_rows.index
+                },
+                dtype=float,
             )
         prior_counts = appearances[appearances["event_date"] < cutoff].groupby("fighter").size()
-        ev_bouts = decided_all[
-            (decided_all["event_date"] == cutoff) & (decided_all["event_name"] == ev["event_name"])
-        ]
         for _, b in ev_bouts.iterrows():
             a, c = b["fighter_a"], b["fighter_b"]
             mu_a = float(last.get(a, 1500.0))
