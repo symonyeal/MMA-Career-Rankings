@@ -8,7 +8,8 @@ on:
 
 jobs:
   browser:
-    runs-on: ubuntu-latest
+    # Playwright 1.59 has native dependency lists through Ubuntu 24.04.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
