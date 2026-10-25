@@ -1,0 +1,40 @@
+ATTRIBUTION
+-----------
+This folder is the published 2026-10-24 release: every input the rating fit
+reads, the fitted ratings, and the boards built from them. It is versioned so
+that any checkout can rebuild the published boards, re-score them, or refit
+them without the local page caches the crawls left behind. Most files are
+output of this repository's own code. The rest are reshaped from third-party
+sources, and each source's terms are recorded where its raw data lives:
+
+  canonical_*.parquet, canonical_*.schema.json, _excluded_bouts.csv
+      UFCStats results and round statistics, from Greco's scrape_ufc_stats CSVs
+      (data/raw/2026-10-24, not versioned; Greco commit
+      3e2f3db5751c14b5d4ea52e41921982ca23b9b23, dated 2026-10-18),
+      extended with all 14 UFC 333 bouts and round statistics fetched directly
+      from UFCStats on 2026-10-24. See source.json for URLs and CSV hashes.
+      No licence was identified for those CSVs; the combined fight table
+      already published here carries the same bouts.
+
+  majors_fights.parquet, sherdog_birth_dates.parquet, career_coverage.parquet
+      Sherdog Fight Finder. See data/external/sherdog/ATTRIBUTION.txt and
+      LICENSE.txt: no redistribution licence was identified, and publishing the
+      compilation is an accepted rights risk (docs/DECISIONS.md, item 12).
+
+  fightmatrix_*.parquet, fightmatrix_*.json
+      Fight Matrix. See data/external/fightmatrix/ATTRIBUTION.txt and
+      LICENSE.txt; same position as Sherdog (item 12).
+
+  datalab_*.parquet, datalab_summary.json
+      UFC-DataLab, MIT licence, data/external/api_sources/UFC-DataLab/LICENSE.
+
+  odds_lines.parquet
+      Ultimate UFC Dataset by Matt Dabbert, Apache-2.0,
+      data/external/api_sources/ultimate_ufc_dataset/.
+
+  pre_unified_fights.parquet
+      UFCStats excluded bouts plus data/external/ufc/ufc1_fights.csv; see
+      data/external/ufc/ATTRIBUTION.txt.
+
+Attribution does not establish permission to redistribute a source that has
+not granted one.

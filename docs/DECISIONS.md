@@ -271,7 +271,7 @@ refused.
 The rating charges age but cannot distinguish active time from idle time. Stipe
 Miocic was 35 and active when Daniel Cormier fought him, then 42 and 44 months
 out when Jon Jones did; the rating alone separates the Stipe Cormier beat from
-the one Jones beat by 34 points, while the Jones win is priced 232 points below
+the one Jones beat by 33 points, while the Jones win is priced 232 points below
 its unadjusted value.
 
 `ratings/layoff.py` now discounts the opponent's price by how far past a normal
@@ -697,9 +697,9 @@ first line below and the boards publish the old scores while the audit, which
 does recompute, publishes the new ones, and the two silently disagree:
 
 ```text
-python -m ratings.rate_snapshot --snapshot-dir data/snapshots/2026-10-14 --scope majors,pre_unified --career-only
-python build_boards.py data/snapshots/2026-10-14 --scope majors,pre_unified --write-readme
-python build_top100_audit.py data/snapshots/2026-10-14 --scope majors,pre_unified
+python -m ratings.rate_snapshot --snapshot-dir data/snapshots/2026-10-24 --scope majors,pre_unified --career-only
+python build_boards.py data/snapshots/2026-10-24 --scope majors,pre_unified --write-readme
+python build_top100_audit.py data/snapshots/2026-10-24 --scope majors,pre_unified
 python -m pytest -q
 python -m ruff check .
 ```
@@ -717,8 +717,8 @@ the new pipeline's total runtime without Rust has not been measured:
 
 ```text
 python build_sherdog_careers.py --report-only
-python -c "from loaders.majors_scope import stage_majors_scope; stage_majors_scope('data/snapshots/2026-10-14')"
-python -m ratings.rate_snapshot --snapshot-dir data/snapshots/2026-10-14 --scope majors,pre_unified
+python -c "from loaders.majors_scope import stage_majors_scope; stage_majors_scope('data/snapshots/2026-10-24')"
+python -m ratings.rate_snapshot --snapshot-dir data/snapshots/2026-10-24 --scope majors,pre_unified
 ```
 
 then the board block above. Never hand-edit a generated table. After any change,

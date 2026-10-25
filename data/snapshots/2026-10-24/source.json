@@ -1,0 +1,35 @@
+{
+  "repository": "https://github.com/Greco1899/scrape_ufc_stats",
+  "commit": "3e2f3db5751c14b5d4ea52e41921982ca23b9b23",
+  "baseline_files": {
+    "ufc_event_details.csv": "beb80dd902d44446399bf1753c650beed2cbc0af2cb791848796a238313a247e",
+    "ufc_fight_details.csv": "59cf78b04a92c99b4888d57e72f9339307ae4e18668ce6ee171dc18c47bb48b5",
+    "ufc_fight_results.csv": "da1d46420a13419f1afa28653e9b08c7aa1173005138e5f87fe7dea904cd98e2",
+    "ufc_fight_stats.csv": "bdbb8cd050ccf0a3ee329bf16d361e87997853ab21703682f720fe7aa013767b",
+    "ufc_fighter_details.csv": "a1f6e4326217fab9734ac42f1958cd07b0b2b98f3caa5da08497ec7648eb6f70",
+    "ufc_fighter_tott.csv": "3296e67941f984cd5484488226e5a5d94de3249c63fe289fbc66d98546311ea1"
+  },
+  "files": {
+    "ufc_event_details.csv": "dd09acf1d0e52cc86fa29dde00b4bf4664339939fe957ba87af4e21f4996b851",
+    "ufc_fighter_details.csv": "c955aabd55ec4b359a887dad33b284767a77586e107919f969794cd6742a1efe",
+    "ufc_fighter_tott.csv": "1abed85e2a9113f0332dc09a04cf1dda9b2e4fb1e721f2f322ca4aefa716ab87",
+    "ufc_fight_details.csv": "9da36108b50c96e82196762242412fd53669aba48ad6368665ef28ad54858b25",
+    "ufc_fight_results.csv": "df4ea2e85143c66ebb610c5347aace2d160cc028b51382ff63bd4a6f531b4a5e",
+    "ufc_fight_stats.csv": "f0e6f83f34e12543ec762bfefd928418cde25216bf38d19abb636679260fa69f"
+  },
+  "live_ufcstats": {
+    "retrieved_on": "2026-10-24",
+    "loader": "loaders/ufcstats_scrape.py",
+    "events": [
+      {
+        "EVENT": "UFC 333: Volkanovski vs. Evloev",
+        "URL": "http://ufcstats.com/event-details/cc18abc046b382c9",
+        "DATE": "October 24, 2026",
+        "LOCATION": "Abu Dhabi, Abu Dhabi, United Arab Emirates"
+      }
+    ],
+    "bouts": 14,
+    "round_stat_rows": 62
+  },
+  "coverage": "UFC updated through 2026-10-24; Sherdog and Fight Matrix use existing cached inputs."
+}

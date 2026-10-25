@@ -3,7 +3,7 @@
 The rating charges elapsed time at an age rate and nothing else, so ageing while
 competing and ageing while idle cost the same: the published trajectory
 separates the Stipe Miocic that Daniel Cormier fought (35, active) from the one
-Jon Jones fought (42, 44 months out) by 34 rating points.
+Jon Jones fought (42, 44 months out) by 33 rating points.
 
 This corrects the price of the win, never the opponent's rating. Putting the
 charge in the WHR transition prior was measured and refused -- see
