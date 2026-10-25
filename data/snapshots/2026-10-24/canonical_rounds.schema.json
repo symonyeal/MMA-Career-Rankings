@@ -1,0 +1,22 @@
+{
+  "primary_key": [
+    "fight_url",
+    "round_num",
+    "fighter"
+  ],
+  "source": "Greco/ufc_fight_stats.csv",
+  "row_grain": "one row per (fight, round, fighter)",
+  "columns": {
+    "fight_url": "FK to canonical_fights.fight_url",
+    "round_num": "int extracted from 'Round N'",
+    "fighter": "fighter name (matches canonical_fighters.fighter)",
+    "kd": "knockdowns landed",
+    "sig_str_landed/_attempted/_pct": "Greco SIG.STR. parsed",
+    "total_str_landed/_attempted": "Greco TOTAL STR. parsed",
+    "td_landed/_attempted/_pct": "Greco TD parsed",
+    "sub_att": "submission attempts",
+    "rev": "reversals",
+    "ctrl_seconds": "Greco CTRL mm:ss to seconds",
+    "head_/body_/leg_/distance_/clinch_/ground_*": "by-target sig-strike pairs"
+  }
+}

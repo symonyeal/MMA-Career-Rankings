@@ -1425,3 +1425,21 @@ Implemented all 12 ideas in `_archive/20260901-lean-pass/analysis/CHART_PLAN.md`
 - Removed the scale-invalid `vs Wins` leaderboard delta, moved model tuning
   below the audit trail, and made its scratch snapshot project-local under
   ignored `data/model_tuning/`.
+
+## 2026-10-24 - Refresh run
+
+- Added 27 UFC bouts: 13 from Buckley vs. Malott (October 17) and all 14 from UFC 333: Volkanovski vs. Evloev (October 24), including both title fights and round statistics. All 8,592 prior canonical UFC bouts are unchanged.
+- Greco commit `3e2f3db5751c14b5d4ea52e41921982ca23b9b23` supplies data through October 17; the existing live UFCStats scraper supplies UFC 333. URLs and CSV hashes are in `data/snapshots/2026-10-24/source.json`.
+- Sherdog and Fight Matrix use the existing caches; this refresh does not claim current non-UFC event coverage. The versioned Sherdog birth-date extract now includes additional cached profiles, bringing dates used in the fit from 6,104 to 6,205.
+- Published model settings are unchanged. Rebuilt All-time, Prime, Current, women's and weight-class boards, the notebook, and the site.
+- Canonical snapshot rebuilt from Greco CSVs: events=764, fights=8619, rounds=41162, excluded=343.
+- Combined model fight table written for scope majors,pre_unified: rows=82262, model_bouts=81643.
+- Ratings and dominance produced: fighters_rated=34150, fighter_event_rows=163286, events_processed=6202.
+- Career coverage: 1,827/1,840 eligible fighters (99.3%) have whole-career rows merged; median recorded pre-UFC bouts 11 merged vs 0 unmerged. Run build_sherdog_careers.py if the share is low.
+- Streams: canonical binary Glicko-2 comparison + method-aware WHR smoother; binary WHR remains a research comparison.
+- Public scores: Public Legacy Score (the core board) and fixed 10-year Prime. Career Skill Mass is the skill diagnostic underneath the board; FightMatrix and the public anchor lists are sanity checks for top-100 outliers, never tuning targets.
+- Audit layers (integrity, dominance, odds, opponent context) do not enter the rating likelihood.
+- Top 10 by Public Legacy Score: Jon Jones 1813.7; Georges St-Pierre 1563.5; Islam Makhachev 1559.8; Alexander Volkanovski 1406.2; Anderson Silva 1384.4; Jose Aldo 1364.0; Daniel Cormier 1348.0; Demetrious Johnson 1328.9; Stipe Miocic 1214.4; Dominick Cruz 1208.4
+- Movers vs 2026-10-14 by mu_canonical:
+  - Up: Steven Koslow +341.4; Kody Steele +204.8; Nick Galanti +84.0; Colby Thicknesse +54.7; Abdul Rakhman Yakhyaev +49.7; Lone'er Kavanagh +48.5; Chelsea Chandler +42.8; Jasmine Jasudavicius +39.2; SuYoung You +39.0; Marc-Andre Barriault +37.5
+  - Down: Asaf Chopurov -165.2; Louis Jourdain -135.5; Cody Chovancek -124.4; Losene Keita -76.3; Noah Gugnon -74.8; Julien Leblanc -62.8; Chad Anheliger -55.1; Jhonata Diniz -51.5; Erin Blanchfield -48.4; Melissa Croden -45.9
