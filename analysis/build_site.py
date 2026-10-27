@@ -9,7 +9,8 @@ Four certificates are checked before anything is written:
   1. the All-time score is reconstructed from its three normalised terms;
   2. the per-year career receipt sums to the published career skill mass;
   3. each integrity-policy rating is the base rating less its debit;
-  4. the calibration table is symmetric: bin b and bin 9 − b are one bout seen from both corners.
+  4. the calibration table is symmetric: bin b and bin 9 − b are one bout seen from both corners;
+  5. the forecast model and the betting market are scored on the same bouts.
 
 Usage: python analysis/build_site.py [data/snapshots/<date>]
        python analysis/build_site.py --stamp     (re-stamp index.html after editing app.js or style.css)
@@ -36,7 +37,10 @@ from analysis.viz import (
     yearly_rating_delta_scatter,
 )
 from build_boards import _division_column
+from ratings.age import load_birth_dates
 from ratings.current_score import is_ufc_bout
+from ratings.forecast import Y0 as FORECAST_Y0
+from ratings.forecast import benchmark as forecast_benchmark
 from ratings.constants import (
     FIVE_YEAR_PEAK_MIN_FIGHTS, FIVE_YEAR_PEAK_WINDOW_DAYS, FIVE_YEAR_PEAK_WINDOW_LABEL, SUSTAINED_PEAK_MIN_FIGHTS,
 )
@@ -54,7 +58,10 @@ from ratings.symon_score import (
 
 METHODS = ["KO/TKO", "Submission", "Decision - Unanimous", "Decision - Split", "Decision - Majority", "DQ", "Other"]
 TOP_NS = (5, 10, 15, 25)
-BAR_RAISE = tuple(range(0, 201, 25))  # rating points added to every year's bar
+AGE_BANDS = ((0, 25, "under 25"), (25, 28, "25–27"), (28, 31, "28–30"), (31, 34, "31–33"), (34, 37, "34–36"),
+             (37, 40, "37–39"), (40, 99, "40+"))  # whole years at the bout
+LAYOFF_BANDS = ((0, 4, "under 4"), (4, 8, "4–8"), (8, 12, "8–12"), (12, 18, "12–18"), (18, 24, "18–24"),
+                (24, 999, "24+"))  # months since the fighter's previous bout, any promotion
 EPOCH = pd.Timestamp("1970-01-01")
 
 
@@ -124,18 +131,71 @@ def receipt(whr, rc):
     return a
 
 
-def raised_bar(A, n=20):
-    """Career-mass ranks with every year's bar raised by d ∈ BAR_RAISE rating points.
+def market(snap, bouts):
+    """UFC bouts with betting odds, read against the result: the leak-free forecast benchmark
+    (ratings.forecast), the biggest upsets, and win rate against price by age and by layoff.
 
-    m_d(f) = Σ_years positive_part(annual mean − (bar + d), hinge): the published functional with a
-    shifted bar, so m_0 is the published career mass. Ranks are over the fighters of A (one gender).
-    Returns the n highest at d = 0 as [fighter, [rank_d], [m_d]].
+    p_m: no-vig market P(a wins); y: 1 if a won. Benchmark rows are [label, ll, br, acc, ll gap to the
+    market, 95% interval low, high]. Draws and no contests are dropped. Age and layoff rows are per
+    fighter (both corners), with priced = mean market probability and se = standard error of
+    mean(won − priced).
     """
-    m = pd.DataFrame({d: A.assign(x=positive_part(A["annual_mean"] - A["field_mean"] - d, A["hinge"]))
-                      .groupby("fighter")["x"].sum() for d in BAR_RAISE})
-    r = m.rank(ascending=False, method="first").astype(int)
-    top = r.sort_values(0).index[:n]
-    return [[f, r.loc[f].tolist(), m.loc[f].round().astype(int).tolist()] for f in top]
+    od = pd.read_parquet(snap / "odds_lines.parquet")
+    od = od[od["odds_data_quality"].eq("ok")]
+    b = bouts[~bouts["is_excluded"].fillna(False).astype(bool) & ~bouts["is_draw"].fillna(False).astype(bool)
+              & ~bouts["is_nc"].fillna(False).astype(bool) & bouts["winner"].notna()]
+    m = od.merge(b[["fight_url", "winner", "method_class", "is_title_fight", "weight_class"]], on="fight_url")
+    m["y"], m["p_m"] = m["winner"].eq(m["fighter_a"]).astype(float), m["implied_prob_a_no_vig"]
+    m = m[m["p_m"].between(0.001, 0.999)].reset_index(drop=True)
+
+    E, bm = forecast_benchmark(snap)
+
+    def cal(p, y):  # both corners, ten bins: [bin, mean forecast, win rate, n]
+        P, Y = np.r_[p, 1 - p], np.r_[y, 1 - y]
+        c = pd.DataFrame({"b": np.minimum((P * 10).astype(int), 9), "p": P, "y": Y}).groupby("b")
+        c = c.agg(p=("p", "mean"), y=("y", "mean"), n=("y", "size"))
+        return [[int(i), r.p, r.y, int(r.n)] for i, r in c.iterrows()]
+
+    fav = np.where(m["p_m"] >= 0.5, m["y"], 1 - m["y"])
+    lab = {"p_0": "Coin flip", "p_g": "Rating alone", "p_1": "Stats model", "p_m": "Betting market",
+           "p_3": "Market + stats model"}
+    vs = {"n": bm["n"], "events": bm["events"], "span": [bm["from"], bm["to"]], "first_test_year": FORECAST_Y0,
+          "odds_bouts": len(m), "fav": float(fav.mean()),
+          "years": [int(m["event_date"].dt.year.min()), int(m["event_date"].dt.year.max())],
+          "rows": plain([[lab[c], *bm[c]] for c in lab], 4),
+          "cal_market": plain(cal(E["p_m"].to_numpy(), E["y"].to_numpy()), 4),
+          "cal_model": plain(cal(E["p_1"].to_numpy(), E["y"].to_numpy()), 4)}
+
+    m["pw"] = np.where(m["y"].eq(1), m["p_m"], 1 - m["p_m"])
+    m["loser"] = np.where(m["y"].eq(1), m["fighter_b"], m["fighter_a"])
+    up = m.nsmallest(15, "pw").assign(event_date=lambda d: d["event_date"].dt.strftime("%Y-%m-%d"),
+                                      is_title_fight=lambda d: d["is_title_fight"].fillna(False).astype(bool),
+                                      weight_class=lambda d: d["weight_class"].str.replace(
+                                          r"\b(UFC|Interim|Title|Bout)\b", "", regex=True).str.split().str.join(" "))
+    upsets = plain(up[["event_date", "winner", "loser", "pw", "method_class", "is_title_fight", "weight_class"]]
+                   .to_numpy().tolist(), 3)
+
+    # one row per fighter per bout: their age, layoff, result and price
+    dob = load_birth_dates(snap)
+    seen = pd.concat([bouts[["fighter_a", "event_date"]].rename(columns={"fighter_a": "f"}),
+                      bouts[["fighter_b", "event_date"]].rename(columns={"fighter_b": "f"})]).drop_duplicates()
+    seen = seen.sort_values(["f", "event_date"])
+    seen["lay"] = seen.groupby("f")["event_date"].diff().dt.days / (365.25 / 12)
+    A = pd.concat([m.assign(f=m[f"fighter_{s}"], won=m["y"] if s == "a" else 1 - m["y"],
+                            priced=m["p_m"] if s == "a" else 1 - m["p_m"]) for s in "ab"], ignore_index=True)
+    A["age"] = (A["event_date"] - A["f"].map(dob)).dt.days / 365.25
+    A = A.merge(seen.rename(columns={"event_date": "event_date"}), on=["f", "event_date"], how="left")
+
+    def bands(col, B):
+        out = []
+        for lo, hi, lab in B:
+            r = A[(A[col] >= lo) & (A[col] < hi)]
+            e = r["won"] - r["priced"]
+            out.append([lab, len(r), float(r["won"].mean()), float(r["priced"].mean()),
+                        float(e.std() / math.sqrt(len(r)))])
+        return plain(out, 4)
+
+    return vs, upsets, bands("age", AGE_BANDS), bands("lay", LAYOFF_BANDS)
 
 
 def build(snap):
@@ -176,7 +236,7 @@ def build(snap):
         "R": R.set_axis(rc["fighter"]).reindex(names),
         "tw": x["public_legacy_qualifying_title_wins"], "cw": x["public_legacy_contender_wins"],
         "cy": x["symon_career_contributing_years"], "ay": x["symon_career_active_years"],
-        "mass": x["symon_career_skill_mass"], "prime": x["symon_prime_score"],
+        "mass": x["symon_career_skill_mass"],
         "pr": pr["rank"].reindex(names), "plevel": pr["elite_level"].reindex(names),
         "pwins": pr["tested_opponent_wins"].reindex(names),
         "p0": yr(pr["elite_window_start"].reindex(names)), "p1": yr(pr["elite_window_end"].reindex(names)),
@@ -222,7 +282,6 @@ def build(snap):
                        atol=1e-6), "career receipt does not sum to the published career skill mass"
     rec = {f: plain(g[["year", "annual_mean", "field_mean", "excess"]].round().to_numpy().tolist(), 0)
            for f, g in A[A["fighter"].isin(set(names))].groupby("fighter", sort=False)}
-    bar = {g: raised_bar(A[A["fighter"].isin(set(x.index[x["gender"].eq(g)]))]) for g in ("M", "F")}
 
     # 4. Division frames (notebook: Weight Classes), UFC bouts only: divisional views count the UFC, as the
     # class boards and Current do. Base WHR, end-of-year rating, top-N per class.
@@ -278,6 +337,11 @@ def build(snap):
     calib = plain(pd.concat([o.assign(segment_value="All bouts"), big])[
         ["segment_value", "prob_bin", "predicted_mean", "empirical_win_rate", "n"]].to_numpy().tolist(), 4)
 
+    # 8. Betting odds: the rating against the market on the same bouts, upsets, age and layoff against price.
+    vs, upsets, age, layoff = market(snap, bouts)
+    assert sum(r[3] for r in vs["cal_market"]) == sum(r[3] for r in vs["cal_model"]) == 2 * vs["n"], \
+        "market and model forecasts are not scored on the same bouts"
+
     return {
         "meta": {
             "snapshot": snap.name, "through": pd.to_datetime(bouts["event_date"]).max().strftime("%Y-%m-%d"),
@@ -285,12 +349,12 @@ def build(snap):
             "min_periods": SUSTAINED_PEAK_MIN_FIGHTS, "contender": CONTENDER_LINE_MU,
             "a": a, "s": s, "scale": PUBLIC_LEGACY_DISPLAY_SCALE, "methods": METHODS,
             "peak": [FIVE_YEAR_PEAK_WINDOW_DAYS, FIVE_YEAR_PEAK_MIN_FIGHTS, FIVE_YEAR_PEAK_WINDOW_LABEL],
-            "bar_raise": BAR_RAISE,
         },
         "divisions": DIVISIONS, "short": DIV_SHORT, "F": F, "classes": classes, "N": N, "traj": traj, "receipt": rec,
         "strength": strength, "year_top": year_top, "movers": movers, "mix": plain([[*k, v] for k, v in mix.items()]),
-        "lineage": lineage, "streaks": plain(st.to_numpy().tolist(), 0), "bar": bar,
+        "lineage": lineage, "streaks": plain(st.to_numpy().tolist(), 0),
         "bench": plain(bench.to_numpy().tolist(), 1), "integrity": integrity, "calib": calib,
+        "market": vs, "upsets": upsets, "age": age, "layoff": layoff,
     }
 
 

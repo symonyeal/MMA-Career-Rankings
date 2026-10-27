@@ -56,14 +56,15 @@ measured judgement of careers, not a betting model.
 | [**Weight-class boards**](https://symonyeal.github.io/MMA-Career-Rankings/#rankings) | UFC only. A champion in two classes is ranked in both, with the share of their All-time score earned in each. |
 | [**Score anatomy**](https://symonyeal.github.io/MMA-Career-Rankings/#anatomy) | See each score split into championships, career skill and contender résumé. Move two sliders to change the exchange rate and watch the board re-rank. |
 | [**The math, in plain terms**](https://symonyeal.github.io/MMA-Career-Rankings/#math) | Each method behind the rankings, what it does and why it was chosen, in ordinary words. |
-| [**Rank robustness**](https://symonyeal.github.io/MMA-Career-Rankings/#anatomy) | A heat map of one fighter's rank under every exchange rate, with the published choice marked. |
 | [**Career arcs and tale of the tape**](https://symonyeal.github.io/MMA-Career-Rankings/#fighters) | Overlay up to six fighters' ratings fight by fight and compare their records, ranks and class placements side by side. |
-| [**Where a career score comes from**](https://symonyeal.github.io/MMA-Career-Rankings/#careers) | A year-by-year receipt that sums to the career score, and how the order holds when every year's bar is raised. |
+| [**Where a career score comes from**](https://symonyeal.github.io/MMA-Career-Rankings/#careers) | A year-by-year receipt that sums to the career score. |
 | [**Risers, fallers and streaks**](https://symonyeal.github.io/MMA-Career-Rankings/#movers) | The biggest rating moves of any year, and the longest UFC win streaks placed by length and by the strength of who they beat. |
+| [**Biggest upsets**](https://symonyeal.github.io/MMA-Career-Rankings/#upsets) | The UFC wins the betting market rated least likely, and how often favourites win. |
 | [**Weight classes and eras**](https://symonyeal.github.io/MMA-Career-Rankings/#divisions) | UFC only: how strong each class has been year by year, its top five in any year, and how fights end. |
 | [**Title lineage**](https://symonyeal.github.io/MMA-Career-Rankings/#lineage) | Every reign in every class, with defences. |
+| [**Age and layoffs against the odds**](https://symonyeal.github.io/MMA-Career-Rankings/#age) | Win rate against the market's price by age and by time since the last fight, with 95% intervals. |
 | [**Integrity policy and outside check**](https://symonyeal.github.io/MMA-Career-Rankings/#policy) | The PED, disqualification and missed-weight ledger, and where the board disagrees with FightMatrix. |
-| [**Forecast calibration**](https://symonyeal.github.io/MMA-Career-Rankings/#checks) | How often pre-fight favourites actually won, against the probability they were given, with 95% intervals. |
+| [**Forecast accuracy**](https://symonyeal.github.io/MMA-Career-Rankings/#checks) | A leak-free stats model, the rating alone and no-vig betting odds, each scored on the same UFC bouts with every year forecast from earlier years ([method](docs/FORECAST.md)); and how often favourites won against the probability they were given, with 95% intervals. |
 
 Each chart includes a finding calculated from the data under the current controls.
 The page follows the reader's light or dark setting.
@@ -409,6 +410,7 @@ conflict. See the [decision register](docs/DECISIONS.md).
 | `rust/whr_rs/` | The rating solver's inner loop in Rust; gives the same ratings as the Python version, bit for bit |
 | `data/snapshots/<date>/` | The release: inputs, fitted ratings and boards, all versioned |
 | [`docs/`](docs/) | Method and decisions |
+| [`docs/FORECAST.md`](docs/FORECAST.md) | The pre-fight forecast benchmark against betting odds, and the selection leak it avoids |
 | [`docs/RELEASE_CHECK.md`](docs/RELEASE_CHECK.md) | Source freshness, fresh-checkout reproduction and the limits of current predictive evidence |
 | [`site/`](site/) | Interactive analysis site, published at <https://symonyeal.github.io/MMA-Career-Rankings/>; open `site/index.html` locally |
 | `tests/` | Verification |

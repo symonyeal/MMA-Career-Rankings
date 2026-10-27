@@ -30,7 +30,7 @@ async function open(viewport = { width: 1440, height: 1000 }) {
 test('phone layout keeps content within the viewport', async () => {
   const page = await open({ width: 390, height: 844 });
   try {
-    for (const id of ['rankings', 'anatomy', 'fighters', 'divisions', 'checks']) {
+    for (const id of ['rankings', 'anatomy', 'fighters', 'upsets', 'divisions', 'age', 'checks']) {
       await page.locator('#' + id).scrollIntoViewIfNeeded();
       await page.waitForTimeout(350);
       const size = await page.evaluate(() => [innerWidth, document.documentElement.scrollWidth]);
@@ -124,7 +124,7 @@ test('all analysis sections render, filters and comparisons remain usable', asyn
     assert.match(await page.locator('#board').textContent(), /No ranked fighters/);
     await page.locator('#c-search').fill('');
     await page.locator('#c-gender [data-v="M"]').click();
-    for (const id of ['anatomy', 'fighters', 'careers', 'movers', 'streaks', 'divisions', 'lineage', 'dominance', 'policy', 'checks', 'benchmark']) {
+    for (const id of ['anatomy', 'fighters', 'careers', 'movers', 'streaks', 'upsets', 'divisions', 'lineage', 'dominance', 'age', 'policy', 'checks', 'benchmark']) {
       await page.locator('#' + id).scrollIntoViewIfNeeded();
       await page.waitForSelector(`#${id} .js-plotly-plot`);
       assert.ok(await page.locator(`#${id} .js-plotly-plot`).count(), `${id} chart did not render`);
