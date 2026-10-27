@@ -74,9 +74,9 @@ function dodge(ys, span, px) {
 const S = {
   g: "M", div: "All", top: 30, min: M.min_periods, view: "all_time", q: "",
   sel: ["Jon Jones", "Georges St-Pierre", "Islam Makhachev"].filter((f) => I.has(f)),
-  a: M.a, s: M.s, rob: "Georges St-Pierre", rec: "Jon Jones", streak: null,
+  a: M.a, s: M.s, rec: "Jon Jones", streak: null,
   dv: new Set(["Lightweight", "Welterweight", "Middleweight", "Light Heavyweight", "Heavyweight", "Featherweight"]),
-  k: "10", stSort: "length", stMin: 5, dmMin: 8, cal: "All bouts", raise: 100,
+  k: "10", stSort: "length", stMin: 5, dmMin: 8, cal: "All bouts",
 };
 const VIEWS = {
   all_time: { rank: "at", val: "score", label: "All-time score", div: "div", name: "All-time" },
@@ -247,30 +247,7 @@ SECTIONS.anatomy = () => {
     ? ""
     : `${top10} of the top 10 stay · ρ = ${fmt(r, 2)} vs the published top 100 · up: ${who(mv.slice(0, 3).filter((x) => x[1] > 0)) || "none"}
        · down: ${who(mv.slice(-3).reverse().filter((x) => x[1] < 0)) || "none"}`;
-  robustness();
 };
-function robustness() {
-  const f = I.get(S.rob);
-  if (f == null || F.at[f] == null) return empty("rob-chart", "Pick a fighter ranked on an All-time board.");
-  const E = units(F.g[f], "All"), me = E.find((u) => u.f === f), G = range(21).map((k) => k / 20);
-  const z = G.map((s) => G.map((a) => { const v = uscore(me, a, s); return 1 + E.filter((u) => uscore(u, a, s) > v).length; }));
-  const Z = z.flat(), lo = Math.min(...Z), hi = Math.max(...Z), zmax = Math.max(10, Math.min(hi, 3 * F.at[f]));
-  const best = Z.filter((v) => v === lo).length;
-  plot("rob-chart", [
-    { type: "heatmap", x: G, y: G, z, zmin: 1, zmax, colorscale: "Viridis", reversescale: true, xgap: 1, ygap: 1,
-      colorbar: { title: { text: "rank", font: { color: T.text2 } }, tickfont: { color: T.text2, size: 12 }, outlinewidth: 0 },
-      hovertemplate: "a = %{x:.2f}, s = %{y:.2f}<br>rank %{z}<extra></extra>" },
-    { type: "scatter", mode: "markers+text", x: [M.a], y: [M.s], text: [`published #${F.at[f]}`], textposition: "top center",
-      textfont: { color: T.text, size: 12 }, hoverinfo: "skip", marker: { size: 16, symbol: "circle-open", color: T.text, line: { width: 2 } } },
-  ], { height: 460, xaxis: { title: { text: "championships weight a" }, dtick: 0.1 },
-    yaxis: { title: { text: "career-skill share s" }, dtick: 0.1 }, margin: { r: 8 } });
-  ex("rob-chart", `${esc(S.rob)}: #${lo} to #${hi} across all rates; #${lo} at ${fmt(100 * best / Z.length)}% of them.`,
-    `Grid a, s = 0, 0.05, …, 1. Click a cell to set the sliders.`);
-  if (!$("rob-chart").bound) {
-    $("rob-chart").bound = true;
-    $("rob-chart").on("plotly_click", (ev) => { const p = ev.points[0]; if (p.data.type === "heatmap") setRates(p.x, p.y); });
-  }
-}
 function setRates(a, s) {
   S.a = a; S.s = s;
   $("w-a").value = a; $("w-s").value = s; $("o-a").textContent = fmt(a, 3); $("o-s").textContent = fmt(s, 3);
@@ -278,8 +255,6 @@ function setRates(a, s) {
 }
 ["a", "s"].forEach((k) => $("w-" + k).addEventListener("input", (e) => setRates(k === "a" ? +e.target.value : S.a, k === "s" ? +e.target.value : S.s)));
 $("w-reset").addEventListener("click", () => setRates(M.a, M.s));
-$("rob-pick").value = S.rob;
-$("rob-pick").addEventListener("change", (e) => { if (I.has(e.target.value)) { S.rob = e.target.value; robustness(); } });
 
 // ---- 4. fighters: arcs and tale of the tape -----------------------------------------------------------------
 function decode(name) {
@@ -368,7 +343,7 @@ $("sel-chips").addEventListener("click", (e) => {
 });
 $("sel-add").addEventListener("change", (e) => { addFighter(e.target.value); e.target.value = ""; });
 
-// ---- 5. careers: receipt, a higher bar, All-time vs Prime -------------------------------------------------
+// ---- 5. careers: the year-by-year receipt -------------------------------------------------
 function receiptChart() {
   const r = D.receipt[S.rec], i = I.get(S.rec);
   if (!r) return empty("rec-chart", "No rated years for this fighter.");
@@ -381,51 +356,7 @@ function receiptChart() {
   ex("rec-chart", `${esc(S.rec)}: ${on.filter(Boolean).length} of ${y.length} years above the bar; career mass ${fmt(F.mass[i])}.`,
     `The bars sum to the published career mass.`);
 }
-SECTIONS.careers = () => {
-  receiptChart();
-  barChart();
-  legacyPrime();
-};
-// Career-mass ranks with every year's bar raised by δ (analysis/build_site.raised_bar); δ = 0 is published.
-function barChart() {
-  const B = D.bar[S.g].slice(0, 15), k = M.bar_raise.indexOf(S.raise), n = B.length;
-  if (!n) return empty("ladder-chart", "No careers to rank.");
-  const y = B.map((r) => r[0]), r0 = B.map((r) => r[1][0]), rk = B.map((r) => r[1][k]);
-  const col = rk.map((v, j) => (v > r0[j] ? T.negative : v < r0[j] ? T.accent : T.context));
-  plot("ladder-chart", [
-    { type: "scatter", mode: "lines", x: B.flatMap((r) => [r[1][0], r[1][k], null]), y: B.flatMap((r) => [r[0], r[0], null]),
-      line: { color: T.border2, width: 2 }, hoverinfo: "skip" },
-    { type: "scatter", mode: "markers", x: r0, y, marker: { size: 9, color: T.context }, customdata: B.map((r) => r[2][0]),
-      hovertemplate: "<b>%{y}</b><br>published bar: #%{x}, career mass %{customdata:,}<extra></extra>" },
-    { type: "scatter", mode: "markers+text", x: rk, y, marker: { size: 10, color: col, line: { color: T.bg, width: 1 } },
-      text: rk.map((v, j) => (v !== r0[j] ? `#${v}` : "")), textposition: rk.map((v, j) => (v > r0[j] ? "middle left" : "middle right")),
-      textfont: { size: 12, color: T.text2 }, cliponaxis: false, customdata: B.map((r) => r[2][k]),
-      hovertemplate: `<b>%{y}</b><br>bar raised ${S.raise} points: #%{x}, career mass %{customdata:,}<extra></extra>` },
-  ], { height: Math.max(380, 26 * n + 90), yaxis: { autorange: "reversed", automargin: true },
-    xaxis: { title: { text: "Career-mass rank (1 is best)" }, range: [Math.max(...rk, ...r0) + 1.5, 0.3] }, margin: { l: 8, r: 24 } });
-  const w = argmax(range(n), (j) => rk[j] - r0[j]), stay = rk.filter((v) => v <= n).length;
-  ex("ladder-chart", S.raise === 0 ? "Published order. Raise the bar to test it." :
-    `Bar +${S.raise}: ${stay} of the top ${n} hold${rk[w] > r0[w] ? `; ${esc(B[w][0])} falls #${r0[w]} → #${rk[w]}` : ""}.`,
-    `Grey: published rank · red: falls · accent: rises.`);
-}
-function legacyPrime() {
-  const P = pool("all_time").filter((i) => F.n[i] >= Math.max(8, S.min) && F.prime[i] != null && F.score[i] != null)
-    .sort((x, y) => F.score[y] - F.score[x]).slice(0, Math.max(20, 2 * S.top));
-  if (P.length < 3) return empty("lp-chart", "Too few fighters match the current filters.");
-  const x = P.map((i) => F.prime[i]), y = P.map((i) => F.score[i]), n = P.length, mx = sum(x) / n, my = sum(y) / n;
-  const b1 = sum(x.map((xi, k) => (xi - mx) * (y[k] - my))) / sum(x.map((xi) => (xi - mx) ** 2)), b0 = my - b1 * mx;  // OLS
-  const res = P.map((i, k) => [i, y[k] - (b0 + b1 * x[k])]).sort((u, v) => v[1] - u[1]), up = res.slice(0, 3), dn = res.slice(-3);
-  const xs = [Math.min(...x), Math.max(...x)];
-  plot("lp-chart", [
-    { type: "scatter", mode: "lines", x: xs, y: xs.map((v) => b0 + b1 * v), line: { color: T.muted, dash: "dash", width: 1 }, hoverinfo: "skip" },
-    { type: "scatter", mode: "markers", x, y, marker: { size: 9, color: P.map((i) => (i === up[0][0] ? T.accent : T.context)), line: { color: T.bg, width: 1 } },
-      customdata: P.map((i, k) => [F.name[i], F.n[i], y[k] - (b0 + b1 * x[k])]),
-      hovertemplate: "<b>%{customdata[0]}</b><br>Prime %{x:.0f}<br>All-time %{y:.1f}<br>%{customdata[2]:+.0f} against the trend<br>%{customdata[1]} rated bouts<extra></extra>" },
-  ], { height: 520, annotations: [...up, ...dn].map(([i, r], k) => ({ x: F.prime[i], y: F.score[i], text: F.name[i], showarrow: true, arrowhead: 0,
-    ax: 0, ay: r > 0 ? -22 : 22, arrowcolor: T.border2, font: { size: 12, color: k === 0 ? T.accent : T.text2 } })),
-    xaxis: { title: { text: "Prime score (best ten years)" } }, yaxis: { title: { text: "All-time score" } } });
-  ex("lp-chart", `Furthest above the trend: ${esc(F.name[up[0][0]])}, +${fmt(up[0][1])}.`, `Dashed: least-squares fit over the ${n} shown.`);
-}
+SECTIONS.careers = receiptChart;
 $("rec-pick").value = S.rec;
 $("rec-pick").addEventListener("change", (e) => { if (I.has(e.target.value)) { S.rec = e.target.value; receiptChart(); } });
 
@@ -484,6 +415,21 @@ $("st-table").addEventListener("click", (e) => {
   streakChart();
 });
 $("st-sort").addEventListener("change", (e) => { S.stSort = e.target.value; mark("streaks"); });
+
+// ---- 7b. upsets --------------------------------------------------------------------------------------------
+// row: date, winner, loser, winner's no-vig chance, method, title fight, weight class
+SECTIONS.upsets = () => {
+  const U = [...D.upsets].reverse(), V = D.market, yr = (r) => r[0].slice(0, 4);
+  const y = U.map((r) => `${r[1]} over ${r[2].split(" ").at(-1)} (${yr(r)})`), lo = U.at(-1), titles = U.filter((r) => r[5]).length;
+  plot("up-chart", [{ type: "bar", orientation: "h", x: U.map((r) => r[3]), y, marker: { color: U.map((r) => (r[5] ? T.accent : T.context)) },
+    text: U.map((r) => fmt(100 * r[3]) + "%"), textposition: "outside", cliponaxis: false, textfont: { size: 12, color: T.text2 },
+    customdata: U.map((r) => [r[2], r[0], r[4] ?? "", r[6] ?? "", r[5] ? "title fight" : ""]),
+    hovertemplate: "<b>%{y}</b><br>beat %{customdata[0]}, %{customdata[1]}<br>%{customdata[3]} · %{customdata[2]} %{customdata[4]}<br>market chance %{x:.1%}<extra></extra>" }],
+  { height: Math.max(420, 26 * U.length + 90), xaxis: { title: { text: "Winner's chance in the betting market" }, tickformat: ".0%", rangemode: "tozero" },
+    yaxis: { automargin: true }, margin: { l: 8, r: 48 } });
+  ex("up-chart", `Favourites won ${fmt(100 * V.fav)}% of ${fmt(V.odds_bouts)} UFC bouts with odds, ${V.years[0]}–${V.years[1]}. The longest shot to win: ${esc(lo[1])} over ${esc(lo[2])}, ${fmt(100 * lo[3])}% (${yr(lo)}); ${titles} of these ${U.length} were title fights.`,
+    `Accent: title fight. Draws and no contests excluded.`);
+};
 
 // ---- 8. weight classes -------------------------------------------------------------------------------------
 const dvYears = [...new Set(D.strength["10"].map((r) => r[1]))].sort((a, b) => a - b);
@@ -593,6 +539,35 @@ SECTIONS.dominance = () => {
   ex("dm-chart", `${esc(F.name[top])} leads${tie > 1 ? `, tied with ${tie - 1}` : ""}: ${fmt(F.dom[top], 1)} over ${F.domw[top]} wins.`, `${P.length} fighters with ${S.dmMin}+ wins.`);
 };
 
+// ---- 10b. age and layoffs against the market -----------------------------------------------------------------
+// band row: label, fighter appearances, win rate, mean no-vig price, standard error of (won − price)
+// Pooled bands k0..k1: [label, n, won, priced, se], se = √Σ(n·se)² / N.
+function pooled(R, k0, k1, lab) {
+  const B = R.slice(k0, k1 + 1), N = sum(B.map((r) => r[1])), w = (j) => sum(B.map((r) => r[1] * r[j])) / N;
+  return [lab, N, w(2), w(3), Math.sqrt(sum(B.map((r) => (r[1] * r[4]) ** 2))) / N];
+}
+function vsPrice(id, R, xt, lo, hi) {
+  const x = R.map((r) => r[0]);
+  plot(id, [
+    { type: "scatter", mode: "lines", x: x.flatMap((v) => [v, v, null]), y: R.flatMap((r) => [r[3], r[2], null]), line: { color: T.border2, width: 2 }, hoverinfo: "skip", showlegend: false },
+    { type: "scatter", mode: "markers", name: "Market price", x, y: R.map((r) => r[3]), marker: { size: 10, symbol: "circle-open", color: T.text2, line: { width: 2 } },
+      hovertemplate: "%{x}: priced %{y:.1%}<extra></extra>" },
+    { type: "scatter", mode: "markers", name: "Won", x, y: R.map((r) => r[2]), marker: { size: 10, color: R.map((r) => (r[2] < r[3] ? T.negative : T.accent)) },
+      error_y: { type: "data", array: R.map((r) => 1.96 * r[4]), color: T.border2, thickness: 1.5, width: 0 },
+      customdata: R.map((r) => [r[1], 100 * (r[2] - r[3])]),
+      hovertemplate: "%{x}: won %{y:.1%} (%{customdata[1]:+.1f} points)<br>%{customdata[0]:,} fights<extra></extra>" },
+  ], { height: 400, showlegend: true, legend: { orientation: "h", y: 1.0, yanchor: "bottom", x: 0 }, margin: { t: 40 },
+    xaxis: { title: { text: xt }, type: "category" }, yaxis: { title: { text: "Win rate" }, tickformat: ".0%" } });
+  const gap = (r) => `${sgn(100 * (r[2] - r[3]), 1)} points (95% interval ±${fmt(196 * r[4], 1)})`;
+  ex(id, `${lo[0]}: won ${fmt(100 * lo[2], 1)}% against a ${fmt(100 * lo[3], 1)}% price, ${gap(lo)}. ${hi[0]}: ${gap(hi)}.`,
+    `${fmt(sum(R.map((r) => r[1])))} fighter appearances · bars: 95% intervals on the win rate.`);
+}
+SECTIONS.age = () => {
+  const A = D.age, L = D.layoff;
+  vsPrice("age-chart", A, "Age at the fight (years)", pooled(A, 4, A.length - 1, "Fighters 34 and older"), pooled(A, 0, 1, "Under 28"));
+  vsPrice("lay-chart", L, "Months since the previous fight", pooled(L, 3, L.length - 1, "After 12 or more months out"), pooled(L, 1, 2, "After 4 to 12 months"));
+};
+
 // ---- 11. integrity policy ------------------------------------------------------------------------------------
 // debit row: fighter, base rating, base rank, policy rank, debit, PED, DQ, missed-weight results
 SECTIONS.policy = () => {
@@ -615,9 +590,36 @@ SECTIONS.policy = () => {
 };
 
 // ---- 12. calibration ---------------------------------------------------------------------------------------
+// The causal rating and the no-vig market on the same bouts; [bin, mean forecast, win rate, n] per source.
+// row: label, log loss, Brier, winners picked, log loss minus the market's, 95% interval low, high
+function marketChart() {
+  const V = D.market, pct = (v) => fmt(100 * v, 1) + "%", row = (l) => V.rows.find((r) => r[0] === l);
+  const R = [...V.rows].sort((a, b) => b[1] - a[1]), mk = row("Betting market"), sm = row("Stats model"), both = row("Market + stats model");
+  const sgn = (v) => (v >= 0 ? "+" : "−") + fmt(Math.abs(v), 3);
+  plot("mk-chart", [{ type: "scatter", mode: "markers", x: R.map((r) => r[1]), y: R.map((r) => r[0]),
+    marker: { size: 12, color: R.map((r) => (r === mk ? T.accent : T.text2)) },
+    customdata: R.map((r) => [100 * r[3], r === mk ? "" : `<br>${sgn(r[4])} vs market (95%: ${sgn(r[5])} to ${sgn(r[6])})`]),
+    hovertemplate: "<b>%{y}</b><br>log loss %{x:.3f}%{customdata[1]}<br>winners picked %{customdata[0]:.1f}%<extra></extra>" }],
+  { height: 300, xaxis: { title: { text: "Log loss (lower is better)" }, tickformat: ".3f" }, yaxis: { automargin: true }, margin: { l: 8 } });
+  ex("mk-chart", `Nothing beats the market. Its log loss is ${fmt(mk[1], 3)}; the stats model scores ${fmt(sm[1], 3)}, and adding the stats to the price changes it by ${sgn(both[4])} (95% interval ${sgn(both[5])} to ${sgn(both[6])}).`,
+    `${fmt(V.n)} UFC bouts with odds, ${V.span[0]} to ${V.span[1]}; each year forecast by a model fitted on earlier years · pre-UFC regional bouts are left out, because they were recorded only for fighters who later lasted in the UFC.`);
+  const pts = (R0, name, color, symbol) => { const Q = R0.filter((r) => r[3] >= 50); return { type: "scatter", mode: "markers", name, x: Q.map((r) => r[1]), y: Q.map((r) => r[2]),
+    marker: { size: 10, color, symbol, line: { color, width: 2 } }, customdata: Q.map((r) => r[3]),
+    hovertemplate: `${name}<br>forecast %{x:.1%}<br>observed %{y:.1%}<br>n = %{customdata:,}<extra></extra>` }; };
+  plot("mkc-chart", [
+    { type: "scatter", mode: "lines", x: [0, 1], y: [0, 1], line: { color: T.muted, dash: "dash", width: 1 }, hoverinfo: "skip", showlegend: false },
+    pts(V.cal_market, "Betting market", T.accent, "circle"), pts(V.cal_model, "Stats model", T.text2, "diamond-open"),
+  ], { height: 460, showlegend: true, legend: { orientation: "h", y: 1.0, yanchor: "bottom", x: 0 }, margin: { t: 40 },
+    xaxis: { title: { text: "Forecast win probability" }, range: [0, 1], tickformat: ".0%" },
+    yaxis: { title: { text: "Observed win rate" }, range: [0, 1], tickformat: ".0%" } });
+  const b8 = (C) => C.find((r) => r[0] === 8), cm = b8(V.cal_market), cs = b8(V.cal_model);
+  ex("mkc-chart", `The market picked the winner in ${pct(mk[3])} of bouts, the stats model in ${pct(sm[3])}. Fighters the market rated near ${pct(cm[1])} won ${pct(cm[2])}; the model's picks near ${pct(cs[1])} won ${pct(cs[2])}.`,
+    `Same bouts · both corners · bins under 50 bouts hidden.`);
+}
 const calSegs = [...new Set(D.calib.map((r) => r[0]))];
 $("cal-seg").innerHTML = calSegs.map((s) => `<option>${esc(s)}</option>`).join("");
 SECTIONS.checks = () => {
+  marketChart();
   const R = calRows(S.cal), n = sum(R.map((r) => r.n)) / 2, dev = Math.max(...R.map((r) => Math.abs(r.y - r.p)));
   const cover = R.filter((r) => Math.abs(r.y - r.p) <= 1.96 * r.se).length;
   plot("cal-chart", [
@@ -667,7 +669,6 @@ slider("c-top", "o-top", "top", () => mark());
 slider("c-min", "o-min", "min", () => mark());
 slider("st-min", "o-st-min", "stMin", () => mark("streaks"));
 slider("dm-min", "o-dm-min", "dmMin", () => mark("dominance"));
-slider("bar-d", "o-bar-d", "raise", () => barChart());
 $("w-a").value = S.a; $("w-s").value = S.s; $("o-a").textContent = fmt(S.a, 3); $("o-s").textContent = fmt(S.s, 3);
 $("release-label").textContent = `Published ${M.snapshot}`;
 $("foot").textContent = `${SNAP}. The rankings are the published boards; see README.md and RANKINGS.md.`;

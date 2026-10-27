@@ -14,7 +14,7 @@ addEventListener("error", (e) => {
 }, true);
 </script>
 <script src="https://cdn.jsdelivr.net/npm/plotly.js-dist-min@4.1.1/plotly.min.js"></script>
-<script src="data.js?v=0b240579ef"></script>
+<script src="data.js?v=57c05c4901"></script>
 </head>
 <body>
 <a class="skip-link" href="#rankings">Skip to rankings</a>
@@ -23,8 +23,8 @@ addEventListener("error", (e) => {
     <a class="brand" href="#top"><span class="brand-mark" aria-hidden="true">CR</span><span>MMA <b>Career Rankings</b></span></a>
     <nav aria-label="Analysis sections">
       <a href="#rankings">Rankings</a><a href="#anatomy">Score</a><a href="#math">Math</a><a href="#fighters">Fighters</a>
-      <a href="#careers">Careers</a><a href="#movers">Movers</a><a href="#streaks">Streaks</a>
-      <a href="#divisions">Weight classes</a><a href="#lineage">Titles</a><a href="#dominance">Dominance</a>
+      <a href="#careers">Careers</a><a href="#movers">Movers</a><a href="#streaks">Streaks</a><a href="#upsets">Upsets</a>
+      <a href="#divisions">Weight classes</a><a href="#lineage">Titles</a><a href="#dominance">Dominance</a><a href="#age">Age</a>
       <a href="#policy">Policy</a><a href="#checks">Checks</a><a href="#benchmark">Benchmark</a>
     </nav>
   </div>
@@ -107,8 +107,6 @@ addEventListener("error", (e) => {
     </div>
     <div id="anat-summary" class="callout"></div>
     <figure><h3>Score by part</h3><p class="insight" id="anat-chart-i"></p><div id="anat-chart" class="chart"></div><figcaption id="anat-chart-s"></figcaption></figure>
-    <div class="row"><label>Fighter <input id="rob-pick" list="names" class="pick"></label></div>
-    <figure><h3>Rank sensitivity to score weights</h3><p class="insight" id="rob-chart-i"></p><div id="rob-chart" class="chart"></div><figcaption id="rob-chart-s"></figcaption></figure>
   </section>
 
   <section id="math" class="reading-guide">
@@ -166,9 +164,6 @@ addEventListener("error", (e) => {
     <p class="note">Career mass adds, for each active year, how far the fighter's average rating stood above that year's bar; no year subtracts.</p>
     <div class="row"><label>Fighter <input id="rec-pick" list="names" class="pick"></label></div>
     <figure><h3>Credit by year</h3><p class="insight" id="rec-chart-i"></p><div id="rec-chart" class="chart"></div><figcaption id="rec-chart-s"></figcaption></figure>
-    <div class="row"><label>Raise every year's bar by <input id="bar-d" type="range" min="0" max="200" step="25"><output id="o-bar-d"></output> points</label></div>
-    <figure><h3>Rankings at higher contender thresholds</h3><p class="insight" id="ladder-chart-i"></p><div id="ladder-chart" class="chart"></div><figcaption id="ladder-chart-s"></figcaption></figure>
-    <figure><h3>All-time against Prime</h3><p class="insight" id="lp-chart-i"></p><div id="lp-chart" class="chart"></div><figcaption id="lp-chart-s"></figcaption></figure>
   </section>
 
   <section id="movers">
@@ -186,6 +181,12 @@ addEventListener("error", (e) => {
     </div>
     <div id="st-table" class="table-wrap short" role="region" aria-label="Win streaks" tabindex="0"></div>
     <figure><h3>Length against opposition</h3><p class="insight" id="st-chart-i"></p><div id="st-chart" class="chart"></div><figcaption id="st-chart-s"></figcaption></figure>
+  </section>
+
+  <section id="upsets">
+    <h2>Biggest upsets</h2>
+    <p class="note">UFC wins by the fighter the betting market gave the lowest chance, from no-vig odds.</p>
+    <figure><h3>Winner's chance before the fight</h3><p class="insight" id="up-chart-i"></p><div id="up-chart" class="chart"></div><figcaption id="up-chart-s"></figcaption></figure>
   </section>
 
   <section id="divisions">
@@ -217,6 +218,14 @@ addEventListener("error", (e) => {
     <figure><h3>Mean dominance per win</h3><p class="insight" id="dm-chart-i"></p><div id="dm-chart" class="chart"></div><figcaption id="dm-chart-s"></figcaption></figure>
   </section>
 
+  <section id="age">
+    <h2>Age and layoffs against the odds</h2>
+    <p class="note">UFC bouts with betting odds. Each fighter's win rate against the market's no-vig price for them.
+      A gap means the market did not fully price age or time away.</p>
+    <figure><h3>Win rate and market price by age</h3><p class="insight" id="age-chart-i"></p><div id="age-chart" class="chart"></div><figcaption id="age-chart-s"></figcaption></figure>
+    <figure><h3>Win rate and market price by time since the last fight</h3><p class="insight" id="lay-chart-i"></p><div id="lay-chart" class="chart"></div><figcaption id="lay-chart-s"></figcaption></figure>
+  </section>
+
   <section id="policy">
     <h2>Integrity policy</h2>
     <p class="note">Judgement-based deductions for wins with a confirmed PED violation, a disqualification or a missed weight. These do not affect the published boards.</p>
@@ -227,7 +236,9 @@ addEventListener("error", (e) => {
   <section id="checks">
     <h2>Forecast accuracy</h2>
     <p class="note">Each bout's pre-fight win probability against how often those fighters won. Only earlier bouts inform
-      a forecast.</p>
+      a forecast. The betting market is the benchmark a fight forecast has to beat.</p>
+    <figure><h3>Forecasts against the betting market</h3><p class="insight" id="mk-chart-i"></p><div id="mk-chart" class="chart"></div><figcaption id="mk-chart-s"></figcaption></figure>
+    <figure><h3>Stats model and market, forecast against outcome</h3><p class="insight" id="mkc-chart-i"></p><div id="mkc-chart" class="chart"></div><figcaption id="mkc-chart-s"></figcaption></figure>
     <div class="row"><label>Bouts <select id="cal-seg"></select></label></div>
     <figure><h3>Forecast against outcome</h3><p class="insight" id="cal-chart-i"></p><div id="cal-chart" class="chart"></div><figcaption id="cal-chart-s"></figcaption></figure>
   </section>
@@ -243,6 +254,6 @@ addEventListener("error", (e) => {
   </footer>
 </main>
 <datalist id="names"></datalist>
-<script src="app.js?v=a7746bec5b"></script>
+<script src="app.js?v=4071866103"></script>
 </body>
 </html>
