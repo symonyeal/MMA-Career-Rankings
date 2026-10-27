@@ -95,12 +95,13 @@ def frames():
 @pytest.mark.parametrize("k", range(6))
 def test_fingerprint_equals_reference(k):
     f = list(frames())[k]
-    if f.empty:  # an empty frame fails in the reference (str + object dtype); the fast path must fail alike
-        with pytest.raises(TypeError):
+    if f.empty:  # pandas < 3.1 raises TypeError on str + empty object column; 3.1 returns an empty str Series
+        try:
             ref_fingerprint(f)
-        with pytest.raises(TypeError):
-            ph.bout_fingerprint(f)
-        return
+        except TypeError:
+            with pytest.raises(TypeError):
+                ph.bout_fingerprint(f)
+            return
     got, want = ph.bout_fingerprint(f), ref_fingerprint(f)
     assert got.dtype == want.dtype and got.name == want.name
     assert got.index.equals(want.index) and got.tolist() == want.tolist()
