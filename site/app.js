@@ -16,6 +16,7 @@ const sum = (l) => l.reduce((a, b) => a + b, 0);
 const argmax = (l, f) => l.reduce((b, x) => (f(x) > f(b) ? x : b), l[0]);
 const chip = (r) => r == null ? "" : `<span class="chip-rank ${r === 1 ? "r1" : ""}">${r}</span>`;
 const SNAP = `Snapshot ${M.snapshot}, bouts through ${M.through}`;
+const Z95 = 1.96;
 
 // Spearman's ρ: Pearson correlation of mid-ranks.
 function rho(x, y) {
@@ -553,7 +554,7 @@ function vsPrice(id, R, xt, lo, hi) {
     { type: "scatter", mode: "markers", name: "Market price", x, y: R.map((r) => r[3]), marker: { size: 10, symbol: "circle-open", color: T.text2, line: { width: 2 } },
       hovertemplate: "%{x}: priced %{y:.1%}<extra></extra>" },
     { type: "scatter", mode: "markers", name: "Won", x, y: R.map((r) => r[2]), marker: { size: 10, color: R.map((r) => (r[2] < r[3] ? T.negative : T.accent)) },
-      error_y: { type: "data", array: R.map((r) => 1.96 * r[4]), color: T.border2, thickness: 1.5, width: 0 },
+      error_y: { type: "data", array: R.map((r) => Z95 * r[4]), color: T.border2, thickness: 1.5, width: 0 },
       customdata: R.map((r) => [r[1], 100 * (r[2] - r[3])]),
       hovertemplate: "%{x}: won %{y:.1%} (%{customdata[1]:+.1f} points)<br>%{customdata[0]:,} fights<extra></extra>" },
   ], { height: 400, showlegend: true, legend: { orientation: "h", y: 1.0, yanchor: "bottom", x: 0 }, margin: { t: 40 },
@@ -621,11 +622,10 @@ $("cal-seg").innerHTML = calSegs.map((s) => `<option>${esc(s)}</option>`).join("
 SECTIONS.checks = () => {
   marketChart();
   const R = calRows(S.cal), n = sum(R.map((r) => r.n)) / 2, dev = Math.max(...R.map((r) => Math.abs(r.y - r.p)));
-  const cover = R.filter((r) => Math.abs(r.y - r.p) <= 1.96 * r.se).length;
   plot("cal-chart", [
     { type: "scatter", mode: "lines", x: [0, 1], y: [0, 1], line: { color: T.muted, dash: "dash", width: 1 }, hoverinfo: "skip" },
     { type: "scatter", mode: "markers", x: R.map((r) => r.p), y: R.map((r) => r.y), marker: { size: 9, color: T.accent },
-      error_y: { type: "data", array: R.map((r) => 1.96 * r.se), color: T.accent, thickness: 1.5, width: 0 },
+      error_y: { type: "data", array: R.map((r) => Z95 * r.se), color: T.accent, thickness: 1.5, width: 0 },
       customdata: R.map((r) => [r.n, 100 * (r.y - r.p)]),
       hovertemplate: "forecast %{x:.1%}<br>observed %{y:.1%} (%{customdata[1]:+.1f} points)<br>n = %{customdata[0]:,}<extra></extra>" },
   ], { height: 460, annotations: [label(0.98, 0.9, "forecast = observed", T.muted, { xanchor: "right", yanchor: "top" })],

@@ -157,9 +157,9 @@ def test_uncertainty_artifacts_are_named_per_component():
 
 def test_the_anchor_audit_scores_the_published_component():
     source = inspect.getsource(build_top100_audit)
-    assert "gender_partition" in source
+    assert "partition_by_gender" in source
 
 
 def test_build_boards_reuses_the_shared_rule_rather_than_its_own_copy():
-    assert build_boards.gender_partition is partition_by_gender
-    assert build_boards.BOARD_GENDER_SUFFIX is GENDER_SUFFIX
+    assert build_boards.partition_by_gender is partition_by_gender
+    assert build_boards.GENDER_SUFFIX is GENDER_SUFFIX

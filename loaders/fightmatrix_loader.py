@@ -19,7 +19,6 @@ from bs4 import BeautifulSoup
 from project_helpers import project_path
 
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
 BASE_URL = "https://www.fightmatrix.com"
 USER_AGENT = "UFC-Career-Rankings/0.1 (+local research; polite cache)"
 

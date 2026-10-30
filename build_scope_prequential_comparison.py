@@ -66,9 +66,11 @@ import json
 import time
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 
+from ratings.evaluation import (
+    apply_temperature, event_keys, fit_temperature, paired_predictions, select_predictions,
+)
 from ratings import prequential as PQ
 from ratings.scope import UFC_ONLY
 
@@ -154,8 +156,8 @@ def main() -> None:
     eval_events = PQ.choose_eval_events(
         base.fights, n_events=args.events, mode=args.mode, since_year=args.since_year)
     calib_events = PQ.split_calibration_events(base.fights, eval_events, n_events=60)
-    eval_keys = set(zip(eval_events["event_date"], eval_events["event_name"]))
-    calib_keys = set(zip(calib_events["event_date"], calib_events["event_name"]))
+    eval_keys = event_keys(eval_events)
+    calib_keys = event_keys(calib_events)
     print(f"[folds] {len(eval_events)} eval / {len(calib_events)} calibration events")
 
     ufc_urls = set(
@@ -172,19 +174,13 @@ def main() -> None:
             armed = dataclasses.replace(variant, use_org_weight=use_org_weight)
             preds = PQ.online_predictions(inputs, armed)
             preds = preds[preds["fight_url"].isin(ufc_urls)]
-            floor = (preds["prior_a"] >= args.min_prior_fights) & (
-                preds["prior_b"] >= args.min_prior_fights)
-            in_calib = np.array([(d, n) in calib_keys for d, n in
-                                 zip(preds["event_date"], preds["event_name"])], dtype=bool)
-            in_eval = np.array([(d, n) in eval_keys for d, n in
-                                zip(preds["event_date"], preds["event_name"])], dtype=bool)
-            calib = preds[in_calib & floor]
+            calib = select_predictions(preds, calib_keys, args.min_prior_fights)
             temperature = (
-                PQ.fit_temperature(calib["p_a"].to_numpy(), calib["y_a"].to_numpy())
+                fit_temperature(calib["p_a"].to_numpy(), calib["y_a"].to_numpy())
                 if len(calib) else 1.0
             )
-            held = preds[in_eval & floor].copy()
-            held["p_a_calibrated"] = PQ.apply_temperature(held["p_a"].to_numpy(), temperature)
+            held = select_predictions(preds, eval_keys, args.min_prior_fights).copy()
+            held["p_a_calibrated"] = apply_temperature(held["p_a"].to_numpy(), temperature)
             held["variant"] = f"{arm_name}::{variant.name}"
             held["arm"] = arm_name
             held["base_variant"] = variant.name
@@ -195,9 +191,7 @@ def main() -> None:
 
     allp = pd.concat(frames, ignore_index=True, sort=False)
     # Paired: keep only bouts every arm/variant could predict.
-    n_series = allp.groupby("fight_url")["variant"].nunique()
-    keep = set(n_series[n_series == len(arms) * len(COMPARE_VARIANTS)].index)
-    allp = allp[allp["fight_url"].isin(keep)].reset_index(drop=True)
+    allp = paired_predictions(allp, len(arms) * len(COMPARE_VARIANTS))
     allp = PQ.symmetrize_sides(allp)
     allp = PQ.attach_segments(allp, base.fights, odds=base.odds)
     allp["crossorg_coverage"] = crossorg_coverage(allp, joint.fights)
@@ -257,7 +251,7 @@ def main() -> None:
         "snapshot": Path(args.snapshot_dir).name,
         "scope": args.scope,
         "arms": {k: {"scope": v[0], "use_org_weight": v[1]} for k, v in arms.items()},
-        "held_out_ufc_bouts": len(keep),
+        "held_out_ufc_bouts": int(allp["fight_url"].nunique()),
         "eval_events": len(eval_events),
         "coverage_counts": allp.drop_duplicates("fight_url")["crossorg_coverage"]
                                .value_counts().to_dict(),

@@ -10,15 +10,9 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
+from ratings.odds import american_to_decimal, american_to_implied, decimal_to_implied
 from loaders.odds_loader import (
-    ENRICHED_ODDS_COLUMNS,
-    RAW_ODDS_COLUMNS,
-    american_to_decimal,
-    american_to_implied,
-    compute_implied_probs,
-    decimal_to_implied,
-    has_odds_artifact,
-    load_odds_lines,
+    ENRICHED_ODDS_COLUMNS, RAW_ODDS_COLUMNS, compute_implied_probs, has_odds_artifact, load_odds_lines,
 )
 
 

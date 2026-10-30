@@ -16,7 +16,7 @@ from pathlib import Path
 import pandas as pd
 
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+from project_helpers import PROJECT_ROOT
 DEFAULT_DATALAB_DIR = PROJECT_ROOT / "data" / "external" / "api_sources" / "UFC-DataLab"
 
 

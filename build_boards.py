@@ -61,8 +61,9 @@ from ratings.opponent_quality import (
     quality_win_record,
 )
 from ratings.scope import DEFAULT_PUBLISHED_SCOPE, scope_sources
-from ratings.division_legacy import MEN_LIMIT_LB, class_board, class_ledger, class_scores
-from ratings.divisions import womens_division_label
+from ratings.divisions import MEN_LIMIT_LB
+from ratings.division_legacy import class_board, class_ledger, class_scores
+from ratings.divisions import division_column
 import itertools
 
 # d : published division label
@@ -180,7 +181,6 @@ ELITE_LEVEL_COL = PUBLIC_BOARDS["prime"].source
 # The men's and women's boards are built and published SEPARATELY. The rule and
 # the measurements behind it live in ``ratings/gender.py``, which every ranking
 # surface in the project shares.
-BOARD_GENDER_SUFFIX = GENDER_SUFFIX
 
 
 def _normalized_scope(scope: str) -> str:
@@ -213,19 +213,6 @@ def _validate_rating_scope(
             f"requested {requested_scope!r}, rated {recorded_scope!r}"
         )
     return manifest
-
-
-
-
-
-
-
-
-
-
-# Kept as a module-level name because tests and build_top100_audit.py import it
-# from here; the implementation is the shared one.
-gender_partition = partition_by_gender
 
 
 def _requested_core_rating_col(current: pd.DataFrame, requested: str | None) -> str:
@@ -371,7 +358,7 @@ def write_board_artifacts(
             unranked_at_or_below=RATING_FLOOR_IS_UNRANKED.get(core_col),
         )
 
-    partition = gender_partition(current)
+    partition = partition_by_gender(current)
     boards = {
         gender: _gated(population)
         for gender, population in partition.items()
@@ -404,7 +391,7 @@ def write_board_artifacts(
         for gender, population in partition.items():
             if population is None or population.empty:
                 continue
-            suffix = BOARD_GENDER_SUFFIX[gender]
+            suffix = GENDER_SUFFIX[gender]
             prime_boards[gender] = completeness_gated_board(
                 population,
                 rating_col=PRIME_RATING_COL,
@@ -629,17 +616,6 @@ CAREER_DIVISION_COL = "career_division"
 CURRENT_DIVISION_COL = "current_division"
 
 
-def _division_column(fighters: pd.Series, lookup: object, column: str) -> list[str]:
-    """Each fighter's division, blank where the corpus never weighed them."""
-    if column not in getattr(lookup, "columns", []):
-        return ["" for _ in fighters]
-    d = fighters.map(lookup[column])
-    g = fighters.map(lookup["gender"]) if "gender" in getattr(lookup, "columns", []) else ""
-    f = pd.Series(g, index=fighters.index).astype(str).str.upper().str.startswith("F")
-    d.loc[f] = d.loc[f].map(womens_division_label).fillna("W " + d.loc[f].astype(str))
-    return ["" if pd.isna(value) else str(value) for value in d]
-
-
 def top_board_markdown(
     gated: pd.DataFrame,
     current: pd.DataFrame,
@@ -665,7 +641,7 @@ def top_board_markdown(
         # (regex=False), so it must be ONE backslash: the previous two escaped
         # the backslash instead of the pipe and still broke the row.
         "Fighter": ranked["fighter"].str.replace("|", r"\|", regex=False).to_numpy(),
-        "Division": _division_column(ranked["fighter"], lookup, CAREER_DIVISION_COL),
+        "Division": division_column(ranked["fighter"], lookup, CAREER_DIVISION_COL),
     }
     # The elite board is ordered by elite-win mass, whose unit is rating points
     # times wins. Printing that adds a number nothing can be read against; the
@@ -755,7 +731,7 @@ def current_board_markdown(
     return _markdown_table(pd.DataFrame({
         "#": ranked["rank"].astype(int).to_numpy(),
         "Fighter": ranked["fighter"].str.replace("|", "\\|", regex=False).to_numpy(),
-        "Division": _division_column(
+        "Division": division_column(
             ranked["fighter"], lookup, CURRENT_DIVISION_COL
         ),
         "Score": ranked[rating_col].round(0).astype(int).to_numpy(),

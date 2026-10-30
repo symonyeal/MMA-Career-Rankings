@@ -34,7 +34,7 @@ from bs4 import BeautifulSoup
 from loaders.page_cache import PageCache, open_cache
 from project_helpers import normalize_name_key
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+from project_helpers import PROJECT_ROOT
 DEFAULT_CACHE_DIR = PROJECT_ROOT / "data" / "external" / "sherdog"
 BASE = "https://www.sherdog.com"
 SEARCH_URL = BASE + "/stats/fightfinder?SearchTxt="

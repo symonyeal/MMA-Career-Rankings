@@ -29,10 +29,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 
-from project_helpers import bout_fingerprint, compact_name_keys, normalize_name_key
+from project_helpers import map_distinct, bout_fingerprint, compact_name_keys, normalize_name_key
 
 # scope name -> the snapshot artifact holding its non-UFC bouts
 SCOPE_ARTIFACT: dict[str, str] = {
@@ -163,18 +162,6 @@ def _pair_key(fights: pd.DataFrame) -> pd.Series:
         index=fights.index,
         dtype=object,
     )
-
-
-def map_distinct(values: pd.Series, f) -> pd.Series:
-    """``values.map(f)`` calling ``f`` once per distinct value (NaN included), same dtype inference as ``map``.
-
-    The distinct values are the first occurrences themselves, not ``factorize``'s uniques, which turn every NA into
-    NaN. The difference is visible: a string-dtype column turns the ``None`` that ``_winner_key`` returns into NaN,
-    which the ``if value`` test in ``_result_key`` then reads as a winner, while an object column keeps ``None``.
-    """
-    codes, _ = pd.factorize(values, use_na_sentinel=False)
-    first = np.unique(codes, return_index=True)[1]
-    return values.iloc[first].map(f).take(codes).set_axis(values.index)
 
 
 def _result_key(fights: pd.DataFrame) -> pd.Series:

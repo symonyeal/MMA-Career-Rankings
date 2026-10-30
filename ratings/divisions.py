@@ -67,20 +67,13 @@ def normalize_division_label(weight_class: object) -> str | None:
 # depended on which source billed her bouts. Folding the spellings is the
 # division half of that repair; the gender half is in
 # ``rate_snapshot._attach_recent_division_gender``.
-_WOMENS_LIMIT_LB = (
-    (105, "Women's Atomweight"),
-    (115, "Women's Strawweight"),
-    (125, "Women's Flyweight"),
-    (135, "Women's Bantamweight"),
-    (145, "Women's Featherweight"),
+MEN_LIMIT_LB = (("Strawweight", 115),) + tuple(
+    (label, limit) for label, limit in DIVISION_WEIGHT_LIMIT_LB.items() if not label.startswith("Women's")
 )
-_WOMENS_BY_UNPREFIXED = {
-    "Atomweight": "Women's Atomweight",
-    "Strawweight": "Women's Strawweight",
-    "Flyweight": "Women's Flyweight",
-    "Bantamweight": "Women's Bantamweight",
-    "Featherweight": "Women's Featherweight",
-}
+_WOMENS_LIMIT_LB = ((105, "Women's Atomweight"),) + tuple(
+    (limit, label) for label, limit in DIVISION_WEIGHT_LIMIT_LB.items() if label.startswith("Women's")
+)
+_WOMENS_BY_UNPREFIXED = {label.removeprefix("Women's "): label for _, label in _WOMENS_LIMIT_LB}
 _CATCHWEIGHT_LB = re.compile(r"(\d{2,3})\s*lb", re.IGNORECASE)
 
 
@@ -135,3 +128,47 @@ def division_labels(current: pd.DataFrame) -> pd.Series | None:
     return pd.Series(
         np.where(female, folded.fillna("W " + div), div), index=current["fighter"]
     ).groupby(level=0).first()
+
+
+DIV_SHORT: dict[str, str] = {
+    "Strawweight":          "STW",
+    "Flyweight":            "FLY",
+    "Bantamweight":         "BW",
+    "Featherweight":        "FW",
+    "Lightweight":          "LW",
+    "Welterweight":         "WW",
+    "Middleweight":         "MW",
+    "Light Heavyweight":    "LHW",
+    "Heavyweight":          "HW",
+    "Women's Strawweight":  "W.STW",
+    "Women's Flyweight":    "W.FLY",
+    "Women's Bantamweight": "W.BW",
+    "Women's Featherweight":"W.FW",
+    "Catch Weight":         "CW",
+    "Open Weight":          "OW",
+}
+DISPLAY_DIVISIONS = list(DIV_SHORT)
+
+
+def display_division_label(weight_class: str | None) -> str | None:
+    """Strip 'UFC ', ' Title Bout', ' Bout' to land at clean division names."""
+    if not isinstance(weight_class, str):
+        return None
+    w = weight_class.replace("UFC ", "").replace(" Title Bout", "").replace(" Bout", "").strip()
+    # Match more specific labels first so "Women's Flyweight" is not collapsed
+    # to the generic "Flyweight" bucket.
+    for d in sorted(DISPLAY_DIVISIONS, key=len, reverse=True):
+        if d.lower() in w.lower():
+            return d
+    return w  # Catch-all (Catch Weight, Open Weight, etc.)
+
+
+def division_column(fighters: pd.Series, lookup: object, column: str) -> list[str]:
+    """Each fighter's division, blank where the corpus never weighed them."""
+    if column not in getattr(lookup, "columns", []):
+        return ["" for _ in fighters]
+    d = fighters.map(lookup[column])
+    g = fighters.map(lookup["gender"]) if "gender" in getattr(lookup, "columns", []) else ""
+    f = pd.Series(g, index=fighters.index).astype(str).str.upper().str.startswith("F")
+    d.loc[f] = d.loc[f].map(womens_division_label).fillna("W " + d.loc[f].astype(str))
+    return ["" if pd.isna(value) else str(value) for value in d]

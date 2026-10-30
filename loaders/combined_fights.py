@@ -54,7 +54,6 @@ AVAILABLE_IN_CORPORA = "available_in_corpora"
 CORPUS_PRECEDENCE = ("ufc", *SCOPE_MERGE_ORDER)
 
 
-
 def max_coverage_scope(snapshot_dir: Path) -> str:
     """The scope the authoritative artifact is written at: everything staged.
 

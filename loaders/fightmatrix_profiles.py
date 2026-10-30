@@ -29,7 +29,7 @@ from loaders.page_cache import PageCache, open_cache
 from project_helpers import bout_fingerprint, normalize_name_key
 
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+from project_helpers import PROJECT_ROOT
 BASE_URL = "https://www.fightmatrix.com"
 USER_AGENT = "UFC-Career-Rankings/0.2 (+local research; polite bounded cache)"
 DEFAULT_PROFILE_CACHE_DIR = PROJECT_ROOT / "data" / "external" / "fightmatrix" / "profiles"
@@ -357,12 +357,6 @@ def _dedupe_bouts(bouts: pd.DataFrame) -> pd.DataFrame:
     return out.merge(perspectives, on="fight_key", how="left")
 
 
-def _bout_fingerprint(frame: pd.DataFrame) -> pd.Series:
-    # One definition, shared with the rating-side merge guard. Two copies of a
-    # dedupe key drift, and the direction they drift in is silent duplication.
-    return bout_fingerprint(frame)
-
-
 def crossorg_org_weights(fights: pd.DataFrame, snapshot_dir: Path) -> pd.Series:
     """The diagnostic per-bout weight, or 1.0 when the snapshot has no ratings yet.
 
@@ -436,12 +430,12 @@ def build_public_profile_snapshot(
     rated_raw = bouts[bouts["org"].ne("UFC")].copy()
     fm_crossorg = to_canonical_fights(rated_raw, db_name_map, division_map)
     if not fm_crossorg.empty:
-        fm_crossorg["_fingerprint"] = _bout_fingerprint(fm_crossorg)
+        fm_crossorg["_fingerprint"] = bout_fingerprint(fm_crossorg)
         fm_crossorg = fm_crossorg.drop_duplicates("_fingerprint", keep="first")
         canonical_path = snapshot_dir / "canonical_fights.parquet"
         if canonical_path.exists():
             canonical = pd.read_parquet(canonical_path)
-            canonical_keys = set(_bout_fingerprint(canonical))
+            canonical_keys = set(bout_fingerprint(canonical))
             fm_crossorg = fm_crossorg[~fm_crossorg["_fingerprint"].isin(canonical_keys)]
         fm_crossorg = fm_crossorg.drop(columns="_fingerprint").reset_index(drop=True)
         fm_crossorg["org_weight"] = crossorg_org_weights(fm_crossorg, snapshot_dir).values

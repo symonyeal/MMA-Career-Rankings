@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 
 from ratings.glicko2_engine import predict_win_prob_from_ratings
+from ratings.fights import rated_rows
 from ratings.divisions import normalize_division_label
 
 
@@ -58,9 +59,7 @@ def calibration_residual_rows(
     if ratings_history is None or ratings_history.empty or fights is None or fights.empty:
         return pd.DataFrame(columns=out_cols)
 
-    f = fights.copy()
-    if "is_excluded" in f.columns:
-        f = f[~f["is_excluded"].fillna(False).astype(bool)]
+    f = rated_rows(fights).copy()
     f = f[~f.get("is_draw", pd.Series(False, index=f.index)).fillna(False).astype(bool)].copy()
     f = f.dropna(subset=["winner", "fighter_a", "fighter_b"])
     f["event_date"] = pd.to_datetime(f["event_date"], errors="coerce")
@@ -170,9 +169,7 @@ def division_entropy_rows(
     if ratings_history is None or ratings_history.empty or fights is None or fights.empty:
         return pd.DataFrame(columns=out_cols)
 
-    f = fights.copy()
-    if "is_excluded" in f.columns:
-        f = f[~f["is_excluded"].fillna(False).astype(bool)]
+    f = rated_rows(fights).copy()
     f["event_date"] = pd.to_datetime(f["event_date"], errors="coerce")
     f["division"] = f.get("weight_class", pd.Series(index=f.index)).map(normalize_division_label)
     a = f[["event_date", "event_name", "division", "fighter_a"]].rename(columns={"fighter_a": "fighter"})

@@ -2,7 +2,9 @@
 import pandas as pd
 import pytest
 
-from ratings.whr_backtest import _decided_bouts, backtest_w2, elo_win_prob
+from ratings.whr import elo_win_prob
+from ratings.whr_backtest import backtest_w2
+from ratings.fights import decided_bouts
 
 
 def test_elo_win_prob_symmetry_and_monotonicity():
@@ -40,7 +42,7 @@ def test_decided_bouts_filters_and_labels():
         "is_draw": [False, True, False],     # E2 is a draw -> dropped
         "is_excluded": [False, False, False],
     })
-    out = _decided_bouts(fights)
+    out = decided_bouts(fights)
     assert list(out["event_name"]) == ["E1"]
     assert int(out.iloc[0]["_y_a"]) == 1
 

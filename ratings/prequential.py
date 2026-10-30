@@ -48,23 +48,27 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from ratings.evaluation import metrics, fit_temperature, apply_temperature, calibration_error
+from ratings.evaluation import (
+    EPS, metrics, fit_temperature, apply_temperature, calibration_error,
+    event_keys, paired_predictions, select_predictions,
+)
+from ratings.constants import GREGORIAN_YEAR_DAYS
 from ratings.constants import SLEEVE_FACTOR_MAX, SLEEVE_FACTOR_MIN, WHR_DOMINANCE_WEIGHT_AMPLITUDE
 from ratings.dominance import per_fight_dominance
 from ratings.glicko2_engine import DEFAULT_TAU, predict_win_prob_from_ratings
 from ratings.integrity_adjustment import build_integrity_appearances
 from ratings.performance_adjustment import (build_performance_appearances)
 from ratings.divisions import normalize_division_label
-from ratings.whr import _ELO_PER_NAT, production_score_kwargs, project_age_rating, run_whr
+from ratings.whr import elo_win_prob, production_score_kwargs, project_age_rating, run_whr
 from ratings.age import load_birth_dates
 from ratings.scope import UFC_ONLY
-from ratings.fights import attach_bout_weights, canonical_engine, load_fight_table
+from ratings.history import entering_ratings
+from ratings.fights import decided_rows, attach_bout_weights, canonical_engine, load_fight_table
 from ratings import research_variants as RV
 from loaders.odds_loader import has_odds_artifact, load_odds_lines
 import itertools
 
 DEFAULT_MIN_PRIOR_FIGHTS = 3
-EPS = 1e-6
 
 # Bump whenever a change alters what a variant computes, so cached folds from an
 # earlier engine are not silently reused. Cache keys are otherwise
@@ -280,26 +284,6 @@ def _weighted_fights(inputs: Inputs, variant: Variant) -> pd.DataFrame:
 # Prediction: one sweep for filters, refit-per-fold for the smoother
 
 
-def _decided(fights: pd.DataFrame) -> pd.DataFrame:
-    """Bouts with a clean winner — the only ones a win probability can be scored on."""
-    f = fights
-    for flag in ("is_draw", "is_nc"):
-        if flag in f.columns:
-            f = f[~f[flag].fillna(False).astype(bool)]
-    f = f.dropna(subset=["winner", "fighter_a", "fighter_b"])
-    return f[f["winner"].eq(f["fighter_a"]) | f["winner"].eq(f["fighter_b"])]
-
-
-def _prefight_table(history: pd.DataFrame, mu_col: str, phi_col: str) -> pd.DataFrame:
-    """Each history row's rating *entering* that appearance, plus prior fight count."""
-    cols = ["fighter", "event_date", "event_name", f"pre_{mu_col}", f"pre_{phi_col}", "opponents_this_event"]
-    h = history[cols].rename(columns={f"pre_{mu_col}": "pre_mu", f"pre_{phi_col}": "pre_phi"}).copy()
-    h["event_date"] = pd.to_datetime(h["event_date"], errors="coerce")
-    h = h.sort_values(["fighter", "event_date", "event_name"], kind="stable")
-    h["prior_fights"] = h.groupby("fighter")["opponents_this_event"].cumsum() - h["opponents_this_event"]
-    return h[["fighter", "event_date", "event_name", "pre_mu", "pre_phi", "prior_fights"]]
-
-
 def online_predictions(inputs: Inputs, variant: Variant) -> pd.DataFrame:
     """One-step-ahead predictions for a filter variant, from a single sweep.
 
@@ -319,8 +303,8 @@ def online_predictions(inputs: Inputs, variant: Variant) -> pd.DataFrame:
     else:
         raise ValueError(f"{variant.engine} is not an online updater")
 
-    pre = _prefight_table(history, mu_col, phi_col)
-    bouts = _decided(inputs.fights)[
+    pre = entering_ratings(history, mu_col, phi_col)
+    bouts = decided_rows(inputs.fights)[
         ["fight_url", "event_date", "event_name", "fighter_a", "fighter_b", "winner"]
     ].copy()
     for side in ("a", "b"):
@@ -360,7 +344,7 @@ def whr_predictions(
     rating makes the forecast. This is the only variant class that pays a refit.
     """
     weighted = _weighted_fights(inputs, variant)
-    decided_all = _decided(inputs.fights)
+    decided_all = decided_rows(inputs.fights)
     kwargs = {}
     if iterations is not None:
         kwargs["iterations"] = iterations
@@ -446,11 +430,10 @@ def whr_predictions(
             inactive_days_b = (
                 float((cutoff - last_date_b).days) if pd.notna(last_date_b) else np.nan
             )
-            gap = (mu_a - mu_b) / _ELO_PER_NAT
             dob_a = pd.to_datetime(inputs.birth_dates.get(str(a)), errors="coerce")
             dob_b = pd.to_datetime(inputs.birth_dates.get(str(c)), errors="coerce")
-            age_a = ((cutoff - dob_a).days / 365.2425) if pd.notna(dob_a) else np.nan
-            age_b = ((cutoff - dob_b).days / 365.2425) if pd.notna(dob_b) else np.nan
+            age_a = ((cutoff - dob_a).days / GREGORIAN_YEAR_DAYS) if pd.notna(dob_a) else np.nan
+            age_b = ((cutoff - dob_b).days / GREGORIAN_YEAR_DAYS) if pd.notna(dob_b) else np.nan
             rows.append({
                 "variant": variant.name,
                 "fight_url": b["fight_url"],
@@ -458,7 +441,7 @@ def whr_predictions(
                 "event_name": ev["event_name"],
                 "fighter_a": a,
                 "fighter_b": c,
-                "p_a": 1.0 / (1.0 + np.exp(-gap)),
+                "p_a": elo_win_prob(mu_a, mu_b),
                 "y_a": int(b["winner"] == a),
                 "prior_a": float(prior_counts.get(a, 0)),
                 "prior_b": float(prior_counts.get(c, 0)),
@@ -499,7 +482,7 @@ def split_calibration_events(
     if eval_events.empty:
         return eval_events
     cutoff = eval_events["event_date"].min()
-    decided = _decided(fights)
+    decided = decided_rows(fights)
     events = (
         decided[decided["event_date"] < cutoff]
         .groupby(["event_date", "event_name"], sort=True)
@@ -529,7 +512,7 @@ def choose_eval_events(
     ``n_events`` evenly across the calendar span, for claims about the whole
     history rather than the modern era.
     """
-    decided = _decided(fights)
+    decided = decided_rows(fights)
     events = (
         decided.groupby(["event_date", "event_name"], sort=True)
         .size().rename("n_bouts").reset_index()
@@ -844,20 +827,8 @@ def run_sweep(
         calibration_events = split_calibration_events(inputs.fights, eval_events)
     extra["calib"] = len(calibration_events)
 
-    def _keys(events: pd.DataFrame) -> set:
-        return set(zip(events["event_date"], events["event_name"]))
-
-    eval_keys = _keys(eval_events)
-    calib_keys = _keys(calibration_events) if not calibration_events.empty else set()
-
-    def _select(preds: pd.DataFrame, keys: set) -> pd.DataFrame:
-        if not keys:
-            return preds.iloc[:0]
-        mask = np.array(
-            [(d, n) in keys for d, n in zip(preds["event_date"], preds["event_name"])],
-            dtype=bool,
-        )
-        return preds[mask]
+    eval_keys = event_keys(eval_events)
+    calib_keys = event_keys(calibration_events)
 
     frames = []
     for variant in variants:
@@ -878,15 +849,10 @@ def run_sweep(
             # One sweep yields every one-step-ahead prediction; the fold sets
             # only choose which of them are read.
             sweep = online_predictions(inputs, variant)
-            eval_preds = _select(sweep, eval_keys)
-            calib_preds = _select(sweep, calib_keys)
+            eval_preds, calib_preds = sweep, sweep
 
-        def _floor(frame: pd.DataFrame) -> pd.DataFrame:
-            return frame[
-                (frame["prior_a"] >= min_prior_fights) & (frame["prior_b"] >= min_prior_fights)
-            ].reset_index(drop=True)
-
-        eval_preds, calib_preds = _floor(eval_preds), _floor(calib_preds)
+        eval_preds = select_predictions(eval_preds, eval_keys, min_prior_fights).reset_index(drop=True)
+        calib_preds = select_predictions(calib_preds, calib_keys, min_prior_fights).reset_index(drop=True)
         temperature = (
             fit_temperature(calib_preds["p_a"].to_numpy(), calib_preds["y_a"].to_numpy())
             if len(calib_preds) else 1.0
@@ -901,7 +867,4 @@ def run_sweep(
     if not frames:
         return pd.DataFrame()
     allp = pd.concat(frames, ignore_index=True, sort=False)
-    # Paired comparison requires the identical bout set for every variant.
-    counts = allp.groupby("fight_url")["variant"].nunique()
-    complete = set(counts[counts == len(variants)].index)
-    return allp[allp["fight_url"].isin(complete)].reset_index(drop=True)
+    return paired_predictions(allp, len(variants))

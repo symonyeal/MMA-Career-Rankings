@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 
 from ratings.boards import public_legacy_eligibility_override, select_core_rating_col
-from build_boards import gender_partition
+from ratings.gender import partition_by_gender
 from ratings import fights as F
 from ratings.age import load_birth_dates
 from ratings.connectivity import connectivity
@@ -404,7 +404,7 @@ def build(snapshot: Path, *, scope: str, out_dir: Path) -> dict[str, object]:
     # default board is the men's component, so auditing the mixed population
     # here would score a board nobody ships -- and would keep counting women as
     # "unanchored" against anchor lists that are men's lists.
-    partition = gender_partition(current)
+    partition = partition_by_gender(current)
     audited = partition.get("M", current)
     published = _ranked(audited, rating_col)
     women = partition.get("F")

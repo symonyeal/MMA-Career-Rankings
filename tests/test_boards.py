@@ -453,7 +453,7 @@ def _gendered_current() -> pd.DataFrame:
 
 
 def test_gender_partition_splits_the_two_components_and_keeps_the_unlabelled():
-    parts = build_boards.gender_partition(_gendered_current())
+    parts = build_boards.partition_by_gender(_gendered_current())
     assert parts["F"]["fighter"].tolist() == ["Ada", "Bea"]
     # An unlabelled fighter stays on the default board rather than being
     # asserted into the women's one.
@@ -462,7 +462,7 @@ def test_gender_partition_splits_the_two_components_and_keeps_the_unlabelled():
 
 def test_gender_partition_falls_back_to_one_board_without_a_gender_column():
     current = _gendered_current().drop(columns="gender")
-    parts = build_boards.gender_partition(current)
+    parts = build_boards.partition_by_gender(current)
     assert set(parts) == {"M"}
     assert len(parts["M"]) == 5
 

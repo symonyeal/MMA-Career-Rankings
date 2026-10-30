@@ -2,7 +2,7 @@
 
 Three layers:
 
-1. Scalar regression — ``_rate_weighted`` with all weights = 1.0 reproduces
+1. Scalar regression — ``Glicko2.rate_weighted`` with all weights = 1.0 reproduces
    the vendored ``Glicko2.rate()`` output (within fp tolerance).
 2. Engine regression — ``WeightedRatingEngine`` with unit weights produces
    the same ``mu`` trajectory as ``RatingEngine``'s ``mu_canonical`` and
@@ -23,7 +23,6 @@ from ratings.glicko2_engine import (
     DEFAULT_TAU,
     RatingEngine,
     WeightedRatingEngine,
-    _rate_weighted,
 )
 
 
@@ -40,7 +39,7 @@ def test_rate_weighted_unit_weights_equals_canonical():
     weighted_series = [(1.0, opp1, 1.0), (0.0, opp2, 1.0)]
 
     expected = env.rate(r0, canonical_series)
-    actual = _rate_weighted(env, r0, weighted_series)
+    actual = env.rate_weighted(r0, weighted_series)
 
     assert actual.mu == pytest.approx(expected.mu, abs=1e-9)
     assert actual.phi == pytest.approx(expected.phi, abs=1e-9)
@@ -51,7 +50,7 @@ def test_rate_weighted_empty_series_matches_canonical_inactive_period():
     env = Glicko2(tau=DEFAULT_TAU)
     r0 = env.create_rating(mu=1500, phi=250)
     expected = env.rate(r0, [])
-    actual = _rate_weighted(env, r0, [])
+    actual = env.rate_weighted(r0, [])
     assert actual.mu == pytest.approx(expected.mu, abs=1e-9)
     assert actual.phi == pytest.approx(expected.phi, abs=1e-9)
     assert actual.sigma == pytest.approx(expected.sigma, abs=1e-9)
@@ -62,7 +61,7 @@ def test_rate_weighted_zero_weights_acts_like_inactive_period():
     r0 = env.create_rating()
     opp = env.create_rating(mu=1700, phi=80)
     inactive = env.rate(r0, [])
-    actual = _rate_weighted(env, r0, [(1.0, opp, 0.0)])
+    actual = env.rate_weighted(r0, [(1.0, opp, 0.0)])
     assert actual.mu == pytest.approx(inactive.mu, abs=1e-9)
     assert actual.phi == pytest.approx(inactive.phi, abs=1e-9)
 
@@ -73,7 +72,7 @@ def test_rate_weighted_amplifies_underdog_win():
     strong_opp = env.create_rating(mu=1800, phi=80)
 
     canonical_win = env.rate(r0, [(1.0, strong_opp)])
-    amplified_win = _rate_weighted(env, r0, [(1.0, strong_opp, 1.20)])
+    amplified_win = env.rate_weighted(r0, [(1.0, strong_opp, 1.20)])
 
     assert canonical_win.mu > 1500
     assert amplified_win.mu > canonical_win.mu
@@ -85,7 +84,7 @@ def test_rate_weighted_dampens_expected_outcome():
     weak_opp = env.create_rating(mu=1200, phi=80)
 
     canonical_win = env.rate(r0, [(1.0, weak_opp)])
-    damped_win = _rate_weighted(env, r0, [(1.0, weak_opp, 0.85)])
+    damped_win = env.rate_weighted(r0, [(1.0, weak_opp, 0.85)])
 
     assert canonical_win.mu > 1500
     assert 1500 < damped_win.mu < canonical_win.mu

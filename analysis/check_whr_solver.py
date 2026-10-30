@@ -32,7 +32,8 @@ from ratings.prequential import (paired_delta)
 from ratings.fights import load_fight_table
 from ratings.fights import attach_bout_weights
 from ratings.whr import production_score_kwargs, project_age_rating, run_whr
-from ratings.whr_backtest import _decided_bouts, elo_win_prob
+from ratings.whr import elo_win_prob
+from ratings.fights import decided_bouts
 
 SCOPE = "majors,pre_unified"
 G: dict = {}  # per-process state, set once by _init
@@ -55,7 +56,7 @@ def _init(snapshot: Path, baseline: str, iterations: int, backend: str = "python
     f, dob = _load(snapshot)
     base = (functools.partial(run_whr, center_each_pass=True, backend="rust") if backend == "rust"
             else _baseline_solver(baseline))
-    G.update(f=f, dob=dob, bouts=_decided_bouts(f), it=iterations,
+    G.update(f=f, dob=dob, bouts=decided_bouts(f), it=iterations,
              solvers=[("baseline", base),
                       ("corrected", functools.partial(run_whr, center_each_pass=False, backend=backend))])
 
@@ -103,7 +104,7 @@ def compare(snapshot: Path, baseline: str, years: list[int], iterations: int,
             workers: int, backend: str = "python") -> tuple[pd.DataFrame, dict]:
     """Score every UFC card of ``years``; require three prior bouts per fighter."""
     f, dob = _load(snapshot)
-    bouts = _decided_bouts(f)
+    bouts = decided_bouts(f)
     test = bouts[bouts["org"].eq("UFC") & bouts["event_date"].dt.year.isin(years)]
     keys = sorted(test.groupby(["event_date", "event_name"]).groups)
     if backend == "rust":

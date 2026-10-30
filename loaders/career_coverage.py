@@ -276,7 +276,6 @@ def _career_coverage_summary(snapshot_dir: Path) -> dict:
     return summary
 
 
-
 def require_coverage(snapshot_dir: Path, scope: str) -> dict:
     """Refuse a majors fit whose whole-career coverage was not proved."""
     summary = _career_coverage_summary(snapshot_dir)

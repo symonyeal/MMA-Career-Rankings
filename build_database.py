@@ -23,7 +23,7 @@ from loaders.odds_loader import compute_implied_probs
 from project_helpers import date_range, project_path
 
 
-PROJECT_ROOT = Path(__file__).resolve().parent
+from project_helpers import PROJECT_ROOT
 DEFAULT_DB_PATH = PROJECT_ROOT / "data" / "ufc_rank_engine.sqlite"
 
 
@@ -287,10 +287,6 @@ def _iso_file_mtime(path: Path) -> str:
     return datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc).isoformat(timespec="seconds")
 
 
-def _date_range(df: pd.DataFrame) -> tuple[str | None, str | None]:
-    return date_range(df)
-
-
 def _safe_identifier(value: str) -> str:
     return re.sub(r"[^a-zA-Z0-9_]+", "_", value).strip("_").lower()
 
@@ -500,7 +496,7 @@ def build_database(
             df = _read_source(source_path, spec.table_name)
             _write_df(con, spec.table_name, df)
             loaded_tables.append(spec.table_name)
-            min_date, max_date = _date_range(df)
+            min_date, max_date = date_range(df)
             manifest_rows.append({
                 "table_name": spec.table_name,
                 "source_name": spec.source_name,

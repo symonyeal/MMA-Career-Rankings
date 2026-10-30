@@ -8,7 +8,7 @@ from pathlib import Path
 import pandas as pd
 
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+from project_helpers import PROJECT_ROOT
 DEFAULT_RULES_PATH = (
     PROJECT_ROOT / "data" / "external" / "fightmatrix" / "organization_normalization.csv"
 )

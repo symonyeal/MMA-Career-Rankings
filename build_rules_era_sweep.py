@@ -37,6 +37,9 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from ratings.evaluation import (
+    apply_temperature, event_keys, fit_temperature, paired_predictions, select_predictions,
+)
 from ratings import prequential as PQ
 from ratings.rules_era import RULES_ERA_PRE, UFC_28_DATE
 from ratings.symon_score import career_skill_mass
@@ -118,8 +121,8 @@ def main() -> None:
     eval_events = PQ.choose_eval_events(
         base.fights, n_events=args.events, mode=args.mode, since_year=args.since_year)
     calib_events = PQ.split_calibration_events(base.fights, eval_events, n_events=60)
-    eval_keys = set(zip(eval_events["event_date"], eval_events["event_name"]))
-    calib_keys = set(zip(calib_events["event_date"], calib_events["event_name"]))
+    eval_keys = event_keys(eval_events)
+    calib_keys = event_keys(calib_events)
 
     # Score only unified-era bouts: both arms can predict those, and a
     # pre-unified bout is not something the UFC-only arm was ever asked about.
@@ -131,24 +134,16 @@ def main() -> None:
         for variant in COMPARE_VARIANTS:
             preds = PQ.online_predictions(arm, variant)
             preds = preds[preds["fight_url"].isin(unified_urls)]
-            floor = (preds["prior_a"] >= args.min_prior_fights) & (
-                preds["prior_b"] >= args.min_prior_fights)
-            in_calib = np.array([(d, n) in calib_keys for d, n in
-                                 zip(preds["event_date"], preds["event_name"])], dtype=bool)
-            in_eval = np.array([(d, n) in eval_keys for d, n in
-                                zip(preds["event_date"], preds["event_name"])], dtype=bool)
-            calib = preds[in_calib & floor]
-            temperature = (PQ.fit_temperature(calib["p_a"].to_numpy(), calib["y_a"].to_numpy())
+            calib = select_predictions(preds, calib_keys, args.min_prior_fights)
+            temperature = (fit_temperature(calib["p_a"].to_numpy(), calib["y_a"].to_numpy())
                            if len(calib) else 1.0)
-            held = preds[in_eval & floor].copy()
-            held["p_a_calibrated"] = PQ.apply_temperature(held["p_a"].to_numpy(), temperature)
+            held = select_predictions(preds, eval_keys, args.min_prior_fights).copy()
+            held["p_a_calibrated"] = apply_temperature(held["p_a"].to_numpy(), temperature)
             held["variant"] = f"{arm_name}::{variant.name}"
             frames.append(held)
 
     allp = pd.concat(frames, ignore_index=True, sort=False)
-    n_series = allp.groupby("fight_url")["variant"].nunique()
-    keep = set(n_series[n_series == len(ARMS) * len(COMPARE_VARIANTS)].index)
-    allp = PQ.symmetrize_sides(allp[allp["fight_url"].isin(keep)].reset_index(drop=True))
+    allp = PQ.symmetrize_sides(paired_predictions(allp, len(ARMS) * len(COMPARE_VARIANTS)))
 
     # Bouts with at least one boundary-crossing fighter: the only population the
     # extra evidence can reach. An effect diluted across every modern bout is

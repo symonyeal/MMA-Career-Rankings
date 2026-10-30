@@ -30,44 +30,8 @@ import pandas as pd
 
 from ratings.constants import WHR_ITERATIONS, WHR_W2_PER_DAY
 from ratings.age import load_birth_dates
-from ratings.fights import attach_bout_weights
-from ratings.whr import _ELO_PER_NAT, production_score_kwargs, project_age_rating, run_whr
-
-
-def elo_win_prob(mu_a: float, mu_b: float,
-                 var_a: float = 0.0, var_b: float = 0.0, var_lambda: float = 0.0) -> float:
-    """Bradley-Terry win probability for A on the WHR Elo-like display scale.
-
-    ``mu = anchor + r * _ELO_PER_NAT`` (natural rating ``r``), so the natural
-    rating gap is ``(mu_a - mu_b) / _ELO_PER_NAT`` and ``P(a) = sigmoid(gap)``.
-
-    With ``var_lambda > 0`` the gap is attenuated by the combined WHR posterior
-    variance (natural scale): ``gap / sqrt(1 + var_lambda * (var_a + var_b))``.
-    This is the WHR-native analog of Glicko-2's ``g(RD)`` shrinkage — uncertain
-    ratings (thin or stale records) pull the prediction toward a coin flip,
-    sourced from the smoother's own Hessian rather than a foreign filter.
-    """
-    gap = (float(mu_a) - float(mu_b)) / _ELO_PER_NAT
-    if var_lambda:
-        gap = gap / np.sqrt(1.0 + var_lambda * (float(var_a) + float(var_b)))
-    return 1.0 / (1.0 + np.exp(-gap))
-
-
-def _decided_bouts(fights: pd.DataFrame) -> pd.DataFrame:
-    """One row per decided (non-draw / non-NC) bout with a clean winner/loser."""
-    f = fights.copy()
-    if "is_excluded" in f.columns:
-        f = f[~f["is_excluded"].fillna(False).astype(bool)]
-    for flag in ("is_draw", "is_nc"):
-        if flag in f.columns:
-            f = f[~f[flag].fillna(False).astype(bool)]
-    f = f.dropna(subset=["winner", "fighter_a", "fighter_b"])
-    f["event_date"] = pd.to_datetime(f["event_date"], errors="coerce")
-    f = f.dropna(subset=["event_date"])
-    # Keep only bouts whose winner is one of the two named fighters.
-    f = f[f["winner"].eq(f["fighter_a"]) | f["winner"].eq(f["fighter_b"])]
-    f["_y_a"] = (f["winner"] == f["fighter_a"]).astype(int)  # 1 if fighter_a won
-    return f
+from ratings.fights import decided_bouts, attach_bout_weights
+from ratings.whr import elo_win_prob, production_score_kwargs, project_age_rating, run_whr
 
 
 def backtest_w2(
@@ -100,7 +64,7 @@ def backtest_w2(
     """
     lambdas = list(var_lambdas) if var_lambdas else [0.0]
     need_var = any(value > 0 for value in lambdas)
-    bouts = _decided_bouts(fights)
+    bouts = decided_bouts(fights)
     cols = ["w2", "var_lambda", "brier", "log_loss", "n"]
     if bouts.empty:
         return pd.DataFrame(columns=cols)
