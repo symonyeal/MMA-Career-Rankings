@@ -20,10 +20,9 @@ def project_path(path: Path) -> str:
 # P_ID_ALIAS : project-owned source-id/name override table
 # RE_SID     : terminal Sherdog-id display suffix
 
-_ALIAS_CACHE_PATH = Path(__file__).resolve().parent / "data" / "external" / "aliases" / "fighter_aliases.csv"
+_ALIAS_CACHE_PATH = PROJECT_ROOT / "data" / "external" / "aliases" / "fighter_aliases.csv"
 P_ID_ALIAS = (
-    Path(__file__).resolve().parent
-    / "data" / "external" / "crossorg" / "identity_overrides.csv"
+    PROJECT_ROOT / "data" / "external" / "crossorg" / "identity_overrides.csv"
 )
 RE_SID = re.compile(r"\s*\(sherdog:\d+\)\s*$", flags=re.IGNORECASE)
 
@@ -198,3 +197,15 @@ def group_bounds(*keys: pd.Series) -> tuple[np.ndarray, np.ndarray]:
     starts = np.concatenate(([0], boundary))
     stops = np.concatenate((boundary, [n]))
     return starts, stops
+
+
+def map_distinct(values: pd.Series, f) -> pd.Series:
+    """``values.map(f)`` calling ``f`` once per distinct value (NaN included), same dtype inference as ``map``.
+
+    The distinct values are the first occurrences themselves, not ``factorize``'s uniques, which turn every NA into
+    NaN. The difference is visible: a string-dtype column turns the ``None`` that ``_winner_key`` returns into NaN,
+    which the ``if value`` test in ``_result_key`` then reads as a winner, while an object column keeps ``None``.
+    """
+    codes, _ = pd.factorize(values, use_na_sentinel=False)
+    first = np.unique(codes, return_index=True)[1]
+    return values.iloc[first].map(f).take(codes).set_axis(values.index)

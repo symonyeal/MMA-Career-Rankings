@@ -49,7 +49,8 @@ from __future__ import annotations
 import re
 
 from project_helpers import group_bounds
-from ratings.history import prefight_ratings
+from ratings.odds import decimal_to_american
+from ratings.history import attach_prefight_ratings
 from ratings.divisions import DIVISION_WEIGHT_LIMIT_LB, normalize_division_label
 
 import numpy as np
@@ -489,8 +490,6 @@ def _apply_championship_defense_floor(fights: pd.DataFrame) -> pd.DataFrame:
 # Pre-fight rating shifts (drives opponent-strength factor)
 
 
-
-
 def pre_fight_win_streaks(fights: pd.DataFrame) -> pd.DataFrame:
     """Each fighter's UFC win streak entering each bout (no leak within event)."""
     if fights is None or fights.empty:
@@ -660,19 +659,11 @@ def prefight_ranking_context(canonical_fights: pd.DataFrame, ratings_history: pd
     interim_champions: dict[int, int] = {}
 
     n = len(f)
-    div_rank_a = np.full(n, np.nan)
-    div_rank_b = np.full(n, np.nan)
     # How many fighters the divisional rank was read off. A rank is a position
     # in a field, and the fields differ by a factor of three across this corpus,
     # so the position alone does not say the same thing in each of them.
-    div_pool_a = np.full(n, np.nan)
-    div_pool_b = np.full(n, np.nan)
-    p4p_rank_a = np.full(n, np.nan)
-    p4p_rank_b = np.full(n, np.nan)
-    champ_a = np.zeros(n, dtype=bool)
-    champ_b = np.zeros(n, dtype=bool)
-    interim_champ_a = np.zeros(n, dtype=bool)
-    interim_champ_b = np.zeros(n, dtype=bool)
+    div_rank_a, div_rank_b, div_pool_a, div_pool_b, p4p_rank_a, p4p_rank_b = np.full((6, n), np.nan)
+    champ_a, champ_b, interim_champ_a, interim_champ_b = np.zeros((4, n), dtype=bool)
 
     event_starts, event_stops = group_bounds(f["event_date"], f["event_name"])
     id_a_l, id_b_l, code_l = id_a.tolist(), id_b.tolist(), division_code.tolist()
@@ -899,17 +890,6 @@ def _decisiveness_factor(score: pd.Series) -> pd.Series:
     return 1.0 + PERF_DECISIVENESS_AMPLITUDE * level
 
 
-def _opponent_strength_factor(fighter_mu: pd.Series, opponent_mu: pd.Series) -> pd.Series:
-    """Audit-only multiplier for opponent mu strength.
-
-    Captures **only** the "opponent is highly rated" signal. The legacy
-    underdog/mismatch terms have moved to the rank-gated upset factor so the
-    same opponent-quality information no longer double-counts when combined
-    via ``max`` with rank/champ/P4P context.
-    """
-    return opponent_mu_quality_factor(opponent_mu)
-
-
 def _opponent_streak_factor(opponent_streak: pd.Series, opponent_mu: pd.Series) -> pd.Series:
     """Bonus for ending a winning streak — only matters against rated opponents."""
     streak = pd.to_numeric(opponent_streak, errors="coerce").fillna(0.0)
@@ -917,18 +897,6 @@ def _opponent_streak_factor(opponent_streak: pd.Series, opponent_mu: pd.Series) 
     opp_level = ((opp - 1500.0) / 650.0).clip(lower=0.0, upper=1.0)
     component = PERF_OPPONENT_STREAK_AMPLITUDE * (streak.clip(lower=0.0, upper=5.0) / 5.0) * (0.5 + 0.5 * opp_level)
     return 1.0 + component
-
-
-def _american_from_decimal(decimal_odds: object) -> float | None:
-    try:
-        dec = float(decimal_odds)
-    except (TypeError, ValueError):
-        return None
-    if np.isnan(dec) or dec <= 1.0:
-        return None
-    if dec >= 2.0:
-        return (dec - 1.0) * 100.0
-    return -100.0 / (dec - 1.0)
 
 
 def _rank_context_factor(
@@ -1114,23 +1082,7 @@ def build_performance_appearances(
     f = f.merge(pre_fight_win_streaks(f), on="fight_url", how="left")
 
     # Opponent pre-fight mu (from canonical history).
-    prior = prefight_ratings(ratings_history)
-    prior_a = prior.rename(columns={"fighter": "fighter_a", "prefight_mu": "prefight_mu_a"})
-    prior_b = prior.rename(columns={"fighter": "fighter_b", "prefight_mu": "prefight_mu_b"})
-    f = f.merge(
-        prior_a,
-        on=["fighter_a", "event_date", "event_name"],
-        how="left",
-        validate="many_to_one",
-    )
-    f = f.merge(
-        prior_b,
-        on=["fighter_b", "event_date", "event_name"],
-        how="left",
-        validate="many_to_one",
-    )
-    for c in ("prefight_mu_a", "prefight_mu_b"):
-        f[c] = pd.to_numeric(f[c], errors="coerce").fillna(1500.0)
+    f = attach_prefight_ratings(f, ratings_history)
 
     # Optional odds residual (joined per-side).
     have_odds = odds_lines is not None and not odds_lines.empty
@@ -1245,16 +1197,14 @@ def build_performance_appearances(
                               - pd.to_numeric(out["market_prob"], errors="coerce"))
     missing_american = pd.to_numeric(out["market_american_odds"], errors="coerce").isna()
     if missing_american.any():
-        derived_american = out.loc[missing_american, "market_decimal_odds"].map(_american_from_decimal)
+        derived_american = out.loc[missing_american, "market_decimal_odds"].map(decimal_to_american)
         out.loc[missing_american, "market_american_odds"] = pd.to_numeric(derived_american, errors="coerce")
     # Per-factor audit columns. Each ``perf_factor_*`` reflects what that one
     # signal would say on its own; the per-fight combination below
     # deduplicates overlapping opponent-quality signals via ``max``.
     out["perf_factor_decisiveness"] = _decisiveness_factor(out["decisiveness_score"]).clip(
         lower=SLEEVE_FACTOR_MIN, upper=SLEEVE_FACTOR_MAX)
-    out["perf_factor_opponent_strength"] = _opponent_strength_factor(
-        out["prefight_mu"], out["opponent_prefight_mu"]
-    )
+    out["perf_factor_opponent_strength"] = opponent_mu_quality_factor(out["opponent_prefight_mu"])
     out["perf_factor_opponent_streak"] = _opponent_streak_factor(
         out["opponent_streak"], out["opponent_prefight_mu"]
     ).clip(lower=SLEEVE_FACTOR_MIN, upper=SLEEVE_FACTOR_MAX)

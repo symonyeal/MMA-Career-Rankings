@@ -6,35 +6,9 @@ from collections import Counter
 import numpy as np
 import pandas as pd
 
-from project_helpers import normalize_name_key
-
-
-DIVISIONS = [
-    "Strawweight", "Flyweight", "Bantamweight", "Featherweight",
-    "Lightweight", "Welterweight", "Middleweight", "Light Heavyweight",
-    "Heavyweight", "Women's Strawweight", "Women's Flyweight",
-    "Women's Bantamweight", "Women's Featherweight",
-    "Catch Weight", "Open Weight",
-]
-
-
-DIV_SHORT: dict[str, str] = {
-    "Strawweight":          "STW",
-    "Flyweight":            "FLY",
-    "Bantamweight":         "BW",
-    "Featherweight":        "FW",
-    "Lightweight":          "LW",
-    "Welterweight":         "WW",
-    "Middleweight":         "MW",
-    "Light Heavyweight":    "LHW",
-    "Heavyweight":          "HW",
-    "Women's Strawweight":  "W.STW",
-    "Women's Flyweight":    "W.FLY",
-    "Women's Bantamweight": "W.BW",
-    "Women's Featherweight":"W.FW",
-    "Catch Weight":         "CW",
-    "Open Weight":          "OW",
-}
+from project_helpers import map_distinct, normalize_name_key
+from ratings.divisions import DIV_SHORT, display_division_label
+from ratings.constants import JULIAN_YEAR_DAYS
 
 
 def _name_key(name: str | None) -> str | None:
@@ -42,32 +16,37 @@ def _name_key(name: str | None) -> str | None:
     return key or None
 
 
-def normalize_division(weight_class: str | None) -> str | None:
-    """Strip 'UFC ', ' Title Bout', ' Bout' to land at clean division names."""
-    if not isinstance(weight_class, str):
-        return None
-    w = weight_class.replace("UFC ", "").replace(" Title Bout", "").replace(" Bout", "").strip()
-    # Match more specific labels first so "Women's Flyweight" is not collapsed
-    # to the generic "Flyweight" bucket.
-    for d in sorted(DIVISIONS, key=len, reverse=True):
-        if d.lower() in w.lower():
-            return d
-    return w  # Catch-all (Catch Weight, Open Weight, etc.)
-
-
-def _map_unique(s: pd.Series, fn, none=None) -> np.ndarray:
-    """fn over the distinct values of s only (a few dozen labels in 10^5 rows); NaN rows get ``none``."""
-    codes, uniq = pd.factorize(s)
-    vals = np.empty(len(uniq) + 1, dtype=object)
-    vals[:-1] = [fn(u) for u in uniq]
-    vals[-1] = none  # code -1 is the last slot
-    return vals[codes]
-
-
 def add_division_to_fights(fights: pd.DataFrame) -> pd.DataFrame:
     out = fights.copy()
-    out["division"] = _map_unique(out["weight_class"], normalize_division)
+    out["division"] = map_distinct(out["weight_class"], display_division_label).to_numpy(dtype=object, na_value=None)
     return out
+
+
+def _division_appearances(fights: pd.DataFrame) -> pd.DataFrame:
+    f = add_division_to_fights(fights)
+    f["event_date"] = pd.to_datetime(f["event_date"], errors="coerce")
+    f["year"] = f["event_date"].dt.year
+    a = f[["year", "division", "fighter_a"]].rename(columns={"fighter_a": "fighter"})
+    b = f[["year", "division", "fighter_b"]].rename(columns={"fighter_b": "fighter"})
+    long = pd.concat([a, b], ignore_index=True).dropna(subset=["fighter", "division", "year"])
+    return long
+
+
+def _annual_ratings(long: pd.DataFrame, ratings_history: pd.DataFrame, rating_col: str) -> pd.DataFrame:
+    rh = ratings_history.copy()
+    rh["event_date"] = pd.to_datetime(rh["event_date"], errors="coerce")
+    rh["year"] = rh["event_date"].dt.year
+    rh[rating_col] = pd.to_numeric(rh[rating_col], errors="coerce")
+    eoy = (
+        rh.dropna(subset=[rating_col, "year"])
+        .sort_values("event_date")
+        .groupby(["fighter", "year"], as_index=False)
+        .last()[["fighter", "year", rating_col]]
+    )
+    merged = long.merge(eoy, on=["fighter", "year"], how="inner").drop_duplicates(
+        subset=["fighter", "year", "division"]
+    )
+    return merged
 
 
 def _division_strength_frame(
@@ -85,12 +64,7 @@ def _division_strength_frame(
     if rating_col not in ratings_history.columns:
         return pd.DataFrame(columns=["division", "year", "score", "fighters"])
 
-    f = add_division_to_fights(fights)
-    f["event_date"] = pd.to_datetime(f["event_date"], errors="coerce")
-    f["year"] = f["event_date"].dt.year
-    a = f[["year", "division", "fighter_a"]].rename(columns={"fighter_a": "fighter"})
-    b = f[["year", "division", "fighter_b"]].rename(columns={"fighter_b": "fighter"})
-    long = pd.concat([a, b], ignore_index=True).dropna(subset=["fighter", "division", "year"])
+    long = _division_appearances(fights)
     if divisions:
         long = long[long["division"].isin(divisions)]
     if year_min is not None:
@@ -100,19 +74,7 @@ def _division_strength_frame(
     if long.empty:
         return pd.DataFrame(columns=["division", "year", "score", "fighters"])
 
-    rh = ratings_history.copy()
-    rh["event_date"] = pd.to_datetime(rh["event_date"], errors="coerce")
-    rh["year"] = rh["event_date"].dt.year
-    rh[rating_col] = pd.to_numeric(rh[rating_col], errors="coerce")
-    eoy = (
-        rh.dropna(subset=[rating_col, "year"])
-        .sort_values("event_date")
-        .groupby(["fighter", "year"], as_index=False)
-        .last()[["fighter", "year", rating_col]]
-    )
-    merged = long.merge(eoy, on=["fighter", "year"], how="inner").drop_duplicates(
-        subset=["fighter", "year", "division"]
-    )
+    merged = _annual_ratings(long, ratings_history, rating_col)
     rows = []
     for (division, year), g in merged.groupby(["division", "year"], dropna=False):
         top = g.sort_values(rating_col, ascending=False).head(top_n_per_division)
@@ -147,31 +109,14 @@ def division_year_top_fighters_frame(
     if rating_col not in ratings_history.columns:
         return pd.DataFrame(columns=cols)
 
-    f = add_division_to_fights(fights)
-    f["event_date"] = pd.to_datetime(f["event_date"], errors="coerce")
-    f["year"] = f["event_date"].dt.year
-    a = f[["year", "division", "fighter_a"]].rename(columns={"fighter_a": "fighter"})
-    b = f[["year", "division", "fighter_b"]].rename(columns={"fighter_b": "fighter"})
-    long = pd.concat([a, b], ignore_index=True).dropna(subset=["fighter", "division", "year"])
+    long = _division_appearances(fights)
     long = long[long["year"].eq(year)]
     if divisions:
         long = long[long["division"].isin(divisions)]
     if long.empty:
         return pd.DataFrame(columns=cols)
 
-    rh = ratings_history.copy()
-    rh["event_date"] = pd.to_datetime(rh["event_date"], errors="coerce")
-    rh["year"] = rh["event_date"].dt.year
-    rh[rating_col] = pd.to_numeric(rh[rating_col], errors="coerce")
-    eoy = (
-        rh.dropna(subset=[rating_col, "year"])
-        .sort_values("event_date")
-        .groupby(["fighter", "year"], as_index=False)
-        .last()[["fighter", "year", rating_col]]
-    )
-    merged = long.merge(eoy, on=["fighter", "year"], how="inner").drop_duplicates(
-        subset=["fighter", "year", "division"]
-    )
+    merged = _annual_ratings(long, ratings_history, rating_col)
     if merged.empty:
         return pd.DataFrame(columns=cols)
 
@@ -549,8 +494,9 @@ def title_lineage_frame(
     if not include_interim and "is_interim_title_bout" in df.columns:
         df = df[~df["is_interim_title_bout"].fillna(False).astype(bool)]
     if "division" in df.columns:
-        in_division = _map_unique(df["division"],
-                                  lambda value: isinstance(value, str) and normalize_division(value) == division, False)
+        in_division = map_distinct(
+            df["division"], lambda value: isinstance(value, str) and display_division_label(value) == division
+        )
         df = df[in_division.astype(bool)]
     df = df[df["is_winner"].fillna(False).astype(bool)].copy()
     df["event_date"] = pd.to_datetime(df["event_date"], errors="coerce")
@@ -570,7 +516,7 @@ def title_lineage_frame(
     frame["reign_end"] = frame["start"].shift(-1)
     frame["reign_end"] = frame["reign_end"].fillna(df["event_date"].max() + pd.Timedelta(days=150))
     days = (frame["reign_end"] - frame["start"]).dt.days.clip(lower=30)
-    frame["years"] = (days / 365.25).round(1)
+    frame["years"] = (days / JULIAN_YEAR_DAYS).round(1)
     frame["bar_length"] = days * 86_400_000
     frame["start"] = frame["start"].dt.date
     frame["label"] = frame.apply(

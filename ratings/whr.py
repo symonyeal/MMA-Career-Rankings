@@ -70,6 +70,7 @@ import numpy as np
 import pandas as pd
 
 from ratings.constants import (
+    GREGORIAN_YEAR_DAYS,
     WHR_BACKEND,
     WHR_CENTER_EACH_PASS,
     WHR_ITERATIONS,
@@ -92,7 +93,6 @@ _ELO_ANCHOR = 1500.0
 _EPOCH = pd.Timestamp("2000-01-01")
 AGE_BIN_EDGES = np.array([24.0, 27.0, 30.0, 33.0, 36.0, 39.0, 42.0])
 AGE_BIN_LABELS = ("<24", "24-27", "27-30", "30-33", "33-36", "36-39", "39-42", "42+")
-_DAYS_PER_YEAR = 365.2425
 
 
 def project_age_rating(
@@ -128,8 +128,8 @@ def project_age_rating(
     ):
         return float(mu)
 
-    start_age = (pd.Timestamp(start) - pd.Timestamp(birth)).days / _DAYS_PER_YEAR
-    end_age = (pd.Timestamp(end) - pd.Timestamp(birth)).days / _DAYS_PER_YEAR
+    start_age = (pd.Timestamp(start) - pd.Timestamp(birth)).days / GREGORIAN_YEAR_DAYS
+    end_age = (pd.Timestamp(end) - pd.Timestamp(birth)).days / GREGORIAN_YEAR_DAYS
     if end_age <= start_age:
         return float(mu)
 
@@ -365,7 +365,7 @@ def _passes_rust(
         gp.astype("<f8").tobytes(), bn.astype("<i8").tobytes(),
         float(w2_per_day), float(inv_prior), float(vg_total), float(step_clip), int(fit_passes),
         bool(age_drift), bool(center_each_pass), len(AGE_BIN_LABELS),
-        25.0 / (_ELO_PER_NAT * _DAYS_PER_YEAR),
+        25.0 / (_ELO_PER_NAT * GREGORIAN_YEAR_DAYS),
     )
     return np.frombuffer(r, dtype="<f8").copy(), np.frombuffer(dr, dtype="<f8").copy()
 
@@ -460,7 +460,7 @@ def run_whr(
                 transition_bins[fighter] = np.full(max(len(nodes) - 1, 0), -1, dtype=int)
                 continue
             birth_day = float((pd.Timestamp(dob) - _EPOCH).days)
-            app_age[nodes] = (app_day[nodes] - birth_day) / _DAYS_PER_YEAR
+            app_age[nodes] = (app_day[nodes] - birth_day) / GREGORIAN_YEAR_DAYS
             if len(nodes) > 1:
                 mid_age = (app_age[nodes][1:] + app_age[nodes][:-1]) / 2.0
                 bins = np.digitize(mid_age, AGE_BIN_EDGES).astype(int)
@@ -574,7 +574,7 @@ def run_whr(
                 baseline = raw[0] if day_sum[0] > 0 else 0.0
                 target = raw - baseline
                 target[day_sum == 0] = 0.0
-                limit = 25.0 / (_ELO_PER_NAT * _DAYS_PER_YEAR)
+                limit = 25.0 / (_ELO_PER_NAT * GREGORIAN_YEAR_DAYS)
                 drift_per_day = np.clip(target, -limit, limit)
                 # Refit from the neutral initialization under the now-estimated
                 # prior mean. Re-estimating from the already drifted trajectory
@@ -593,7 +593,7 @@ def run_whr(
         valid_age = np.isfinite(app_age) & (app_age >= 14.0) & (app_age <= 65.0)
         prior_drift = np.full(n_app, np.nan, dtype=float)
         prior_drift[valid_age] = (
-            drift_per_day[app_bins[valid_age]] * _ELO_PER_NAT * _DAYS_PER_YEAR
+            drift_per_day[app_bins[valid_age]] * _ELO_PER_NAT * GREGORIAN_YEAR_DAYS
         )
         data["age_years"] = app_age
         data["prior_drift_elo_per_year"] = prior_drift
@@ -630,6 +630,25 @@ def run_whr(
     out = out.sort_values(["fighter", "event_date", "event_name"]).reset_index(drop=True)
     if age_drift:
         out.attrs["age_drift_elo_per_year"] = (
-            drift_per_day * _ELO_PER_NAT * _DAYS_PER_YEAR
+            drift_per_day * _ELO_PER_NAT * GREGORIAN_YEAR_DAYS
         ).tolist()
     return out
+
+
+def elo_win_prob(mu_a: float, mu_b: float,
+                 var_a: float = 0.0, var_b: float = 0.0, var_lambda: float = 0.0) -> float:
+    """Bradley-Terry win probability for A on the WHR Elo-like display scale.
+
+    ``mu = anchor + r * _ELO_PER_NAT`` (natural rating ``r``), so the natural
+    rating gap is ``(mu_a - mu_b) / _ELO_PER_NAT`` and ``P(a) = sigmoid(gap)``.
+
+    With ``var_lambda > 0`` the gap is attenuated by the combined WHR posterior
+    variance (natural scale): ``gap / sqrt(1 + var_lambda * (var_a + var_b))``.
+    This is the WHR-native analog of Glicko-2's ``g(RD)`` shrinkage — uncertain
+    ratings (thin or stale records) pull the prediction toward a coin flip,
+    sourced from the smoother's own Hessian rather than a foreign filter.
+    """
+    gap = (float(mu_a) - float(mu_b)) / _ELO_PER_NAT
+    if var_lambda:
+        gap = gap / np.sqrt(1.0 + var_lambda * (float(var_a) + float(var_b)))
+    return 1.0 / (1.0 + np.exp(-gap))

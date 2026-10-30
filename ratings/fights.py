@@ -18,18 +18,6 @@ from ratings.scope import UFC_ONLY
 from project_helpers import group_bounds
 
 
-def _ensure_integrity_columns(fights: pd.DataFrame) -> pd.DataFrame:
-    out = fights.copy()
-    for col in INTEGRITY_COLUMNS:
-        if col == "fight_url":
-            continue
-        if col not in out.columns:
-            out[col] = False if col in {"ped_confirmed", "is_dq", "missed_weight"} else None
-    for col in ("ped_confirmed", "is_dq", "missed_weight"):
-        out[col] = out[col].fillna(False).astype(bool)
-    return out
-
-
 def iter_events(fights: pd.DataFrame, columns: list[str]):
     """Yield ``(event_date, event_name, bouts)`` per event from column arrays.
 
@@ -103,7 +91,12 @@ def prepare_fights(fights: pd.DataFrame, *, mdabbert_csv: Path | None = None) ->
     fights = fights.drop(
         columns=[c for c in INTEGRITY_COLUMNS if c != "fight_url" and c in fights.columns], errors="ignore",
     ).merge(integrity, on="fight_url", how="left")
-    return _ensure_integrity_columns(fights), integrity
+    for col in INTEGRITY_COLUMNS:
+        if col != "fight_url" and col not in fights.columns:
+            fights[col] = False if col in {"ped_confirmed", "is_dq", "missed_weight"} else None
+    for col in ("ped_confirmed", "is_dq", "missed_weight"):
+        fights[col] = fights[col].fillna(False).astype(bool)
+    return fights, integrity
 
 
 def load_fight_table(snapshot_dir: Path, *, scope: str = UFC_ONLY) -> pd.DataFrame:
@@ -118,3 +111,37 @@ def load_fight_table(snapshot_dir: Path, *, scope: str = UFC_ONLY) -> pd.DataFra
 def resume_fights(snapshot_dir: Path, scope: str) -> pd.DataFrame:
     fights, _ = load_combined_fights(snapshot_dir, scope=scope, label="resume")
     return rated_rows(fights)
+
+
+def decided_rows(fights: pd.DataFrame) -> pd.DataFrame:
+    """Bouts with a clean winner — the only ones a win probability can be scored on."""
+    f = fights
+    for flag in ("is_draw", "is_nc"):
+        if flag in f.columns:
+            f = f[~f[flag].fillna(False).astype(bool)]
+    f = f.dropna(subset=["winner", "fighter_a", "fighter_b"])
+    return f[f["winner"].eq(f["fighter_a"]) | f["winner"].eq(f["fighter_b"])]
+
+
+def decided_bouts(fights: pd.DataFrame) -> pd.DataFrame:
+    """One row per decided (non-draw / non-NC) bout with a clean winner/loser."""
+    f = decided_rows(rated_rows(fights)).copy()
+    f["event_date"] = pd.to_datetime(f["event_date"], errors="coerce")
+    f = f.dropna(subset=["event_date"])
+    f["_y_a"] = (f["winner"] == f["fighter_a"]).astype(int)  # 1 if fighter_a won
+    return f
+
+
+def winning_sides(fights: pd.DataFrame) -> pd.DataFrame:
+    """Known winner/opponent appearances for score ledgers, ordered by bout date."""
+    cols = ["fighter", "opponent", "event_date", "winner"]
+    if "fight_url" in fights.columns:
+        cols.insert(0, "fight_url")
+    if fights.empty:
+        return pd.DataFrame(columns=cols)
+    sides = pd.concat([
+        fights.assign(fighter=fights["fighter_a"], opponent=fights["fighter_b"]),
+        fights.assign(fighter=fights["fighter_b"], opponent=fights["fighter_a"]),
+    ], ignore_index=True, sort=False)
+    sides = sides[cols].dropna(subset=["fighter", "opponent"])
+    return sides[sides["winner"].eq(sides["fighter"])].sort_values("event_date")

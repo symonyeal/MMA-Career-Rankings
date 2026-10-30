@@ -39,7 +39,7 @@ from ratings.legacy_resume import (
     RESUME_QUALITY_SCALE, RESUME_YEAR_CAP, TITLE_QUALITY_SCALE, contender_resume_rows,
     legacy_points, title_quality_rows, ufc_debut_dates_from,
 )
-from ratings.divisions import division_labels
+from ratings.divisions import MEN_LIMIT_LB, division_labels
 from ratings.current_score import is_ufc_bout
 from ratings.divisions import normalize_division_label
 from ratings.divisions import womens_division_label
@@ -47,11 +47,6 @@ from ratings.symon_score import (
     DEFAULT_CAREER_REFERENCE, DEFAULT_DIVISION_REFERENCE, DEFAULT_HINGE_SPREAD_FRACTION, career_skill_years,
 )
 
-MEN_LIMIT_LB = (
-    ("Strawweight", 115), ("Flyweight", 125), ("Bantamweight", 135), ("Featherweight", 145),
-    ("Lightweight", 155), ("Welterweight", 170), ("Middleweight", 185), ("Light Heavyweight", 205),
-    ("Heavyweight", 265),
-)
 MEN = {c for c, _ in MEN_LIMIT_LB}
 _LB = re.compile(r"(\d{2,3})\s*lb", re.IGNORECASE)
 CLASS_COLUMNS = ["fighter", "division", "title", "skill", "resume", "score"]

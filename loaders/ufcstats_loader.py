@@ -78,8 +78,6 @@ UFC_28_DATE = pd.Timestamp("2000-11-17")
 #   DQ                   0.85  win by disqualification, before integrity
 
 
-
-
 # ---------------------------------------------------------------------------
 # Cell-level parsers
 
@@ -138,16 +136,6 @@ def parse_method(s):
     return s  # unknown -> keep raw
 
 
-def parse_x_of_y(s):
-    """'5 of 11' -> (5, 11). '--'/empty/None -> (None, None)."""
-    if not isinstance(s, str):
-        return (None, None)
-    m = re.match(r"^\s*(\d+)\s*of\s*(\d+)\s*$", s)
-    if not m:
-        return (None, None)
-    return int(m.group(1)), int(m.group(2))
-
-
 def parse_mmss_to_seconds(s):
     """'4:47' -> 287. Invalid -> None."""
     if not isinstance(s, str):
@@ -156,15 +144,6 @@ def parse_mmss_to_seconds(s):
     if not m:
         return None
     return int(m.group(1)) * 60 + int(m.group(2))
-
-
-def parse_pct(s):
-    if not isinstance(s, str):
-        return None
-    m = re.match(r"^\s*(\d+)\s*%\s*$", s)
-    if not m:
-        return None
-    return int(m.group(1))
 
 
 def parse_height_to_inches(s):

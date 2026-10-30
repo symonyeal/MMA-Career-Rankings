@@ -43,7 +43,7 @@ from project_helpers import compact_name_keys, normalize_name_key
 # iy  : unique (date, known-opponent) anchors in y
 # C_id: unresolved UFC identity claims with shared-bout evidence
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+from project_helpers import PROJECT_ROOT
 OVERRIDES_PATH = PROJECT_ROOT / "data" / "external" / "crossorg" / "identity_overrides.csv"
 
 

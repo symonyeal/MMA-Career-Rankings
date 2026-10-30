@@ -1,6 +1,8 @@
 """Parity for vectorized source loader hot paths."""
 from __future__ import annotations
 
+import re
+
 import pandas as pd
 from pandas.testing import assert_frame_equal
 
@@ -9,8 +11,6 @@ from loaders.ufcstats_loader import (
     _PAIR_COLS,
     build_canonical_rounds,
     parse_mmss_to_seconds,
-    parse_pct,
-    parse_x_of_y,
 )
 from loaders.crossorg_identity import (
     _overlap,
@@ -18,6 +18,25 @@ from loaders.crossorg_identity import (
     _overlap_scores,
     resolve_by_bout_evidence,
 )
+
+
+def parse_x_of_y(s):
+    """'5 of 11' -> (5, 11). '--'/empty/None -> (None, None)."""
+    if not isinstance(s, str):
+        return (None, None)
+    m = re.match(r"^\s*(\d+)\s*of\s*(\d+)\s*$", s)
+    if not m:
+        return (None, None)
+    return int(m.group(1)), int(m.group(2))
+
+
+def parse_pct(s):
+    if not isinstance(s, str):
+        return None
+    m = re.match(r"^\s*(\d+)\s*%\s*$", s)
+    if not m:
+        return None
+    return int(m.group(1))
 
 
 def _old_build_canonical_rounds(stats: pd.DataFrame, fights: pd.DataFrame) -> pd.DataFrame:

@@ -12,6 +12,8 @@ import numpy as np
 import pandas as pd
 
 from loaders.fightmatrix_organizations import normalize_organization
+from ratings.fights import winning_sides
+from ratings.appearance_context import championship_masks
 from ratings.history import opponent_ratings
 from ratings.layoff import attach_opponent_layoff
 from ratings.opponent_quality import CONTENDER_LINE_MU, MIN_OPPONENT_UFC_BOUTS
@@ -194,11 +196,6 @@ MAJOR_PROMOTION_TIER = 1
 # failure applies to both, but that the magnitude carries across is an
 # assumption. Set to 0.0 to reproduce the 2026-08-27 unadjusted ledger.
 UFC_POOL_OFFSET_ELO = 54.0
-
-# Retained as a REPORTED diagnostic only. Until 2026-09-01 this priced the third
-# component; see the note above ``contender_resume_ledger`` for why it no longer
-# does. It is not added to any score.
-RANK_CONTEXT_WIN_POINTS = 1200.0
 
 # Display scale for the résumé quality sum, mirroring TITLE_QUALITY_SCALE. Both
 # are display only: the published score normalises each component by its own
@@ -724,25 +721,10 @@ def championship_resume_ledger(appearances: pd.DataFrame) -> pd.DataFrame:
 
     app = appearances.copy()
     idx = app.index
-    title = (
-        app.get("is_championship_bout", pd.Series(False, index=idx)).fillna(False).astype(bool)
-        | app.get("is_interim_title_bout", pd.Series(False, index=idx)).fillna(False).astype(bool)
-    )
-    won = pd.to_numeric(
-        app.get("actual_score", pd.Series(0.0, index=idx)),
-        errors="coerce",
-    ).fillna(0.0).ge(1.0)
-    entered_champ = (
-        app.get("fighter_entered_as_champion", pd.Series(False, index=idx))
-        .fillna(False)
-        .astype(bool)
-        | app.get("fighter_entered_as_interim_champion", pd.Series(False, index=idx))
-        .fillna(False)
-        .astype(bool)
-    )
+    title, won, title_win, title_defense = championship_masks(app)
     app["_title"] = title
-    app["_title_win"] = title & won
-    app["_title_defense"] = title & won & entered_champ
+    app["_title_win"] = title_win
+    app["_title_defense"] = title_defense
     app["_rank_context_win_mass"] = np.where(
         won,
         (
@@ -1126,24 +1108,8 @@ def title_quality_rows(
     keep &= ~f.get("is_draw", pd.Series(False, index=idx)).fillna(False).astype(bool)
     keep &= ~f.get("is_nc", pd.Series(False, index=idx)).fillna(False).astype(bool)
     f = f[keep & f["event_date"].notna()]
-    if f.empty:
-        return _empty_quality_ledger()
 
-    sides = pd.concat(
-        [
-            f.assign(fighter=f["fighter_a"], opponent=f["fighter_b"]),
-            f.assign(fighter=f["fighter_b"], opponent=f["fighter_a"]),
-        ],
-        ignore_index=True,
-        sort=False,
-    )
-    side_columns = ["fighter", "opponent", "event_date", "winner"]
-    if "fight_url" in sides.columns:
-        # Carried only so a priced win can be joined to the promotion that
-        # sanctioned it. A frame without it simply gets no major-title floor.
-        side_columns.insert(0, "fight_url")
-    sides = sides[side_columns].dropna(subset=["fighter", "opponent"])
-    wins = sides[sides["winner"].eq(sides["fighter"])].sort_values("event_date")
+    wins = winning_sides(f)
     if wins.empty:
         return _empty_quality_ledger()
 
@@ -1358,21 +1324,8 @@ def contender_resume_rows(
     for flag in ("is_excluded", "is_draw", "is_nc"):
         keep &= ~f.get(flag, pd.Series(False, index=idx)).fillna(False).astype(bool)
     f = f[keep]
-    if f.empty:
-        return _empty_resume_ledger()
 
-    sides = pd.concat(
-        [
-            f.assign(fighter=f["fighter_a"], opponent=f["fighter_b"]),
-            f.assign(fighter=f["fighter_b"], opponent=f["fighter_a"]),
-        ],
-        ignore_index=True,
-        sort=False,
-    )
-    sides = sides[
-        [c for c in ("fight_url", "fighter", "opponent", "event_date", "winner") if c in sides.columns]
-    ].dropna(subset=["fighter", "opponent"])
-    wins = sides[sides["winner"].eq(sides["fighter"])].sort_values("event_date")
+    wins = winning_sides(f)
     if wins.empty:
         return _empty_resume_ledger()
 

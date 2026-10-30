@@ -28,20 +28,21 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from project_helpers import PROJECT_ROOT as ROOT
 
 from analysis.viz import (
-    DIV_SHORT, DIVISIONS, _division_strength_frame, add_division_to_fights, all_time_benchmark_table,
+    _division_strength_frame, add_division_to_fights, all_time_benchmark_table,
     division_year_top_fighters_frame, integrity_ledger_table, title_lineage_frame, win_streaks,
     yearly_rating_delta_frame,
 )
-from build_boards import _division_column
+from ratings.divisions import division_column
 from ratings.age import load_birth_dates
 from ratings.current_score import is_ufc_bout
 from ratings.forecast import Y0 as FORECAST_Y0
 from ratings.forecast import benchmark as forecast_benchmark
 from ratings.constants import (
+    DAYS_PER_MONTH, JULIAN_YEAR_DAYS,
     FIVE_YEAR_PEAK_MIN_FIGHTS, FIVE_YEAR_PEAK_WINDOW_DAYS, FIVE_YEAR_PEAK_WINDOW_LABEL, SUSTAINED_PEAK_MIN_FIGHTS,
 )
 from ratings.era import ERA_COL, era_rated
@@ -49,12 +50,10 @@ from ratings.legacy_resume import (
     LEGACY_ACHIEVEMENT_WEIGHT, LEGACY_PART_POWER, LEGACY_QUALITY_SKILL_SHARE,
     PUBLIC_LEGACY_DISPLAY_SCALE, _scale, legacy_points,
 )
-from ratings.divisions import division_labels
+from ratings.divisions import DISPLAY_DIVISIONS, DIV_SHORT, division_labels
 from ratings.opponent_quality import CONTENDER_LINE_MU
 from ratings.symon_score import (
-    DEFAULT_CAREER_REFERENCE, DEFAULT_DIVISION_MIN_POPULATION, DEFAULT_DIVISION_REFERENCE,
-    DEFAULT_HINGE_SPREAD_FRACTION, division_year_reference, positive_part,
-    year_rating_spread, year_reference,
+    DEFAULT_CAREER_REFERENCE, DEFAULT_DIVISION_REFERENCE, DEFAULT_HINGE_SPREAD_FRACTION, career_skill_years,
 )
 
 METHODS = ["KO/TKO", "Submission", "Decision - Unanimous", "Decision - Split", "Decision - Majority", "DQ", "Other"]
@@ -117,30 +116,6 @@ def board(snap, stem, cols):
     return b.set_index("fighter")[cols]
 
 
-def receipt(whr, rc):
-    """Per-year career receipt: the annual frame of ratings.symon_score.career_skill_mass, kept.
-
-    Same steps as the production call in rate_snapshot (division bar at contender:5, sport-wide
-    contender:60 fallback, soft hinge at 0.175 of the year's spread); returns
-    (fighter, year, annual_mean, field_mean, hinge, excess).
-    """
-    h = whr[["fighter", "event_date", "mu_whr"]].dropna().rename(columns={"mu_whr": "mu"})
-    h["year"] = pd.to_datetime(h["event_date"]).dt.year
-    a = h.groupby(["fighter", "year"], sort=False)["mu"].agg(annual_mean="mean").reset_index()
-    a["division"] = a["fighter"].map(division_labels(rc))
-    bar = year_reference(a, DEFAULT_CAREER_REFERENCE)
-    g = float(year_reference(a.assign(year=0), DEFAULT_CAREER_REFERENCE).iloc[0])
-    n = a.groupby("year", sort=False)["annual_mean"].transform("size")
-    a["field_mean"] = a["year"].map(bar)
-    a.loc[(n < 5) | a["field_mean"].isna(), "field_mean"] = g
-    local = division_year_reference(a, DEFAULT_DIVISION_REFERENCE, min_population=DEFAULT_DIVISION_MIN_POPULATION)
-    keys = pd.MultiIndex.from_arrays([a["division"], a["year"]])
-    a["field_mean"] = pd.Series(local.reindex(keys).to_numpy(), index=a.index).fillna(a["field_mean"])
-    a["hinge"] = a["year"].map(year_rating_spread(a)).fillna(0.0) * DEFAULT_HINGE_SPREAD_FRACTION
-    a["excess"] = positive_part(a["annual_mean"] - a["field_mean"], a["hinge"])
-    return a
-
-
 def market(snap, bouts):
     """UFC bouts with betting odds, read against the result: the leak-free forecast benchmark
     (ratings.forecast), the biggest upsets, and win rate against price by age and by layoff.
@@ -190,10 +165,10 @@ def market(snap, bouts):
     seen = pd.concat([bouts[["fighter_a", "event_date"]].rename(columns={"fighter_a": "f"}),
                       bouts[["fighter_b", "event_date"]].rename(columns={"fighter_b": "f"})]).drop_duplicates()
     seen = seen.sort_values(["f", "event_date"])
-    seen["lay"] = seen.groupby("f")["event_date"].diff().dt.days / (365.25 / 12)
+    seen["lay"] = seen.groupby("f")["event_date"].diff().dt.days / DAYS_PER_MONTH
     A = pd.concat([m.assign(f=m[f"fighter_{s}"], won=m["y"] if s == "a" else 1 - m["y"],
                             priced=m["p_m"] if s == "a" else 1 - m["p_m"]) for s in "ab"], ignore_index=True)
-    A["age"] = (A["event_date"] - A["f"].map(dob)).dt.days / 365.25
+    A["age"] = (A["event_date"] - A["f"].map(dob)).dt.days / JULIAN_YEAR_DAYS
     A = A.merge(seen.rename(columns={"event_date": "event_date"}), on=["f", "event_date"], how="left")
 
     def bands(col, B):
@@ -237,8 +212,8 @@ def build(snap):
     F = {
         "name": names,
         "g": x["gender"],
-        "div": _division_column(E["fighter"], lookup, "career_division"),
-        "cdiv": _division_column(E["fighter"], lookup, "current_division"),
+        "div": division_column(E["fighter"], lookup, "career_division"),
+        "cdiv": division_column(E["fighter"], lookup, "current_division"),
         "n": x["rating_periods"], "w": x["wins"], "l": x["losses"], "d": x["draws"],
         "last": x["whr_last_event_date"].map(lambda t: None if pd.isna(t) else pd.Timestamp(t).strftime("%Y-%m-%d")),
         "at": at["rank"].reindex(names), "score": x["public_legacy_score"],
@@ -286,7 +261,10 @@ def build(snap):
             for f, g in t.groupby("fighter", sort=False)}
 
     # 3. Career receipt; certificate: per-fighter sum equals the published career skill mass.
-    A = receipt(era_rated(whr), rc)
+    A = career_skill_years(
+        era_rated(whr), reference=DEFAULT_CAREER_REFERENCE, divisions=division_labels(rc),
+        division_reference=DEFAULT_DIVISION_REFERENCE, hinge_spread_fraction=DEFAULT_HINGE_SPREAD_FRACTION,
+    )
     mass = A.groupby("fighter")["excess"].sum()
     assert np.allclose(mass.reindex(names).fillna(0), x["symon_career_skill_mass"].reindex(names).fillna(0),
                        atol=1e-6), "career receipt does not sum to the published career skill mass"
@@ -314,7 +292,7 @@ def build(snap):
 
     # 5. Title lineage per class, with and without interim belts.
     lineage = {d: [lineage_rows(title_lineage_frame(app, division=d, include_interim=i)) for i in (False, True)]
-               for d in DIVISIONS[:13]}
+               for d in DISPLAY_DIVISIONS[:13]}
 
     # 6. Streaks over UFC bouts, the external benchmark, integrity policy.
     st = win_streaks(ufc, rc, min_len=3)
@@ -343,7 +321,7 @@ def build(snap):
     o = cr[cr["segment_type"].eq("overall")].sort_values("prob_bin")
     assert np.allclose(o["predicted_mean"].to_numpy() + o["predicted_mean"].to_numpy()[::-1], 1), \
         "calibration table is not symmetric"
-    big = cr[cr["segment_type"].eq("division") & cr["segment_value"].isin(DIVISIONS)]
+    big = cr[cr["segment_type"].eq("division") & cr["segment_value"].isin(DISPLAY_DIVISIONS)]
     big = big[big.groupby("segment_value")["n"].transform("sum") >= 1000]
     calib = plain(pd.concat([o.assign(segment_value="All bouts"), big])[
         ["segment_value", "prob_bin", "predicted_mean", "empirical_win_rate", "n"]].to_numpy().tolist(), 4)
@@ -361,7 +339,8 @@ def build(snap):
             "a": a, "s": s, "scale": PUBLIC_LEGACY_DISPLAY_SCALE, "methods": METHODS,
             "peak": [FIVE_YEAR_PEAK_WINDOW_DAYS, FIVE_YEAR_PEAK_MIN_FIGHTS, FIVE_YEAR_PEAK_WINDOW_LABEL],
         },
-        "divisions": DIVISIONS, "short": DIV_SHORT, "F": F, "classes": classes, "N": N, "traj": traj, "receipt": rec,
+        "divisions": DISPLAY_DIVISIONS, "short": DIV_SHORT, "F": F, "classes": classes,
+        "N": N, "traj": traj, "receipt": rec,
         "strength": strength, "year_top": year_top, "movers": movers, "mix": plain([[*k, v] for k, v in mix.items()]),
         "lineage": lineage, "streaks": plain(st.to_numpy().tolist(), 0),
         "bench": plain(bench.to_numpy().tolist(), 1), "integrity": integrity, "calib": calib,

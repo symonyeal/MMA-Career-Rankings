@@ -22,8 +22,9 @@ Codex reads the same file through [AGENTS.md](AGENTS.md).
 | The Rust Glicko solver must match its Python reference bit for bit. | `rust/rating_rs` computes updates and monthly inactivity transitions; `ratings/_glicko2.py` retains the reference (`backend="python"`). CI requires the native backend and compares complete published-corpus histories. Keep runtime C math calls: replacing `pow(x, 2)` with `x*x` changes some last bits. |
 
 Shared fight preparation lives in `ratings/fights.py`; division labels in `ratings/divisions.py`;
-history lookups in `ratings/history.py`; probability metrics in `ratings/evaluation.py`;
-snapshot bootstrap policy in `ratings/bootstrap.py`; board metadata and gates in `ratings/boards.py`.
+history lookups in `ratings/history.py`; odds conversions in `ratings/odds.py`;
+probability metrics and paired evaluation selection in `ratings/evaluation.py`;
+calendar conventions in `ratings/constants.py`; snapshot bootstrap policy in `ratings/bootstrap.py`; board metadata and gates in `ratings/boards.py`.
 Import each definition from its owner. Keep source fetching in `loaders/` and score ledgers in
 `ratings/legacy_resume.py`.
 

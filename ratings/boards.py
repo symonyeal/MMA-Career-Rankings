@@ -93,15 +93,6 @@ PRIME_RATING_CANDIDATES = (
     "mu_whr",
     "mu_canonical",
 )
-# "How good are they now": the last fitted rating projected to the snapshot
-# date through the measured age-drift curve. The leading column name is
-# legacy -- it charges age, not the retired explicit inactivity penalty.
-CURRENT_RATING_CANDIDATES = (
-    "mu_whr_age_activity_adjusted",
-    "mu_whr",
-    "mu_canonical",
-)
-
 LEDGER_COLUMNS = (
     "fighter",
     "fight_url",
@@ -520,11 +511,9 @@ def _select_rating_col(
     )
 
 
-
 def select_core_rating_col(current: pd.DataFrame) -> str:
     """Choose the lean headline score, never a retired weighted stream."""
     return _select_rating_col(current, CORE_RATING_CANDIDATES, board_name="core board")
-
 
 
 def select_integrity_rating_col(current: pd.DataFrame) -> str:
@@ -534,7 +523,6 @@ def select_integrity_rating_col(current: pd.DataFrame) -> str:
         INTEGRITY_RATING_CANDIDATES,
         board_name="integrity-discounted board",
     )
-
 
 
 def public_legacy_eligibility_override(current: pd.DataFrame) -> pd.Series:

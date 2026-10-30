@@ -23,6 +23,11 @@ What these constants do and do not touch, after the 2026-08-20 core evolution:
 """
 from __future__ import annotations
 
+# Calendar conventions are distinct model choices; preserve each at its callers.
+JULIAN_YEAR_DAYS = 365.25
+GREGORIAN_YEAR_DAYS = 365.2425
+DAYS_PER_MONTH = JULIAN_YEAR_DAYS / 12
+
 
 # ---------------------------------------------------------------------------
 # Symmetric sleeve envelope.

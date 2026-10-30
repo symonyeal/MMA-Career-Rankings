@@ -38,3 +38,27 @@ def prefight_ratings(history: pd.DataFrame) -> pd.DataFrame:
         [["fighter", "event_date", "event_name", "prefight_mu"]]
         .reset_index(drop=True)
     )
+
+
+def entering_ratings(history: pd.DataFrame, mu_col: str, phi_col: str) -> pd.DataFrame:
+    """Each history row's rating *entering* that appearance, plus prior fight count."""
+    cols = ["fighter", "event_date", "event_name", f"pre_{mu_col}", f"pre_{phi_col}", "opponents_this_event"]
+    h = history[cols].rename(columns={f"pre_{mu_col}": "pre_mu", f"pre_{phi_col}": "pre_phi"}).copy()
+    h["event_date"] = pd.to_datetime(h["event_date"], errors="coerce")
+    h = h.sort_values(["fighter", "event_date", "event_name"], kind="stable")
+    h["prior_fights"] = h.groupby("fighter")["opponents_this_event"].cumsum() - h["opponents_this_event"]
+    return h[["fighter", "event_date", "event_name", "pre_mu", "pre_phi", "prior_fights"]]
+
+
+def attach_prefight_ratings(fights: pd.DataFrame, history: pd.DataFrame) -> pd.DataFrame:
+    """Join each corner's tournament-safe pre-event rating, defaulting unknown states to the prior."""
+    prior = prefight_ratings(history)
+    out = fights
+    for side in ("a", "b"):
+        column = f"prefight_mu_{side}"
+        out = out.merge(
+            prior.rename(columns={"fighter": f"fighter_{side}", "prefight_mu": column}),
+            on=[f"fighter_{side}", "event_date", "event_name"], how="left", validate="many_to_one",
+        )
+        out[column] = pd.to_numeric(out[column], errors="coerce").fillna(1500.0)
+    return out

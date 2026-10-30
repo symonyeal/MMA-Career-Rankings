@@ -97,7 +97,7 @@ def _synthetic_history(fights: pd.DataFrame, seed: int = 11) -> pd.DataFrame:
 # group_bounds
 
 
-def testgroup_bounds_matches_groupby_on_a_sorted_frame():
+def test_group_bounds_matches_groupby_on_a_sorted_frame():
     fights = _synthetic_fights().sort_values(["event_date", "event_name"]).reset_index(drop=True)
     starts, stops = group_bounds(fights["event_date"], fights["event_name"])
     expected = [
@@ -107,7 +107,7 @@ def testgroup_bounds_matches_groupby_on_a_sorted_frame():
     assert list(zip(starts.tolist(), stops.tolist())) == expected
 
 
-def testgroup_bounds_handles_empty_input():
+def test_group_bounds_handles_empty_input():
     starts, stops = group_bounds(pd.Series([], dtype="datetime64[ns]"), pd.Series([], dtype=str))
     assert len(starts) == 0 and len(stops) == 0
 

@@ -28,10 +28,9 @@ import pandas as pd
 if str(Path(__file__).resolve().parent.parent) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from ratings.odds import american_to_decimal
 from loaders.odds_loader import (
-    RAW_ODDS_COLUMNS,
-    american_to_decimal,
-    compute_implied_probs,
+    RAW_ODDS_COLUMNS, compute_implied_probs,
 )
 from project_helpers import normalize_name_key
 

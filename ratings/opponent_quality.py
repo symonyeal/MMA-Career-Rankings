@@ -1,6 +1,8 @@
 """Shared opponent-quality signals for sleeves and peak windows."""
 from __future__ import annotations
 
+from ratings.constants import JULIAN_YEAR_DAYS
+
 import numpy as np
 import pandas as pd
 
@@ -323,7 +325,7 @@ def best_elite_decade(
     empty = pd.DataFrame(columns=ELITE_DECADE_COLUMNS)
     if qualifying_wins is None or qualifying_wins.empty:
         return empty
-    span = pd.Timedelta(days=round(365.25 * span_years))
+    span = pd.Timedelta(days=round(JULIAN_YEAR_DAYS * span_years))
     span_np = span.to_timedelta64()
 
     # Group once with stable sorts, not one pandas groupby / sort_values per fighter. Only fighters with qualifying

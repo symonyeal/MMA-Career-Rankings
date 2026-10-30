@@ -40,13 +40,13 @@ from ratings.opponent_quality import (
     combined_opponent_quality_level,
     peak_opponent_weight_from_level,
 )
-from ratings.history import prefight_ratings
+from ratings.history import attach_prefight_ratings
 from ratings.performance_adjustment import (
     prefight_ranking_context,
 )
 from ratings.divisions import DIVISION_WEIGHT_LIMIT_LB
 from ratings.divisions import normalize_division_label
-from ratings.scope import map_distinct
+from project_helpers import map_distinct
 
 
 PEAK_APPEARANCE_COLUMNS = [
@@ -87,23 +87,7 @@ def peak_appearance_quality(
     f["division"] = map_distinct(f.get("weight_class", pd.Series(index=f.index)), normalize_division_label)
     f["division_weight_limit_lb"] = f["division"].map(DIVISION_WEIGHT_LIMIT_LB)
 
-    prior = prefight_ratings(canonical_history)
-    prior_a = prior.rename(columns={"fighter": "fighter_a", "prefight_mu": "prefight_mu_a"})
-    prior_b = prior.rename(columns={"fighter": "fighter_b", "prefight_mu": "prefight_mu_b"})
-    f = f.merge(
-        prior_a,
-        on=["fighter_a", "event_date", "event_name"],
-        how="left",
-        validate="many_to_one",
-    )
-    f = f.merge(
-        prior_b,
-        on=["fighter_b", "event_date", "event_name"],
-        how="left",
-        validate="many_to_one",
-    )
-    for col in ("prefight_mu_a", "prefight_mu_b"):
-        f[col] = pd.to_numeric(f[col], errors="coerce").fillna(1500.0)
+    f = attach_prefight_ratings(f, canonical_history)
 
     common = [
         "fight_url",
@@ -266,8 +250,8 @@ def _context_adjustment(window: pd.DataFrame) -> pd.Series:
     return win_context + participation
 
 
-def _title_ladder_parts(window: pd.DataFrame) -> tuple[pd.Series, pd.Series, pd.Series]:
-    """Return title-appearance, title-win, and title-defense masks."""
+def championship_masks(window: pd.DataFrame) -> tuple[pd.Series, pd.Series, pd.Series, pd.Series]:
+    """Return title appearances, all wins, title wins, and successful defenses."""
     idx = window.index
     title = (
         window.get("is_championship_bout", pd.Series(False, index=idx)).fillna(False).astype(bool)
@@ -282,7 +266,7 @@ def _title_ladder_parts(window: pd.DataFrame) -> tuple[pd.Series, pd.Series, pd.
         | window.get("fighter_entered_as_interim_champion", pd.Series(False, index=idx)).fillna(False).astype(bool)
     )
     defense = title & won & entered_champ
-    return title, title & won, defense
+    return title, won, title & won, defense
 
 
 def _resume_bonus(window_opp_weight_sum: float, title_ladder_mass: float = 0.0) -> float:

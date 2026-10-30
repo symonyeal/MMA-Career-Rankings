@@ -12,7 +12,6 @@ from ratings.legacy_resume import (
     TITLE_QUALITY_MAJOR_FLOOR,
     _organization_context,
     PUBLIC_LEGACY_DISPLAY_SCALE,
-    RANK_CONTEXT_WIN_POINTS,
     RESUME_QUALITY_SCALE,
     championship_resume_ledger,
     contender_resume_ledger,
@@ -430,7 +429,6 @@ def test_rank_context_win_mass_is_reported_but_no_longer_scored():
         * (1.0 - LEGACY_ACHIEVEMENT_WEIGHT)
         * LEGACY_QUALITY_SKILL_SHARE
     )
-    assert RANK_CONTEXT_WIN_POINTS > 0  # retained as a documented display scale
 
 
 def _contender_fixture() -> tuple[pd.DataFrame, pd.DataFrame]:

@@ -29,7 +29,7 @@ from project_helpers import normalize_name_key
 
 _MISSED_WEIGHT_RE = re.compile(r"missed?\s+weight", re.IGNORECASE)
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+from project_helpers import PROJECT_ROOT
 DEFAULT_CURATED_PED_PATH = PROJECT_ROOT / "data" / "external" / "integrity" / "ped_bouts.csv"
 
 _CURATED_PED_COLUMNS = (

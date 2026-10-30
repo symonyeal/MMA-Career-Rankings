@@ -37,6 +37,7 @@ from __future__ import annotations
 import pandas as pd
 
 from ratings.history import opponent_ratings
+from ratings.constants import DAYS_PER_MONTH
 from ratings.boards import exposure_shrunk_level
 from ratings.legacy_resume import (
     RESUME_QUALITY_SCALE, TITLE_QUALITY_SCALE, contender_resume_ledger, legacy_points,
@@ -46,7 +47,6 @@ from ratings.divisions import division_labels
 from ratings.opponent_quality import CONTENDER_LINE_MU
 
 CURRENT_WINDOW_MONTHS = 18.0
-DAYS_PER_MONTH = 30.4375
 UFC_CORPORA = frozenset({"ufc", "pre_unified"})
 UFC_ORG_LABELS = frozenset({"UFC", "UFC (pre-unified)", "Ultimate Fighting Championship (UFC)"})
 AGED_LEVEL_COL = "mu_whr_age_activity_adjusted"

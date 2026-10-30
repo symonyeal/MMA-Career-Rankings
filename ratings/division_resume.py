@@ -41,7 +41,7 @@ from ratings.appearance_context import (
     _context_adjustment,
     _resume_bonus,
     _result_adjustment,
-    _title_ladder_parts,
+    championship_masks,
 )
 from ratings.divisions import DIVISION_WEIGHT_LIMIT_LB
 
@@ -185,7 +185,7 @@ def division_resume_rows(
         + _context_adjustment(merged)
     ).to_numpy(dtype=float)
     valid_all = (weights > 0.0) & ~np.isnan(adjusted_mu)
-    title_s, title_win_s, title_defense_s = _title_ladder_parts(merged)
+    title_s, _, title_win_s, title_defense_s = championship_masks(merged)
     title_all = title_s.to_numpy()
     title_win_all = title_win_s.to_numpy()
     title_defense_all = title_defense_s.to_numpy()

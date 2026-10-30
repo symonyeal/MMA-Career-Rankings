@@ -38,14 +38,15 @@ import numpy as np
 import pandas as pd
 
 from .age import load_birth_dates
-from .evaluation import losses
-from .glicko2_engine import RatingEngine, predict_win_prob_from_ratings
+from .constants import JULIAN_YEAR_DAYS
+from .evaluation import EPS, losses
+from .fights import canonical_engine
+from .glicko2_engine import DEFAULT_TAU, predict_win_prob_from_ratings
 
 ROSTER = frozenset({"UFC", "UFC (pre-unified)", "Ultimate Fighting Championship (UFC)", "PRIDE", "WEC",
                     "Strikeforce", "Affliction", "Bellator", "RIZIN"})
 Y0 = 2012  # first test year; earlier bouts only train
 C = 1.0
-EPS = 1e-6
 SEED, B = 20261027, 2000
 UFC_RATES = ("slpm", "sapm", "sacc", "sdef", "td15", "tdacc", "tddef", "sub15", "ctrl", "kd15", "kda15")
 
@@ -128,10 +129,7 @@ def _ufc_rates(rd: pd.DataFrame, cf: pd.DataFrame) -> pd.DataFrame:
 
 
 def _glicko(cb: pd.DataFrame) -> pd.DataFrame:
-    eng = RatingEngine()
-    for (t, e), g in cb.sort_values("event_date", kind="stable").groupby(["event_date", "event_name"], sort=True):
-        eng.process_event(t, e, g[["fighter_a", "fighter_b", "winner", "is_draw", "method_score_winner"]]
-                          .to_dict("records"))
+    eng = canonical_engine(cb.dropna(subset=["event_date", "event_name"]), tau=DEFAULT_TAU)
     h = eng.history_df().sort_values(["fighter", "event_date"], kind="stable")
     h["k"] = h.groupby("fighter").cumcount()
     h = h.drop_duplicates(["fighter", "event_date"])
@@ -161,7 +159,7 @@ def bout_frame(snap: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
                         on=[f"fighter_{s}", "event_date"], how="left")
     debut = U.loc[U["nufc"] == 0, list(UFC_RATES)].mean()
     for s in "ab":
-        X[f"age_{s}"] = (X["event_date"] - X[f"fighter_{s}"].map(dob)).dt.days / 365.25
+        X[f"age_{s}"] = (X["event_date"] - X[f"fighter_{s}"].map(dob)).dt.days / JULIAN_YEAR_DAYS
         X[f"ht_{s}"] = X[f"fighter_{s}"].map(fi["height_inches"])
         X[f"rch_{s}"] = X[f"fighter_{s}"].map(fi["reach_inches"])
         X = X.fillna({f"mu_{s}": 1500.0, f"phi_{s}": 350.0, f"k_{s}": 0, f"nufc_{s}": 0, f"npro_{s}": 0,

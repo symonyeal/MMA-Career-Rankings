@@ -75,7 +75,7 @@ from loaders.sherdog_loader import classify_method
 # k    : birth-date text by Sherdog id, from the extract
 # d    : k updated with every cached profile page
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+from project_helpers import PROJECT_ROOT
 DEFAULT_MAJORS_DIR = PROJECT_ROOT / "data" / "external" / "sherdog"
 MAJORS_BOUTS = "majors_bouts.parquet"
 # The archived ``build_crossorg_careers.py`` wrote event cards and whole-career

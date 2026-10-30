@@ -34,7 +34,7 @@ if __package__ is None or __package__ == "":
 from ratings.glicko2_engine import DEFAULT_TAU
 from ratings.fights import attach_bout_weights, canonical_engine, prepare_fights, rated_rows
 from ratings.dominance import per_fight_dominance, per_fighter_dominance
-from ratings.constants import rename_rating_columns
+from ratings.constants import DAYS_PER_MONTH, rename_rating_columns
 from ratings.diagnostics import (
     calibration_residual_rows,
     division_entropy_rows,
@@ -86,12 +86,6 @@ def _career_columns(table: pd.DataFrame) -> pd.DataFrame:
             if c != "fighter"
         }
     )
-
-
-
-
-
-
 
 
 def refresh_career_columns(
@@ -235,7 +229,7 @@ def _attach_months_inactive(
         recorded = out["fighter"].map(_last_recorded_dates(recorded_fights))
         last = pd.concat([last, pd.to_datetime(recorded)], axis=1).max(axis=1)
     out["last_recorded_event_date"] = last
-    months = (pd.Timestamp(snapshot_max_date) - last).dt.days / 30.4375
+    months = (pd.Timestamp(snapshot_max_date) - last).dt.days / DAYS_PER_MONTH
     out["months_inactive"] = months.clip(lower=0.0).round(2)
     return out
 

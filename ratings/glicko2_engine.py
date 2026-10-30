@@ -25,7 +25,8 @@ from dataclasses import dataclass
 
 import pandas as pd
 
-from ._glicko2 import Glicko2, Rating
+from ._glicko2 import DRAW, LOSS, WIN, Glicko2, Rating
+from .constants import DAYS_PER_MONTH
 
 
 # τ controls volatility. Lower = more conservative ratings. The Glickman
@@ -61,55 +62,15 @@ class HistoryRow:
     pre_phi_method: float
 
 
-def _months_between(a: pd.Timestamp, b: pd.Timestamp) -> float:
-    if a is None or b is None:
-        return 0.0
-    return (b - a).days / 30.4375
-
-
-def _rate_weighted(
-    env: Glicko2,
-    rating: Rating,
-    series: list[tuple[float, Rating, float]],
-) -> Rating:
-    """Weighted Glicko-2 rate-step.
-
-    Delegates to the shared `Glicko2.rate_weighted()` calculation. Each term
-    in the variance and difference accumulators is multiplied by its weight.
-    Unit weights preserve the unweighted update exactly.
-
-    `series` entries are `(actual_score, other_rating, weight)`. Weights
-    of 0.0 drop the result from the update. An empty series, or a series
-    whose weights sum (in the variance-inverse sense) to zero, returns
-    the inactive-period φ-inflated rating, same as `env.rate(_, [])`.
-    """
-    return env.rate_weighted(rating, series)
-
-
-def _ensure_state(engine, fighter: str, factory):
-    if fighter not in engine.states:
-        engine.states[fighter] = factory()
-    return engine.states[fighter]
-
-
-def _inflate_state(engine, fighter: str, current_date: pd.Timestamp, fields: tuple[str, ...]) -> None:
-    state = engine.states[fighter]
-    if state.last_event_date is None:
-        return
-    n = int(_months_between(state.last_event_date, current_date))
-    for field in fields:
-        setattr(state, field, engine.env.inflate(getattr(state, field), n))
-
-
 def _result_scores(bout: dict, *, method: bool, quality: bool) -> tuple[float, float] | None:
     a, b, winner = bout["fighter_a"], bout["fighter_b"], bout["winner"]
     if bout["is_draw"]:
-        return 0.5, 0.5
+        return DRAW, DRAW
     if winner == a:
-        scores = (1.0, 0.0)
+        scores = (WIN, LOSS)
         winner_side = 0
     elif winner == b:
-        scores = (0.0, 1.0)
+        scores = (LOSS, WIN)
         winner_side = 1
     else:
         return None
@@ -138,8 +99,13 @@ def _process_event(
 ) -> None:
     fighters = {fighter for bout in bouts for fighter in (bout["fighter_a"], bout["fighter_b"])}
     for fighter in fighters:
-        _ensure_state(engine, fighter, lambda: state_factory(engine.env))
-        _inflate_state(engine, fighter, event_date, fields)
+        if fighter not in engine.states:
+            engine.states[fighter] = state_factory(engine.env)
+        state = engine.states[fighter]
+        if state.last_event_date is not None:
+            months = 0 if event_date is None else int((event_date - state.last_event_date).days / DAYS_PER_MONTH)
+            for field in fields:
+                setattr(state, field, engine.env.inflate(getattr(state, field), months))
 
     pre = {fighter: {field: getattr(engine.states[fighter], field) for field in fields} for fighter in fighters}
     series = {fighter: {field: [] for field in fields} for fighter in fighters}

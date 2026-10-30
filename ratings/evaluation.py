@@ -7,6 +7,31 @@ import pandas as pd
 EPS = 1e-6
 
 
+def event_keys(events: pd.DataFrame) -> set:
+    """An evaluation event is identified by date and name, including same-day cards."""
+    if events.empty:
+        return set()
+    return set(zip(events["event_date"], events["event_name"]))
+
+
+def select_predictions(predictions: pd.DataFrame, keys: set, min_prior_fights: int) -> pd.DataFrame:
+    """Select event folds behind the same prior-fight floor for both corners."""
+    if not keys:
+        return predictions.iloc[:0]
+    mask = np.array([
+        (date, name) in keys for date, name in zip(predictions["event_date"], predictions["event_name"])
+    ], dtype=bool)
+    return predictions[mask & (predictions["prior_a"] >= min_prior_fights)
+                       & (predictions["prior_b"] >= min_prior_fights)]
+
+
+def paired_predictions(predictions: pd.DataFrame, n_variants: int) -> pd.DataFrame:
+    """Retain only bouts forecast by every variant in a paired comparison."""
+    counts = predictions.groupby("fight_url")["variant"].nunique()
+    complete = set(counts[counts == n_variants].index)
+    return predictions[predictions["fight_url"].isin(complete)].reset_index(drop=True)
+
+
 def losses(p: np.ndarray, y: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """Per-observation log loss and Brier score, with the published probability clip."""
     p = np.clip(p, EPS, 1 - EPS)
@@ -42,7 +67,6 @@ def roc_auc(p: np.ndarray, y: np.ndarray) -> float:
     return float((ranks[pos].sum() - n_pos * (n_pos + 1) / 2.0) / (n_pos * n_neg))
 
 
-
 def metrics(p: np.ndarray, y: np.ndarray) -> dict:
     p = np.clip(p, EPS, 1 - EPS)
     ll, br = losses(p, y)
@@ -53,7 +77,6 @@ def metrics(p: np.ndarray, y: np.ndarray) -> dict:
         "auc": roc_auc(p, y),
         "n": len(p),
     }
-
 
 
 def fit_temperature(p: np.ndarray, y: np.ndarray) -> float:
@@ -91,12 +114,10 @@ def fit_temperature(p: np.ndarray, y: np.ndarray) -> float:
     return float((a + b) / 2.0)
 
 
-
 def apply_temperature(p: np.ndarray, temperature: float) -> np.ndarray:
     p = np.clip(np.asarray(p, dtype=float), EPS, 1 - EPS)
     logit = np.log(p / (1 - p))
     return 1.0 / (1.0 + np.exp(-logit / float(temperature)))
-
 
 
 def calibration_curve(p: np.ndarray, y: np.ndarray, *, n_bins: int = 10) -> pd.DataFrame:
@@ -117,7 +138,6 @@ def calibration_curve(p: np.ndarray, y: np.ndarray, *, n_bins: int = 10) -> pd.D
             "n": int(m.sum()),
         })
     return pd.DataFrame(rows)
-
 
 
 def calibration_error(p: np.ndarray, y: np.ndarray, *, n_bins: int = 10) -> float:
