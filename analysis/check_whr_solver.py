@@ -1,13 +1,8 @@
-"""Compare the corrected solver with a Git revision on historical held-out cards.
+"""Compare re-centred and exact-posterior WHR fits on historical held-out cards.
 
-INPUT   snapshot, baseline revision, evaluation years, coordinate passes, worker processes, WHR backend.
-OUTPUT  paired predictions and event-bootstrap loss differences.
-Each card costs two WHR fits on every earlier bout; cards run in parallel processes.
-Missing birth dates imply neutral age drift; such a run does not reproduce a release.
-
-With ``--backend rust`` both sides run in ``whr_rs``: the baseline is the current solver with
-re-centring on, which is the baseline revision's solver only if the two agree bit for bit. That is
-checked on the first card against the revision's own numpy code before any card is scored.
+Both variants run in Rust on identical inputs. Each card costs two WHR fits on
+all earlier bouts; cards run in parallel processes. Missing birth dates imply
+neutral age drift; such a run does not reproduce a release.
 """
 from __future__ import annotations
 
@@ -15,9 +10,7 @@ import argparse
 import functools
 import hashlib
 import json
-import subprocess
 import sys
-import types
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
@@ -44,34 +37,11 @@ def _load(snapshot: Path) -> tuple[pd.DataFrame, dict]:
     return f, {str(k): v for k, v in load_birth_dates(snapshot).items()}
 
 
-def _baseline_solver(baseline: str):
-    root = Path(__file__).resolve().parents[1]
-    source = subprocess.check_output(["git", "show", f"{baseline}:ratings/whr.py"], cwd=root, text=True)
-    old = types.ModuleType("whr_baseline")
-    exec(compile(source, f"{baseline}:ratings/whr.py", "exec"), old.__dict__)  # noqa: S102 -- the baseline solver is this repo's own committed source
-    return old.run_whr
-
-
-def _init(snapshot: Path, baseline: str, iterations: int, backend: str = "python") -> None:
+def _init(snapshot: Path, iterations: int) -> None:
     f, dob = _load(snapshot)
-    base = (functools.partial(run_whr, center_each_pass=True, backend="rust") if backend == "rust"
-            else _baseline_solver(baseline))
     G.update(f=f, dob=dob, bouts=decided_bouts(f), it=iterations,
-             solvers=[("baseline", base),
-                      ("corrected", functools.partial(run_whr, center_each_pass=False, backend=backend))])
-
-
-def _check_rust_baseline(snapshot: Path, baseline: str, iterations: int, t: pd.Timestamp) -> None:
-    """Refuse to score unless the Rust baseline reproduces the revision's numpy fit before ``t`` exactly."""
-    f, dob = _load(snapshot)
-    train = f[f["event_date"] < t]
-    kw = dict(iterations=iterations, age_drift=True, birth_dates=dob, **production_score_kwargs(train))
-    old = _baseline_solver(baseline)(train, **kw)
-    new = run_whr(train, center_each_pass=True, backend="rust", **kw)
-    pd.testing.assert_frame_equal(old, new, check_exact=True)
-    if old.attrs.get("age_drift_elo_per_year") != new.attrs.get("age_drift_elo_per_year"):
-        raise AssertionError("age-drift profile differs from the baseline revision")
-    print(f"rust baseline identical to {baseline} on bouts before {t.date()}", flush=True)
+             solvers=[("baseline", functools.partial(run_whr, center_each_pass=True)),
+                      ("corrected", functools.partial(run_whr, center_each_pass=False))])
 
 
 def _card(key: tuple[pd.Timestamp, str]) -> list[dict]:
@@ -100,23 +70,21 @@ def _card(key: tuple[pd.Timestamp, str]) -> list[dict]:
     return rows
 
 
-def compare(snapshot: Path, baseline: str, years: list[int], iterations: int,
-            workers: int, backend: str = "python") -> tuple[pd.DataFrame, dict]:
+def compare(snapshot: Path, years: list[int], iterations: int,
+            workers: int) -> tuple[pd.DataFrame, dict]:
     """Score every UFC card of ``years``; require three prior bouts per fighter."""
     f, dob = _load(snapshot)
     bouts = decided_bouts(f)
     test = bouts[bouts["org"].eq("UFC") & bouts["event_date"].dt.year.isin(years)]
     keys = sorted(test.groupby(["event_date", "event_name"]).groups)
-    if backend == "rust":
-        _check_rust_baseline(snapshot, baseline, iterations, keys[0][0])
     rows = []
-    with ProcessPoolExecutor(workers, initializer=_init, initargs=(snapshot, baseline, iterations, backend)) as X:
+    with ProcessPoolExecutor(workers, initializer=_init, initargs=(snapshot, iterations)) as X:
         for k, r in enumerate(X.map(_card, keys), 1):
             rows += r
             print(f"scored {k}/{len(keys)} {keys[k - 1][0].date()} {keys[k - 1][1]}", flush=True)
     predictions = pd.DataFrame(rows)
     summary = {
-        "baseline": baseline, "backend": backend, "scope": SCOPE, "evaluation_years": years,
+        "baseline": "center_each_pass=True", "backend": "rust", "scope": SCOPE, "evaluation_years": years,
         "iterations": iterations, "w2_per_day": WHR_W2_PER_DAY, "birth_dates": len(dob),
         "limitation": "Production fit and age projection; no temperature calibration." if dob else
                       "Neutral age drift: no birth-date inputs in this snapshot.",
@@ -130,15 +98,12 @@ def compare(snapshot: Path, baseline: str, years: list[int], iterations: int,
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("snapshot", type=Path)
-    parser.add_argument("--baseline", default="c0072b493cfbe2427d0c14744e7031dbd876ac74")
     parser.add_argument("--years", type=int, nargs="+", default=[2004])
     parser.add_argument("--iterations", type=int, default=WHR_ITERATIONS)
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--out", type=Path, required=True)
-    parser.add_argument("--backend", choices=["python", "rust"], default="python")
     args = parser.parse_args()
-    predictions, summary = compare(args.snapshot, args.baseline, args.years, args.iterations, args.workers,
-                                   args.backend)
+    predictions, summary = compare(args.snapshot, args.years, args.iterations, args.workers)
     args.out.mkdir(parents=True, exist_ok=True)
     predictions.to_csv(args.out / "predictions.csv", index=False)
     (args.out / "summary.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")

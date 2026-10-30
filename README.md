@@ -409,8 +409,8 @@ conflict. See the [decision register](docs/DECISIONS.md).
 | `ratings/` / `loaders/` | Model / data assembly |
 | `ratings/fights.py`, `divisions.py`, `history.py` | Shared fight preparation, division names and pre-fight lookups |
 | `ratings/evaluation.py`, `bootstrap.py`, `boards.py` | Probability metrics, interval setup and published board definitions |
-| `rust/whr_rs/` | The rating solver's inner loop in Rust; gives the same ratings as the Python version, bit for bit |
-| `rust/rating_rs/` | Glicko-2 numeric updates in Rust; Python retains the reference calculation |
+| `rust/whr_rs/` | Whole-History Rating fitting and conditional variances in Rust |
+| `rust/rating_rs/` | Glicko-2 updates and inactivity transitions in Rust |
 | `data/snapshots/<date>/` | The release: inputs, fitted ratings and boards, all versioned |
 | [`docs/`](docs/) | Method and decisions |
 | [`docs/FORECAST.md`](docs/FORECAST.md) | The pre-fight forecast benchmark against betting odds, and the selection leak it avoids |
@@ -428,8 +428,8 @@ python check_release.py
 python build_boards.py data/snapshots/2026-10-24 --scope majors,pre_unified --write-readme
 ```
 
-The second line needs a Rust toolchain ([rustup](https://rustup.rs)). It is optional: without it
-the rating solvers run in Python. Tests require the Rust and Python backends to give the same ratings bit for bit.
+The second line requires a Rust toolchain ([rustup](https://rustup.rs)). Both compiled extensions
+are required: there is no Python solver or fallback. Tests check captured numerical results and model behavior.
 
 Refresh the narrative figures after rebuilding a release:
 `python analysis/readme_figures.py --write-readme`. The tests check these figures against the data.

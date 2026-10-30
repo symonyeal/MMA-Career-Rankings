@@ -1,9 +1,8 @@
-//! Coordinate-ascent passes of `ratings.whr.run_whr`, in the numpy solver's floating-point order.
+//! Whole-History Rating coordinate ascent and conditional block variances.
 //!
 //! Python builds the appearance graph and the age buckets and maps the result back to the Elo
-//! scale; only the passes run here. Every operation is written in the order the numpy code
-//! evaluates it, including numpy's pairwise summation for the per-pass mean, so the two backends
-//! can be compared bit for bit rather than to a tolerance.
+//! scale. The kernel retains the published operation order, including pairwise summation
+//! for the per-pass mean.
 //!
 //! Legend
 //!   r    rating of each appearance node, natural scale
@@ -55,7 +54,7 @@ fn pw(a: &[f64]) -> f64 {
     }
 }
 
-/// `ratings.whr._thomas`: symmetric tridiagonal solve, `b` as both sub- and super-diagonal.
+/// Symmetric tridiagonal solve, `b` as both sub- and super-diagonal.
 /// `c` and `d` are scratch of length at least n, reused across calls.
 fn thomas(a: &[f64], b: &[f64], y: &[f64], x: &mut [f64], c: &mut [f64], d: &mut [f64]) {
     let n = a.len();
@@ -255,10 +254,70 @@ fn passes(
     (r, dr)
 }
 
-/// Run the passes. Arrays arrive as little-endian float64 / int64 bytes and the ratings and
-/// drift come back the same way, so no array crate is needed on either side.
+/// Conditional block variances from the per-fighter Hessian, holding opponents fixed.
+/// Meurant's forward/backward pivot recurrences give the inverse diagonal in O(n).
+#[allow(clippy::too_many_arguments)]
+fn variances(
+    r: &[f64],
+    o: &[i64],
+    w: &[f64],
+    pt: &[i64],
+    ix: &[i64],
+    gp: &[f64],
+    w2: f64,
+    ip: f64,
+    vg: f64,
+) -> Vec<f64> {
+    let mut out = vec![0.0; r.len()];
+    for f in 0..pt.len() - 1 {
+        let lo = pt[f] as usize;
+        let nd = &ix[lo..pt[f + 1] as usize];
+        let k = nd.len();
+        if k == 0 {
+            continue;
+        }
+        let mut a = vec![0.0; k];
+        let mut b = vec![0.0; k.saturating_sub(1)];
+        for j in 0..k {
+            let n = nd[j] as usize;
+            let p = 1.0 / (1.0 + (-(r[n] - r[o[n] as usize])).exp());
+            let mut h = w[n] * (-p * (1.0 - p)) - ip / k as f64;
+            if vg > 0.0 {
+                let p0 = 1.0 / (1.0 + (-r[n]).exp());
+                h -= (vg / k as f64) * p0 * (1.0 - p0);
+            }
+            if j > 0 {
+                h -= 1.0 / (w2 * gp[lo + j - 1]);
+            }
+            if j + 1 < k {
+                let iv = 1.0 / (w2 * gp[lo + j]);
+                h -= iv;
+                b[j] = -iv;
+            }
+            a[j] = -h;
+        }
+        let mut delta = a.clone();
+        let mut lambda = a.clone();
+        for j in 1..k {
+            delta[j] = a[j] - b[j - 1].powi(2) / delta[j - 1];
+        }
+        for j in (0..k - 1).rev() {
+            lambda[j] = a[j] - b[j].powi(2) / lambda[j + 1];
+        }
+        for j in 0..k {
+            out[nd[j] as usize] = if k == 1 {
+                1.0 / a[j]
+            } else {
+                1.0 / (delta[j] + lambda[j] - a[j])
+            };
+        }
+    }
+    out
+}
+
+/// Arrays arrive and return as little-endian float64 / int64 bytes.
 #[pyfunction]
-#[pyo3(signature = (o, s, w, pt, ix, gp, bn, w2, ip, vg, cl, np, ad, ce, nb, lim))]
+#[pyo3(signature = (o, s, w, pt, ix, gp, bn, w2, ip, vg, cl, np, ad, ce, nb, lim, return_variance=false))]
 #[allow(clippy::too_many_arguments)]
 fn fit<'py>(
     py: Python<'py>,
@@ -278,7 +337,12 @@ fn fit<'py>(
     ce: bool,
     nb: usize,
     lim: f64,
-) -> PyResult<(Bound<'py, PyBytes>, Bound<'py, PyBytes>)> {
+    return_variance: bool,
+) -> PyResult<(
+    Bound<'py, PyBytes>,
+    Bound<'py, PyBytes>,
+    Bound<'py, PyBytes>,
+)> {
     let (o, s, w, pt, ix, gp, bn) = (
         i64s(o),
         f64s(s),
@@ -301,14 +365,46 @@ fn fit<'py>(
     if ad && np == 0 {
         return Err(PyValueError::new_err("age drift needs at least one pass"));
     }
-    let (r, dr) = py.detach(|| {
-        passes(
+    let (r, dr, var) = py.detach(|| {
+        let (r, dr) = passes(
             &o, &s, &w, &pt, &ix, &gp, &bn, w2, ip, vg, cl, np, ad, ce, nb, lim,
-        )
+        );
+        let var = if return_variance {
+            variances(&r, &o, &w, &pt, &ix, &gp, w2, ip, vg)
+        } else {
+            vec![]
+        };
+        (r, dr, var)
     });
     let rb: Vec<u8> = r.iter().flat_map(|v| v.to_le_bytes()).collect();
     let db: Vec<u8> = dr.iter().flat_map(|v| v.to_le_bytes()).collect();
-    Ok((PyBytes::new(py, &rb), PyBytes::new(py, &db)))
+    let vb: Vec<u8> = var.iter().flat_map(|v| v.to_le_bytes()).collect();
+    Ok((
+        PyBytes::new(py, &rb),
+        PyBytes::new(py, &db),
+        PyBytes::new(py, &vb),
+    ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tridiagonal_known_solution() {
+        let mut x = [0.0; 3];
+        thomas(
+            &[2.0, 3.0, 2.0],
+            &[1.0, 1.0],
+            &[1.0, 0.0, 3.0],
+            &mut x,
+            &mut [0.0; 3],
+            &mut [0.0; 3],
+        );
+        for (actual, expected) in x.iter().zip([1.0, -1.0, 2.0]) {
+            assert!((actual - expected).abs() < 1e-12);
+        }
+    }
 }
 
 #[pymodule]

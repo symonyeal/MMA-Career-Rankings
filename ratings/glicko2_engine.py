@@ -183,8 +183,8 @@ def _current_frame(engine, columns: dict[str, tuple[str, str]], sort_column: str
 class RatingEngine:
     """Per-event Glicko-2 engine with lazy φ-inflation between appearances."""
 
-    def __init__(self, tau: float = DEFAULT_TAU, backend: str = "auto"):
-        self.env = Glicko2(tau=tau, backend=backend)
+    def __init__(self, tau: float = DEFAULT_TAU):
+        self.env = Glicko2(tau=tau)
         self.tau = tau
         self.states: dict[str, FighterState] = {}
         self.history: list[HistoryRow] = []
@@ -255,10 +255,10 @@ class WeightedRatingEngine:
     `RatingEngine`'s canonical stream (regression-tested).
     """
 
-    def __init__(self, tau: float = DEFAULT_TAU, score_mode: str = "canonical", backend: str = "auto"):
+    def __init__(self, tau: float = DEFAULT_TAU, score_mode: str = "canonical"):
         if score_mode not in {"canonical", "method", "quality_method"}:
             raise ValueError(f"unknown weighted score mode: {score_mode!r}")
-        self.env = Glicko2(tau=tau, backend=backend)
+        self.env = Glicko2(tau=tau)
         self.tau = tau
         self.score_mode = score_mode
         self.states: dict[str, WeightedFighterState] = {}

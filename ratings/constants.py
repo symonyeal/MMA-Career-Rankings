@@ -459,15 +459,6 @@ WHR_STEP_CLIP: float = 1.5
 #   WHR solver" in docs/DECISIONS.md.
 WHR_CENTER_EACH_PASS: bool = True
 
-# * WHR_BACKEND — "python" runs the coordinate passes in numpy; "rust" runs the
-#   same passes in the compiled `whr_rs` extension (rust/whr_rs), written in
-#   numpy's floating-point order; "auto" takes rust when it is installed.
-#   tests/test_whr_backend.py holds the two to bit-identical ratings, and on
-#   2026-10-23 the production fit of the 2026-10-14 release matched exactly
-#   (163,232 appearances and the age-drift profile; 3.6 s against 161.7 s).
-#   The numpy solver stays the reference.
-WHR_BACKEND: str = "auto"
-
 # * WHR_VIRTUAL_GAMES — prior evidence, in bouts, that every fighter carries
 #   against an average opponent: half a win and half a loss per virtual game.
 #

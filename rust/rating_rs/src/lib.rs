@@ -1,4 +1,4 @@
-//! Glicko-2 scalar updates, kept in the Python implementation's operation order.
+//! Glicko-2 scalar updates in the published numerical operation order.
 //! Derived from Heungsub Lee's BSD-licensed glicko2; the notice is in LICENSE.
 //! mu/phi are on the external Glicko scale; sigma is dimensionless volatility.
 //! A series item is (score, opponent mu, opponent phi, likelihood weight).
