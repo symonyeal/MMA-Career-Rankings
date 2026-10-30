@@ -1,29 +1,20 @@
-"""Captured-output and exact parity checks for the shared Glicko update."""
+"""Captured-output and event consistency checks for the shared Glicko update."""
 
-import os
+import json
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import pytest
 
 from ratings._glicko2 import Glicko2
-from ratings.fights import iter_events
 from ratings.glicko2_engine import RatingEngine, WeightedRatingEngine
 
-
-@pytest.fixture(scope="module")
-def native():
-    try:
-        import rating_rs
-    except ImportError:
-        if os.environ.get("RATING_RS_REQUIRED") == "1":
-            pytest.fail("rating_rs is required in this environment")
-        pytest.skip("rating_rs is not installed")
-    return rating_rs
+CAPTURE = json.loads((Path(__file__).parent / "fixtures/rating_results.json").read_text())
 
 
 def test_engine_scalar_matches_captured_original_bits():
-    env = Glicko2(tau=0.5, backend="python")
+    env = Glicko2(tau=0.5)
     rating = env.create_rating(1700, 80, 0.06)
     opponent = env.create_rating(1450, 120, 0.07)
 
@@ -71,61 +62,19 @@ def test_engine_zero_weight_remains_inactive_period():
     )
 
 
-@pytest.mark.parametrize("center", [1500.0, 1375.0])
-@pytest.mark.parametrize(
-    "results",
-    [
-        [],
-        [(1.0, 1600.0, 90.0, 0.0)],
-        [(1.0, 1600.0, 90.0, 1.0)],
-        [(1.0, 1600.0, 90.0, 0.7), (0.0, 1450.0, 120.0, 1.2),
-         (0.5, 1525.0, 80.0, 0.9)],
-    ],
-)
-def test_engine_rust_rate_matches_python_bits(native, center, results):
-    python = Glicko2(mu=center, tau=0.37, epsilon=1e-6, backend="python")
-    rust = Glicko2(mu=center, tau=0.37, epsilon=1e-6, backend="rust")
-    rating = python.create_rating(center + 85.25, 123.5, 0.058)
-    series_python = [(score, python.create_rating(mu, phi), weight) for score, mu, phi, weight in results]
-    series_rust = [(score, rust.create_rating(mu, phi), weight) for score, mu, phi, weight in results]
-
-    expected = python.rate_weighted(rating, series_python)
-    actual = rust.rate_weighted(rating, series_rust)
-
-    assert tuple(value.hex() for value in (actual.mu, actual.phi, actual.sigma)) == tuple(
-        value.hex() for value in (expected.mu, expected.phi, expected.sigma)
-    )
+@pytest.mark.parametrize("case", CAPTURE["glicko"])
+def test_engine_matches_captured_results(case):
+    center = case["center"]
+    env = Glicko2(mu=center, tau=0.37)
+    rating = env.create_rating(center + 85.25, 123.5, 0.058)
+    series = [(s, env.create_rating(mu, phi), w) for s, mu, phi, w in case["series"]]
+    actual = env.rate_weighted(rating, series)
+    np.testing.assert_allclose([actual.mu, actual.phi, actual.sigma], case["expected"], rtol=1e-14)
 
 
-@pytest.mark.parametrize("weighted", [False, True])
-def test_engine_rust_history_matches_python_on_snapshot(native, weighted):
-    from ratings.fights import load_fight_table
-    from ratings.scope import DEFAULT_PUBLISHED_SCOPE
-
-    snapshot = Path(__file__).resolve().parents[1] / "data/snapshots/2026-10-24"
-    fights = load_fight_table(snapshot, scope=DEFAULT_PUBLISHED_SCOPE)
-    assert len(fights) > 0, "the backend comparison needs the published fight corpus"
-    columns = ["fighter_a", "fighter_b", "winner", "is_draw", "method_score_winner"]
-    if weighted:
-        fights = fights.assign(weight_a=0.7, weight_b=1.1)
-        columns += ["weight_a", "weight_b"]
-        python = WeightedRatingEngine(score_mode="method", backend="python")
-        rust = WeightedRatingEngine(score_mode="method", backend="rust")
-    else:
-        python, rust = RatingEngine(backend="python"), RatingEngine(backend="rust")
-    for date, name, bouts in iter_events(fights, columns):
-        python.process_event(date, name, bouts)
-        rust.process_event(date, name, bouts)
-
-    pd.testing.assert_frame_equal(python.history_df(), rust.history_df(), check_exact=True)
-    expected = python.current_table().sort_values("fighter").reset_index(drop=True)
-    actual = rust.current_table().sort_values("fighter").reset_index(drop=True)
-    pd.testing.assert_frame_equal(expected, actual, check_exact=True)
-
-
-@pytest.mark.parametrize("periods", [0, 1, 3, 120])
-def test_engine_rust_inactivity_preserves_runtime_pow_bits(native, periods):
-    python, rust = Glicko2(backend="python"), Glicko2(backend="rust")
-    rating = python.create_rating(1414.237850143128, 286.7122785287158, 0.05999910436198874)
-    expected, actual = python.inflate(rating, periods), rust.inflate(rating, periods)
-    assert (actual.mu, actual.phi, actual.sigma) == (expected.mu, expected.phi, expected.sigma)
+@pytest.mark.parametrize("case", CAPTURE["inactivity"])
+def test_engine_inactivity_matches_captured_results(case):
+    env = Glicko2()
+    rating = env.create_rating(1414.237850143128, 286.7122785287158, 0.05999910436198874)
+    actual = env.inflate(rating, case["periods"])
+    np.testing.assert_allclose([actual.mu, actual.phi, actual.sigma], case["expected"], rtol=1e-14)

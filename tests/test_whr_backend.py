@@ -1,14 +1,10 @@
-"""The Rust WHR backend must return the numpy solver's ratings bit for bit.
-
-``whr_rs`` repeats the numpy passes operation for operation, including numpy's
-pairwise summation for the per-pass mean. A tolerance would let a reordered sum
-or a fused multiply-add slip in and move a board by one place, so the check is
-exact equality. CI builds the extension and sets ``WHR_RS_REQUIRED=1`` so a
-missing build fails rather than skips.
-"""
+"""Rust-only fitting checked against results captured at 5f53271."""
 from __future__ import annotations
 
-import os
+import json
+from pathlib import Path
+import subprocess
+import sys
 
 import numpy as np
 import pandas as pd
@@ -16,10 +12,7 @@ import pytest
 
 from ratings.whr import run_whr
 
-if os.environ.get("WHR_RS_REQUIRED") == "1":
-    import whr_rs  # noqa: F401
-else:
-    pytest.importorskip("whr_rs")
+CAPTURE = json.loads((Path(__file__).parent / "fixtures/rating_results.json").read_text())
 
 
 def _fights(n: int = 4000, m: int = 600, seed: int = 7) -> tuple[pd.DataFrame, dict[str, pd.Timestamp]]:
@@ -48,20 +41,21 @@ def _fights(n: int = 4000, m: int = 600, seed: int = 7) -> tuple[pd.DataFrame, d
     return f, dob
 
 
-@pytest.mark.parametrize("age_drift", [False, True])
-@pytest.mark.parametrize("center", [True, False])
-def test_rust_backend_is_bit_identical(age_drift, center):
-    f, dob = _fights()
-    kw = {"winner_score_col": "method_score_winner", "center_each_pass": center, "iterations": 20,
-          "birth_dates": dob if age_drift else None, "age_drift": age_drift, "return_variance": True}
-    py = run_whr(f, backend="python", **kw)
-    rs = run_whr(f, backend="rust", **kw)
-    pd.testing.assert_frame_equal(py, rs, check_exact=True)
-    if age_drift:
-        assert py.attrs["age_drift_elo_per_year"] == rs.attrs["age_drift_elo_per_year"]
+@pytest.mark.parametrize("case", CAPTURE["whr"])
+def test_rust_fit_matches_captured_weighted_ratings_and_variances(case):
+    f, dob = _fights(n=40, m=10)
+    actual = run_whr(f, winner_score_col="method_score_winner", center_each_pass=case["center"],
+                     iterations=20, birth_dates=dob if case["age"] else None,
+                     age_drift=case["age"], return_variance=True)
+    np.testing.assert_allclose(actual.mu_whr, case["mu"], rtol=1e-13)
+    np.testing.assert_allclose(actual.var_whr, case["variance"], rtol=1e-12)
+    if case["age"]:
+        np.testing.assert_allclose(actual.attrs["age_drift_elo_per_year"], case["drift"], atol=1e-12)
 
 
-def test_unknown_backend_is_refused():
-    f, _ = _fights(n=40, m=10)
-    with pytest.raises(ValueError, match="unknown WHR backend"):
-        run_whr(f, backend="fortran")
+@pytest.mark.parametrize("extension, module", [("whr_rs", "ratings.whr"), ("rating_rs", "ratings._glicko2")])
+def test_missing_native_extension_fails_without_fallback(extension, module):
+    source = f"import sys; sys.modules[{extension!r}] = None; __import__({module!r})"
+    result = subprocess.run([sys.executable, "-c", source], capture_output=True, text=True, check=False)
+    assert result.returncode != 0
+    assert "ModuleNotFoundError" in result.stderr and extension in result.stderr

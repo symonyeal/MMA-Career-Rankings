@@ -27,9 +27,7 @@ jobs:
       fail-fast: false
       matrix:
         python: ["3.12", "3.13", "3.14"]
-    # numpy's AVX-512 exp gives different last bits from libm's, so on runners with
-    # AVX-512 the numpy WHR reference stops matching whr_rs bit for bit. Pin numpy
-    # to the AVX2 paths every runner and the release machine share.
+    # Keep array operations consistent across runner CPU generations.
     env:
       NPY_DISABLE_CPU_FEATURES: "X86_V4 AVX512F AVX512CD AVX512_SKX AVX512_CLX AVX512_CNL AVX512_ICL AVX512_SPR"
     steps:
@@ -40,21 +38,17 @@ jobs:
       - run: python -m pip install --upgrade pip
       - run: python -m pip install -r requirements.txt
       - run: python -c "import numpy; numpy.show_runtime()"
-      # The WHR passes run in rust/whr_rs when it is installed. Building it here
-      # and requiring it makes tests/test_whr_backend.py fail, not skip, if the
-      # Rust backend stops matching the numpy reference bit for bit.
+      # Both compiled solvers are mandatory; imports fail if either is missing.
       - run: python -m pip install maturin==1.15.0 && python -m pip install ./rust/whr_rs ./rust/rating_rs
       - run: cargo clippy --manifest-path rust/whr_rs/Cargo.toml --release -- -D warnings
       - run: cargo fmt --manifest-path rust/whr_rs/Cargo.toml --check
+      - run: cargo test --manifest-path rust/whr_rs/Cargo.toml --release
       - run: cargo clippy --manifest-path rust/rating_rs/Cargo.toml --release -- -D warnings
       - run: cargo fmt --manifest-path rust/rating_rs/Cargo.toml --check
       # The release snapshot is versioned whole, so the tests that read it run
       # here on a fresh clone instead of skipping, and test_release_committed
       # fails if any file a rebuild needs is missing or gitignored.
       - run: python -m pytest -q
-        env:
-          WHR_RS_REQUIRED: "1"
-          RATING_RS_REQUIRED: "1"
       - run: python -m ruff check .
       - run: python -m pip check
       - run: python check_release.py

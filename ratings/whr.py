@@ -71,7 +71,6 @@ import pandas as pd
 
 from ratings.constants import (
     GREGORIAN_YEAR_DAYS,
-    WHR_BACKEND,
     WHR_CENTER_EACH_PASS,
     WHR_ITERATIONS,
     WHR_PRIOR_VAR,
@@ -81,11 +80,7 @@ from ratings.constants import (
     WHR_WINNER_SCORE_COL,
 )
 
-try:
-    import whr_rs  # noqa: F401 -- built from rust/whr_rs
-    _HAVE_WHR_RS = True
-except ImportError:
-    _HAVE_WHR_RS = False
+import whr_rs
 
 # Natural-scale rating -> Elo-like display scale.
 _ELO_PER_NAT = 400.0 / np.log(10.0)
@@ -145,59 +140,6 @@ def project_age_rating(
         projected += float(rates[bucket]) * (segment_end - cursor)
         cursor = segment_end
     return projected
-
-
-def _thomas(diag: np.ndarray, off: np.ndarray, rhs: np.ndarray) -> np.ndarray:
-    """Solve a symmetric tridiagonal system ``A x = rhs`` in O(n).
-
-    ``diag`` is the main diagonal (length n); ``off`` is the off-diagonal
-    (length n-1, used as both sub- and super-diagonal).
-    """
-    n = len(diag)
-    if n == 1:
-        return rhs / diag if diag[0] != 0.0 else np.zeros(1)
-    c = np.zeros(n - 1)
-    d = np.zeros(n)
-    beta = diag[0]
-    c[0] = off[0] / beta
-    d[0] = rhs[0] / beta
-    for i in range(1, n - 1):
-        beta = diag[i] - off[i - 1] * c[i - 1]
-        c[i] = off[i] / beta
-        d[i] = (rhs[i] - off[i - 1] * d[i - 1]) / beta
-    beta = diag[n - 1] - off[n - 2] * c[n - 2]
-    d[n - 1] = (rhs[n - 1] - off[n - 2] * d[n - 2]) / beta
-    x = np.zeros(n)
-    x[n - 1] = d[n - 1]
-    for i in range(n - 2, -1, -1):
-        x[i] = d[i] - c[i] * x[i + 1]
-    return x
-
-
-def _tridiag_inv_diag(a_diag: np.ndarray, a_off: np.ndarray) -> np.ndarray:
-    """Diagonal of the inverse of an SPD symmetric tridiagonal matrix ``A``.
-
-    ``a_diag`` is the main diagonal (length k); ``a_off`` the off-diagonal
-    (length k-1). Uses Meurant's forward (LU) / backward (UL) pivot recurrences:
-    ``(A^{-1})_{ii} = 1 / (delta_i + lambda_i - a_diag_i)`` where ``delta`` are
-    the forward pivots and ``lambda`` the backward pivots. Stable and O(k); this
-    gives each WHR rating's posterior variance from the per-fighter Hessian.
-    """
-    k = len(a_diag)
-    if k == 0:
-        return np.zeros(0)
-    if k == 1:
-        return 1.0 / a_diag
-    b2 = a_off ** 2
-    delta = np.empty(k)
-    delta[0] = a_diag[0]
-    for i in range(1, k):
-        delta[i] = a_diag[i] - b2[i - 1] / delta[i - 1]
-    lam = np.empty(k)
-    lam[k - 1] = a_diag[k - 1]
-    for i in range(k - 2, -1, -1):
-        lam[i] = a_diag[i] - b2[i] / lam[i + 1]
-    return 1.0 / (delta + lam - a_diag)
 
 
 def _build_appearances(
@@ -323,7 +265,7 @@ def production_score_kwargs(fights: pd.DataFrame | None) -> dict[str, str]:
     return {"winner_score_col": WHR_WINNER_SCORE_COL}
 
 
-def _passes_rust(
+def _fit(
     fighter_node_arrays: dict[object, np.ndarray],
     fighter_gaps: dict[object, np.ndarray],
     transition_bins: dict[object, np.ndarray],
@@ -338,14 +280,13 @@ def _passes_rust(
     fit_passes: int,
     age_drift: bool,
     center_each_pass: bool,
-) -> tuple[np.ndarray, np.ndarray]:
-    """The numpy pass loop of :func:`run_whr`, run by ``whr_rs``; returns ratings and drift per day.
+    return_variance: bool,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Pack appearance arrays for Rust fitting; return ratings, drift per day and conditional variances.
 
     Fighters keep their dict order: the passes are Gauss--Seidel, so the order
     fighters are updated in is part of the result.
     """
-    import whr_rs
-
     fs = list(fighter_node_arrays)
     ks = np.array([len(fighter_node_arrays[f]) for f in fs], dtype=np.int64)
     pt = np.zeros(len(fs) + 1, dtype=np.int64)
@@ -359,15 +300,15 @@ def _passes_rust(
             gp[lo:lo + k - 1] = fighter_gaps[f]
             if age_drift:
                 bn[lo:lo + k - 1] = transition_bins[f]
-    r, dr = whr_rs.fit(
+    r, dr, var = whr_rs.fit(
         app_opp.astype("<i8").tobytes(), app_score.astype("<f8").tobytes(),
         app_weight.astype("<f8").tobytes(), pt.astype("<i8").tobytes(), ix.astype("<i8").tobytes(),
         gp.astype("<f8").tobytes(), bn.astype("<i8").tobytes(),
         float(w2_per_day), float(inv_prior), float(vg_total), float(step_clip), int(fit_passes),
         bool(age_drift), bool(center_each_pass), len(AGE_BIN_LABELS),
-        25.0 / (_ELO_PER_NAT * GREGORIAN_YEAR_DAYS),
+        25.0 / (_ELO_PER_NAT * GREGORIAN_YEAR_DAYS), return_variance,
     )
-    return np.frombuffer(r, dtype="<f8").copy(), np.frombuffer(dr, dtype="<f8").copy()
+    return tuple(np.frombuffer(values, dtype="<f8").copy() for values in (r, dr, var))
 
 
 def run_whr(
@@ -384,7 +325,6 @@ def run_whr(
     birth_dates: dict[str, object] | pd.Series | None = None,
     age_drift: bool = False,
     center_each_pass: bool = WHR_CENTER_EACH_PASS,
-    backend: str | None = None,
 ) -> pd.DataFrame:
     """Run the WHR smoother over a canonical fight table.
 
@@ -415,16 +355,8 @@ def run_whr(
     ``center_each_pass`` re-centres the appearance mean after every pass, as
     every published fit has; ``False`` solves the exact posterior mode.
 
-    ``backend`` (default :data:`WHR_BACKEND`) picks where the passes run:
-    ``"python"`` here, ``"rust"`` in the ``whr_rs`` extension, which repeats
-    the same floating-point operations in the same order, and ``"auto"`` the
-    extension when it is installed.
+    Numerical fitting and conditional variances require the ``whr_rs`` extension.
     """
-    backend = WHR_BACKEND if backend is None else backend
-    if backend == "auto":
-        backend = "rust" if _HAVE_WHR_RS else "python"
-    if backend not in ("python", "rust"):
-        raise ValueError(f"unknown WHR backend: {backend!r}")
     cols = ["fighter", "event_date", "event_name", out_col]
     if fights is None or fights.empty:
         return pd.DataFrame(columns=cols)
@@ -436,7 +368,6 @@ def run_whr(
     if n_app == 0:
         return pd.DataFrame(columns=cols)
 
-    ratings = np.zeros(n_app, dtype=float)
     inv_prior = 1.0 / float(prior_var)
     vg_total = float(virtual_games)
     if vg_total < 0.0:
@@ -449,7 +380,6 @@ def run_whr(
 
     app_age = np.full(n_app, np.nan, dtype=float)
     transition_bins: dict[object, np.ndarray] = {}
-    drift_per_day = np.zeros(len(AGE_BIN_LABELS), dtype=float)
     if age_drift:
         if birth_dates is None:
             raise ValueError("age_drift requires birth_dates")
@@ -480,106 +410,12 @@ def run_whr(
                 app_day[nodes][1:] - app_day[nodes][:-1], 1.0
             )
 
-    fit_passes = int(iterations)
-    total_passes = fit_passes * (2 if age_drift else 1)
-    if backend == "rust":
-        ratings, drift_per_day = _passes_rust(
-            fighter_node_arrays, fighter_gaps, transition_bins, app_opp, app_score, app_weight,
-            w2_per_day=w2_per_day, inv_prior=inv_prior, vg_total=vg_total, step_clip=step_clip,
-            fit_passes=fit_passes, age_drift=age_drift, center_each_pass=center_each_pass,
-        )
-    else:
-        for pass_index in range(total_passes):
-            for fighter, nodes in fighter_node_arrays.items():
-                k = len(nodes)
-                if k == 0:
-                    continue
-                r = ratings[nodes]
-                opp = ratings[app_opp[nodes]]
-                s = app_score[nodes]
-                w = app_weight[nodes]  # per-fight likelihood sleeve weights
-
-                # Bradley-Terry likelihood — scaled by sleeve weight so each fight
-                # contributes w times as much evidence to the global estimation.
-                p = 1.0 / (1.0 + np.exp(-(r - opp)))
-                g = w * (s - p)
-                h_diag = w * (-p * (1.0 - p))
-
-                # Priors carry a fixed mass per fighter, spread over the career, so
-                # they do not scale with career length the way the likelihood does.
-                anchor = inv_prior / k
-                g -= r * anchor
-                h_diag -= anchor
-
-                # Virtual games against an average opponent (rating 0): half won,
-                # half lost. Unbiased at r = 0, and the only term that gives an
-                # undefeated record a finite maximum that grows with the evidence.
-                if vg_total > 0.0:
-                    vg = vg_total / k
-                    p0 = 1.0 / (1.0 + np.exp(-r))
-                    g += vg * (0.5 - p0)
-                    h_diag -= vg * p0 * (1.0 - p0)
-
-                # Wiener-process prior between consecutive appearances — unweighted.
-                if k > 1:
-                    gaps = fighter_gaps[fighter]
-                    inv_v = 1.0 / (w2_per_day * gaps)
-                    residual = r[1:] - r[:-1]
-                    if age_drift:
-                        bins = transition_bins[fighter]
-                        known = bins >= 0
-                        expected = np.zeros_like(gaps)
-                        expected[known] = drift_per_day[bins[known]] * gaps[known]
-                        residual = residual - expected
-                    g[:-1] += residual * inv_v
-                    g[1:] -= residual * inv_v
-                    h_diag[:-1] -= inv_v
-                    h_diag[1:] -= inv_v
-                    off = inv_v  # H[i][i+1]; for the (-H) system this is -inv_v
-                    a_off = -off
-                else:
-                    a_off = np.zeros(0)
-
-                # Newton step: solve (-H) step = g  (-H is positive-definite).
-                a_diag = -h_diag
-                step = _thomas(a_diag, a_off, g)
-                np.clip(step, -step_clip, step_clip, out=step)
-                ratings[nodes] = r + step
-
-            if center_each_pass:
-                ratings -= ratings.mean()
-
-            if age_drift and pass_index == fit_passes - 1:
-                change_sum = np.zeros(len(AGE_BIN_LABELS), dtype=float)
-                day_sum = np.zeros(len(AGE_BIN_LABELS), dtype=float)
-                for fighter, nodes in fighter_node_arrays.items():
-                    if len(nodes) < 2:
-                        continue
-                    bins = transition_bins[fighter]
-                    gaps = fighter_gaps[fighter]
-                    changes = ratings[nodes][1:] - ratings[nodes][:-1]
-                    for bucket in range(len(AGE_BIN_LABELS)):
-                        take = bins == bucket
-                        if take.any():
-                            change_sum[bucket] += float(changes[take].sum())
-                            day_sum[bucket] += float(gaps[take].sum())
-                raw = np.divide(
-                    change_sum,
-                    day_sum,
-                    out=np.zeros_like(change_sum),
-                    where=day_sum > 0,
-                )
-                # The common offset is confounded with scale and roster churn. Age
-                # is identified by the difference from the youngest observed bin.
-                baseline = raw[0] if day_sum[0] > 0 else 0.0
-                target = raw - baseline
-                target[day_sum == 0] = 0.0
-                limit = 25.0 / (_ELO_PER_NAT * GREGORIAN_YEAR_DAYS)
-                drift_per_day = np.clip(target, -limit, limit)
-                # Refit from the neutral initialization under the now-estimated
-                # prior mean. Re-estimating from the already drifted trajectory
-                # creates positive feedback and is not a valid empirical prior.
-                ratings.fill(0.0)
+    ratings, drift_per_day, variances = _fit(
+        fighter_node_arrays, fighter_gaps, transition_bins, app_opp, app_score, app_weight,
+        w2_per_day=w2_per_day, inv_prior=inv_prior, vg_total=vg_total, step_clip=step_clip,
+        fit_passes=int(iterations), age_drift=age_drift, center_each_pass=center_each_pass,
+        return_variance=return_variance,
+    )
 
     mu_whr = _ELO_ANCHOR + ratings * _ELO_PER_NAT
     data = {
@@ -599,31 +435,6 @@ def run_whr(
         data["prior_drift_elo_per_year"] = prior_drift
 
     if return_variance:
-        # Conditional per-fighter block curvature on the NATURAL scale. The full
-        # WHR Hessian also couples opponents, so this is deliberately not called
-        # a marginal posterior variance.
-        variances = np.zeros(n_app, dtype=float)
-        for fighter, nodes in fighter_node_arrays.items():
-            k = len(nodes)
-            if k == 0:
-                continue
-            r = ratings[nodes]
-            opp = ratings[app_opp[nodes]]
-            w = app_weight[nodes]
-            p = 1.0 / (1.0 + np.exp(-(r - opp)))
-            h_diag = w * (-p * (1.0 - p)) - inv_prior / k
-            if vg_total > 0.0:
-                p0 = 1.0 / (1.0 + np.exp(-r))
-                h_diag -= (vg_total / k) * p0 * (1.0 - p0)
-            if k > 1:
-                gaps = fighter_gaps[fighter]
-                inv_v = 1.0 / (w2_per_day * gaps)
-                h_diag[:-1] -= inv_v
-                h_diag[1:] -= inv_v
-                a_off = -inv_v
-            else:
-                a_off = np.zeros(0)
-            variances[nodes] = _tridiag_inv_diag(-h_diag, a_off)
         data[out_col.replace("mu_", "var_", 1)] = variances
 
     out = pd.DataFrame(data)

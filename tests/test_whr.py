@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from ratings.whr import _build_appearances, _thomas, project_age_rating, run_whr
+from ratings.whr import _build_appearances, project_age_rating, run_whr
 
 
 def _chain_fights(n_events: int = 15) -> pd.DataFrame:
@@ -19,21 +19,6 @@ def _chain_fights(n_events: int = 15) -> pd.DataFrame:
         rows.append({"fighter_a": "B", "fighter_b": "C", "winner": "B", "is_draw": False,
                          "event_date": d, "event_name": f"E{i}b"})
     return pd.DataFrame(rows)
-
-
-def test_thomas_solves_tridiagonal_system():
-    # A symmetric tridiagonal system with a known solution.
-    diag = np.array([2.0, 3.0, 2.0])
-    off = np.array([1.0, 1.0])
-    x_true = np.array([1.0, -1.0, 2.0])
-    # rhs = A @ x_true
-    rhs = np.array([
-        diag[0] * x_true[0] + off[0] * x_true[1],
-        off[0] * x_true[0] + diag[1] * x_true[1] + off[1] * x_true[2],
-        off[1] * x_true[1] + diag[2] * x_true[2],
-    ])
-    x = _thomas(diag, off, rhs)
-    assert np.allclose(x, x_true, atol=1e-9)
 
 
 def test_whr_recovers_monotonic_ordering():

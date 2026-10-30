@@ -9,10 +9,10 @@ name = "whr_rs"
 crate-type = ["cdylib"]
 
 [dependencies]
-pyo3 = { version = "0.30", features = ["extension-module", "abi3-py312"] }
+pyo3 = { version = "0.30", features = ["abi3-py312"] }
 
 [profile.release]
 # Fused multiply-add or reassociation would change the last bits of every
-# rating, and the numpy solver is the reference the release was fitted with.
+# rating; keep the published numerical operation order.
 codegen-units = 1
 lto = true

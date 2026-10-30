@@ -260,7 +260,9 @@ re-centred solver, and required the two to match bit for bit. They did. Evidence
 [`validation/whr-solver-2026-10-23/`](validation/whr-solver-2026-10-23/).
 
 To re-run it: `python analysis/check_whr_solver.py data/snapshots/2026-08-13
---years 2024 2025 --workers 4 --backend rust --out docs/validation/whr-solver-<date>`.
+--years 2024 2025 --workers 4 --out docs/validation/whr-solver-<date>`.
+The current tool runs both variants in Rust; Python solvers and Git-loaded baseline execution
+were removed on 2026-10-30. The historical baseline check above describes the original run.
 A new solver candidate has to win this comparison before it is promoted. Do not
 tune the constants around a solver to make the boards look like the old ones.
 
