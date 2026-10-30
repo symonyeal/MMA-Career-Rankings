@@ -12,7 +12,7 @@ import numpy as np
 import pandas as pd
 
 from ratings.glicko2_engine import predict_win_prob_from_ratings
-from ratings.performance_adjustment import normalize_division_label
+from ratings.divisions import normalize_division_label
 
 
 def _prefight_history(history: pd.DataFrame, mu_col: str, phi_col: str | None = None) -> pd.DataFrame:

@@ -1,11 +1,13 @@
 """
 Vendored copy of Heungsub Lee's `glicko2` package (2012, BSD license).
 Original: https://github.com/sublee/glicko2
+Full licence notice: rust/rating_rs/LICENSE.
 
-Vendored verbatim so the project is self-contained. Do not edit — all
-extensions live in `glicko2_engine.py`.
+Vendored from Heungsub Lee's package. The weighted update extension is kept
+here so both engine APIs use one variance and rating calculation.
 """
 import math
+import os
 
 __version__ = '0.0.dev'
 
@@ -33,7 +35,18 @@ class Rating:
 
 
 class Glicko2:
-    def __init__(self, mu=MU, phi=PHI, sigma=SIGMA, tau=TAU, epsilon=EPSILON):
+    def __init__(self, mu=MU, phi=PHI, sigma=SIGMA, tau=TAU, epsilon=EPSILON, backend="auto"):
+        if backend not in {"auto", "python", "rust"}:
+            raise ValueError(f"unknown Glicko-2 backend: {backend!r}")
+        self.rust = None
+        if backend != "python":
+            try:
+                import rating_rs
+            except ImportError as error:
+                if backend == "rust" or os.environ.get("RATING_RS_REQUIRED") == "1":
+                    raise RuntimeError("Rust Glicko backend requested but rating_rs is not installed") from error
+            else:
+                self.rust = rating_rs
         self.mu = mu
         self.phi = phi
         self.sigma = sigma
@@ -96,18 +109,48 @@ class Glicko2:
         return math.exp(1) ** (a / 2)
 
     def rate(self, rating, series):
+        return self.rate_weighted(rating, ((score, opponent, 1.0) for score, opponent in series))
+
+    def inflate(self, rating, periods):
+        if periods <= 0:
+            return rating
+        if self.rust is not None:
+            mu, phi, sigma = self.rust.inflate(rating.mu, rating.phi, rating.sigma, self.mu, periods)
+            return self.create_rating(mu, phi, sigma)
+        for _ in range(periods):
+            rating = self.rate(rating, [])
+        return rating
+
+    def rate_weighted(self, rating, series):
+        """Rate against ``(score, opponent, weight)`` results.
+
+        Unit weights follow the same Glicko-2 operations as ``rate``. A zero
+        total information update is treated as an inactive period.
+        """
+        if self.rust is not None:
+            values = [(score, other.mu, other.phi, weight) for score, other, weight in series]
+            mu, phi, sigma = self.rust.rate(
+                rating.mu, rating.phi, rating.sigma, values, self.mu, self.tau, self.epsilon,
+            )
+            return self.create_rating(mu, phi, sigma)
+
         rating = self.scale_down(rating)
         variance_inv = 0
         difference = 0
         if not series:
             phi_star = math.sqrt(rating.phi ** 2 + rating.sigma ** 2)
             return self.scale_up(self.create_rating(rating.mu, phi_star, rating.sigma))
-        for actual_score, other_rating in series:
+        for actual_score, other_rating, weight in series:
+            if weight == 0:
+                continue
             other_rating = self.scale_down(other_rating)
             impact = self.reduce_impact(other_rating)
             expected_score = self.expect_score(rating, other_rating, impact)
-            variance_inv += impact ** 2 * expected_score * (1 - expected_score)
-            difference += impact * (actual_score - expected_score)
+            variance_inv += weight * impact ** 2 * expected_score * (1 - expected_score)
+            difference += weight * impact * (actual_score - expected_score)
+        if variance_inv == 0:
+            phi_star = math.sqrt(rating.phi ** 2 + rating.sigma ** 2)
+            return self.scale_up(self.create_rating(rating.mu, phi_star, rating.sigma))
         difference /= variance_inv
         variance = 1. / variance_inv
         sigma = self.determine_sigma(rating, difference, variance)
@@ -115,13 +158,3 @@ class Glicko2:
         phi = 1. / math.sqrt(1 / phi_star ** 2 + 1 / variance)
         mu = rating.mu + phi ** 2 * (difference / variance)
         return self.scale_up(self.create_rating(mu, phi, sigma))
-
-    def rate_1vs1(self, rating1, rating2, drawn=False):
-        return (self.rate(rating1, [(DRAW if drawn else WIN, rating2)]),
-                self.rate(rating2, [(DRAW if drawn else LOSS, rating1)]))
-
-    def quality_1vs1(self, rating1, rating2):
-        expected_score1 = self.expect_score(rating1, rating2, self.reduce_impact(rating1))
-        expected_score2 = self.expect_score(rating2, rating1, self.reduce_impact(rating2))
-        expected_score = (expected_score1 + expected_score2) / 2
-        return 2 * (0.5 - abs(0.5 - expected_score))

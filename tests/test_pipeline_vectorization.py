@@ -11,11 +11,8 @@ import numpy as np
 import pandas as pd
 
 from ratings.division_resume import division_resume_rows
-from ratings.performance_adjustment import (
-    _group_bounds,
-    pre_fight_win_streaks,
-    prefight_ranking_context,
-)
+from ratings.performance_adjustment import (pre_fight_win_streaks, prefight_ranking_context)
+from project_helpers import group_bounds
 
 
 def _rank_map(rows: list[tuple[str, float]]) -> dict[str, int]:
@@ -97,12 +94,12 @@ def _synthetic_history(fights: pd.DataFrame, seed: int = 11) -> pd.DataFrame:
 
 
 # ---------------------------------------------------------------------------
-# _group_bounds
+# group_bounds
 
 
-def test_group_bounds_matches_groupby_on_a_sorted_frame():
+def testgroup_bounds_matches_groupby_on_a_sorted_frame():
     fights = _synthetic_fights().sort_values(["event_date", "event_name"]).reset_index(drop=True)
-    starts, stops = _group_bounds(fights["event_date"], fights["event_name"])
+    starts, stops = group_bounds(fights["event_date"], fights["event_name"])
     expected = [
         (int(g.index[0]), int(g.index[-1]) + 1)
         for _, g in fights.groupby(["event_date", "event_name"], sort=False)
@@ -110,8 +107,8 @@ def test_group_bounds_matches_groupby_on_a_sorted_frame():
     assert list(zip(starts.tolist(), stops.tolist())) == expected
 
 
-def test_group_bounds_handles_empty_input():
-    starts, stops = _group_bounds(pd.Series([], dtype="datetime64[ns]"), pd.Series([], dtype=str))
+def testgroup_bounds_handles_empty_input():
+    starts, stops = group_bounds(pd.Series([], dtype="datetime64[ns]"), pd.Series([], dtype=str))
     assert len(starts) == 0 and len(stops) == 0
 
 

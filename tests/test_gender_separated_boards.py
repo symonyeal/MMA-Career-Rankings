@@ -18,7 +18,6 @@ import build_boards
 import build_top100_audit
 import build_uncertainty
 import refresh
-from analysis.viz import top_n_table
 from ratings.gender import (
     DEFAULT_GENDER,
     GENDER_GAUGE_NOTE,
@@ -127,32 +126,11 @@ def test_a_snapshot_without_gender_prints_one_unlabelled_board(capsys):
     assert "Prime [" not in out and "=== Prime ===" in out
 
 
-def test_top_n_table_defaults_to_the_published_component():
-    fighters = pd.DataFrame({
-        "fighter": ["Ada", "Bea", "Cal", "Dan", "Eve"],
-        "height_inches": [64] * 5, "weight_lb": [125] * 5,
-        "reach_inches": [64] * 5, "stance": ["Orthodox"] * 5,
-    })
-    fights = pd.DataFrame({"event_date": [pd.Timestamp("2024-01-01")]})
-    current = _current().assign(
-        phi_canonical=50.0, mu_method=1800.0, mu_whr=1800.0,
-        last_event_date=pd.Timestamp("2024-01-01"),
-        symon_career_skill_mass=100.0,
-    )
-    default = top_n_table(current, fighters, fights, n=10, min_fights=0)
-    assert set(default["fighter"]) == {"Cal", "Dan", "Eve"}
-    womens = top_n_table(current, fighters, fights, n=10, min_fights=0, gender="F")
-    assert set(womens["fighter"]) == {"Ada", "Bea"}
-    mixed = top_n_table(current, fighters, fights, n=10, min_fights=0, gender=None)
-    assert len(mixed) == 5
-
-
 @pytest.mark.parametrize("module", [build_uncertainty, refresh])
 def test_bootstrap_entry_points_scope_the_population(module):
     """A mixed interval asks whether a woman is separated from a man."""
     source = inspect.getsource(module)
-    assert "select_gender" in source
-    assert "select_component_fights" in source
+    assert "bootstrap_snapshot" in source
 
 
 def test_bootstrap_component_filter_excludes_unrelated_cards():

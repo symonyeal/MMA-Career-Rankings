@@ -296,6 +296,34 @@ def _overlap(a: set[tuple], b: set[tuple], *, day_slack: int = 1) -> int:
     return hits
 
 
+def _overlap_index(canonical: dict[str, set[tuple]]) -> dict[str, dict[object, set[str]]]:
+    """Index canonical records by opponent and date for repeated id queries."""
+    by_opponent: dict[str, dict[object, set[str]]] = {}
+    for name, records in canonical.items():
+        for day, opponent in records:
+            by_opponent.setdefault(opponent, {}).setdefault(day, set()).add(name)
+    return by_opponent
+
+
+def _overlap_scores(
+    mine: set[tuple],
+    index: dict[str, dict[object, set[str]]],
+    *,
+    day_slack: int = 1,
+) -> dict[str, int]:
+    """Count existing date/opponent overlaps by querying the inverted index."""
+
+    scores: dict[str, int] = {}
+    for day, opponent in mine:
+        dates = index.get(opponent, {})
+        matches: set[str] = set()
+        for offset in range(-day_slack, day_slack + 1):
+            matches.update(dates.get(day + pd.Timedelta(days=offset), ()))
+        for name in matches:
+            scores[name] = scores.get(name, 0) + 1
+    return scores
+
+
 def resolve_by_bout_evidence(
     identity: pd.DataFrame,
     bouts: pd.DataFrame,
@@ -330,15 +358,18 @@ def resolve_by_bout_evidence(
     fingerprints = _bout_fingerprints(bouts)
     canonical = {k: v for k, v in _canonical_fingerprints(canonical_fights).items()
                  if k not in claimed}
+    canonical_index = _overlap_index(canonical)
 
     awards: dict[str, tuple[str, int]] = {}
     for fid in out.loc[pending, "sherdog_id"]:
         mine = fingerprints.get(fid)
         if not mine:
             continue
-        scored = [(name, _overlap(mine, prints))
-                  for name, prints in canonical.items()]
-        scored = [s for s in scored if s[1] >= min_overlap]
+        scores = _overlap_scores(mine, canonical_index)
+        if min_overlap <= 0:
+            scored = [(name, scores.get(name, 0)) for name in canonical]
+        else:
+            scored = [(name, score) for name, score in scores.items() if score >= min_overlap]
         if not scored:
             continue
         scored.sort(key=lambda kv: kv[1], reverse=True)

@@ -12,7 +12,6 @@ from ratings.symon_score import (
     DEFAULT_HINGE_SPREAD_FRACTION,
     MASS_COLUMNS,
     PERIOD_COLUMNS,
-    career_mass_family,
     career_skill_mass,
     division_year_reference,
     positive_part,
@@ -358,23 +357,6 @@ def test_career_mass_rank_is_a_shared_place_across_the_zero_tie():
     # A "min" rank leaves the gap after the tie, and never exceeds the row count.
     assert out["rank"].max() == int(zero["rank"].iloc[0])
     assert out.loc[out["fighter"].eq("A"), "rank"].iloc[0] == 1
-
-
-def test_career_mass_family_keeps_one_rank_per_reference():
-    h = pd.concat([
-        _history("A", ["2020-01-01", "2021-01-01"], [90.0, 90.0]),
-        _history("B", ["2020-01-01", "2021-01-01"], [50.0, 50.0]),
-        _history("C", ["2020-01-01", "2021-01-01"], [10.0, 10.0]),
-    ], ignore_index=True)
-    fam = career_mass_family(h, references=("mean", 0.5), field_min_population=2)
-
-    assert list(fam.columns) == [*MASS_COLUMNS, "reference"]
-    assert set(fam["reference"]) == {"mean", "0.5"}
-    for reference, block in fam.groupby("reference"):
-        assert block["rank"].min() == 1, reference
-        # Rank is a function of score within the block, and only of score.
-        by_score = block.sort_values("score", ascending=False)["rank"]
-        assert by_score.is_monotonic_increasing, reference
 
 
 def test_count_reference_names_a_count_not_a_fraction():

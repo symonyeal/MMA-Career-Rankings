@@ -12,13 +12,12 @@ import numpy as np
 import pandas as pd
 
 from loaders.fightmatrix_organizations import normalize_organization
+from ratings.history import opponent_ratings
 from ratings.layoff import attach_opponent_layoff
 from ratings.opponent_quality import CONTENDER_LINE_MU, MIN_OPPONENT_UFC_BOUTS
-from ratings.performance_adjustment import (
-    is_real_ufc_title_bout,
-    normalize_division_label,
-    womens_division_label,
-)
+from ratings.performance_adjustment import (is_real_ufc_title_bout)
+from ratings.divisions import normalize_division_label
+from ratings.divisions import division_labels
 
 # pid : promotion identity used for championship lineage
 # er  : organization match inferred from the event label
@@ -364,30 +363,6 @@ def legacy_points(title: pd.Series, skill: pd.Series, resume: pd.Series, *,
 def _empty_quality_ledger() -> pd.DataFrame:
     return pd.DataFrame(columns=QUALITY_LEDGER_COLUMNS)
 
-
-def _division_labels(current: pd.DataFrame) -> pd.Series | None:
-    """Fighter -> division label, women's classes kept separate from men's.
-
-    A woman's ``career_division`` is folded onto one canonical women's division
-    first. Without that fold the same division splits into as many pools as the
-    corpus has spellings for it -- "Women's Flyweight" from UFCStats and a bare
-    "Flyweight" from the Sherdog majors rows -- and each pool strikes its own
-    contender line. Measured on 2026-08-13 those two lines sat 91 rating points
-    apart over the same eleven years, so which one a career was scored against
-    was decided by its source, not by its division.
-
-    The ``"W " + div`` prefix is kept as the fallback for a label the fold
-    cannot place, so a fighter is never silently pooled with the men.
-    """
-    if current is None or "career_division" not in current.columns:
-        return None
-    div = current["career_division"].astype(str)
-    gender = current.get("gender", pd.Series("", index=current.index)).astype(str)
-    female = gender.str.upper().str.startswith("F")
-    folded = div.map(womens_division_label)
-    return pd.Series(
-        np.where(female, folded.fillna("W " + div), div), index=current["fighter"]
-    ).groupby(level=0).first()
 
 ORG_FACTOR_BY_CANONICAL = {
     "UFC": 1.0,
@@ -1172,15 +1147,7 @@ def title_quality_rows(
     if wins.empty:
         return _empty_quality_ledger()
 
-    priced = pd.merge_asof(
-        wins,
-        h.sort_values("event_date").rename(
-            columns={"fighter": "opponent", "mu_whr": "opponent_mu"}
-        ),
-        on="event_date",
-        by="opponent",
-        allow_exact_matches=False,
-    )
+    priced = opponent_ratings(wins, h.sort_values("event_date"))
     priced["opponent_mu"] = priced["opponent_mu"] + _pool_offset(
         priced["opponent"], priced["event_date"], ufc_debut_dates, pool_offset_elo
     )
@@ -1410,13 +1377,7 @@ def contender_resume_rows(
         return _empty_resume_ledger()
 
     # The opponent's rating BEFORE the bout: a win may not price itself.
-    priced = pd.merge_asof(
-        wins,
-        h.rename(columns={"fighter": "opponent", "mu_whr": "opponent_mu"}),
-        on="event_date",
-        by="opponent",
-        allow_exact_matches=False,
-    ).dropna(subset=["opponent_mu"])
+    priced = opponent_ratings(wins, h).dropna(subset=["opponent_mu"])
     if priced.empty:
         return _empty_resume_ledger()
 
@@ -1507,7 +1468,7 @@ def public_legacy_score_rows(
         source_fights,
         history,
         reference=reference,
-        divisions=_division_labels(current),
+        divisions=division_labels(current),
         ufc_debut_dates=debuts,
         pool_offset_elo=pool_offset_elo,
         context=ctx,

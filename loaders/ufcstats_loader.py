@@ -18,12 +18,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from ratings.constants import (
-    METHOD_SCORE_DQ,
-    METHOD_SCORE_FINISH,
-    METHOD_SCORE_NON_UNANIMOUS_DECISION,
-    METHOD_SCORE_UNANIMOUS,
-)
+from ratings.constants import METHOD_SCORES
 
 try:
     from .ped_flags import annotate_ped_flags
@@ -82,14 +77,7 @@ UFC_28_DATE = pd.Timestamp("2000-11-17")
 #   Decision - Split     0.90  non-unanimous: one judge scored the other way
 #   DQ                   0.85  win by disqualification, before integrity
 
-METHOD_SCORES = {
-    "KO/TKO":               METHOD_SCORE_FINISH,
-    "Submission":           METHOD_SCORE_FINISH,
-    "Decision - Unanimous": METHOD_SCORE_UNANIMOUS,
-    "Decision - Majority":  METHOD_SCORE_NON_UNANIMOUS_DECISION,
-    "Decision - Split":     METHOD_SCORE_NON_UNANIMOUS_DECISION,
-    "DQ":                   METHOD_SCORE_DQ,
-}
+
 
 
 # ---------------------------------------------------------------------------
@@ -323,6 +311,12 @@ def _pair_col_names(raw: str) -> tuple[str, str]:
     return f"{base}_landed", f"{base}_attempted"
 
 
+def _parsed_integer(values: pd.Series) -> pd.Series:
+    """Match ``Series.apply`` inference: integers, floats with nulls, or all-None objects."""
+    parsed = pd.to_numeric(values.astype(object), errors="coerce")
+    return parsed.astype(object) if parsed.isna().all() else parsed
+
+
 def build_canonical_rounds(stats: pd.DataFrame, fights: pd.DataFrame) -> pd.DataFrame:
     s = stats.copy()
     s["event_name"] = s["EVENT"]
@@ -335,15 +329,26 @@ def build_canonical_rounds(stats: pd.DataFrame, fights: pd.DataFrame) -> pd.Data
     s["round_num"] = s["ROUND"].astype("string").str.extract(r"Round\s*(\d+)").astype("Int64")
 
     for col in _PAIR_COLS:
-        landed_att = s[col].apply(lambda v, c=col: pd.Series(parse_x_of_y(v), index=_pair_col_names(c)))
-        s = pd.concat([s, landed_att], axis=1)
+        landed, attempted = _pair_col_names(col)
+        values = s[col].astype("string").str.extract(r"^\s*(\d+)\s*of\s*(\d+)\s*$")
+        s[landed] = _parsed_integer(values[0])
+        s[attempted] = _parsed_integer(values[1])
 
     s["kd"] = pd.to_numeric(s["KD"], errors="coerce").astype("Int64")
     s["sub_att"] = pd.to_numeric(s["SUB.ATT"], errors="coerce").astype("Int64")
     s["rev"] = pd.to_numeric(s["REV."], errors="coerce").astype("Int64")
-    s["sig_str_pct"] = s["SIG.STR. %"].apply(parse_pct)
-    s["td_pct"] = s["TD %"].apply(parse_pct)
-    s["ctrl_seconds"] = s["CTRL"].apply(parse_mmss_to_seconds)
+    s["sig_str_pct"] = _parsed_integer(
+        s["SIG.STR. %"].astype("string").str.extract(r"^\s*(\d+)\s*%\s*$")[0]
+    )
+    s["td_pct"] = _parsed_integer(
+        s["TD %"].astype("string").str.extract(r"^\s*(\d+)\s*%\s*$")[0]
+    )
+    clock = s["CTRL"].astype("string").str.extract(r"^\s*(\d+):(\d+)\s*$")
+    minutes = _parsed_integer(clock[0])
+    seconds = _parsed_integer(clock[1])
+    s["ctrl_seconds"] = minutes * 60 + seconds
+    if s["ctrl_seconds"].isna().all():
+        s["ctrl_seconds"] = s["ctrl_seconds"].astype(object)
     s["fighter"] = s["FIGHTER"]
 
     keep = [

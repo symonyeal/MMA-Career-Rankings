@@ -4,7 +4,7 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from ratings.rate_snapshot import merge_crossorg_fights
+from ratings.scope import UFC_ONLY, merge_scope
 from ratings.scope import SCOPE_ARTIFACT
 
 
@@ -41,7 +41,7 @@ def test_guard_drops_a_bout_already_in_the_ufc_table(tmp_path, capsys):
         _bout("sherdog/2", "Carl Cee", "Dan Dee", "2005-01-01"),
     ])
 
-    merged = merge_crossorg_fights(ufc, tmp_path, enabled=True)
+    merged = merge_scope(ufc, tmp_path, scope="fightmatrix", label="rate")
 
     assert merged["fight_url"].tolist() == ["ufc/1", "sherdog/2"]
     assert "already_in_ufc_table" in capsys.readouterr().out
@@ -54,7 +54,7 @@ def test_guard_drops_rows_the_source_itself_calls_ufc(tmp_path):
         _bout("sherdog/2", "Carl Cee", "Dan Dee", "2005-01-01"),
     ])
 
-    merged = merge_crossorg_fights(ufc, tmp_path, enabled=True)
+    merged = merge_scope(ufc, tmp_path, scope="fightmatrix", label="rate")
 
     assert merged["fight_url"].tolist() == ["ufc/1", "sherdog/2"]
 
@@ -76,7 +76,7 @@ def test_guard_keeps_one_agreeing_duplicate_and_drops_a_contradictory_pair(tmp_p
         _bout("sherdog/4", "Fay Gee", "Eve Eff", "2026-03-01", winner="Fay Gee"),
     ])
 
-    merged = merge_crossorg_fights(ufc, tmp_path, enabled=True)
+    merged = merge_scope(ufc, tmp_path, scope="fightmatrix", label="rate")
 
     assert merged["fight_url"].tolist() == ["ufc/1", "sherdog/1"]
     report = capsys.readouterr().out
@@ -89,13 +89,13 @@ def test_guard_raises_when_nothing_survives(tmp_path):
     _write(tmp_path, [_bout("sherdog/1", "Bob Bee", "Alice Ace", "2014-05-31", org="UFC")])
 
     with pytest.raises(ValueError, match="failed the scope guard"):
-        merge_crossorg_fights(ufc, tmp_path, enabled=True)
+        merge_scope(ufc, tmp_path, scope="fightmatrix", label="rate")
 
 
 def test_disabled_merge_is_untouched(tmp_path):
     ufc = pd.DataFrame([_bout("ufc/1", "Alice Ace", "Bob Bee", "2014-05-31", org="UFC")])
     _write(tmp_path, [_bout("sherdog/1", "Carl Cee", "Dan Dee", "2005-01-01")])
 
-    merged = merge_crossorg_fights(ufc, tmp_path, enabled=False)
+    merged = merge_scope(ufc, tmp_path, scope=UFC_ONLY, label="rate")
 
     assert merged is ufc

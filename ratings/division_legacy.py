@@ -36,11 +36,13 @@ import numpy as np
 import pandas as pd
 
 from ratings.legacy_resume import (
-    RESUME_QUALITY_SCALE, RESUME_YEAR_CAP, TITLE_QUALITY_SCALE, _division_labels, contender_resume_rows,
+    RESUME_QUALITY_SCALE, RESUME_YEAR_CAP, TITLE_QUALITY_SCALE, contender_resume_rows,
     legacy_points, title_quality_rows, ufc_debut_dates_from,
 )
+from ratings.divisions import division_labels
 from ratings.current_score import is_ufc_bout
-from ratings.performance_adjustment import normalize_division_label, womens_division_label
+from ratings.divisions import normalize_division_label
+from ratings.divisions import womens_division_label
 from ratings.symon_score import (
     DEFAULT_CAREER_REFERENCE, DEFAULT_DIVISION_REFERENCE, DEFAULT_HINGE_SPREAD_FRACTION, career_skill_years,
 )
@@ -115,7 +117,7 @@ def class_ledger(
         return [None if u not in ufc else c if isinstance(c := bout.get((u, f)), str)
                 else weight_class(billed(u), gender(f)) for u, f in zip(us, fs)]
 
-    labels = _division_labels(current)
+    labels = division_labels(current)
     T = title_quality_rows(source_fights, history, reference=reference, divisions=labels,
                            ufc_debut_dates=ufc_debut_dates_from(source_fights))
     T = T.assign(division=of(T), title=T["weight"])

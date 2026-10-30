@@ -1,11 +1,6 @@
 pandas>=2.2.0
 pyarrow>=19.0.0
 numpy>=1.26.0
-plotly>=5.18.0
-ipywidgets>=8.1.0
-anywidget>=0.9.0
-jupyterlab>=4.2.0
-ipykernel>=6.29.0
 pytest>=8.0.0
 beautifulsoup4>=4.12.0
 # ufcstats_scrape parses with BeautifulSoup(html, "lxml"). The parser is named by
@@ -15,6 +10,4 @@ requests>=2.31.0
 # Both are imported directly rather than reached through requests.
 urllib3>=1.26.0
 typing_extensions>=4.9.0
-python-dateutil>=2.9.0
-jinja2>=3.0.0
 ruff==0.16.7

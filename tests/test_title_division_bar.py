@@ -18,11 +18,8 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from ratings.legacy_resume import (
-    TITLE_QUALITY_MAJOR_FLOOR,
-    _division_labels,
-    title_quality_ledger,
-)
+from ratings.legacy_resume import (TITLE_QUALITY_MAJOR_FLOOR, title_quality_ledger)
+from ratings.divisions import division_labels
 
 # The contender line is struck per division-YEAR, and a division-year thinner
 # than symon_score.DEFAULT_DIVISION_MIN_POPULATION cannot describe its own line
@@ -157,21 +154,21 @@ def _synthetic_snapshot(snapshot_dir: Path) -> None:
 def test_run_scores_the_public_resume_after_the_division_columns_exist(tmp_path: Path):
     """The persisted board must equal the division-bar pricing, not the fallback."""
     from ratings.era import era_rated
-    from ratings.rate_snapshot import _source_fights_for_public_resume
+    from ratings.fights import resume_fights
     from ratings.rate_snapshot import run as run_ratings
 
     snap = tmp_path / "snap"
     snap.mkdir()
     _synthetic_snapshot(snap)
-    run_ratings(snap, min_fights=1, scope="ufc")
+    run_ratings(snap, scope="ufc")
 
     current = pd.read_parquet(snap / "ratings_current.parquet")
     assert "career_division" in current.columns
-    divisions = _division_labels(current)
+    divisions = division_labels(current)
     assert divisions is not None, "the resume was scored before divisions existed"
 
     history = era_rated(pd.read_parquet(snap / "ratings_history_whr.parquet"))  # what the run priced on
-    fights = _source_fights_for_public_resume(snap, "ufc")
+    fights = resume_fights(snap, "ufc")
 
     def _quality(*, floor: float, **kwargs) -> pd.Series:
         led = title_quality_ledger(

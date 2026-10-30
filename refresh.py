@@ -70,12 +70,8 @@ def stage_scopes(snapshot_dir: Path) -> dict[str, object]:
             staged[name] = f"not staged: {type(exc).__name__}: {exc}"
             print(f"[refresh] scope {name} not staged: {exc}")
     return staged
-from analysis.build_notebook import write as write_notebook
-from build_boards import (
-    RATING_FLOOR_IS_UNRANKED,
-    select_core_rating_col,
-    write_board_artifacts,
-)
+from ratings.boards import RATING_FLOOR_IS_UNRANKED, select_core_rating_col
+from build_boards import write_board_artifacts
 from ratings.boards import completeness_gated_board
 from ratings.constants import SUSTAINED_PEAK_MIN_FIGHTS
 from ratings.gender import partition_by_gender
@@ -224,10 +220,6 @@ def append_changelog(project_root: Path, snapshot_date: str, counts: dict[str, i
     changelog.write_text(content, encoding="utf-8")
 
 
-def rebuild_notebook(project_root: Path) -> Path:
-    return write_notebook(project_root / "analysis" / "notebook.ipynb")
-
-
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     """Command-line settings. With no flags, they reproduce the published release.
 
@@ -276,26 +268,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Disable FightMatrix TLS verification only on a managed interception network.",
     )
     parser.add_argument(
-        "--scope", default=None,
+        "--scope", default=DEFAULT_PUBLISHED_SCOPE,
         help=(
             "Which bouts the rating may see: ufc, majors, pre_unified, "
             "fightmatrix, all, or a comma-separated combination. Staging happens "
             "either way; this only decides what is rated."
         ),
     )
-    parser.add_argument(
-        "--experimental-crossorg",
-        action="store_true",
-        help="Deprecated alias for --scope fightmatrix.",
-    )
     args = parser.parse_args(argv)
-    if args.experimental_crossorg and args.scope is not None:
-        parser.error("--experimental-crossorg cannot be combined with --scope")
-    args.scope = (
-        "fightmatrix"
-        if args.experimental_crossorg
-        else (args.scope or DEFAULT_PUBLISHED_SCOPE)
-    )
     if args.include_fightmatrix_profiles is None:
         args.include_fightmatrix_profiles = args.include_external
     if args.include_fightmatrix_profiles and not args.include_external:
@@ -368,7 +348,6 @@ def main() -> None:
     ratings_summary = run_ratings(
         snapshot_dir,
         tau=args.tau,
-        min_fights=args.min_fights,
         mdabbert_csv=mdabbert_csv if mdabbert_csv and mdabbert_csv.exists() else None,
         scope=args.scope,
     )
@@ -386,55 +365,13 @@ def main() -> None:
         f"withheld={board_summary['withheld_fighters']:,}"
     )
     if args.bootstrap_replicates > 0:
-        from ratings import prequential as PQ
-        from ratings.age import load_birth_dates
-        from ratings.uncertainty import career_mass_bootstrap, career_tiers, tier_summary
+        from ratings.bootstrap import bootstrap_snapshot
+        from ratings.gender import DEFAULT_GENDER, GENDER_LABEL
+        from ratings.uncertainty import career_tiers, tier_summary
 
-        # Through the scope loader, so the intervals describe the board that was
-        # just rated. Reading canonical_fights directly here published UFC-only
-        # intervals beside a joint board, and nothing in the artifacts said so.
-        from ratings.gender import (
-            DEFAULT_GENDER,
-            GENDER_LABEL,
-            select_component_fights,
-            select_gender,
-        )
-        from ratings.legacy_resume import _division_labels
-        from ratings.symon_score import (
-            DEFAULT_DIVISION_REFERENCE,
-            DEFAULT_HINGE_SPREAD_FRACTION,
-        )
-        from ratings.whr import production_score_kwargs
-
-        bootstrap_fights = PQ.load_fight_table(snapshot_dir, scope=args.scope)
-        bootstrap_current = pd.read_parquet(snapshot_dir / "ratings_current.parquet")
-        # Career Skill Mass diagnostic intervals are ordering claims, so they
-        # are made inside one bout-graph component. Men's is the default; run build_uncertainty.py
-        # --gender F for the women's intervals. See ratings/gender.py.
-        bootstrap_current = select_gender(bootstrap_current, DEFAULT_GENDER)
-        bootstrap_fights = select_component_fights(
-            bootstrap_fights, bootstrap_current
-        )
-        board, draws = career_mass_bootstrap(
-            bootstrap_fights,
-            replicates=args.bootstrap_replicates,
-            whr_kwargs={
-                "birth_dates": load_birth_dates(snapshot_dir),
-                "age_drift": True,
-                **production_score_kwargs(bootstrap_fights),
-            },
-            mass_kwargs={
-                "divisions": _division_labels(bootstrap_current),
-                "division_reference": DEFAULT_DIVISION_REFERENCE,
-                "hinge_spread_fraction": DEFAULT_HINGE_SPREAD_FRACTION,
-            },
-            eligible_fighters=set(
-                bootstrap_current.loc[
-                    lambda x: x["rating_periods"].fillna(0) >= args.min_fights,
-                    "fighter",
-                ].astype(str)
-            ),
-            return_draws=True,
+        board, draws = bootstrap_snapshot(
+            snapshot_dir, scope=args.scope, replicates=args.bootstrap_replicates,
+            min_rating_periods=args.min_fights,
         )
         board.to_parquet(snapshot_dir / "career_mass_uncertainty.parquet", index=False)
         tiers = career_tiers(board, draws)
@@ -472,8 +409,6 @@ def main() -> None:
         print("[refresh] rank intervals skipped (--bootstrap-replicates 0)")
     append_changelog(project_root, args.snapshot_date, counts, ratings_summary, previous_dir)
     print(f"[refresh] changelog appended: {project_root / 'data' / 'CHANGELOG.md'}")
-    notebook_path = rebuild_notebook(project_root)
-    print(f"[refresh] notebook rebuilt: {notebook_path}")
 
 
 if __name__ == "__main__":

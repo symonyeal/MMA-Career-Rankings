@@ -10,12 +10,12 @@ import pandas as pd
 from check_release import PUBLISHED_SNAPSHOT as S
 from ratings.current_score import is_ufc_bout
 from ratings.division_legacy import weight_class
-from ratings.rate_snapshot import _source_fights_for_public_resume
+from ratings.fights import resume_fights
 
 
 def test_every_class_row_rests_on_a_ufc_bout_in_that_class():
     b = pd.read_parquet(S / "class_board.parquet")
-    f = _source_fights_for_public_resume(S, "majors,pre_unified")
+    f = resume_fights(S, "majors,pre_unified")
     f = f[is_ufc_bout(f)]
     g = b.drop_duplicates("fighter").set_index("fighter")["gender"]
     have = {(x, weight_class(w, g.get(x))) for side in ("fighter_a", "fighter_b")

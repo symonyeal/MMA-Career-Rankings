@@ -40,14 +40,9 @@ def test_refresh_writes_board_artifacts_immediately_after_ratings(
     def fake_changelog(*_args, **_kwargs):
         order.append("changelog")
 
-    def fake_notebook(*_args, **_kwargs):
-        order.append("notebook")
-        return project_root / "analysis" / "notebook.ipynb"
-
     monkeypatch.setattr(refresh, "run_ratings", fake_ratings)
     monkeypatch.setattr(refresh, "write_board_artifacts", fake_boards)
     monkeypatch.setattr(refresh, "append_changelog", fake_changelog)
-    monkeypatch.setattr(refresh, "rebuild_notebook", fake_notebook)
     monkeypatch.setattr(
         sys,
         "argv",
@@ -67,7 +62,7 @@ def test_refresh_writes_board_artifacts_immediately_after_ratings(
 
     refresh.main()
 
-    assert order == ["ratings", "boards", "changelog", "notebook"]
+    assert order == ["ratings", "boards", "changelog"]
 
 
 def test_no_flags_means_the_published_configuration():

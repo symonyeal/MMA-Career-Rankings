@@ -146,74 +146,6 @@ def classify_method(method_raw: str | None) -> str:
     return "Other"
 
 
-def _parse_event_cell(td) -> tuple[str | None, pd.Timestamp | None]:
-    """Extract (event_name, event_date) from the Event cell."""
-    text = td.get_text(" ", strip=True)
-    date = None
-    dm = _DATE_RE.search(text)
-    if dm:
-        try:
-            date = pd.Timestamp(f"{dm.group(1)} {int(dm.group(2))} {dm.group(3)}")
-        except Exception:  # noqa: BLE001 - any unparseable date string means no date, not a failed crawl
-            date = None
-    a = td.find("a")
-    if a is not None and a.get_text(strip=True):
-        name = a.get_text(" ", strip=True)
-    else:
-        name = _DATE_RE.sub("", text).strip(" -–") if dm else text
-    return (name or None), date
-
-
-def parse_fighter_history(html: str) -> pd.DataFrame:
-    """Parse the Sherdog fighter-page history table into bout rows."""
-    cols = ["result", "opponent", "event_name", "event_date",
-            "method_raw", "method_class", "end_round", "end_time_seconds"]
-    if not html:
-        return pd.DataFrame(columns=cols)
-    soup = BeautifulSoup(html, "html.parser")
-    target = None
-    for t in soup.find_all("table"):
-        head = [c.get_text(strip=True) for c in (t.find("tr").find_all(["th", "td"]) if t.find("tr") else [])]
-        if "Result" in head and any("Method" in h for h in head):
-            target = t
-            break
-    if target is None:
-        return pd.DataFrame(columns=cols)
-    rows = []
-    for tr in target.find_all("tr")[1:]:
-        tds = tr.find_all("td")
-        if len(tds) < 6:
-            continue
-        result = tds[0].get_text(strip=True).lower()
-        opponent = tds[1].get_text(" ", strip=True)
-        event_name, event_date = _parse_event_cell(tds[2])
-        method_raw = tds[3].get_text(" ", strip=True)
-        method_raw = re.sub(r"\s*VIEW PLAY-BY-PLAY\s*", "", method_raw, flags=re.IGNORECASE).strip()
-        round_txt = tds[4].get_text(strip=True)
-        time_txt = tds[5].get_text(strip=True)
-        end_round = pd.to_numeric(round_txt, errors="coerce")
-        end_seconds = None
-        if ":" in time_txt:
-            mm, _, ss = time_txt.partition(":")
-            try:
-                end_seconds = int(mm) * 60 + int(ss)
-            except ValueError:
-                end_seconds = None
-        if not opponent or result not in {"win", "loss", "draw", "nc", "no contest"}:
-            continue
-        rows.append({
-            "result": "nc" if result.startswith("no") else result,
-            "opponent": opponent,
-            "event_name": event_name,
-            "event_date": event_date,
-            "method_raw": method_raw,
-            "method_class": classify_method(method_raw),
-            "end_round": end_round,
-            "end_time_seconds": end_seconds,
-        })
-    return pd.DataFrame(rows, columns=cols)
-
-
 # ---------------------------------------------------------------------------
 # Resolution + fetch
 
@@ -251,67 +183,8 @@ def resolve_fighter_url(name: str, session, cache_dir: Path | PageCache) -> str 
     return None
 
 
-def fetch_fighter_history(name: str, session, cache_dir: Path | PageCache) -> pd.DataFrame:
-    cache = open_cache(cache_dir)
-    url = resolve_fighter_url(name, session, cache)
-    if not url:
-        return pd.DataFrame()
-    fid = url.rsplit("-", 1)[-1]
-    html = _cached_get(BASE + url, cache, "fighter", fid, session)
-    if not html:
-        return pd.DataFrame()
-    hist = parse_fighter_history(html)
-    hist["sherdog_url"] = url
-    return hist
-
-
 # ---------------------------------------------------------------------------
 # Cross-org bout assembly
-
-def _fight_key(date: pd.Timestamp | None, a: str, b: str) -> str:
-    names = "::".join(sorted([normalize_name_key(a, compact=True), normalize_name_key(b, compact=True)]))
-    d = "" if date is None or pd.isna(date) else pd.Timestamp(date).strftime("%Y%m%d")
-    return f"sherdog::{d}::{names}"
-
-
-def build_crossorg_bouts(
-    fighter_names: list[str],
-    *,
-    cache_dir: Path | str = DEFAULT_CACHE_DIR,
-    include_orgs: tuple[str, ...] = ("PRIDE", "Strikeforce", "WEC"),
-    progress: bool = False,
-) -> pd.DataFrame:
-    """Scrape ``fighter_names`` and return deduped non-UFC bouts (raw, un-joined).
-
-    Output columns: fight_key, org, event_name, event_date, fighter, opponent,
-    result, method_class, method_raw, end_round, end_time_seconds,
-    is_title_fight, sherdog_url. One row per fighter-perspective; dedup to one
-    canonical bout happens in :func:`to_canonical_fights`.
-    """
-    cache_dir = open_cache(cache_dir)
-    session = _session()
-    frames = []
-    n = len(fighter_names)
-    for i, name in enumerate(fighter_names, 1):
-        if progress and (i % 25 == 0 or i == n):
-            print(f"[sherdog] {i}/{n} fighters", flush=True)
-        hist = fetch_fighter_history(name, session, cache_dir)
-        if hist is None or hist.empty:
-            continue
-        hist = hist.copy()
-        hist["org"] = hist["event_name"].map(org_from_event)
-        hist = hist[hist["org"].isin(include_orgs)]
-        if hist.empty:
-            continue
-        hist["fighter"] = name
-        hist["is_title_fight"] = hist["event_name"].map(is_title_event)
-        hist["fight_key"] = [
-            _fight_key(d, name, o) for d, o in zip(hist["event_date"], hist["opponent"])
-        ]
-        frames.append(hist)
-    if not frames:
-        return pd.DataFrame()
-    return pd.concat(frames, ignore_index=True)
 
 
 # ---------------------------------------------------------------------------
@@ -498,15 +371,3 @@ def compute_fight_weights(
     a = crossorg_fights["fighter_a"].map(cal)
     b = crossorg_fights["fighter_b"].map(cal)
     return ((a + b) / 2.0).clip(lower=floor, upper=cap)
-
-
-if __name__ == "__main__":
-    import argparse
-
-    ap = argparse.ArgumentParser(description="Scrape Sherdog cross-org bouts.")
-    ap.add_argument("names", nargs="*", help="fighter names to scrape")
-    ap.add_argument("--cache-dir", default=str(DEFAULT_CACHE_DIR))
-    args = ap.parse_args()
-    df = build_crossorg_bouts(args.names or ["Fedor Emelianenko", "Anderson Silva"],
-                              cache_dir=args.cache_dir, progress=True)
-    print(df.to_string())

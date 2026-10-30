@@ -70,7 +70,7 @@ def test_fight_loader_defaults_to_ufc_only(tmp_path: Path) -> None:
     )
 
     core = pq.load_fight_table(snapshot)
-    experimental = pq.load_fight_table(snapshot, with_crossorg=True)
+    experimental = pq.load_fight_table(snapshot, scope="fightmatrix")
 
     assert core["fight_url"].tolist() == ["ufc/1"]
     assert set(experimental["fight_url"]) == {"ufc/1", "x/1"}
@@ -284,7 +284,7 @@ def test_crossorg_scope_refuses_to_be_a_silent_no_op(tmp_path: Path) -> None:
     assert pq.load_fight_table(snapshot)["fight_url"].tolist() == ["ufc/1"]
 
     with pytest.raises(FileNotFoundError) as excinfo:
-        pq.load_fight_table(snapshot, with_crossorg=True)
+        pq.load_fight_table(snapshot, scope="fightmatrix")
     message = str(excinfo.value)
     assert "crossorg_fights.fightmatrix-public.parquet" in message, (
         "the error must name the suffixed artifact that is actually present")
@@ -298,7 +298,7 @@ def test_crossorg_scope_refuses_an_empty_artifact(tmp_path: Path) -> None:
     fights.iloc[0:0].to_parquet(snapshot / SCOPE_ARTIFACT["fightmatrix"], index=False)
 
     with pytest.raises(ValueError, match="zero bouts"):
-        pq.load_fight_table(snapshot, with_crossorg=True)
+        pq.load_fight_table(snapshot, scope="fightmatrix")
 
 
 def test_crossorg_scope_reports_no_artifact_at_all(tmp_path: Path) -> None:
@@ -308,7 +308,7 @@ def test_crossorg_scope_reports_no_artifact_at_all(tmp_path: Path) -> None:
         snapshot / "canonical_fights.parquet", index=False
     )
     with pytest.raises(FileNotFoundError, match="no cross-org artifact at all"):
-        pq.load_fight_table(snapshot, with_crossorg=True)
+        pq.load_fight_table(snapshot, scope="fightmatrix")
 
 
 @pytest.mark.parametrize("engine,stream", [

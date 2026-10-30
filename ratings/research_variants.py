@@ -15,7 +15,7 @@ import pandas as pd
 
 from ratings.constants import WHR_DOMINANCE_SCORE_SCALE
 from ratings.glicko2_engine import WeightedRatingEngine
-from ratings.rate_snapshot import _iter_event_bouts
+from ratings.fights import iter_events
 
 
 def attach_appearance_weights(
@@ -96,6 +96,6 @@ def run_weighted_engine(
     ]
     if "quality_score_winner" in fights.columns:
         cols_needed.append("quality_score_winner")
-    for event_date, event_name, bouts in _iter_event_bouts(fights, cols_needed):
+    for event_date, event_name, bouts in iter_events(fights, cols_needed):
         engine.process_event(event_date, event_name, bouts)
     return engine

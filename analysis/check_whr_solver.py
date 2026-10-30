@@ -28,8 +28,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from ratings.age import load_birth_dates
 from ratings.constants import WHR_ITERATIONS, WHR_W2_PER_DAY
-from ratings.prequential import load_fight_table, paired_delta
-from ratings.rate_snapshot import attach_bout_weights
+from ratings.prequential import (paired_delta)
+from ratings.fights import load_fight_table
+from ratings.fights import attach_bout_weights
 from ratings.whr import production_score_kwargs, project_age_rating, run_whr
 from ratings.whr_backtest import _decided_bouts, elo_win_prob
 

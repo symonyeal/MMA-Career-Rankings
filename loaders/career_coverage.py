@@ -37,7 +37,10 @@ from pathlib import Path
 
 import pandas as pd
 
+from ratings.scope import scope_sources
 from loaders.page_cache import open_cache
+
+CAREER_COVERAGE_ARTIFACT = "career_coverage.parquet"
 
 # C_id : unresolved source-id claims against UFC identities
 
@@ -256,3 +259,37 @@ def describe(summary: dict) -> str:
         f"vs {summary['median_pre_ufc_bouts_unmerged']:.0f} unmerged "
         f"(gap {summary['pre_ufc_bouts_gap']:+.0f})"
     )
+
+
+def _career_coverage_summary(snapshot_dir: Path) -> dict:
+    """Read the coverage audit the majors staging wrote, if it is there.
+
+    Absent on a snapshot staged before the audit existed. Reported as such
+    rather than defaulted to "symmetric", because a silent pass is exactly how
+    the two-rule corpus survived four board repairs.
+    """
+    path = Path(snapshot_dir) / CAREER_COVERAGE_ARTIFACT
+    if not path.exists():
+        return {"status": "not measured; stage the majors scope to produce it"}
+    summary = coverage_summary(pd.read_parquet(path))
+    summary["symmetric"] = bool(is_coverage_symmetric(summary))
+    return summary
+
+
+
+def require_coverage(snapshot_dir: Path, scope: str) -> dict:
+    """Refuse a majors fit whose whole-career coverage was not proved."""
+    summary = _career_coverage_summary(snapshot_dir)
+    if "majors" not in scope_sources(scope):
+        return summary
+    if "status" in summary:
+        raise ValueError(
+            "the majors scope requires a career-coverage audit; "
+            "run stage_majors_scope before rating"
+        )
+    if not summary.get("symmetric", False):
+        raise ValueError(
+            "the majors scope has asymmetric whole-career coverage; "
+            "run build_sherdog_careers.py before rating"
+        )
+    return summary

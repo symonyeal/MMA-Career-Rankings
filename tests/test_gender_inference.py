@@ -10,8 +10,8 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from ratings.legacy_resume import _division_labels
-from ratings.performance_adjustment import womens_division_label
+from ratings.divisions import division_labels
+from ratings.divisions import womens_division_label
 from ratings.rate_snapshot import (
     _attach_recent_division_gender,
     _female_by_bout_graph,
@@ -51,7 +51,7 @@ def corpus() -> pd.DataFrame:
 
 
 def _prepared(corpus: pd.DataFrame) -> pd.DataFrame:
-    from ratings.performance_adjustment import normalize_division_label
+    from ratings.divisions import normalize_division_label
 
     f = corpus.copy()
     f["event_date"] = pd.to_datetime(f["event_date"])
@@ -131,7 +131,7 @@ def test_one_womens_division_is_one_pool():
         "career_division": ["Flyweight", "Women's Flyweight", "Flyweight"],
         "gender": ["F", "F", "M"],
     })
-    labels = _division_labels(current)
+    labels = division_labels(current)
     assert labels["Juliana"] == labels["Valentina"] == "Women's Flyweight"
     assert labels["Demetrious"] == "Flyweight"
     assert labels["Juliana"] != labels["Demetrious"]
@@ -143,7 +143,7 @@ def test_an_unplaceable_label_still_never_pools_a_woman_with_the_men():
         "career_division": ["Super Welterweight", "Super Welterweight"],
         "gender": ["F", "M"],
     })
-    labels = _division_labels(current)
+    labels = division_labels(current)
     assert labels["Someone"] == "W Super Welterweight"
     assert labels["Aman"] == "Super Welterweight"
 

@@ -94,7 +94,7 @@ def test_write_board_artifacts_separates_core_score_from_integrity_units(
         seen_scope.append(scope)
         return fights
 
-    monkeypatch.setattr(build_boards.PQ, "load_fight_table", fake_load)
+    monkeypatch.setattr(build_boards.F, "load_fight_table", fake_load)
 
     summary = build_boards.write_board_artifacts(
         snapshot,
@@ -486,7 +486,7 @@ def test_boards_rank_within_gender_and_publish_all_time_and_prime_artifacts(
         }
     ).to_parquet(snapshot / "integrity_appearances.parquet", index=False)
     monkeypatch.setattr(
-        build_boards.PQ,
+        build_boards.F,
         "load_fight_table",
         lambda _snapshot, *, scope: pd.DataFrame(
             {

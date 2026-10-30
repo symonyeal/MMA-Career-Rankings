@@ -40,7 +40,7 @@ import pandas as pd
 from ratings import prequential as PQ
 from ratings.rules_era import RULES_ERA_PRE, UFC_28_DATE
 from ratings.symon_score import career_skill_mass
-from ratings.rate_snapshot import attach_bout_weights
+from ratings.fights import attach_bout_weights
 from ratings.whr import run_whr
 
 ARMS = {"ufc": "ufc", "pre_unified": "pre_unified"}

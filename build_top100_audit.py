@@ -10,12 +10,9 @@ from collections.abc import Iterable
 import numpy as np
 import pandas as pd
 
-from build_boards import (
-    gender_partition,
-    public_legacy_eligibility_override,
-    select_core_rating_col,
-)
-from ratings import prequential as PQ
+from ratings.boards import public_legacy_eligibility_override, select_core_rating_col
+from build_boards import gender_partition
+from ratings import fights as F
 from ratings.age import load_birth_dates
 from ratings.connectivity import connectivity
 from ratings.era import era_rated
@@ -245,7 +242,7 @@ def _current_with_legacy(snapshot: Path, scope: str) -> pd.DataFrame:
             public_legacy_score_rows(
                 current,
                 appearance_rows,
-                source_fights=PQ.load_fight_table(snapshot, scope=scope),
+                source_fights=F.load_fight_table(snapshot, scope=scope),
                 history=era_rated(pd.read_parquet(history_path)),
             ),
             on="fighter",
@@ -438,7 +435,7 @@ def build(snapshot: Path, *, scope: str, out_dir: Path) -> dict[str, object]:
         .agg(first_appearance=("event_date", "min"), last_appearance=("event_date", "max"))
         .reset_index()
     )
-    fights = PQ.load_fight_table(snapshot, scope=scope)
+    fights = F.load_fight_table(snapshot, scope=scope)
     canonical = pd.read_parquet(snapshot / "canonical_fights.parquet")
     top = top.merge(appearances, on="fighter", how="left").merge(
         _coverage(fights), on="fighter", how="left"

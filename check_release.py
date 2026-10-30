@@ -6,7 +6,9 @@ import json
 from pathlib import Path
 
 from ratings.age import load_birth_dates
-from ratings.rate_snapshot import _require_career_coverage
+from ratings.boards import PUBLIC_BOARDS
+from ratings.gender import GENDERS
+from loaders.career_coverage import require_coverage
 from ratings.scope import DEFAULT_PUBLISHED_SCOPE, SCOPE_ARTIFACT, scope_sources
 
 # The snapshot behind README.md and RANKINGS.md. Every file in it is versioned,
@@ -26,13 +28,12 @@ def check(snapshot: Path, *, scope: str = DEFAULT_PUBLISHED_SCOPE, inputs_only: 
         required.extend(["rating_run.json", "combined_fights.parquet", "ratings_current.parquet",
                          "ratings_history_whr.parquet", "integrity_appearances.parquet",
                          "performance_appearances.parquet"])
-        for name in ["completeness_gated_board", "prime_elite_board", "current_board"]:
-            required.extend([f"{name}.parquet", f"{name}_women.parquet"])
+        required.extend(board.filename(gender) for board in PUBLIC_BOARDS.values() for gender in GENDERS)
     missing = [name for name in required if not (snapshot / name).is_file()]
     issues = []
     if "majors" in sources and (snapshot / "career_coverage.parquet").is_file():
         try:
-            _require_career_coverage(snapshot, scope)
+            require_coverage(snapshot, scope)
         except ValueError as e:
             issues.append(str(e))
     manifest = snapshot / "rating_run.json"

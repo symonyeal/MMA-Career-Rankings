@@ -36,16 +36,13 @@ from __future__ import annotations
 
 import pandas as pd
 
+from ratings.history import opponent_ratings
 from ratings.boards import exposure_shrunk_level
 from ratings.legacy_resume import (
-    RESUME_QUALITY_SCALE,
-    TITLE_QUALITY_SCALE,
-    _division_labels,
-    contender_resume_ledger,
-    legacy_points,
-    title_quality_ledger,
-    ufc_debut_dates_from,
+    RESUME_QUALITY_SCALE, TITLE_QUALITY_SCALE, contender_resume_ledger, legacy_points,
+    title_quality_ledger, ufc_debut_dates_from,
 )
+from ratings.divisions import division_labels
 from ratings.opponent_quality import CONTENDER_LINE_MU
 
 CURRENT_WINDOW_MONTHS = 18.0
@@ -87,17 +84,11 @@ def best_win_ratings(fights: pd.DataFrame, history: pd.DataFrame) -> pd.Series:
     wins = sides[sides["winner"].eq(sides["fighter"])].dropna(subset=["opponent"])
     if wins.empty:
         return pd.Series(dtype="float64")
-    h = history[["fighter", "event_date", "mu_whr"]].rename(
-        columns={"fighter": "opponent", "mu_whr": "opponent_mu"}
-    )
+    h = history[["fighter", "event_date", "mu_whr"]].copy()
     h = h.assign(event_date=pd.to_datetime(h["event_date"], errors="coerce")).dropna()
-    priced = pd.merge_asof(
-        wins.sort_values("event_date"),
-        h.sort_values("event_date"),
-        on="event_date",
-        by="opponent",
-        allow_exact_matches=False,
-    ).dropna(subset=["opponent_mu"])
+    priced = opponent_ratings(wins.sort_values("event_date"), h.sort_values("event_date")).dropna(
+        subset=["opponent_mu"]
+    )
     return priced.groupby("fighter")["opponent_mu"].max()
 
 
@@ -159,7 +150,7 @@ def current_score_rows(
     title = title_quality_ledger(
         rated_fights,
         history,
-        divisions=_division_labels(current),
+        divisions=division_labels(current),
         ufc_debut_dates=ufc_debut_dates_from(rated_fights),
         since=since,
     ).set_index("fighter")["public_legacy_title_quality"]

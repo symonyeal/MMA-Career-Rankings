@@ -17,14 +17,35 @@ they do not touch the notebook.
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 import numpy as np
 import pandas as pd
 
+from ratings.gender import GENDER_SUFFIX
 from ratings.constants import (
     INTEGRITY_DQ_WIN_FACTOR,
     INTEGRITY_MISSED_WEIGHT_WIN_FACTOR,
     INTEGRITY_PED_FACTOR,
 )
+
+
+@dataclass(frozen=True)
+class BoardSpec:
+    """Published artifact, its ranked column, and the input to that column."""
+    stem: str
+    score: str
+    source: str
+
+    def filename(self, gender: str = "M") -> str:
+        return f"{self.stem}{GENDER_SUFFIX[gender]}.parquet"
+
+
+PUBLIC_BOARDS = {
+    "all_time": BoardSpec("completeness_gated_board", "public_legacy_score", "public_legacy_score"),
+    "prime": BoardSpec("prime_elite_board", "elite_prime_score", "elite_level"),
+    "current": BoardSpec("current_board", "current_board_score", "current_score"),
+}
 
 # The public/core board is Public Legacy Score, NOT raw Career Skill Mass.
 #
@@ -62,7 +83,7 @@ from ratings.constants import (
 # The first entry is what a current snapshot provides; the rest are fallbacks
 # for older snapshots, and never include a retired weighted stream.
 CORE_RATING_CANDIDATES = (
-    "public_legacy_score",
+    PUBLIC_BOARDS["all_time"].source,
     "symon_career_skill_mass",
     "mu_whr",
     "mu_canonical",
@@ -469,3 +490,70 @@ def completeness_gated_board(
                          "months_inactive", "eligibility_override")
              if c in out.columns]
     return out[cols]
+
+
+INTEGRITY_RATING_CANDIDATES = (
+    "mu_whr",
+)
+
+# Scores with a hard floor that means "no evidence of clearing the bar", not
+# "the lowest measured level". Career Skill Mass sums a clipped positive excess,
+# so zero is an abstention and every fighter sitting on it is tied, not ordered.
+# Base WHR mu has no such floor and must not appear here.
+RATING_FLOOR_IS_UNRANKED = {
+    "public_legacy_score": 0.0,
+    "symon_career_skill_mass": 0.0,
+}
+
+def _select_rating_col(
+    current: pd.DataFrame,
+    candidates: tuple[str, ...],
+    *,
+    board_name: str,
+) -> str:
+    for column in candidates:
+        if column in current.columns:
+            return column
+    raise ValueError(
+        f"cannot build {board_name}: none of the supported rating columns are present "
+        f"({', '.join(candidates)})"
+    )
+
+
+
+def select_core_rating_col(current: pd.DataFrame) -> str:
+    """Choose the lean headline score, never a retired weighted stream."""
+    return _select_rating_col(current, CORE_RATING_CANDIDATES, board_name="core board")
+
+
+
+def select_integrity_rating_col(current: pd.DataFrame) -> str:
+    """Choose a base WHR point score compatible with the direct integrity debit."""
+    return _select_rating_col(
+        current,
+        INTEGRITY_RATING_CANDIDATES,
+        board_name="integrity-discounted board",
+    )
+
+
+
+def public_legacy_eligibility_override(current: pd.DataFrame) -> pd.Series:
+    """Let proven UFC title resumes rank before the generic 13-period floor."""
+    idx = current.index
+    periods = pd.to_numeric(current.get("rating_periods", pd.Series(0, index=idx)), errors="coerce").fillna(0)
+    score = pd.to_numeric(current.get("public_legacy_score", pd.Series(0, index=idx)), errors="coerce").fillna(0)
+    title_wins = pd.to_numeric(
+        current.get("public_legacy_title_wins", pd.Series(0, index=idx)), errors="coerce"
+    ).fillna(0)
+    title_defenses = pd.to_numeric(
+        current.get("public_legacy_title_defenses", pd.Series(0, index=idx)), errors="coerce"
+    ).fillna(0)
+    ufc_bouts = pd.to_numeric(
+        current.get("public_legacy_ufc_bouts", pd.Series(0, index=idx)), errors="coerce"
+    ).fillna(0)
+    return (
+        periods.ge(8)
+        & ufc_bouts.ge(8)
+        & score.gt(0)
+        & (title_wins.ge(3) | (title_wins.ge(2) & title_defenses.ge(1)))
+    )
