@@ -1,20 +1,27 @@
-"""The site builder's serialiser: plotly typed arrays decode, and non-finite values become null."""
-import base64
+"""Site frames retain drawing values and map missing data to JSON null."""
 
 import numpy as np
 import pandas as pd
 
-from analysis.build_site import ASSETS, ROOT, plain, version
-
-
-def test_plain_decodes_plotly_typed_arrays():
-    v = np.array([1.234, 2.5])
-    spec = {"dtype": "f8", "bdata": base64.b64encode(v.tobytes()).decode()}
-    assert plain({"x": spec}) == {"x": [1.23, 2.5]}
+from analysis.build_site import ASSETS, ROOT, lineage_rows, mover_rows, plain, version, year_top_rows
 
 
 def test_plain_maps_missing_values_to_null_and_rounds_to_integers():
     assert plain([np.nan, pd.NaT, pd.Timestamp("2020-01-02"), np.float64(2.6)], 0) == [None, None, "2020-01-02", 3]
+
+
+def test_chart_frames_keep_only_the_values_the_site_draws():
+    year = pd.DataFrame([["LW", 1500.123, "1. Jon Jones · LW"]], columns=["division", "rating", "label"])
+    movers = pd.DataFrame([["Jon Jones", 12.345, "vs opponent", 3]],
+                          columns=["fighter", "total_delta", "hover_lines", "n_fights"])
+    reign = pd.DataFrame([[
+        "Champion", "Challenger", "2000-01-01", 2, 3.456, 86_400_000, "Champion (2D)"
+    ]], columns=["fighter", "opponent", "start", "defences", "years", "bar_length", "label"])
+    assert year_top_rows(year) == [["LW", [1500.12], ["1. Jon Jones · LW"]]]
+    assert mover_rows(movers) == [[12.35], ["Jon Jones"], [["vs opponent", "3"]]]
+    assert lineage_rows(reign) == [[
+        "Champion", "Challenger", "2000-01-01", 2, 3.46, 86_400_000, "Champion (2D)"
+    ]]
 
 
 def test_index_points_at_current_assets():

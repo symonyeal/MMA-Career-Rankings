@@ -1,11 +1,10 @@
 """Build the static analysis site: ``site/data.js`` from one snapshot.
 
-The site is the notebook's analyses (``analysis/build_notebook.py``) without a kernel. Every frame
-below comes from the ``viz.py`` builder the notebook calls, or from the rating code the published
-boards use; the page only filters, sorts and draws. Boards are the published ones
+The site is the project's one presentation. Every frame below comes from ``viz.py`` or from the
+rating code the published boards use; the page only filters, sorts and draws. Boards are the published ones
 (``build_boards.py``), so the site and README cannot disagree.
 
-Four certificates are checked before anything is written:
+Five certificates are checked before anything is written:
   1. the All-time score is reconstructed from its three normalised terms;
   2. the per-year career receipt sums to the published career skill mass;
   3. each integrity-policy rating is the base rating less its debit;
@@ -13,15 +12,16 @@ Four certificates are checked before anything is written:
   5. the forecast model and the betting market are scored on the same bouts.
 
 Usage: python analysis/build_site.py [data/snapshots/<date>]
+       python analysis/build_site.py [data/snapshots/<date>] --output <site-copy>
        python analysis/build_site.py --stamp     (re-stamp index.html after editing app.js or style.css)
 """
 from __future__ import annotations
 
-import base64
 import hashlib
 import json
 import math
 import re
+import shutil
 import sys
 from pathlib import Path
 
@@ -33,8 +33,8 @@ sys.path.insert(0, str(ROOT))
 
 from analysis.viz import (
     DIV_SHORT, DIVISIONS, _division_strength_frame, add_division_to_fights, all_time_benchmark_table,
-    division_year_top_fighters_chart, integrity_ledger_table, title_lineage_chart, win_streaks,
-    yearly_rating_delta_scatter,
+    division_year_top_fighters_frame, integrity_ledger_table, title_lineage_frame, win_streaks,
+    yearly_rating_delta_frame,
 )
 from build_boards import _division_column
 from ratings.age import load_birth_dates
@@ -46,9 +46,10 @@ from ratings.constants import (
 )
 from ratings.era import ERA_COL, era_rated
 from ratings.legacy_resume import (
-    LEGACY_ACHIEVEMENT_WEIGHT, LEGACY_PART_POWER, LEGACY_QUALITY_SKILL_SHARE, PUBLIC_LEGACY_DISPLAY_SCALE,
-    _division_labels, _scale, legacy_points,
+    LEGACY_ACHIEVEMENT_WEIGHT, LEGACY_PART_POWER, LEGACY_QUALITY_SKILL_SHARE,
+    PUBLIC_LEGACY_DISPLAY_SCALE, _scale, legacy_points,
 )
+from ratings.divisions import division_labels
 from ratings.opponent_quality import CONTENDER_LINE_MU
 from ratings.symon_score import (
     DEFAULT_CAREER_REFERENCE, DEFAULT_DIVISION_MIN_POPULATION, DEFAULT_DIVISION_REFERENCE,
@@ -69,9 +70,6 @@ def plain(o, nd=2):
     """JSON-native copy of o: arrays to lists, timestamps to ISO dates, NaN to null, floats to nd places."""
     if o is pd.NA or o is pd.NaT:
         return None
-    if isinstance(o, dict) and "bdata" in o:  # plotly typed-array spec
-        v = np.frombuffer(base64.b64decode(o["bdata"]), dtype=o["dtype"])
-        return plain(v.reshape([int(n) for n in str(o["shape"]).split(",")]) if "shape" in o else v, nd)
     if isinstance(o, dict):
         return {k: plain(v, nd) for k, v in o.items()}
     if isinstance(o, (list, tuple, np.ndarray, pd.Series, pd.Index)):
@@ -89,11 +87,23 @@ def plain(o, nd=2):
     return o
 
 
-def fig(f):
-    """A viz.py figure as a plain dict; the page supplies the theme, so the template is dropped."""
-    d = f.to_plotly_json()
-    d["layout"].pop("template", None)
-    return plain(d)
+def year_top_rows(frame):
+    """Browser rows grouped by division, preserving the former figure trace order."""
+    return [[division, plain(g["rating"]), plain(g["label"])]
+            for division, g in frame.groupby("division", sort=False)]
+
+
+def mover_rows(frame):
+    """Ordered rating changes and hover details used by the movers panel."""
+    if frame.empty:
+        return []
+    return [plain(frame["total_delta"]), plain(frame["fighter"]),
+            plain(frame[["hover_lines", "n_fights"]].astype(str).to_numpy().tolist())]
+
+
+def lineage_rows(frame):
+    """One row per reign: champion, challenger, dates, defences, duration and bar labels."""
+    return plain(frame.to_numpy().tolist())
 
 
 def days(s):
@@ -117,7 +127,7 @@ def receipt(whr, rc):
     h = whr[["fighter", "event_date", "mu_whr"]].dropna().rename(columns={"mu_whr": "mu"})
     h["year"] = pd.to_datetime(h["event_date"]).dt.year
     a = h.groupby(["fighter", "year"], sort=False)["mu"].agg(annual_mean="mean").reset_index()
-    a["division"] = a["fighter"].map(_division_labels(rc))
+    a["division"] = a["fighter"].map(division_labels(rc))
     bar = year_reference(a, DEFAULT_CAREER_REFERENCE)
     g = float(year_reference(a.assign(year=0), DEFAULT_CAREER_REFERENCE).iloc[0])
     n = a.groupby("year", sort=False)["annual_mean"].transform("size")
@@ -283,18 +293,19 @@ def build(snap):
     rec = {f: plain(g[["year", "annual_mean", "field_mean", "excess"]].round().to_numpy().tolist(), 0)
            for f, g in A[A["fighter"].isin(set(names))].groupby("fighter", sort=False)}
 
-    # 4. Division frames (notebook: Weight Classes), UFC bouts only: divisional views count the UFC, as the
+    # 4. Division frames, UFC bouts only: divisional views count the UFC, as the
     # class boards and Current do. Base WHR, end-of-year rating, top-N per class.
     U = bouts[is_ufc_bout(bouts)]
     years = sorted(y for y, c in pd.to_datetime(bouts["event_date"]).dt.year.value_counts().items() if c >= 100)
     uyears = sorted(y for y, c in pd.to_datetime(U["event_date"]).dt.year.value_counts().items() if c >= 30)
     strength = {k: plain(_division_strength_frame(whr, U, rating_col="mu_whr", top_n_per_division=k)
                          .to_numpy().tolist()) for k in TOP_NS}
-    year_top = {y: fig(division_year_top_fighters_chart(whr, U, rating_col="mu_whr", year=y, top_n=5))
+    year_top = {y: year_top_rows(division_year_top_fighters_frame(whr, U, rating_col="mu_whr", year=y, top_n=5))
                 for y in uyears}
     # Movers among the board population only; over all 34k fighters the list is regional debutants.
     whrE = whr[whr["fighter"].isin(set(names))]
-    movers = {y: fig(yearly_rating_delta_scatter(whrE, bouts, rating_col="mu_whr", year=y, n=12)) for y in years}
+    movers = {y: mover_rows(yearly_rating_delta_frame(whrE, bouts, rating_col="mu_whr", year=y, n=12))
+              for y in years}
     f = add_division_to_fights(U[~U["is_excluded"].fillna(False).astype(bool)])
     f["year"] = pd.to_datetime(f["event_date"]).dt.year
     f["bucket"] = f["method_class"].map(
@@ -302,10 +313,10 @@ def build(snap):
     mix = f.dropna(subset=["bucket"]).groupby(["year", f["division"].fillna(""), "bucket"]).size()
 
     # 5. Title lineage per class, with and without interim belts.
-    lineage = {d: [fig(title_lineage_chart(app, division=d, include_interim=i)) for i in (False, True)]
+    lineage = {d: [lineage_rows(title_lineage_frame(app, division=d, include_interim=i)) for i in (False, True)]
                for d in DIVISIONS[:13]}
 
-    # 6. Streaks over UFC bouts (notebook: Win Streaks), the external benchmark, integrity policy.
+    # 6. Streaks over UFC bouts, the external benchmark, integrity policy.
     st = win_streaks(ufc, rc, min_len=3)
     st = st.assign(start_date=days(st["start_date"]), end_date=days(st["end_date"]))[
         ["fighter", "length", "start_date", "end_date", "division", "divisions", "title_wins", "finishes",
@@ -375,17 +386,28 @@ def stamp(site=ROOT / "site"):
     p.write_text(h, encoding="utf-8", newline="\n")
 
 
-def main(snap):
+def main(snap, site=ROOT / "site"):
     data = build(Path(snap))
-    out = ROOT / "site" / "data.js"
+    site = Path(site)
+    site.mkdir(parents=True, exist_ok=True)
+    if site.resolve() != (ROOT / "site").resolve():
+        for asset in ("index.html", "style.css", "app.js"):
+            shutil.copyfile(ROOT / "site" / asset, site / asset)
+    out = site / "data.js"
     out.write_text("window.DATA = " + json.dumps(data, separators=(",", ":"), ensure_ascii=False) + ";\n",
                    encoding="utf-8")
-    stamp()
+    stamp(site)
     print(f"wrote {out} ({out.stat().st_size / 1e6:.1f} MB)")
 
 
 if __name__ == "__main__":
     if sys.argv[1:] == ["--stamp"]:
         stamp()
+    elif "--output" in sys.argv:
+        args = sys.argv[1:]
+        i = args.index("--output")
+        site = Path(args[i + 1])
+        del args[i:i + 2]
+        main(args[0] if args else max((ROOT / "data" / "snapshots").glob("20*")), site=site)
     else:
         main(sys.argv[1] if len(sys.argv) > 1 else max((ROOT / "data" / "snapshots").glob("20*")))

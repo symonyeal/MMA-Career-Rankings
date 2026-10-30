@@ -13,21 +13,19 @@ from ratings.constants import (
     SLEEVE_FACTOR_MAX,
     SLEEVE_FACTOR_MIN,
 )
+from ratings.history import prefight_ratings
 from ratings.performance_adjustment import (
     build_performance_appearances,
     decision_quality_score,
     fill_division_from_career,
-    normalize_division_label,
     decisiveness_score,
-    is_championship_bout,
-    is_interim_title_bout,
-    prefight_ratings,
     prefight_ranking_context,
     prefight_weight_class_context,
     parse_judge_scores,
     quality_score_winner,
     scheduled_rounds,
 )
+from ratings.divisions import normalize_division_label
 from ratings.opponent_quality import opponent_mu_quality_factor
 
 
@@ -46,22 +44,6 @@ def _bout_row(**overrides) -> pd.Series:
     }
     base.update(overrides)
     return pd.Series(base)
-
-
-def test_title_bout_parser_excludes_tournament_finals():
-    assert is_championship_bout(pd.Series({
-        "is_title_fight": True,
-        "weight_class": "UFC Light Heavyweight Title Bout",
-    }))
-    assert is_interim_title_bout("UFC Interim Heavyweight Title Bout")
-    assert not is_championship_bout(pd.Series({
-        "is_title_fight": True,
-        "weight_class": "Ultimate Fighter 33 Welterweight Tournament Title Bout",
-    }))
-    assert not is_championship_bout(pd.Series({
-        "is_title_fight": True,
-        "weight_class": "Road to UFC 3 Flyweight Tournament TitleBout",
-    }))
 
 
 def test_parse_judge_scores_extracts_tuples():

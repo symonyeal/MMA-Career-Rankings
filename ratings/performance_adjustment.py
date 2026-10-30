@@ -48,6 +48,10 @@ from __future__ import annotations
 
 import re
 
+from project_helpers import group_bounds
+from ratings.history import prefight_ratings
+from ratings.divisions import DIVISION_WEIGHT_LIMIT_LB, normalize_division_label
+
 import numpy as np
 import pandas as pd
 
@@ -152,39 +156,6 @@ PERFORMANCE_APPEARANCE_COLUMNS = (
     "market_residual",
     "market_american_odds",
 )
-
-
-DIVISION_LABELS = (
-    "Women's Strawweight",
-    "Women's Flyweight",
-    "Women's Bantamweight",
-    "Women's Featherweight",
-    "Light Heavyweight",
-    "Heavyweight",
-    "Middleweight",
-    "Welterweight",
-    "Lightweight",
-    "Featherweight",
-    "Bantamweight",
-    "Flyweight",
-    "Catch Weight",
-    "Open Weight",
-)
-
-DIVISION_WEIGHT_LIMIT_LB = {
-    "Women's Strawweight": 115,
-    "Women's Flyweight": 125,
-    "Women's Bantamweight": 135,
-    "Women's Featherweight": 145,
-    "Flyweight": 125,
-    "Bantamweight": 135,
-    "Featherweight": 145,
-    "Lightweight": 155,
-    "Welterweight": 170,
-    "Middleweight": 185,
-    "Light Heavyweight": 205,
-    "Heavyweight": 265,
-}
 
 
 # ---------------------------------------------------------------------------
@@ -324,78 +295,6 @@ def fill_division_from_career(fights: pd.DataFrame) -> pd.Series:
     return division.fillna(tally.drop_duplicates("row").set_index("row")["division"])
 
 
-def normalize_division_label(weight_class: object) -> str | None:
-    """Normalize UFCStats weight-class text to a stable division label."""
-    if not isinstance(weight_class, str):
-        return None
-    text = " ".join(weight_class.split())
-    cleaned = (
-        text.replace("UFC ", "")
-        .replace("Interim ", "")
-        .replace(" Title Bout", "")
-        .replace(" Bout", "")
-        .strip()
-    )
-    for label in DIVISION_LABELS:
-        if label.lower() in cleaned.lower():
-            return label
-    return cleaned or None
-
-
-# One women's division is billed three ways in this corpus -- "Women's
-# Flyweight" from UFCStats, a bare "Flyweight" from the Sherdog majors rows, and
-# "125lb Catchweight" -- and each spelling becomes its own contender pool.
-# Measured on the 2026-08-13 snapshot, the pool spelled "Flyweight" carried a
-# contender line 91 rating points BELOW the pool spelled "Women's Flyweight" for
-# the same division and the same eleven years, so a woman's career score
-# depended on which source billed her bouts. Folding the spellings is the
-# division half of that repair; the gender half is in
-# ``rate_snapshot._attach_recent_division_gender``.
-_WOMENS_LIMIT_LB = (
-    (105, "Women's Atomweight"),
-    (115, "Women's Strawweight"),
-    (125, "Women's Flyweight"),
-    (135, "Women's Bantamweight"),
-    (145, "Women's Featherweight"),
-)
-_WOMENS_BY_UNPREFIXED = {
-    "Atomweight": "Women's Atomweight",
-    "Strawweight": "Women's Strawweight",
-    "Flyweight": "Women's Flyweight",
-    "Bantamweight": "Women's Bantamweight",
-    "Featherweight": "Women's Featherweight",
-}
-_CATCHWEIGHT_LB = re.compile(r"(\d{2,3})\s*lb", re.IGNORECASE)
-
-
-def womens_division_label(division: object) -> str | None:
-    """Fold any billing a woman's bout carries onto one women's division.
-
-    Returns ``None`` for a label this cannot place, so the caller can keep its
-    own fallback rather than inventing a pool.
-    """
-    if not isinstance(division, str) or not division.strip():
-        return None
-    text = " ".join(division.split())
-    if text.startswith("Women's"):
-        return text
-    if text in _WOMENS_BY_UNPREFIXED:
-        return _WOMENS_BY_UNPREFIXED[text]
-    match = _CATCHWEIGHT_LB.search(text)
-    if match:
-        pounds = int(match.group(1))
-        for limit, label in _WOMENS_LIMIT_LB:
-            if pounds <= limit:
-                return label
-        return "Women's Openweight"
-    # RIZIN bills its women's openweight bouts as Heavyweight and Light
-    # Heavyweight; those are eight fighters on this snapshot, not a men's pool.
-    if text in {"Heavyweight", "Light Heavyweight", "Middleweight", "Welterweight",
-                "Lightweight", "Open Weight", "Openweight", "Catch Weight", "Catchweight"}:
-        return "Women's Openweight"
-    return None
-
-
 def is_real_ufc_title_bout(weight_class: object) -> bool:
     """True only for UFC undisputed/interim title bouts.
 
@@ -414,10 +313,6 @@ def is_real_ufc_title_bout(weight_class: object) -> bool:
     if "tuf nations" in normalized or "tournament" in normalized:
         return False
     return normalized.startswith("ufc ")
-
-
-def is_championship_bout(row: pd.Series) -> bool:
-    return is_real_ufc_title_bout(row.get("weight_class"))
 
 
 def is_interim_title_bout(weight_class: object) -> bool:
@@ -594,28 +489,6 @@ def _apply_championship_defense_floor(fights: pd.DataFrame) -> pd.DataFrame:
 # Pre-fight rating shifts (drives opponent-strength factor)
 
 
-def prefight_ratings(history: pd.DataFrame) -> pd.DataFrame:
-    """Per-(fighter, event) pre-event ``mu`` snapshot from ``ratings_history``."""
-    if history is None or history.empty:
-        return pd.DataFrame(columns=["fighter", "event_date", "event_name", "prefight_mu"])
-    h = history[["fighter", "event_date", "event_name", "mu_canonical"]].copy()
-    h["event_date"] = pd.to_datetime(h["event_date"], errors="coerce")
-    # A tournament can put one fighter in several history rows on one event.
-    # The lookup joined below is event-grained, so returning all of those rows
-    # turns each fight into a many-to-many merge (three rows for one fighter and
-    # two for the opponent produce six copies of the appearance).  Preserve the
-    # engine's within-day order, take the state before the first row of the
-    # event, and expose exactly one lookup row per event.
-    h["_history_order"] = np.arange(len(h))
-    h = h.sort_values(
-        ["fighter", "event_date", "_history_order"], kind="stable"
-    )
-    h["prefight_mu"] = h.groupby("fighter")["mu_canonical"].shift(1).fillna(1500.0)
-    return (
-        h.drop_duplicates(["fighter", "event_date", "event_name"], keep="first")
-        [["fighter", "event_date", "event_name", "prefight_mu"]]
-        .reset_index(drop=True)
-    )
 
 
 def pre_fight_win_streaks(fights: pd.DataFrame) -> pd.DataFrame:
@@ -641,7 +514,7 @@ def pre_fight_win_streaks(fights: pd.DataFrame) -> pd.DataFrame:
 
     # Streaks are read for the whole card before any of it is applied, so two
     # bouts on one event cannot leak into each other.
-    for lo, hi in zip(*_group_bounds(f["event_date"], f["event_name"])):
+    for lo, hi in zip(*group_bounds(f["event_date"], f["event_name"])):
         rows = slice(lo, hi)
         streak_a[rows] = streaks[id_a[rows]]
         streak_b[rows] = streaks[id_b[rows]]
@@ -663,25 +536,6 @@ def pre_fight_win_streaks(fights: pd.DataFrame) -> pd.DataFrame:
         "streak_a": streak_a,
         "streak_b": streak_b,
     })
-
-
-def _group_bounds(*keys: pd.Series) -> tuple[np.ndarray, np.ndarray]:
-    """Half-open row ranges of each run of equal key tuples in an already-sorted frame.
-
-    The equivalent of ``groupby(sort=False)`` over a frame that is already
-    ordered by those keys, without materializing a group object per event.
-    """
-    n = len(keys[0])
-    if n == 0:
-        return np.empty(0, dtype=np.int64), np.empty(0, dtype=np.int64)
-    changed = np.zeros(n - 1, dtype=bool)
-    for key in keys:
-        values = key.to_numpy()
-        changed |= values[1:] != values[:-1]
-    boundary = np.flatnonzero(changed) + 1
-    starts = np.concatenate(([0], boundary))
-    stops = np.concatenate((boundary, [n]))
-    return starts, stops
 
 
 def _empty_prefight_context() -> pd.DataFrame:
@@ -820,7 +674,7 @@ def prefight_ranking_context(canonical_fights: pd.DataFrame, ratings_history: pd
     interim_champ_a = np.zeros(n, dtype=bool)
     interim_champ_b = np.zeros(n, dtype=bool)
 
-    event_starts, event_stops = _group_bounds(f["event_date"], f["event_name"])
+    event_starts, event_stops = group_bounds(f["event_date"], f["event_name"])
     id_a_l, id_b_l, code_l = id_a.tolist(), id_b.tolist(), division_code.tolist()
 
     def _field(x: int, mu: np.ndarray, ids: np.ndarray) -> float:
@@ -970,7 +824,7 @@ def prefight_weight_class_context(canonical_fights: pd.DataFrame) -> pd.DataFram
             for c in ("fight_url", "division", "fighter_a", "fighter_b")}
     # Rows of one event are contiguous because ``f`` is sorted by the event key.
     ev = f[["event_date", "event_name"]]
-    starts, stops = _group_bounds(ev["event_date"], ev["event_name"])
+    starts, stops = group_bounds(ev["event_date"], ev["event_name"])
 
     previous_division: dict[str, str | None] = {}
     out = {c: [] for c in columns}

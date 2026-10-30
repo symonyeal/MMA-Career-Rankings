@@ -48,20 +48,19 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from ratings.evaluation import metrics, fit_temperature, apply_temperature, calibration_error
 from ratings.constants import SLEEVE_FACTOR_MAX, SLEEVE_FACTOR_MIN, WHR_DOMINANCE_WEIGHT_AMPLITUDE
 from ratings.dominance import per_fight_dominance
 from ratings.glicko2_engine import DEFAULT_TAU, predict_win_prob_from_ratings
 from ratings.integrity_adjustment import build_integrity_appearances
-from ratings.performance_adjustment import build_performance_appearances, normalize_division_label
-from ratings.rules_era import label_rules_era
+from ratings.performance_adjustment import (build_performance_appearances)
+from ratings.divisions import normalize_division_label
 from ratings.whr import _ELO_PER_NAT, production_score_kwargs, project_age_rating, run_whr
 from ratings.age import load_birth_dates
-from ratings import rate_snapshot as RS
+from ratings.scope import UFC_ONLY
+from ratings.fights import attach_bout_weights, canonical_engine, load_fight_table
 from ratings import research_variants as RV
-from loaders.integrity_flags import INTEGRITY_COLUMNS, build_integrity_flags
-from loaders.combined_fights import load_combined_fights
 from loaders.odds_loader import has_odds_artifact, load_odds_lines
-from loaders.ufcstats_loader import METHOD_SCORES
 import itertools
 
 DEFAULT_MIN_PRIOR_FIGHTS = 3
@@ -177,47 +176,8 @@ class Inputs:
     birth_dates: dict[str, pd.Timestamp] = field(default_factory=dict)
 
 
-def load_fight_table(
-    snapshot_dir: Path,
-    *,
-    with_crossorg: bool = False,
-    scope: str | None = None,
-) -> pd.DataFrame:
-    """Load rated bouts for one named scope, defaulting to UFC-only.
-
-    ``scope`` is the current interface (see :mod:`ratings.scope`);
-    ``with_crossorg=True`` is the older boolean and means ``scope="fightmatrix"``.
-    Either way an unsatisfiable request raises rather than quietly returning the
-    UFC-only table, because a joint fit that silently is not one gets believed.
-    """
-    if scope is None:
-        scope = "fightmatrix" if with_crossorg else RS.UFC_ONLY
-    snapshot_dir = Path(snapshot_dir)
-    fights, _ = load_combined_fights(snapshot_dir, scope=scope, label="prequential")
-    fights["rules_era"] = label_rules_era(fights)
-
-    fights["event_date"] = pd.to_datetime(fights["event_date"])
-    if "method_class" in fights.columns:
-        recalculated = fights["method_class"].map(METHOD_SCORES)
-        fights["method_score_winner"] = recalculated.combine_first(
-            pd.to_numeric(fights.get("method_score_winner"), errors="coerce")
-        )
-    fights = fights.sort_values(["event_date", "event_name"]).reset_index(drop=True)
-
-    integrity = build_integrity_flags(fights, mdabbert_csv=None)
-    fights = fights.drop(
-        columns=[c for c in INTEGRITY_COLUMNS if c != "fight_url" and c in fights.columns],
-        errors="ignore",
-    )
-    fights = fights.merge(integrity, on="fight_url", how="left")
-    fights = RS._ensure_integrity_columns(fights)
-    if "is_excluded" in fights.columns:
-        fights = fights[~fights["is_excluded"]].copy()
-    return fights.reset_index(drop=True)
-
-
 def build_inputs(
-    snapshot_dir: Path, *, with_crossorg: bool = False, scope: str | None = None
+    snapshot_dir: Path, *, scope: str = UFC_ONLY
 ) -> Inputs:
     """Load the fight table and every rating-parameter-invariant weight table.
 
@@ -225,8 +185,8 @@ def build_inputs(
     do not alter any rating variant in this harness.
     """
     snapshot_dir = Path(snapshot_dir)
-    fights = load_fight_table(snapshot_dir, with_crossorg=with_crossorg, scope=scope)
-    base_engine = RS._run_canonical_engine(fights, tau=DEFAULT_TAU)
+    fights = load_fight_table(snapshot_dir, scope=scope)
+    base_engine = canonical_engine(fights, tau=DEFAULT_TAU)
     history = base_engine.history_df()
 
     rounds_path = snapshot_dir / "canonical_rounds.parquet"
@@ -296,7 +256,7 @@ def _weighted_fights(inputs: Inputs, variant: Variant) -> pd.DataFrame:
         fights["org_weight"] = 1.0
 
     if variant.weight is None:
-        out = RS._attach_org_only_weights(fights)
+        out = attach_bout_weights(fights)
     else:
         table = variant.weight
         out = RV.attach_appearance_weights(
@@ -347,7 +307,7 @@ def online_predictions(inputs: Inputs, variant: Variant) -> pd.DataFrame:
     the pre-fight ratings that produced it, and each side's prior fight count.
     """
     if variant.engine == "glicko":
-        engine = RS._run_canonical_engine(inputs.fights, tau=DEFAULT_TAU)
+        engine = canonical_engine(inputs.fights, tau=DEFAULT_TAU)
         history = engine.history_df()
         mu_col, phi_col = f"mu_{variant.stream}", f"phi_{variant.stream}"
     elif variant.engine == "weighted_glicko":
@@ -602,116 +562,6 @@ def choose_eval_events(
 # Scoring
 
 
-def roc_auc(p: np.ndarray, y: np.ndarray) -> float:
-    """Rank-based discrimination, invariant to any monotone rescaling of ``p``.
-
-    This is the metric that answers "does this mechanism add *information*",
-    separately from whether the probability scale is right — temperature
-    scaling cannot move it, so a mechanism that only fixes calibration shows up
-    in log-loss and not here.
-    """
-    y = np.asarray(y, dtype=float)
-    pos, neg = y == 1, y == 0
-    if not pos.any() or not neg.any():
-        return float("nan")
-    order = np.argsort(p, kind="stable")
-    ranks = np.empty(len(p), dtype=float)
-    ranks[order] = np.arange(1, len(p) + 1, dtype=float)
-    # Mid-ranks for ties, so a constant predictor scores exactly 0.5.
-    sp = p[order]
-    i = 0
-    while i < len(sp):
-        j = i
-        while j + 1 < len(sp) and sp[j + 1] == sp[i]:
-            j += 1
-        if j > i:
-            ranks[order[i:j + 1]] = (i + 1 + j + 1) / 2.0
-        i = j + 1
-    n_pos, n_neg = int(pos.sum()), int(neg.sum())
-    return float((ranks[pos].sum() - n_pos * (n_pos + 1) / 2.0) / (n_pos * n_neg))
-
-
-def _metrics(p: np.ndarray, y: np.ndarray) -> dict:
-    p = np.clip(p, EPS, 1 - EPS)
-    return {
-        "log_loss": float(np.mean(-(y * np.log(p) + (1 - y) * np.log(1 - p)))),
-        "brier": float(np.mean((p - y) ** 2)),
-        "accuracy": float(np.mean((p >= 0.5) == (y == 1))),
-        "auc": roc_auc(p, y),
-        "n": len(p),
-    }
-
-
-def fit_temperature(p: np.ndarray, y: np.ndarray) -> float:
-    """Scalar temperature ``T`` minimising log-loss for ``sigmoid(logit(p) / T)``.
-
-    Every variant here shares a badly overconfident probability scale — the
-    engine's stored ``calibration_residuals`` shows the same thing — so raw
-    log-loss mostly measures that shared defect rather than the mechanism under
-    test. Fitting one parameter on data that strictly precedes the held-out
-    events removes it without leaking anything.
-    """
-    p = np.clip(np.asarray(p, dtype=float), EPS, 1 - EPS)
-    y = np.asarray(y, dtype=float)
-    logit = np.log(p / (1 - p))
-    if len(logit) < 50 or not np.isfinite(logit).all():
-        return 1.0
-
-    def loss(t: float) -> float:
-        q = np.clip(1.0 / (1.0 + np.exp(-logit / t)), EPS, 1 - EPS)
-        return float(np.mean(-(y * np.log(q) + (1 - y) * np.log(1 - q))))
-
-    # Unimodal in T over this range; a golden-section search is enough and
-    # avoids a scipy dependency.
-    lo, hi = 0.25, 12.0
-    phi = (np.sqrt(5.0) - 1.0) / 2.0
-    a, b = lo, hi
-    c, d = b - phi * (b - a), a + phi * (b - a)
-    for _ in range(60):
-        if loss(c) < loss(d):
-            b, d = d, c
-            c = b - phi * (b - a)
-        else:
-            a, c = c, d
-            d = a + phi * (b - a)
-    return float((a + b) / 2.0)
-
-
-def apply_temperature(p: np.ndarray, temperature: float) -> np.ndarray:
-    p = np.clip(np.asarray(p, dtype=float), EPS, 1 - EPS)
-    logit = np.log(p / (1 - p))
-    return 1.0 / (1.0 + np.exp(-logit / float(temperature)))
-
-
-def calibration_curve(p: np.ndarray, y: np.ndarray, *, n_bins: int = 10) -> pd.DataFrame:
-    """Reliability table in ``calibration_residuals.parquet`` conventions."""
-    bins = np.linspace(0.0, 1.0, n_bins + 1)
-    idx = np.clip(np.digitize(p, bins[1:-1], right=False), 0, n_bins - 1)
-    rows = []
-    for b in range(n_bins):
-        m = idx == b
-        if not m.any():
-            continue
-        rows.append({
-            "prob_bin": b,
-            "predicted_mean": float(p[m].mean()),
-            "empirical_win_rate": float(y[m].mean()),
-            "residual": float(y[m].mean() - p[m].mean()),
-            "brier": float(((p[m] - y[m]) ** 2).mean()),
-            "n": int(m.sum()),
-        })
-    return pd.DataFrame(rows)
-
-
-def calibration_error(p: np.ndarray, y: np.ndarray, *, n_bins: int = 10) -> float:
-    """Sample-weighted mean |empirical - predicted| over the reliability bins (ECE)."""
-    curve = calibration_curve(p, y, n_bins=n_bins)
-    if curve.empty:
-        return float("nan")
-    w = curve["n"].to_numpy(dtype=float)
-    return float(np.sum(w * curve["residual"].abs().to_numpy()) / w.sum())
-
-
 def symmetrize_sides(predictions: pd.DataFrame, *, seed: int = 20260818) -> pd.DataFrame:
     """Deterministically relabel a pseudo-random half of the bouts a<->b.
 
@@ -849,7 +699,7 @@ def score_predictions(
             p = frame[prob_col].to_numpy(dtype=float)
             y = frame["y_a"].to_numpy(dtype=float)
             return {"variant": _v, "segment_type": segment_type,
-                    "segment_value": segment_value, **_metrics(p, y),
+                    "segment_value": segment_value, **metrics(p, y),
                     "calibration_error": calibration_error(p, y)}
 
         rows.append(_row(g, "overall", "all"))

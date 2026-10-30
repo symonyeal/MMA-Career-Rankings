@@ -25,7 +25,7 @@ from loaders.career_coverage import (
     record_incorporated_page_ids,
 )
 from loaders.page_cache import open_cache
-from ratings.rate_snapshot import _require_career_coverage
+from loaders.career_coverage import require_coverage
 from build_sherdog_careers import coverage_table
 
 
@@ -184,7 +184,7 @@ def test_manifest_covers_a_page_with_only_duplicate_rows(tmp_path):
 
 def test_majors_rating_requires_a_passing_coverage_audit(tmp_path):
     with pytest.raises(ValueError, match="requires a career-coverage audit"):
-        _require_career_coverage(tmp_path, "majors")
+        require_coverage(tmp_path, "majors")
 
     pd.DataFrame(
         {
@@ -199,8 +199,8 @@ def test_majors_rating_requires_a_passing_coverage_audit(tmp_path):
     ).to_parquet(tmp_path / "career_coverage.parquet", index=False)
 
     with pytest.raises(ValueError, match="asymmetric whole-career coverage"):
-        _require_career_coverage(tmp_path, "majors")
-    assert _require_career_coverage(tmp_path, "ufc")["symmetric"] is False
+        require_coverage(tmp_path, "majors")
+    assert require_coverage(tmp_path, "ufc")["symmetric"] is False
 
 
 def test_legacy_page_only_audit_cannot_certify_a_majors_run(tmp_path):
@@ -216,4 +216,4 @@ def test_legacy_page_only_audit_cannot_certify_a_majors_run(tmp_path):
     ).to_parquet(tmp_path / "career_coverage.parquet", index=False)
 
     with pytest.raises(ValueError, match="predates the merged-row audit"):
-        _require_career_coverage(tmp_path, "majors")
+        require_coverage(tmp_path, "majors")

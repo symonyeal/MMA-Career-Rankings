@@ -9,12 +9,9 @@ import pandas as pd
 
 from ratings.constants import RANK_CONTEXT_ACTIVE_DAYS
 from ratings.performance_adjustment import (
-    _division_limit,
-    _movement_label,
-    normalize_division_label,
-    prefight_ranking_context,
-    prefight_weight_class_context,
+    _division_limit, _movement_label, prefight_ranking_context, prefight_weight_class_context,
 )
+from ratings.divisions import normalize_division_label
 
 _WC = ["UFC Lightweight Title Bout", "Lightweight Bout", "Welterweight Bout", "Catch Weight Bout",
        "Women's Strawweight Bout", None]

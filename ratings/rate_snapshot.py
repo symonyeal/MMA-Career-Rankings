@@ -31,7 +31,8 @@ import pandas as pd
 if __package__ is None or __package__ == "":
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from ratings.glicko2_engine import DEFAULT_TAU, RatingEngine
+from ratings.glicko2_engine import DEFAULT_TAU
+from ratings.fights import attach_bout_weights, canonical_engine, prepare_fights, rated_rows
 from ratings.dominance import per_fight_dominance, per_fighter_dominance
 from ratings.constants import rename_rating_columns
 from ratings.diagnostics import (
@@ -51,75 +52,29 @@ from ratings.symon_score import (
 )
 from ratings.gender import GENDER_GAUGE_NOTE, GENDER_LABEL, partition_by_gender
 from ratings.current_score import CURRENT_SCORE_COLUMNS, current_score_rows
-from ratings.legacy_resume import _division_labels, public_legacy_score_rows
+from ratings.legacy_resume import (public_legacy_score_rows)
+from ratings.divisions import division_labels
 from ratings.era import ERA_COL, era_rated, with_era
 from ratings.whr import production_score_kwargs, project_age_rating, run_whr
 from ratings.age import load_birth_dates
 from ratings.performance_adjustment import build_performance_appearances
-from ratings.performance_adjustment import _group_bounds, normalize_division_label
+from ratings.divisions import normalize_division_label
 from loaders.integrity_flags import (
-    INTEGRITY_COLUMNS,
-    build_integrity_flags,
     confirmed_counts,
 )
 from loaders.odds_loader import has_odds_artifact, load_odds_lines
-from ratings.rules_era import RULES_ERA_WEIGHT, label_rules_era, rules_era_factor
-from ratings.scope import (  # noqa: F401
+from ratings.scope import (
     DEFAULT_PUBLISHED_SCOPE,
-    SCOPE_ARTIFACT,
-    SCOPES,
-    UFC_ONLY,
-    merge_scope,
-    scope_guard,
-    scope_sources,
 )
-from loaders.career_coverage import coverage_summary, is_coverage_symmetric
+from loaders.career_coverage import require_coverage
 from loaders.combined_fights import (
     load_combined_fights,
     write_combined_fights,
 )
-from loaders.majors_scope import CAREER_COVERAGE_ARTIFACT
-from loaders.ufcstats_loader import METHOD_SCORES
 
 
 # ---------------------------------------------------------------------------
 # Helpers
-
-
-def _ensure_integrity_columns(fights: pd.DataFrame) -> pd.DataFrame:
-    out = fights.copy()
-    for col in INTEGRITY_COLUMNS:
-        if col == "fight_url":
-            continue
-        if col not in out.columns:
-            out[col] = False if col in {"ped_confirmed", "is_dq", "missed_weight"} else None
-    for col in ("ped_confirmed", "is_dq", "missed_weight"):
-        out[col] = out[col].fillna(False).astype(bool)
-    return out
-
-
-def _iter_event_bouts(fights: pd.DataFrame, columns: list[str]):
-    """Yield ``(event_date, event_name, bouts)`` per event from column arrays.
-
-    A ``groupby(...).to_dict("records")`` per event costs more than the Glicko
-    arithmetic it feeds once the fight table carries tens of thousands of
-    events, so the frame is converted to arrays once and sliced.
-    """
-    f = fights.sort_values(["event_date", "event_name"]).reset_index(drop=True)
-    arrays = {c: f[c].to_numpy() for c in columns}
-    dates = f["event_date"].to_numpy()
-    names = f["event_name"].to_numpy()
-    for lo, hi in zip(*_group_bounds(f["event_date"], f["event_name"])):
-        bouts = [{c: arrays[c][k] for c in columns} for k in range(lo, hi)]
-        yield pd.Timestamp(dates[lo]), names[lo], bouts
-
-
-def _run_canonical_engine(fights: pd.DataFrame, tau: float) -> RatingEngine:
-    engine = RatingEngine(tau=tau)
-    columns = ["fighter_a", "fighter_b", "winner", "is_draw", "method_score_winner"]
-    for event_date, event_name, bouts in _iter_event_bouts(fights, columns):
-        engine.process_event(event_date, event_name, bouts)
-    return engine
 
 
 def _career_columns(table: pd.DataFrame) -> pd.DataFrame:
@@ -133,48 +88,10 @@ def _career_columns(table: pd.DataFrame) -> pd.DataFrame:
     )
 
 
-def _career_coverage_summary(snapshot_dir: Path) -> dict:
-    """Read the coverage audit the majors staging wrote, if it is there.
-
-    Absent on a snapshot staged before the audit existed. Reported as such
-    rather than defaulted to "symmetric", because a silent pass is exactly how
-    the two-rule corpus survived four board repairs.
-    """
-    path = Path(snapshot_dir) / CAREER_COVERAGE_ARTIFACT
-    if not path.exists():
-        return {"status": "not measured; stage the majors scope to produce it"}
-    summary = coverage_summary(pd.read_parquet(path))
-    summary["symmetric"] = bool(is_coverage_symmetric(summary))
-    return summary
 
 
-def _require_career_coverage(snapshot_dir: Path, scope: str) -> dict:
-    """Refuse a majors fit whose whole-career coverage was not proved."""
-    summary = _career_coverage_summary(snapshot_dir)
-    if "majors" not in scope_sources(scope):
-        return summary
-    if "status" in summary:
-        raise ValueError(
-            "the majors scope requires a career-coverage audit; "
-            "run stage_majors_scope before rating"
-        )
-    if not summary.get("symmetric", False):
-        raise ValueError(
-            "the majors scope has asymmetric whole-career coverage; "
-            "run build_sherdog_careers.py before rating"
-        )
-    return summary
 
 
-def _rated_rows(fights: pd.DataFrame) -> pd.DataFrame:
-    if "is_excluded" in fights.columns:
-        return fights[~fights["is_excluded"].fillna(False).astype(bool)].copy()
-    return fights
-
-
-def _source_fights_for_public_resume(snapshot_dir: Path, scope: str) -> pd.DataFrame:
-    fights, _ = load_combined_fights(snapshot_dir, scope=scope, label="resume")
-    return _rated_rows(fights)
 
 
 def refresh_career_columns(
@@ -219,7 +136,7 @@ def refresh_career_columns(
             career_skill_mass(
                 era,
                 reference=reference,
-                divisions=_division_labels(current),
+                divisions=division_labels(current),
                 division_reference=DEFAULT_DIVISION_REFERENCE,
                 hinge_spread_fraction=DEFAULT_HINGE_SPREAD_FRACTION,
             )
@@ -230,7 +147,7 @@ def refresh_career_columns(
     appearances_path = snapshot_dir / "performance_appearances.parquet"
     appearances = pd.read_parquet(appearances_path) if appearances_path.exists() else pd.DataFrame()
     recorded_fights, _ = load_combined_fights(snapshot_dir, scope=scope, label="resume")
-    source_fights = _rated_rows(recorded_fights)
+    source_fights = rated_rows(recorded_fights)
     # Recency is board metadata, not a fit input, so it is re-measured here with
     # the same reference date the full run uses: the last rated bout.
     current = _attach_months_inactive(
@@ -280,58 +197,6 @@ def refresh_career_columns(
     )
     metadata_path.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
     return metadata
-
-
-def merge_crossorg_fights(
-    fights: pd.DataFrame,
-    snapshot_dir: Path,
-    *,
-    enabled: bool,
-    label: str = "rate",
-) -> pd.DataFrame:
-    """Back-compatible entry point for the FightMatrix cross-org scope.
-
-    Kept because ``--experimental-crossorg`` is a documented flag, but it is one
-    scope among several now: see :mod:`ratings.scope`, which is where the scope
-    registry, the missing-artifact error and the dedupe guard live.
-    """
-    return merge_scope(
-        fights, snapshot_dir,
-        scope="fightmatrix" if enabled else UFC_ONLY,
-        label=label,
-    )
-
-
-def attach_bout_weights(
-    fights: pd.DataFrame,
-    *,
-    rules_era_weight: float = RULES_ERA_WEIGHT,
-) -> pd.DataFrame:
-    """Set the one shared likelihood weight each bout contributes.
-
-    Two factors, and both are the same number on both sides -- WHR needs a
-    single bout likelihood, so a side-specific weight is not admissible here.
-
-    ``org_weight``
-        1.0 in production. The column is read rather than hard-coded so the
-        research sweep can vary it without a second code path; see the
-        org-weight note in :func:`run` for why production never does.
-    ``rules_era``
-        how far a UFC bout fought before the unified rules is allowed to move a
-        rating. Defaults to 1.0 -- full admission -- and is a measured quantity,
-        not an asserted one. See :mod:`ratings.rules_era`.
-    """
-    out = fights.copy()
-    ow = pd.to_numeric(out.get("org_weight", 1.0), errors="coerce")
-    ow = ow.fillna(1.0) if hasattr(ow, "fillna") else pd.Series(1.0, index=out.index)
-    weight = ow * rules_era_factor(out, weight=rules_era_weight)
-    out["weight_a"] = weight
-    out["weight_b"] = weight
-    return out
-
-
-# The name this was called before the rules-era term joined the org weight.
-_attach_org_only_weights = attach_bout_weights
 
 
 def _last_recorded_dates(fights: pd.DataFrame) -> pd.Series:
@@ -581,24 +446,15 @@ def _print_top(
 def run(
     snapshot_dir: Path,
     tau: float = DEFAULT_TAU,
-    min_fights: int = 3,
     *,
     mdabbert_csv: Path | None = None,
-    include_experimental_crossorg: bool = False,
     experimental_org_weight: bool = False,
     scope: str = DEFAULT_PUBLISHED_SCOPE,
     career_reference: str | float = DEFAULT_CAREER_REFERENCE,
 ) -> dict:
     snapshot_dir = Path(snapshot_dir).resolve()
     rounds = pd.read_parquet(snapshot_dir / "canonical_rounds.parquet")
-    if include_experimental_crossorg:
-        if scope != DEFAULT_PUBLISHED_SCOPE:
-            raise ValueError(
-                "include_experimental_crossorg is a deprecated alias for scope='fightmatrix'; "
-                "do not supply both"
-            )
-        scope = "fightmatrix"
-    career_coverage = _require_career_coverage(snapshot_dir, scope)
+    career_coverage = require_coverage(snapshot_dir, scope)
     # One authoritative fight table, written at every corpus the snapshot
     # staged, then filtered to the scope this run is allowed to rate. The
     # artifact used to be written at the *run's* scope, so a UFC-only run
@@ -606,7 +462,6 @@ def run(
     # inherited it without being told.
     write_combined_fights(snapshot_dir, label="rate")
     fights, combined_summary = load_combined_fights(snapshot_dir, scope=scope, label="rate")
-    fights["rules_era"] = label_rules_era(fights)
     # No organisation weight. ``compute_fight_weights`` prices a non-UFC bout by
     # both participants' UFC-anchored caliber percentiles, so a 2003 PRIDE bout
     # would be weighted by what those two fighters went on to do years later --
@@ -625,29 +480,14 @@ def run(
                   f"{int((staged != 1.0).sum()):,} bouts; the joint fit is unweighted")
         fights["org_weight"] = 1.0
 
-    fights["event_date"] = pd.to_datetime(fights["event_date"])
-    if "method_class" in fights.columns:
-        recalculated_method_scores = fights["method_class"].map(METHOD_SCORES)
-        fights["method_score_winner"] = recalculated_method_scores.combine_first(
-            pd.to_numeric(fights.get("method_score_winner"), errors="coerce")
-        )
-    fights = fights.sort_values(["event_date", "event_name"]).reset_index(drop=True)
-
-    # ------------------------------------------------------------------
-    # Integrity flags (PED + DQ + missed-weight)
-    integrity = build_integrity_flags(fights, mdabbert_csv=mdabbert_csv)
-    # Merge flags onto the fight rows for the audit layers and exclusions.
-    fights = fights.drop(columns=[c for c in INTEGRITY_COLUMNS
-                                  if c != "fight_url" and c in fights.columns], errors="ignore")
-    fights = fights.merge(integrity, on="fight_url", how="left")
-    fights = _ensure_integrity_columns(fights)
+    fights, integrity = prepare_fights(fights, mdabbert_csv=mdabbert_csv)
 
     # Drop excluded bouts before rating. Keep them for audit if present.
     rated_fights = fights[~fights["is_excluded"]].copy() if "is_excluded" in fights.columns else fights.copy()
 
     # ------------------------------------------------------------------
     # Canonical + method base engine (one pass, two ratings)
-    base_engine = _run_canonical_engine(rated_fights, tau=tau)
+    base_engine = canonical_engine(rated_fights, tau=tau)
     history = base_engine.history_df()
     current = base_engine.current_table().drop(
         columns=["peak_mu_canonical", "peak_mu_method"],
@@ -685,7 +525,7 @@ def run(
     # implicit quality-score column. Era is neutral by default because a common
     # additive era term cancels from every within-era Bradley--Terry matchup.
     birth_dates = load_birth_dates(snapshot_dir)
-    whr_fights = _attach_org_only_weights(rated_fights)
+    whr_fights = attach_bout_weights(rated_fights)
     whr_history = run_whr(
         whr_fights,
         birth_dates=birth_dates,
@@ -771,7 +611,7 @@ def run(
             career_skill_mass(
                 whr_era,
                 reference=career_reference,
-                divisions=_division_labels(current),
+                divisions=division_labels(current),
                 division_reference=DEFAULT_DIVISION_REFERENCE,
                 hinge_spread_fraction=DEFAULT_HINGE_SPREAD_FRACTION,
             )
@@ -782,7 +622,7 @@ def run(
 
     # The public resume MUST be scored after career_division and gender exist.
     #
-    # legacy_resume._division_labels returns None when career_division is absent,
+    # legacy_resume.division_labels returns None when career_division is absent,
     # and title_quality_ledger then silently prices every title win against the
     # sport-wide contender line instead of the division line. It does not raise:
     # the divisions argument is optional, so the intended bar just never runs.
@@ -990,7 +830,6 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--snapshot-dir", required=True, help="data/snapshots/<date>")
     parser.add_argument("--tau", type=float, default=DEFAULT_TAU)
-    parser.add_argument("--min-fights", type=int, default=3, help="ranking eligibility threshold")
     parser.add_argument(
         "--reference",
         default=str(DEFAULT_CAREER_REFERENCE),
@@ -1008,7 +847,7 @@ def main() -> None:
         help="Optional path to mdabbert ufc-master.csv for missed-weight cross-check.",
     )
     parser.add_argument(
-        "--scope", default=None,
+        "--scope", default=DEFAULT_PUBLISHED_SCOPE,
         help=(
             "Which bouts the rating may see. 'majors' is the roster-complete "
             "six-promotion Sherdog corpus; 'fightmatrix' is the bounded "
@@ -1016,11 +855,6 @@ def main() -> None:
             "opposite directions, so nothing merges unless it is named. "
             "Combine explicitly: --scope majors,pre_unified."
         ),
-    )
-    parser.add_argument(
-        "--experimental-crossorg",
-        action="store_true",
-        help="Deprecated alias for --scope fightmatrix.",
     )
     parser.add_argument(
         "--experimental-org-weight",
@@ -1031,13 +865,6 @@ def main() -> None:
         ),
     )
     args = parser.parse_args()
-    if args.experimental_crossorg and args.scope is not None:
-        parser.error("--experimental-crossorg cannot be combined with --scope")
-    args.scope = (
-        "fightmatrix"
-        if args.experimental_crossorg
-        else (args.scope or DEFAULT_PUBLISHED_SCOPE)
-    )
     if args.career_only:
         print(
             refresh_career_columns(
@@ -1050,9 +877,7 @@ def main() -> None:
     run(
         Path(args.snapshot_dir).resolve(),
         tau=args.tau,
-        min_fights=args.min_fights,
         mdabbert_csv=Path(args.mdabbert_csv).resolve() if args.mdabbert_csv else None,
-        include_experimental_crossorg=args.experimental_crossorg,
         experimental_org_weight=args.experimental_org_weight,
         scope=args.scope,
         career_reference=parse_reference(args.reference),

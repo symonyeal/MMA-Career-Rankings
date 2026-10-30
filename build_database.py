@@ -20,7 +20,7 @@ from collections.abc import Iterable
 import pandas as pd
 
 from loaders.odds_loader import compute_implied_probs
-from project_helpers import date_range
+from project_helpers import date_range, project_path
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent
@@ -505,7 +505,7 @@ def build_database(
                 "table_name": spec.table_name,
                 "source_name": spec.source_name,
                 "source_kind": spec.source_kind,
-                "source_path": str(source_path.relative_to(PROJECT_ROOT)),
+                "source_path": project_path(source_path),
                 "row_count": len(df),
                 "column_count": len(df.columns),
                 "columns_json": json.dumps(list(df.columns)),
@@ -520,8 +520,8 @@ def build_database(
         built_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
         snapshot_manifest = pd.DataFrame([
             {"manifest_key": "snapshot_date", "manifest_value": snapshot_dir.name},
-            {"manifest_key": "snapshot_dir", "manifest_value": str(snapshot_dir.relative_to(PROJECT_ROOT))},
-            {"manifest_key": "database_path", "manifest_value": str(db_path.relative_to(PROJECT_ROOT))},
+            {"manifest_key": "snapshot_dir", "manifest_value": project_path(snapshot_dir)},
+            {"manifest_key": "database_path", "manifest_value": project_path(db_path)},
             {"manifest_key": "built_at_utc", "manifest_value": built_at},
             {"manifest_key": "loaded_source_tables", "manifest_value": str(len(loaded_tables))},
         ])

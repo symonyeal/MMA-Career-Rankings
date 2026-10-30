@@ -268,7 +268,7 @@ def test_rate_snapshot_produces_lean_core_without_odds(tmp_path: Path):
     snap.mkdir()
     _build_synthetic_snapshot(snap)
 
-    summary = run_ratings(snap, min_fights=1, scope="ufc")
+    summary = run_ratings(snap, scope="ufc")
     current = pd.read_parquet(snap / "ratings_current.parquet")
 
     assert summary["odds_covered_fights"] == 0
@@ -312,7 +312,7 @@ def test_rate_snapshot_with_odds_keeps_market_as_an_audit_only(tmp_path: Path):
     _build_synthetic_snapshot(snap)
     _build_odds_artifact(snap)
 
-    summary = run_ratings(snap, min_fights=1, scope="ufc")
+    summary = run_ratings(snap, scope="ufc")
     current = pd.read_parquet(snap / "ratings_current.parquet").set_index("fighter")
 
     assert summary["odds_covered_fights"] >= 2

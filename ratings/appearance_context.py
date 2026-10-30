@@ -40,12 +40,12 @@ from ratings.opponent_quality import (
     combined_opponent_quality_level,
     peak_opponent_weight_from_level,
 )
+from ratings.history import prefight_ratings
 from ratings.performance_adjustment import (
-    DIVISION_WEIGHT_LIMIT_LB,
-    normalize_division_label,
-    prefight_ratings,
     prefight_ranking_context,
 )
+from ratings.divisions import DIVISION_WEIGHT_LIMIT_LB
+from ratings.divisions import normalize_division_label
 from ratings.scope import map_distinct
 
 
@@ -72,11 +72,6 @@ PEAK_APPEARANCE_COLUMNS = [
 ]
 
 
-def _prefight_mu_table(canonical_history: pd.DataFrame) -> pd.DataFrame:
-    """Share the event-grained, tournament-safe pre-fight lookup."""
-    return prefight_ratings(canonical_history)
-
-
 def peak_appearance_quality(
     canonical_fights: pd.DataFrame,
     canonical_history: pd.DataFrame,
@@ -92,7 +87,7 @@ def peak_appearance_quality(
     f["division"] = map_distinct(f.get("weight_class", pd.Series(index=f.index)), normalize_division_label)
     f["division_weight_limit_lb"] = f["division"].map(DIVISION_WEIGHT_LIMIT_LB)
 
-    prior = _prefight_mu_table(canonical_history)
+    prior = prefight_ratings(canonical_history)
     prior_a = prior.rename(columns={"fighter": "fighter_a", "prefight_mu": "prefight_mu_a"})
     prior_b = prior.rename(columns={"fighter": "fighter_b", "prefight_mu": "prefight_mu_b"})
     f = f.merge(
@@ -297,5 +292,3 @@ def _resume_bonus(window_opp_weight_sum: float, title_ladder_mass: float = 0.0) 
     ladder = 0.0 if title_ladder_mass is None or np.isnan(title_ladder_mass) else float(title_ladder_mass)
     raw = HEADLINE_RESUME_RATE * (float(window_opp_weight_sum) + ladder)
     return float(np.clip(raw, 0.0, HEADLINE_RESUME_BONUS_CAP))
-
-

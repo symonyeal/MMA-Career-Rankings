@@ -48,11 +48,6 @@ def main() -> None:
     ap.add_argument("--min-n", type=int, default=200,
                     help="segment sample floor below which no conclusion is drawn")
     ap.add_argument("--whr-iterations", type=int, default=None)
-    ap.add_argument(
-        "--with-crossorg",
-        action="store_true",
-        help="Deprecated alias for the named FightMatrix scope (default is UFC-only)",
-    )
     ap.add_argument("--online-only", action="store_true", help="skip the WHR refit variants")
     ap.add_argument("--variants", default=None,
                     help="comma-separated variant names to score (default: all)")
@@ -74,9 +69,7 @@ def main() -> None:
 
     t_wall, t_cpu = time.perf_counter(), time.process_time()
     print(f"[inputs] {args.snapshot_dir}")
-    inputs = PQ.build_inputs(
-        args.snapshot_dir, with_crossorg=args.with_crossorg, scope=args.scope
-    )
+    inputs = PQ.build_inputs(args.snapshot_dir, scope=args.scope)
     build_cpu = time.process_time() - t_cpu
     print(f"[inputs] {len(inputs.fights):,} rated bouts, {build_cpu:.1f}s cpu")
 
@@ -165,7 +158,6 @@ def main() -> None:
         "since_year": args.since_year,
         "min_prior_fights": args.min_prior_fights,
         "min_n_for_conclusions": args.min_n,
-        "with_crossorg_experimental": bool(args.with_crossorg),
         "variants": sorted(names),
         "scored_bouts_per_variant": int(len(predictions) / max(len(names), 1)),
         "cpu_seconds": {"inputs": round(build_cpu, 1), "sweep": round(sweep_cpu, 1),

@@ -9,14 +9,11 @@ is what :mod:`tests.test_title_division_bar` guards for the division bar.
 """
 from __future__ import annotations
 
-import inspect
-
 import numpy as np
 import pandas as pd
 import pytest
 
-import build_uncertainty
-import refresh
+from ratings import bootstrap
 from ratings import prequential as PQ
 from ratings.constants import WHR_WINNER_SCORE_COL
 from ratings.whr import production_score_kwargs, run_whr
@@ -107,15 +104,34 @@ def test_one_winner_score_column_per_fit():
         PQ.whr_predictions(inputs, variant, pd.DataFrame())
 
 
-@pytest.mark.parametrize("module", [build_uncertainty, refresh])
-def test_bootstrap_callers_refit_the_published_functional(module):
-    """Both bootstrap entry points must pass the published bar AND score.
+def test_bootstrap_refits_the_published_functional_in_one_component(tmp_path, monkeypatch):
+    """A women's interval must exclude men's bouts and keep the score's bar and grading."""
+    from ratings.symon_score import DEFAULT_DIVISION_REFERENCE, DEFAULT_HINGE_SPREAD_FRACTION
 
-    Read from source rather than executed: a real replicate run is a full WHR
-    refit per draw. What can go wrong here is an omitted keyword, and that is
-    visible in the call.
-    """
-    source = inspect.getsource(module)
-    assert "production_score_kwargs" in source
-    assert "DEFAULT_DIVISION_REFERENCE" in source
-    assert "DEFAULT_HINGE_SPREAD_FRACTION" in source
+    population = pd.DataFrame({
+        "fighter": ["A", "B", "C", "D"], "gender": ["F", "F", "M", "M"],
+        "career_division": ["Flyweight"] * 4, "rating_periods": [20, 2, 20, 20],
+    })
+    population.to_parquet(tmp_path / "ratings_current.parquet", index=False)
+    fights = _fights().iloc[:2].copy()
+    fights["fighter_a"], fights["fighter_b"] = ["A", "C"], ["B", "D"]
+    monkeypatch.setattr(bootstrap, "load_fight_table", lambda *a, **kw: fights)
+    monkeypatch.setattr(bootstrap, "load_birth_dates", lambda *a: {"A": pd.Timestamp("1990-01-01")})
+
+    def refit(selected, **kwargs):
+        assert selected["fighter_a"].tolist() == ["A"]
+        assert kwargs["eligible_fighters"] == {"A"}
+        assert kwargs["whr_kwargs"]["winner_score_col"] == WHR_WINNER_SCORE_COL
+        assert kwargs["whr_kwargs"]["age_drift"] is True
+        mass = kwargs["mass_kwargs"]
+        assert mass["reference"] == "contender:9"
+        assert mass["divisions"].to_dict() == {"A": "Women's Flyweight", "B": "Women's Flyweight"}
+        assert mass["division_reference"] == DEFAULT_DIVISION_REFERENCE
+        assert mass["hinge_spread_fraction"] == DEFAULT_HINGE_SPREAD_FRACTION
+        assert kwargs["replicates"] == 3 and kwargs["seed"] == 8 and kwargs["return_draws"]
+        return "board", "draws"
+
+    monkeypatch.setattr(bootstrap, "career_mass_bootstrap", refit)
+    assert bootstrap.bootstrap_snapshot(
+        tmp_path, gender="F", reference="contender:9", replicates=3, seed=8,
+    ) == ("board", "draws")

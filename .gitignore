@@ -53,5 +53,5 @@ _archive/**/generated-data/
 =*
 node_modules/
 
-# Rust build output for rust/whr_rs.
-rust/whr_rs/target/
+# Rust build output; the manifests and lockfiles are versioned.
+rust/*/target/

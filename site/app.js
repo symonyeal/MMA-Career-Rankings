@@ -107,7 +107,7 @@ function boardRows(view = S.view, useDiv = true, g = S.g, div = S.div, min = S.m
     .sort((a, b) => F[r][a] - F[r][b]);
 }
 
-const SECTIONS = {}, dirty = new Set(), visible = new Set();
+const SECTIONS = Object.create(null), dirty = new Set(), visible = new Set();
 function mark(...ids) {
   (ids.length ? ids : Object.keys(SECTIONS)).forEach((i) => dirty.add(i));
   flush();
@@ -157,8 +157,7 @@ function streaks(g, div, min, key) {
     .sort((a, b) => { const x = streakSort[key](a), y = streakSort[key](b); return y[0] - x[0] || y[1] - x[1] || y[2] - x[2]; });
 }
 // Reigns of a lineage figure: one bar trace per reign, customdata [fighter, won against, start, defences, years].
-const reigns = (f) => f.data.map((t) => ({ f: t.customdata[0][0], opp: t.customdata[0][1], start: t.customdata[0][2],
-  def: t.customdata[0][3], yrs: t.customdata[0][4], x: t.x[0], text: t.text[0] }));
+const reigns = (rows) => rows.map(([f, opp, start, def, yrs, x, text]) => ({ f, opp, start, def, yrs, x, text }));
 function calRows(seg) {
   return D.calib.filter((r) => r[0] === seg).map(([, b, p, y, n]) => ({ b, p, y, n, se: Math.sqrt(p * (1 - p) / n) }));
 }
@@ -364,7 +363,8 @@ $("rec-pick").addEventListener("change", (e) => { if (I.has(e.target.value)) { S
 const movYears = Object.keys(D.movers).sort((a, b) => b - a);
 $("mov-year").innerHTML = movYears.map((y) => `<option>${y}</option>`).join("");
 SECTIONS.movers = () => {
-  const y = $("mov-year").value, t = D.movers[y].data[0];
+  const y = $("mov-year").value, [x, names, details] = D.movers[y] || [];
+  const t = x ? { x, y: names, customdata: details } : null;
   if (!t || !t.x?.length) return empty("mov-chart", `No measurable rating moves in ${y}.`);
   const k = range(t.x.length), hi = argmax(k, (j) => t.x[j]), lo = argmax(k, (j) => -t.x[j]);
   plot("mov-chart", [{ type: "bar", orientation: "h", x: t.x, y: t.y, marker: { color: t.x.map((v) => (v >= 0 ? T.accent : T.negative)) },
@@ -464,8 +464,8 @@ function yearTop() {
   const yr = $("dv-year").value, keep = new Set([...S.dv].map(short));
   const nm = (y) => y.replace(/^\d+\.\s*/, "").split("·")[0].trim(), full = (c) => D.divisions.find((d) => short(d) === c) || c;
   // one row per class: its top five (rank-1 first), ordered by their mean, strongest at the top
-  const R = D.year_top[yr].data.filter((t) => keep.has(t.name))
-    .map((t) => ({ c: t.name, x: t.x, f: t.y.map(nm), m: sum(t.x) / t.x.length })).sort((a, b) => a.m - b.m);
+  const R = D.year_top[yr].filter(([name]) => keep.has(name))
+    .map(([name, x, y]) => ({ c: name, x, f: y.map(nm), m: sum(x) / x.length })).sort((a, b) => a.m - b.m);
   if (!R.length) return empty("dv-year-chart", `No rated fighters in the selected classes in ${yr}.`);
   const top = R.at(-1), best = argmax(R, (r) => Math.max(...r.x)), each = (g) => R.flatMap((r) => r.x.map((_, k) => g(r, k)));
   plot("dv-year-chart", [

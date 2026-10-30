@@ -30,7 +30,7 @@ from loaders.combined_fights import load_combined_fights
 from ratings.era import era_rated
 from ratings.legacy_resume import contender_resume_rows, legacy_points
 from ratings.opponent_quality import CONTENDER_LINE_MU
-from ratings.rate_snapshot import _rated_rows
+from ratings.fights import rated_rows
 from ratings.scope import DEFAULT_PUBLISHED_SCOPE
 from ratings.symon_score import DEFAULT_CAREER_REFERENCE, year_reference
 
@@ -54,7 +54,7 @@ def figures(S: Path = PUBLISHED_SNAPSHOT) -> dict[str, float | str]:
 
     h = pd.read_parquet(S / "ratings_history_whr.parquet")
     f, _ = load_combined_fights(S, scope=DEFAULT_PUBLISHED_SCOPE, label="readme")
-    r = contender_resume_rows(_rated_rows(f), era_rated(h))
+    r = contender_resume_rows(rated_rows(f), era_rated(h))
     r = r.assign(above=r["opponent_mu"] - CONTENDER_LINE_MU).sort_values("above", ascending=False)
     ra, rb = r[r["fighter"].eq(P[0])], r[r["fighter"].eq(P[1])]
     for i in range(2):

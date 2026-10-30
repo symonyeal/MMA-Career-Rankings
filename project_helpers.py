@@ -9,6 +9,14 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+PROJECT_ROOT = Path(__file__).resolve().parent
+
+
+def project_path(path: Path) -> str:
+    """Repository-relative POSIX path, or an absolute path for an external input."""
+    path = Path(path).resolve()
+    return (path.relative_to(PROJECT_ROOT) if path.is_relative_to(PROJECT_ROOT) else path).as_posix()
+
 # P_ID_ALIAS : project-owned source-id/name override table
 # RE_SID     : terminal Sherdog-id display suffix
 
@@ -171,3 +179,22 @@ def date_range(df: pd.DataFrame) -> tuple[str | None, str | None]:
         if not dates.empty:
             return str(dates.min().date()), str(dates.max().date())
     return None, None
+
+
+def group_bounds(*keys: pd.Series) -> tuple[np.ndarray, np.ndarray]:
+    """Half-open row ranges of each run of equal key tuples in an already-sorted frame.
+
+    The equivalent of ``groupby(sort=False)`` over a frame that is already
+    ordered by those keys, without materializing a group object per event.
+    """
+    n = len(keys[0])
+    if n == 0:
+        return np.empty(0, dtype=np.int64), np.empty(0, dtype=np.int64)
+    changed = np.zeros(n - 1, dtype=bool)
+    for key in keys:
+        values = key.to_numpy()
+        changed |= values[1:] != values[:-1]
+    boundary = np.flatnonzero(changed) + 1
+    starts = np.concatenate(([0], boundary))
+    stops = np.concatenate((boundary, [n]))
+    return starts, stops

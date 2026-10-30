@@ -32,10 +32,12 @@ from pathlib import Path
 
 import pandas as pd
 
-from ratings import prequential as PQ
+from ratings import fights as F
 from ratings.boards import (
-    CORE_RATING_CANDIDATES,
-    CURRENT_RATING_CANDIDATES,
+    PUBLIC_BOARDS,
+    PRIME_RATING_CANDIDATES,
+    INTEGRITY_RATING_CANDIDATES, RATING_FLOOR_IS_UNRANKED,
+    select_core_rating_col, select_integrity_rating_col, public_legacy_eligibility_override,
     UNRANKED_AT_FLOOR_STATUS,
     completeness_gated_board,
     elite_win_mass,
@@ -60,7 +62,7 @@ from ratings.opponent_quality import (
 )
 from ratings.scope import DEFAULT_PUBLISHED_SCOPE, scope_sources
 from ratings.division_legacy import MEN_LIMIT_LB, class_board, class_ledger, class_scores
-from ratings.performance_adjustment import womens_division_label
+from ratings.divisions import womens_division_label
 import itertools
 
 # d : published division label
@@ -70,19 +72,6 @@ import itertools
 # The integrity debit is denominated in rating points, so keep that judgement
 # on a base WHR point scale. This one is not shared: no other consumer applies a
 # point-scale debit.
-INTEGRITY_RATING_CANDIDATES = (
-    "mu_whr",
-)
-
-# Scores with a hard floor that means "no evidence of clearing the bar", not
-# "the lowest measured level". Career Skill Mass sums a clipped positive excess,
-# so zero is an abstention and every fighter sitting on it is tied, not ordered.
-# Base WHR mu has no such floor and must not appear here.
-RATING_FLOOR_IS_UNRANKED = {
-    "public_legacy_score": 0.0,
-    "symon_career_skill_mass": 0.0,
-}
-
 README_BOARD_BEGIN = "<!-- BOARD:TOP100:BEGIN -->"
 README_BOARD_END = "<!-- BOARD:TOP100:END -->"
 README_WOMEN_BEGIN = "<!-- BOARD:WOMEN10:BEGIN -->"
@@ -124,8 +113,8 @@ README_RELEASE_END = "<!-- PUBLICATION:RELEASE:END -->"
 CURRENT_BOARD_TOP = 30
 CURRENT_MAX_MONTHS_INACTIVE = CURRENT_WINDOW_MONTHS
 CURRENT_MIN_UFC_BOUTS = MIN_OPPONENT_UFC_BOUTS
-CURRENT_SCORE_COL = "current_board_score"
-CURRENT_SOURCE_COL = "current_score"
+CURRENT_SCORE_COL = PUBLIC_BOARDS["current"].score
+CURRENT_SOURCE_COL = PUBLIC_BOARDS["current"].source
 CURRENT_TESTED_LABEL = "UFC bouts"
 CURRENT_RECENCY_COL = "months_since_ufc"
 
@@ -153,7 +142,7 @@ CURRENT_RECENCY_COL = "months_since_ufc"
 # rating level, so unlike the all-time score it has no zero floor meaning "no
 # evidence" -- it is simply absent for anyone short of the appearance minimum,
 # and must NOT be added to RATING_FLOOR_IS_UNRANKED.
-PRIME_RATING_COL = "symon_prime_score"
+PRIME_RATING_COL = PRIME_RATING_CANDIDATES[0]
 
 # The elite-tested Prime board ranks the same Prime score behind a floor on
 # PROVEN record inside the selected Prime window: at least MIN_QUALITY_WINS wins
@@ -185,8 +174,8 @@ ELITE_PRIME_TOP = 50
 # The discount is anchored at the weakest qualifying level, not the cohort mean.
 # See ``evidence_weighted_score``: a mean anchor raises sub-mean fighters as
 # evidence thins, which is backwards for a board.
-ELITE_PRIME_RATING_COL = "elite_prime_score"
-ELITE_LEVEL_COL = "elite_level"
+ELITE_PRIME_RATING_COL = PUBLIC_BOARDS["prime"].score
+ELITE_LEVEL_COL = PUBLIC_BOARDS["prime"].source
 
 # The men's and women's boards are built and published SEPARATELY. The rule and
 # the measurements behind it live in ``ratings/gender.py``, which every ranking
@@ -226,62 +215,12 @@ def _validate_rating_scope(
     return manifest
 
 
-def _select_rating_col(
-    current: pd.DataFrame,
-    candidates: tuple[str, ...],
-    *,
-    board_name: str,
-) -> str:
-    for column in candidates:
-        if column in current.columns:
-            return column
-    raise ValueError(
-        f"cannot build {board_name}: none of the supported rating columns are present "
-        f"({', '.join(candidates)})"
-    )
 
 
-def select_core_rating_col(current: pd.DataFrame) -> str:
-    """Choose the lean headline score, never a retired weighted stream."""
-    return _select_rating_col(current, CORE_RATING_CANDIDATES, board_name="core board")
 
 
-def select_current_rating_col(current: pd.DataFrame) -> str:
-    """Choose the age/inactivity-projected level the Current board ranks."""
-    return _select_rating_col(
-        current, CURRENT_RATING_CANDIDATES, board_name="current board"
-    )
 
 
-def select_integrity_rating_col(current: pd.DataFrame) -> str:
-    """Choose a base WHR point score compatible with the direct integrity debit."""
-    return _select_rating_col(
-        current,
-        INTEGRITY_RATING_CANDIDATES,
-        board_name="integrity-discounted board",
-    )
-
-
-def public_legacy_eligibility_override(current: pd.DataFrame) -> pd.Series:
-    """Let proven UFC title resumes rank before the generic 13-period floor."""
-    idx = current.index
-    periods = pd.to_numeric(current.get("rating_periods", pd.Series(0, index=idx)), errors="coerce").fillna(0)
-    score = pd.to_numeric(current.get("public_legacy_score", pd.Series(0, index=idx)), errors="coerce").fillna(0)
-    title_wins = pd.to_numeric(
-        current.get("public_legacy_title_wins", pd.Series(0, index=idx)), errors="coerce"
-    ).fillna(0)
-    title_defenses = pd.to_numeric(
-        current.get("public_legacy_title_defenses", pd.Series(0, index=idx)), errors="coerce"
-    ).fillna(0)
-    ufc_bouts = pd.to_numeric(
-        current.get("public_legacy_ufc_bouts", pd.Series(0, index=idx)), errors="coerce"
-    ).fillna(0)
-    return (
-        periods.ge(8)
-        & ufc_bouts.ge(8)
-        & score.gt(0)
-        & (title_wins.ge(3) | (title_wins.ge(2) & title_defenses.ge(1)))
-    )
 
 
 # Kept as a module-level name because tests and build_top100_audit.py import it
@@ -412,7 +351,7 @@ def write_board_artifacts(
     _validate_rating_scope(snap, scope)
     current = pd.read_parquet(snap / "ratings_current.parquet")
     appearances = pd.read_parquet(snap / "integrity_appearances.parquet")
-    fights = PQ.load_fight_table(snap, scope=scope)
+    fights = F.load_fight_table(snap, scope=scope)
 
     core_col = _requested_core_rating_col(current, rating_col)
     integrity_col = _requested_integrity_rating_col(current, integrity_rating_col)
@@ -449,9 +388,8 @@ def write_board_artifacts(
     ledger.to_parquet(target / "integrity_ledger.parquet", index=False)
     board.to_parquet(target / "integrity_discounted_board.parquet", index=False)
     for gender, frame in boards.items():
-        suffix = BOARD_GENDER_SUFFIX[gender]
         frame.to_parquet(
-            target / f"completeness_gated_board{suffix}.parquet", index=False
+            target / PUBLIC_BOARDS["all_time"].filename(gender), index=False
         )
 
     classes = None
@@ -519,7 +457,7 @@ def write_board_artifacts(
                 on="fighter", how="left",
             )
             elite_prime_boards[gender].to_parquet(
-                target / f"prime_elite_board{suffix}.parquet", index=False
+                target / PUBLIC_BOARDS["prime"].filename(gender), index=False
             )
 
     # The Current board ranks the score rate_snapshot stored beside the All-time
@@ -558,7 +496,7 @@ def write_board_artifacts(
                 continue
             current_boards[gender] = frame
             frame.to_parquet(
-                target / f"current_board{BOARD_GENDER_SUFFIX[gender]}.parquet", index=False
+                target / PUBLIC_BOARDS["current"].filename(gender), index=False
             )
 
     return {
@@ -620,12 +558,12 @@ def class_board_frame(
     Refuses to publish unless every fighter's class scores sum to their published All-time
     score: the class boards and the All-time board are one measure, split by where it was earned.
     """
-    from ratings.rate_snapshot import _source_fights_for_public_resume
+    from ratings.fights import resume_fights
 
     snap = Path(snapshot_dir)
     scores = class_scores(current, class_ledger(
         current, pd.read_parquet(snap / "performance_appearances.parquet"),
-        source_fights=_source_fights_for_public_resume(snap, scope),
+        source_fights=resume_fights(snap, scope),
         history=era_rated(pd.read_parquet(snap / "ratings_history_whr.parquet")),
     ))
     total = scores.groupby("fighter")["score"].sum().reindex(current["fighter"]).fillna(0.0)
@@ -1058,8 +996,8 @@ def main() -> None:
     out = Path(summary["out_dir"])
     ledger = pd.read_parquet(out / "integrity_ledger.parquet")
     board = pd.read_parquet(out / "integrity_discounted_board.parquet")
-    gated = pd.read_parquet(out / "completeness_gated_board.parquet")
-    women_path = out / "completeness_gated_board_women.parquet"
+    gated = pd.read_parquet(out / PUBLIC_BOARDS["all_time"].filename("M"))
+    women_path = out / PUBLIC_BOARDS["all_time"].filename("F")
     women = pd.read_parquet(women_path) if women_path.exists() else None
     core_col = str(summary["core_rating_col"])
     debited = board[board["integrity_cost"] > 0]
@@ -1107,8 +1045,8 @@ def main() -> None:
         # The Prime boards are read before the all-time tables are rendered, so
         # each all-time board can print the Prime position of the same gender.
         generated_elite = summary.get("elite_prime_ranked_by_gender", {})
-        elite_path = out / "prime_elite_board.parquet"
-        elite_women_path = out / "prime_elite_board_women.parquet"
+        elite_path = out / PUBLIC_BOARDS["prime"].filename("M")
+        elite_women_path = out / PUBLIC_BOARDS["prime"].filename("F")
         prime_rank_men = board_rank_map(elite_path) if "M" in generated_elite else None
         prime_rank_women = (
             board_rank_map(elite_women_path) if "F" in generated_elite else None
@@ -1155,7 +1093,7 @@ def main() -> None:
         current_table: str | None = None
         if current_col and "M" in generated_current:
             current_table = current_board_markdown(
-                pd.read_parquet(out / "current_board.parquet"),
+                pd.read_parquet(out / PUBLIC_BOARDS["current"].filename("M")),
                 current,
                 rating_col=str(current_col),
                 top=args.current_top,
@@ -1169,7 +1107,7 @@ def main() -> None:
                     README_CURRENT_WOMEN_BEGIN,
                     README_CURRENT_WOMEN_END,
                     current_board_markdown(
-                        pd.read_parquet(out / "current_board_women.parquet"),
+                        pd.read_parquet(out / PUBLIC_BOARDS["current"].filename("F")),
                         current,
                         rating_col=str(current_col),
                         top=args.women_top,
@@ -1193,8 +1131,8 @@ def main() -> None:
         if class_path.exists():
             ranks = {
                 g: board_rank_map(p)
-                for g, p in (("M", out / "completeness_gated_board.parquet"),
-                             ("F", out / "completeness_gated_board_women.parquet"))
+                for g, p in (("M", out / PUBLIC_BOARDS["all_time"].filename("M")),
+                             ("F", out / PUBLIC_BOARDS["all_time"].filename("F")))
                 if p.exists()
             }
             replacements.append((README_CLASS_BEGIN, README_CLASS_END,

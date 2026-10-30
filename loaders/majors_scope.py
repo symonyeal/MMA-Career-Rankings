@@ -49,6 +49,7 @@ import numpy as np
 import pandas as pd
 
 from loaders.career_coverage import (
+    CAREER_COVERAGE_ARTIFACT,
     coverage_rows,
     coverage_summary,
     describe,
@@ -66,7 +67,6 @@ from loaders.crossorg_identity import (
 from loaders.fightmatrix_organizations import normalize_organization
 from loaders.page_cache import open_cache
 from loaders.sherdog_loader import classify_method
-from project_helpers import normalize_name_key
 
 # cn   : UFC rows after stable Sherdog-id disambiguation
 # C_id : unresolved canonical identity claims
@@ -83,7 +83,6 @@ MAJORS_BOUTS = "majors_bouts.parquet"
 # not an extension to concatenate alongside it.
 MAJORS_CAREERS = "crossorg_bouts.parquet"
 SNAPSHOT_ARTIFACT = "majors_fights.parquet"
-CAREER_COVERAGE_ARTIFACT = "career_coverage.parquet"
 SHERDOG_BIRTH_DATES_ARTIFACT = "sherdog_birth_dates.parquet"
 # Versioned beside the page store, which is a local 320 MB cache. See
 # profile_birth_dates().
@@ -290,7 +289,7 @@ def to_canonical_fights(bouts: pd.DataFrame, identity: pd.DataFrame) -> pd.DataF
     return out.reset_index(drop=True)
 
 
-def _build_majors_fights(
+def build_majors_fights(
     canonical_fights: pd.DataFrame,
     *,
     majors_dir: Path = DEFAULT_MAJORS_DIR,
@@ -319,18 +318,6 @@ def _build_majors_fights(
     }
     merged_ids = incorporated_page_ids(majors_dir, bouts)
     return fights, report, identity, merged_ids
-
-
-def build_majors_fights(
-    canonical_fights: pd.DataFrame,
-    *,
-    majors_dir: Path = DEFAULT_MAJORS_DIR,
-) -> tuple[pd.DataFrame, dict]:
-    """Public two-value form retained for callers that do not need identity."""
-    fights, report, _, _ = _build_majors_fights(
-        canonical_fights, majors_dir=majors_dir
-    )
-    return fights, report
 
 
 def profile_birth_dates(cache_dir: Path) -> dict[str, str]:
@@ -400,7 +387,7 @@ def stage_majors_scope(
     """Write ``majors_fights.parquet`` beside the snapshot it belongs to."""
     snapshot_dir = Path(snapshot_dir)
     canonical = pd.read_parquet(snapshot_dir / "canonical_fights.parquet")
-    fights, report, identity, merged_ids = _build_majors_fights(
+    fights, report, identity, merged_ids = build_majors_fights(
         canonical, majors_dir=majors_dir
     )
     cn = align_identities(canonical, fights)
@@ -450,17 +437,3 @@ def stage_majors_scope(
             "Run build_sherdog_careers.py."
         )
     return report
-
-
-def unmatched_names(bouts: pd.DataFrame, identity: pd.DataFrame, *, top: int = 40) -> pd.DataFrame:
-    """The busiest Sherdog ids that did not join a canonical fighter.
-
-    A name-matching audit, not a rating input: these fighters are still rated
-    under their Sherdog identity. A UFC fighter appearing here is a missed
-    join, and the fix is an entry in ``identity_overrides.csv``.
-    """
-    unjoined = identity[identity["join_method"].isin({"unjoined", "collision"})]
-    counts = pd.concat([bouts["fighter_a_id"], bouts["fighter_b_id"]]).value_counts()
-    out = unjoined.assign(bouts=unjoined["sherdog_id"].map(counts).fillna(0).astype(int))
-    out["name_key"] = out["sherdog_name"].map(lambda n: normalize_name_key(n, compact=True))
-    return out.sort_values("bouts", ascending=False).head(top).reset_index(drop=True)

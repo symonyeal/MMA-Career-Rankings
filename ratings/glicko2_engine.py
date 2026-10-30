@@ -74,78 +74,155 @@ def _rate_weighted(
 ) -> Rating:
     """Weighted Glicko-2 rate-step.
 
-    Mirrors `Glicko2.rate()` in `_glicko2.py` (which is vendored and not
-    edited per its header), but multiplies each term in the variance and
-    difference accumulators by a per-result weight `w_i`. When every weight
-    is exactly 1.0 the output is byte-for-byte identical to `env.rate()`
-    within floating-point tolerance — verified by a regression test.
+    Delegates to the shared `Glicko2.rate_weighted()` calculation. Each term
+    in the variance and difference accumulators is multiplied by its weight.
+    Unit weights preserve the unweighted update exactly.
 
     `series` entries are `(actual_score, other_rating, weight)`. Weights
     of 0.0 drop the result from the update. An empty series, or a series
     whose weights sum (in the variance-inverse sense) to zero, returns
     the inactive-period φ-inflated rating, same as `env.rate(_, [])`.
     """
-    rating = env.scale_down(rating)
-    if not series:
-        phi_star = math.sqrt(rating.phi ** 2 + rating.sigma ** 2)
-        return env.scale_up(env.create_rating(rating.mu, phi_star, rating.sigma))
+    return env.rate_weighted(rating, series)
 
-    variance_inv = 0.0
-    difference = 0.0
-    for actual_score, other_rating, weight in series:
-        if weight == 0:
+
+def _ensure_state(engine, fighter: str, factory):
+    if fighter not in engine.states:
+        engine.states[fighter] = factory()
+    return engine.states[fighter]
+
+
+def _inflate_state(engine, fighter: str, current_date: pd.Timestamp, fields: tuple[str, ...]) -> None:
+    state = engine.states[fighter]
+    if state.last_event_date is None:
+        return
+    n = int(_months_between(state.last_event_date, current_date))
+    for field in fields:
+        setattr(state, field, engine.env.inflate(getattr(state, field), n))
+
+
+def _result_scores(bout: dict, *, method: bool, quality: bool) -> tuple[float, float] | None:
+    a, b, winner = bout["fighter_a"], bout["fighter_b"], bout["winner"]
+    if bout["is_draw"]:
+        return 0.5, 0.5
+    if winner == a:
+        scores = (1.0, 0.0)
+        winner_side = 0
+    elif winner == b:
+        scores = (0.0, 1.0)
+        winner_side = 1
+    else:
+        return None
+    if not method:
+        return scores
+    value = bout.get("quality_score_winner") if quality else bout.get("method_score_winner")
+    if value is None or pd.isna(value):
+        value = bout.get("method_score_winner")
+    if value is None or pd.isna(value):
+        return scores
+    winner_score = float(value)
+    return (winner_score, 1.0 - winner_score) if winner_side == 0 else (1.0 - winner_score, winner_score)
+
+
+def _process_event(
+    engine,
+    event_date: pd.Timestamp,
+    event_name: str,
+    bouts: list[dict],
+    *,
+    fields: tuple[str, ...],
+    score_mode: str,
+    weighted: bool,
+    state_factory,
+    history_factory,
+) -> None:
+    fighters = {fighter for bout in bouts for fighter in (bout["fighter_a"], bout["fighter_b"])}
+    for fighter in fighters:
+        _ensure_state(engine, fighter, lambda: state_factory(engine.env))
+        _inflate_state(engine, fighter, event_date, fields)
+
+    pre = {fighter: {field: getattr(engine.states[fighter], field) for field in fields} for fighter in fighters}
+    series = {fighter: {field: [] for field in fields} for fighter in fighters}
+    is_method = score_mode in {"method", "quality_method"} or "method" in fields
+    quality = score_mode == "quality_method"
+
+    for bout in bouts:
+        a, b = bout["fighter_a"], bout["fighter_b"]
+        wa = float(bout.get("weight_a", 1.0)) if weighted else 1.0
+        wb = float(bout.get("weight_b", 1.0)) if weighted else 1.0
+        scores = _result_scores(bout, method=is_method, quality=quality)
+        if scores is None:
             continue
-        other_rating = env.scale_down(other_rating)
-        impact = env.reduce_impact(other_rating)
-        expected_score = env.expect_score(rating, other_rating, impact)
-        # The weight multiplies both accumulators, preserving Glickman's
-        # variance-weighted-difference invariant while scaling result impact.
-        variance_inv += weight * (impact ** 2) * expected_score * (1 - expected_score)
-        difference += weight * impact * (actual_score - expected_score)
+        # Canonical and method ratings consume separate score pairs; a weighted
+        # engine has one score stream selected by score_mode.
+        if "canonical" in fields and "method" in fields:
+            canonical = _result_scores(bout, method=False, quality=False)
+            for field, pair, wa_i, wb_i in (
+                ("canonical", canonical, wa, wb), ("method", scores, wa, wb),
+            ):
+                for fighter, opponent, score, weight in ((a, b, pair[0], wa_i), (b, a, pair[1], wb_i)):
+                    item = (score, pre[opponent][field], weight) if weighted else (score, pre[opponent][field])
+                    series[fighter][field].append(item)
+        else:
+            for fighter, opponent, score, weight in ((a, b, scores[0], wa), (b, a, scores[1], wb)):
+                field = fields[0]
+                item = (score, pre[opponent][field], weight) if weighted else (score, pre[opponent][field])
+                series[fighter][field].append(item)
 
-    if variance_inv == 0:
-        # Either an empty series after weight=0 filtering, or numerical
-        # degeneracy. Treat as inactive period.
-        phi_star = math.sqrt(rating.phi ** 2 + rating.sigma ** 2)
-        return env.scale_up(env.create_rating(rating.mu, phi_star, rating.sigma))
+    for fighter in fighters:
+        state = engine.states[fighter]
+        for field in fields:
+            if series[fighter][field]:
+                if weighted:
+                    updated = engine.env.rate_weighted(pre[fighter][field], series[fighter][field])
+                else:
+                    updated = engine.env.rate(pre[fighter][field], series[fighter][field])
+                setattr(state, field, updated)
+        if fields == ("canonical", "method"):
+            state.peak_mu_canonical = max(state.peak_mu_canonical, state.canonical.mu)
+            state.peak_mu_method = max(state.peak_mu_method, state.method.mu)
+            row = history_factory(
+                fighter, event_date, event_name, state, len(series[fighter]["canonical"]), pre[fighter],
+            )
+        else:
+            state.peak_mu = max(state.peak_mu, state.rating.mu)
+            total_weight = float(sum(w for _, _, w in series[fighter]["rating"]))
+            row = history_factory(
+                fighter, event_date, event_name, state, len(series[fighter]["rating"]),
+                total_weight, pre[fighter],
+            )
+        state.last_event_date = event_date
+        engine.history.append(row)
 
-    difference /= variance_inv
-    variance = 1.0 / variance_inv
-    sigma = env.determine_sigma(rating, difference, variance)
-    phi_star = math.sqrt(rating.phi ** 2 + sigma ** 2)
-    phi = 1.0 / math.sqrt(1.0 / phi_star ** 2 + 1.0 / variance)
-    mu = rating.mu + (phi ** 2) * (difference / variance)
-    return env.scale_up(env.create_rating(mu, phi, sigma))
+
+def _history_frame(history: list) -> pd.DataFrame:
+    frame = pd.DataFrame([row.__dict__ for row in history])
+    if frame.empty:
+        return frame
+    return frame.sort_values(["fighter", "event_date"]).reset_index(drop=True)
+
+
+def _current_frame(engine, columns: dict[str, tuple[str, str]], sort_column: str) -> pd.DataFrame:
+    rows = []
+    for fighter, state in engine.states.items():
+        row = {"fighter": fighter}
+        for column, (field, attribute) in columns.items():
+            value = getattr(state, field)
+            row[column] = getattr(value, attribute) if attribute else value
+        row["last_event_date"] = state.last_event_date
+        rows.append(row)
+    return pd.DataFrame(rows).sort_values(sort_column, ascending=False).reset_index(drop=True)
 
 
 class RatingEngine:
     """Per-event Glicko-2 engine with lazy φ-inflation between appearances."""
 
-    def __init__(self, tau: float = DEFAULT_TAU):
-        self.env = Glicko2(tau=tau)
+    def __init__(self, tau: float = DEFAULT_TAU, backend: str = "auto"):
+        self.env = Glicko2(tau=tau, backend=backend)
         self.tau = tau
         self.states: dict[str, FighterState] = {}
         self.history: list[HistoryRow] = []
 
-    def _ensure(self, fighter: str) -> FighterState:
-        if fighter not in self.states:
-            self.states[fighter] = FighterState(
-                canonical=self.env.create_rating(),
-                method=self.env.create_rating(),
-            )
-        return self.states[fighter]
-
-    def _inflate(self, fighter: str, current_date: pd.Timestamp) -> None:
-        st = self.states[fighter]
-        if st.last_event_date is None:
-            return
-        n = int(_months_between(st.last_event_date, current_date))
-        if n <= 0:
-            return
-        # apply the inactive-period update once per elapsed month
-        for _ in range(n):
-            st.canonical = self.env.rate(st.canonical, [])
-            st.method = self.env.rate(st.method, [])
 
     def process_event(self, event_date: pd.Timestamp, event_name: str, bouts: list[dict]) -> None:
         """Process all bouts on a single event atomically.
@@ -153,121 +230,32 @@ class RatingEngine:
         Each dict must have: fighter_a, fighter_b, winner, is_draw,
         method_score_winner (None if draw or unknown).
         """
-        fighters = set()
-        for b in bouts:
-            fighters.add(b["fighter_a"])
-            fighters.add(b["fighter_b"])
-
-        for f in fighters:
-            self._ensure(f)
-            self._inflate(f, event_date)
-
-        # Snapshot pre-event ratings — opponents are evaluated at start-of-period.
-        pre_canon = {f: self.states[f].canonical for f in fighters}
-        pre_method = {f: self.states[f].method for f in fighters}
-
-        series_canon: dict[str, list[tuple[float, Rating]]] = {f: [] for f in fighters}
-        series_method: dict[str, list[tuple[float, Rating]]] = {f: [] for f in fighters}
-
-        for b in bouts:
-            a, c = b["fighter_a"], b["fighter_b"]
-            if b["is_draw"]:
-                sa_c, sc_c = 0.5, 0.5
-                sa_m, sc_m = 0.5, 0.5
-            elif b["winner"] == a:
-                sa_c, sc_c = 1.0, 0.0
-                ms = b.get("method_score_winner")
-                if ms is None or pd.isna(ms):
-                    sa_m, sc_m = 1.0, 0.0
-                else:
-                    sa_m, sc_m = float(ms), 1.0 - float(ms)
-            elif b["winner"] == c:
-                sa_c, sc_c = 0.0, 1.0
-                ms = b.get("method_score_winner")
-                if ms is None or pd.isna(ms):
-                    sa_m, sc_m = 0.0, 1.0
-                else:
-                    sa_m, sc_m = 1.0 - float(ms), float(ms)
-            else:
-                # winner None for non-draw, non-excluded bout — shouldn't happen
-                # in the canonical table, but skip defensively.
-                continue
-            series_canon[a].append((sa_c, pre_canon[c]))
-            series_canon[c].append((sc_c, pre_canon[a]))
-            series_method[a].append((sa_m, pre_method[c]))
-            series_method[c].append((sc_m, pre_method[a]))
-
-        # Apply rate() once per fighter using pre-event snapshots.
-        for f in fighters:
-            st = self.states[f]
-            if series_canon[f]:
-                st.canonical = self.env.rate(pre_canon[f], series_canon[f])
-                st.method = self.env.rate(pre_method[f], series_method[f])
-            st.peak_mu_canonical = max(st.peak_mu_canonical, st.canonical.mu)
-            st.peak_mu_method = max(st.peak_mu_method, st.method.mu)
-            st.last_event_date = event_date
-            self.history.append(HistoryRow(
-                fighter=f,
-                event_date=event_date,
-                event_name=event_name,
-                mu_canonical=st.canonical.mu,
-                phi_canonical=st.canonical.phi,
-                sigma_canonical=st.canonical.sigma,
-                mu_method=st.method.mu,
-                phi_method=st.method.phi,
-                sigma_method=st.method.sigma,
-                opponents_this_event=len(series_canon[f]),
-                pre_mu_canonical=pre_canon[f].mu,
-                pre_phi_canonical=pre_canon[f].phi,
-                pre_mu_method=pre_method[f].mu,
-                pre_phi_method=pre_method[f].phi,
-            ))
+        _process_event(
+            self, event_date, event_name, bouts,
+            fields=("canonical", "method"), score_mode="method", weighted=False,
+            state_factory=lambda env: FighterState(env.create_rating(), env.create_rating()),
+            history_factory=lambda fighter, date, name, state, n, pre: HistoryRow(
+                fighter, date, name,
+                state.canonical.mu, state.canonical.phi, state.canonical.sigma,
+                state.method.mu, state.method.phi, state.method.sigma,
+                n, pre["canonical"].mu, pre["canonical"].phi,
+                pre["method"].mu, pre["method"].phi,
+            ),
+        )
 
     # ------------------------------------------------------------------
     # Output helpers
 
     def history_df(self) -> pd.DataFrame:
-        rows = [r.__dict__ for r in self.history]
-        df = pd.DataFrame(rows)
-        if df.empty:
-            return df
-        return df.sort_values(["fighter", "event_date"]).reset_index(drop=True)
+        return _history_frame(self.history)
 
     def current_table(self) -> pd.DataFrame:
-        rows = []
-        for f, st in self.states.items():
-            rows.append({
-                "fighter": f,
-                "mu_canonical": st.canonical.mu,
-                "phi_canonical": st.canonical.phi,
-                "sigma_canonical": st.canonical.sigma,
-                "mu_method": st.method.mu,
-                "phi_method": st.method.phi,
-                "sigma_method": st.method.sigma,
-                "peak_mu_canonical": st.peak_mu_canonical,
-                "peak_mu_method": st.peak_mu_method,
-                "last_event_date": st.last_event_date,
-            })
-        df = pd.DataFrame(rows).sort_values("mu_canonical", ascending=False).reset_index(drop=True)
-        return df
-
-    # ------------------------------------------------------------------
-    # Prediction helpers (use μ_canonical only — calibration valid)
-
-    def predict_win_prob(self, a: str, b: str) -> float:
-        """Probability that `a` beats `b` at current ratings."""
-        ra = self.states[a].canonical if a in self.states else self.env.create_rating()
-        rb = self.states[b].canonical if b in self.states else self.env.create_rating()
-        # scale down for the internal expect_score
-        ra_s = self.env.scale_down(ra)
-        rb_s = self.env.scale_down(rb)
-        impact = self.env.reduce_impact(rb_s)
-        return self.env.expect_score(ra_s, rb_s, impact)
-
-    def matchup_quality(self, a: str, b: str) -> float:
-        ra = self.states[a].canonical if a in self.states else self.env.create_rating()
-        rb = self.states[b].canonical if b in self.states else self.env.create_rating()
-        return self.env.quality_1vs1(ra, rb)
+        return _current_frame(self, {
+            "mu_canonical": ("canonical", "mu"), "phi_canonical": ("canonical", "phi"),
+            "sigma_canonical": ("canonical", "sigma"), "mu_method": ("method", "mu"),
+            "phi_method": ("method", "phi"), "sigma_method": ("method", "sigma"),
+            "peak_mu_canonical": ("peak_mu_canonical", ""), "peak_mu_method": ("peak_mu_method", ""),
+        }, "mu_canonical")
 
 
 @dataclass
@@ -301,29 +289,15 @@ class WeightedRatingEngine:
     `RatingEngine`'s canonical stream (regression-tested).
     """
 
-    def __init__(self, tau: float = DEFAULT_TAU, score_mode: str = "canonical"):
+    def __init__(self, tau: float = DEFAULT_TAU, score_mode: str = "canonical", backend: str = "auto"):
         if score_mode not in {"canonical", "method", "quality_method"}:
             raise ValueError(f"unknown weighted score mode: {score_mode!r}")
-        self.env = Glicko2(tau=tau)
+        self.env = Glicko2(tau=tau, backend=backend)
         self.tau = tau
         self.score_mode = score_mode
         self.states: dict[str, WeightedFighterState] = {}
         self.history: list[WeightedHistoryRow] = []
 
-    def _ensure(self, fighter: str) -> WeightedFighterState:
-        if fighter not in self.states:
-            self.states[fighter] = WeightedFighterState(rating=self.env.create_rating())
-        return self.states[fighter]
-
-    def _inflate(self, fighter: str, current_date: pd.Timestamp) -> None:
-        st = self.states[fighter]
-        if st.last_event_date is None:
-            return
-        n = int(_months_between(st.last_event_date, current_date))
-        if n <= 0:
-            return
-        for _ in range(n):
-            st.rating = self.env.rate(st.rating, [])
 
     def process_event(
         self,
@@ -337,92 +311,25 @@ class WeightedRatingEngine:
         weight_a (per-result update weight applied to fighter_a's update),
         weight_b (same for fighter_b). Weights default to 1.0 when absent.
         """
-        fighters = set()
-        for b in bouts:
-            fighters.add(b["fighter_a"])
-            fighters.add(b["fighter_b"])
-
-        for f in fighters:
-            self._ensure(f)
-            self._inflate(f, event_date)
-
-        pre = {f: self.states[f].rating for f in fighters}
-        series: dict[str, list[tuple[float, Rating, float]]] = {f: [] for f in fighters}
-
-        for b in bouts:
-            a, c = b["fighter_a"], b["fighter_b"]
-            wa = float(b.get("weight_a", 1.0))
-            wc = float(b.get("weight_b", 1.0))
-            if b["is_draw"]:
-                sa, sc = 0.5, 0.5
-            elif b["winner"] == a:
-                if self.score_mode in {"method", "quality_method"}:
-                    ms = (
-                        b.get("quality_score_winner")
-                        if self.score_mode == "quality_method"
-                        else b.get("method_score_winner")
-                    )
-                    if ms is None or pd.isna(ms):
-                        ms = b.get("method_score_winner")
-                    sa, sc = (1.0, 0.0) if ms is None or pd.isna(ms) else (float(ms), 1.0 - float(ms))
-                else:
-                    sa, sc = 1.0, 0.0
-            elif b["winner"] == c:
-                if self.score_mode in {"method", "quality_method"}:
-                    ms = (
-                        b.get("quality_score_winner")
-                        if self.score_mode == "quality_method"
-                        else b.get("method_score_winner")
-                    )
-                    if ms is None or pd.isna(ms):
-                        ms = b.get("method_score_winner")
-                    sa, sc = (0.0, 1.0) if ms is None or pd.isna(ms) else (1.0 - float(ms), float(ms))
-                else:
-                    sa, sc = 0.0, 1.0
-            else:
-                continue
-            series[a].append((sa, pre[c], wa))
-            series[c].append((sc, pre[a], wc))
-
-        for f in fighters:
-            st = self.states[f]
-            if series[f]:
-                st.rating = _rate_weighted(self.env, pre[f], series[f])
-            st.peak_mu = max(st.peak_mu, st.rating.mu)
-            st.last_event_date = event_date
-            self.history.append(WeightedHistoryRow(
-                fighter=f,
-                event_date=event_date,
-                event_name=event_name,
-                mu=st.rating.mu,
-                phi=st.rating.phi,
-                sigma=st.rating.sigma,
-                opponents_this_event=len(series[f]),
-                total_weight=float(sum(w for _, _, w in series[f])),
-                pre_mu=pre[f].mu,
-                pre_phi=pre[f].phi,
-            ))
+        if self.score_mode not in {"canonical", "method", "quality_method"}:
+            raise ValueError(f"unknown weighted score mode: {self.score_mode!r}")
+        _process_event(
+            self, event_date, event_name, bouts, fields=("rating",), score_mode=self.score_mode, weighted=True,
+            state_factory=lambda env: WeightedFighterState(env.create_rating()),
+            history_factory=lambda fighter, date, name, state, n, total_weight, pre: WeightedHistoryRow(
+                fighter, date, name, state.rating.mu, state.rating.phi, state.rating.sigma,
+                n, total_weight, pre["rating"].mu, pre["rating"].phi,
+            ),
+        )
 
     def history_df(self) -> pd.DataFrame:
-        rows = [r.__dict__ for r in self.history]
-        df = pd.DataFrame(rows)
-        if df.empty:
-            return df
-        return df.sort_values(["fighter", "event_date"]).reset_index(drop=True)
+        return _history_frame(self.history)
 
     def current_table(self) -> pd.DataFrame:
-        rows = []
-        for f, st in self.states.items():
-            rows.append({
-                "fighter": f,
-                "mu": st.rating.mu,
-                "phi": st.rating.phi,
-                "sigma": st.rating.sigma,
-                "peak_mu": st.peak_mu,
-                "last_event_date": st.last_event_date,
-            })
-        df = pd.DataFrame(rows).sort_values("mu", ascending=False).reset_index(drop=True)
-        return df
+        return _current_frame(self, {
+            "mu": ("rating", "mu"), "phi": ("rating", "phi"), "sigma": ("rating", "sigma"),
+            "peak_mu": ("peak_mu", ""),
+        }, "mu")
 
 
 # Standalone predictor — usable without instantiating a full engine, e.g. from

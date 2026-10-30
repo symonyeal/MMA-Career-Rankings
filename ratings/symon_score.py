@@ -690,28 +690,3 @@ def career_skill_mass(history: pd.DataFrame, **kwargs) -> pd.DataFrame:
     out["rank"] = out["score"].rank(ascending=False, method="min").astype(int)
     out = out[MASS_COLUMNS]
     return _rank_order(out, "peak_year_excess")
-
-
-def career_mass_family(
-    history: pd.DataFrame,
-    *,
-    references: tuple[str | float, ...] = ("mean", 0.5, 0.75, 0.9, 0.95),
-    **kwargs,
-) -> pd.DataFrame:
-    """Career mass and rank at several bars — the dominance/longevity dial.
-
-    One row per (fighter, reference). A fighter whose rank barely moves across
-    the family is ranked by something the bar choice does not control; one whose
-    rank collapses as the bar rises was being carried by years spent slightly
-    above average.
-    """
-    frames = []
-    for reference in references:
-        board = career_skill_mass(history, reference=reference, **kwargs)
-        if board.empty:
-            continue
-        board = board.assign(reference=str(reference))
-        frames.append(board)
-    if not frames:
-        return pd.DataFrame(columns=[*MASS_COLUMNS, "reference"])
-    return pd.concat(frames, ignore_index=True)

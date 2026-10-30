@@ -43,7 +43,7 @@ from ratings.appearance_context import (
     _result_adjustment,
     _title_ladder_parts,
 )
-from ratings.performance_adjustment import DIVISION_WEIGHT_LIMIT_LB
+from ratings.divisions import DIVISION_WEIGHT_LIMIT_LB
 
 
 DIVISION_RELIABILITY_K: float = 8.0

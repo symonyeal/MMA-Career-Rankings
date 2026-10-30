@@ -527,3 +527,13 @@ WHR_VIRTUAL_GAMES: float = 1.0
 # base favoured) while the score route is unresolved there. Method is partial
 # credit on the outcome, not extra evidence about the bout.
 WHR_WINNER_SCORE_COL: str | None = "method_score_winner"
+
+
+METHOD_SCORES = {
+    "KO/TKO":               METHOD_SCORE_FINISH,
+    "Submission":           METHOD_SCORE_FINISH,
+    "Decision - Unanimous": METHOD_SCORE_UNANIMOUS,
+    "Decision - Majority":  METHOD_SCORE_NON_UNANIMOUS_DECISION,
+    "Decision - Split":     METHOD_SCORE_NON_UNANIMOUS_DECISION,
+    "DQ":                   METHOD_SCORE_DQ,
+}

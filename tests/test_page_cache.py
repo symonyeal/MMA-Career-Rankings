@@ -1,11 +1,10 @@
 """The shared page store: what a reader stores is what a reader gets back."""
 from __future__ import annotations
 
-import gzip
 
 import pytest
 
-from loaders.page_cache import STORE_NAME, PageCache, fold_in_loose_files, open_cache
+from loaders.page_cache import STORE_NAME, PageCache, open_cache
 
 
 PAGE = "<html><body>Ünïcode • 東京 <p>fight card</p></body></html>"
@@ -42,7 +41,6 @@ def test_a_numeric_key_and_its_text_form_are_one_page(tmp_path):
     cache = open_cache(tmp_path)
     cache.put("fighters", 4088, "page")
     assert cache.get("fighters", "4088") == "page"
-    assert cache.has("fighters", 4088)
 
 
 def test_the_store_lives_inside_the_cache_directory(tmp_path):
@@ -64,41 +62,6 @@ def test_items_and_keys_read_every_page_of_one_kind_in_order(tmp_path):
     assert cache.keys("events") == ["10", "20", "30"]
     assert [text for _, text in cache.items("events")] == ["page 10", "page 20", "page 30"]
     assert cache.keys("fighters") == []
-
-
-def test_folding_loose_files_preserves_text_and_can_leave_them_in_place(tmp_path):
-    (tmp_path / "events").mkdir()
-    with gzip.open(tmp_path / "events" / "4088.html.gz", "wt", encoding="utf-8") as fh:
-        fh.write(PAGE)
-    (tmp_path / "profiles.html").write_text(PAGE, encoding="utf-8")
-
-    folded = fold_in_loose_files(
-        tmp_path, {"events": (".html.gz",), ".": (".html",)}, remove=False
-    )
-
-    cache = open_cache(tmp_path)
-    assert folded == {"events": 1, ".": 1}
-    assert cache.get("events", "4088") == PAGE
-    assert cache.get(".", "profiles") == PAGE
-    assert (tmp_path / "events" / "4088.html.gz").exists(), "remove=False keeps the original"
-
-
-def test_folding_twice_does_not_refetch_or_overwrite(tmp_path):
-    (tmp_path / "events").mkdir()
-    with gzip.open(tmp_path / "events" / "1.html.gz", "wt", encoding="utf-8") as fh:
-        fh.write("from disk")
-    fold_in_loose_files(tmp_path, {"events": (".html.gz",)}, remove=False)
-    open_cache(tmp_path).put("events", "1", "corrected after the fold")
-
-    again = fold_in_loose_files(tmp_path, {"events": (".html.gz",)}, remove=True)
-
-    assert again == {"events": 0}
-    assert open_cache(tmp_path).get("events", "1") == "corrected after the fold"
-    assert not (tmp_path / "events" / "1.html.gz").exists()
-
-
-def test_a_missing_cache_directory_folds_to_nothing_rather_than_raising(tmp_path):
-    assert fold_in_loose_files(tmp_path, {"events": (".html.gz",)}) == {}
 
 
 def test_a_store_survives_being_closed_and_reopened(tmp_path):

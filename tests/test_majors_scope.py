@@ -12,7 +12,6 @@ from loaders.majors_scope import (
     resolve_identities,
     sherdog_birth_dates,
     to_canonical_fights,
-    unmatched_names,
 )
 from loaders.page_cache import open_cache
 
@@ -101,26 +100,6 @@ def test_fighter_page_event_name_recovers_a_known_organization():
     assert fights.iloc[0]["event_name"] == "UFC 147 - Silva vs. Franklin 2"
 
 
-def test_a_fighter_who_matches_nothing_keeps_their_own_identity():
-    """Not asserted to be someone in the UFC set, and still rated.
-
-    The alternative -- dropping them -- would silently remove the opponent a
-    known fighter's result was earned against, which is evidence about the
-    known fighter.
-    """
-    bouts = pd.DataFrame([
-        _card("1", "Wanderlei Silva", "9", "Nobody In The DB", date="2001-03-25"),
-    ])
-    identity = resolve_identities(bouts, _canonical())
-    fights = to_canonical_fights(bouts, identity)
-
-    assert len(fights) == 1
-    assert set(fights.iloc[0][["fighter_a", "fighter_b"]]) == {
-        "Wanderlei Silva", "Nobody In The DB"}
-    audit = unmatched_names(bouts, identity)
-    assert "Nobody In The DB" in set(audit["sherdog_name"])
-
-
 def test_build_reports_the_bridge_population(tmp_path):
     """How many fighters the two corpora share is the whole joint fit's leverage."""
     pd.DataFrame([
@@ -129,7 +108,7 @@ def test_build_reports_the_bridge_population(tmp_path):
               event_id="7"),
     ]).to_parquet(tmp_path / "majors_bouts.parquet", index=False)
 
-    fights, report = build_majors_fights(_canonical(), majors_dir=tmp_path)
+    fights, report, _, _ = build_majors_fights(_canonical(), majors_dir=tmp_path)
 
     assert report["source_bouts"] == 2
     assert report["rateable_bouts"] == 2

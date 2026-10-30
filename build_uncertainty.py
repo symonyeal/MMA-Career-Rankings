@@ -24,9 +24,7 @@ import json
 import time
 from pathlib import Path
 
-import pandas as pd
 
-from ratings import prequential as PQ
 from ratings.constants import SUSTAINED_PEAK_MIN_FIGHTS
 from ratings.scope import DEFAULT_PUBLISHED_SCOPE
 from ratings.gender import (
@@ -34,19 +32,13 @@ from ratings.gender import (
     GENDER_LABEL,
     GENDER_SUFFIX,
     GENDERS,
-    select_component_fights,
-    select_gender,
 )
-from ratings.legacy_resume import _division_labels
 from ratings.symon_score import (
     DEFAULT_CAREER_REFERENCE,
-    DEFAULT_DIVISION_REFERENCE,
-    DEFAULT_HINGE_SPREAD_FRACTION,
     parse_reference,
 )
-from ratings.whr import production_score_kwargs
-from ratings.uncertainty import career_mass_bootstrap, career_tiers, tier_summary
-from ratings.age import load_birth_dates
+from ratings.bootstrap import bootstrap_snapshot
+from ratings.uncertainty import career_tiers, tier_summary
 
 
 def main() -> None:
@@ -86,44 +78,13 @@ def main() -> None:
 
     lo, hi = (float(x) for x in args.quantiles.split(","))
     reference = parse_reference(args.reference)
-    # Through the scope loader, so the intervals describe the board that was
-    # actually published rather than a UFC-only one that happens to share a name.
-    fights = PQ.load_fight_table(args.snapshot_dir, scope=args.scope)
-    current = pd.read_parquet(args.snapshot_dir / "ratings_current.parquet")
-    # Rank intervals and tiers are ORDERING claims, so they are made inside one
-    # bout-graph component or not at all. A mixed bootstrap asks "is Zhang Weili
-    # separated from Jon Jones", which no bout in the corpus can answer -- the
-    # answer would be read off the prior. ``--gender`` selects the component;
-    # the default is the published men's board. See ratings/gender.py.
-    population = select_gender(current, args.gender)
-    fights = select_component_fights(fights, population)
-    eligible = set(population.loc[
-        population["rating_periods"].fillna(0) >= args.min_rating_periods, "fighter"
-    ].astype(str))
-
     print(f"[bootstrap] scope={args.scope} gender={args.gender} "
-          f"({GENDER_LABEL[args.gender]}) {len(fights):,} bouts, "
-          f"{len(eligible):,} eligible fighters, {args.replicates} replicates")
+          f"({GENDER_LABEL[args.gender]}) {args.replicates} replicates")
     t0 = time.perf_counter()
-    # The replicates must refit the SAME functional the board publishes --
-    # method-scored WHR, and a bar struck inside each division-year under the
-    # spread-relative hinge. Passing only ``reference`` here left the intervals
-    # describing a sport-wide, hard-clipped functional that no board shows.
-    board, draws = career_mass_bootstrap(
-        fights, replicates=args.replicates, seed=args.seed, lo=lo, hi=hi,
-        whr_kwargs={
-            "birth_dates": load_birth_dates(args.snapshot_dir),
-            "age_drift": True,
-            **production_score_kwargs(fights),
-        },
-        mass_kwargs={
-            "reference": reference,
-            "divisions": _division_labels(population),
-            "division_reference": DEFAULT_DIVISION_REFERENCE,
-            "hinge_spread_fraction": DEFAULT_HINGE_SPREAD_FRACTION,
-        },
-        eligible_fighters=eligible,
-        return_draws=True, progress=True,
+    board, draws = bootstrap_snapshot(
+        args.snapshot_dir, scope=args.scope, gender=args.gender,
+        min_rating_periods=args.min_rating_periods, reference=reference,
+        replicates=args.replicates, seed=args.seed, lo=lo, hi=hi, progress=True,
     )
     wall = time.perf_counter() - t0
     tiers = career_tiers(board, draws, confidence=args.tier_confidence)

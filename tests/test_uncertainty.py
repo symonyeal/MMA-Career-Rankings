@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from ratings.uncertainty import BOOTSTRAP_COLUMNS, career_mass_bootstrap, rank_is_separated
+from ratings.uncertainty import BOOTSTRAP_COLUMNS, career_mass_bootstrap
 
 
 def _fights(n_events: int = 24) -> pd.DataFrame:
@@ -74,16 +74,6 @@ def test_thin_evidence_gets_a_wider_rank_interval_than_a_long_career():
         thin = out.loc["Thin", "rank_hi"] - out.loc["Thin", "rank_lo"]
         best = out.loc["Best", "rank_hi"] - out.loc["Best", "rank_lo"]
         assert thin >= best
-
-
-def test_separation_requires_disjoint_intervals():
-    board = pd.DataFrame({
-        "fighter": ["A", "B", "C"],
-        "rank": [1, 2, 3], "rank_lo": [1, 2, 9], "rank_hi": [3, 6, 14],
-    })
-    assert not rank_is_separated(board, "A", "B")   # overlapping
-    assert rank_is_separated(board, "A", "C")       # disjoint
-    assert not rank_is_separated(board, "A", "missing")
 
 
 def test_bad_arguments_are_rejected():

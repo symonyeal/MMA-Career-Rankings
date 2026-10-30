@@ -685,6 +685,44 @@ this section reads 0.6453 and 0.5144 for the same shipped board.
 
 ## Rebuild and verify
 
+The implementation shares definitions by decision. `ratings/fights.py` prepares the scoped
+fight table, attaches integrity flags and feeds event-based filters. `ratings/divisions.py`
+owns division names and career pools. `ratings/history.py` keeps pre-event filter states
+separate from strictly earlier-date WHR lookups: those rules differ on tournament days.
+`ratings/evaluation.py` owns probability losses and calibration. `ratings/bootstrap.py`
+sets up the same published functional for both interval entry points. `ratings/boards.py`
+owns published filenames, score columns and eligibility rules; the command writes artifacts.
+The title, exposure and contender ledgers remain together in `ratings/legacy_resume.py`.
+
+Both numerical solvers have Rust kernels: WHR's coordinate-ascent passes in `rust/whr_rs`,
+and Glicko-2's weighted updates and monthly inactivity transitions in `rust/rating_rs`.
+Python keeps the input assembly and reference calculations. The Glicko port calls the runtime
+C math routines, as Python does, and prevents the compiler from replacing `pow(x, 2)` with
+`x*x`: those operations differed in the last bit during an inactivity transition. Tests
+compare full histories exactly, including weighted results; CI builds and requires both kernels.
+
+The site is the maintained presentation. The notebook and its builders are archived under
+`_archive/20261029-notebook-retired/`; their definitions were different from the published
+boards. Unused research modules are preserved under `_archive/20261029-redesign-dead-code/`.
+New site data carries chart values; chart layout belongs to `site/app.js`.
+
+Source adapters retain their own parse and fetch rules. Sherdog's page store, Fight Matrix's
+cached pages and the staged UFCStats CSVs have different persistence and retry requirements;
+forcing them through one interchangeable fetch interface would hide those differences.
+`ratings/scope.py` remains the corpus registry and `loaders/crossorg_identity.py` the shared
+identity resolver. Canonical round parsing works on columns; bout-evidence matching uses
+an opponent/date index.
+
+The published constants and decisions are preserved. In particular, production discards
+staged organisation weights while research may read them; the title and career contender
+lines remain distinct; the forecast benchmark keeps its narrower history; and a coin-flip
+forecast counts as half a correct pick there while the prequential diagnostic keeps its
+existing threshold convention. Those are model or reporting choices, not code duplication.
+
+Use named scopes through `--scope`; the deprecated cross-organisation aliases are retired.
+The rating command no longer accepts the unused `--min-fights` option. The refresh command
+still accepts it as the board's eligibility floor.
+
 Every checkout holds everything below needs: the release snapshot is versioned
 whole, and the Sherdog extracts that staging reads sit beside the page store,
 which stays local. `python check_release.py` lists anything missing and exits

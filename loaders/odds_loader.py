@@ -134,22 +134,6 @@ def american_to_decimal(odds: float | None) -> float | None:
     return 1.0 + 100.0 / -o
 
 
-def remove_vig(p_a_raw: float | None, p_b_raw: float | None) -> tuple[float | None, float | None]:
-    """Proportionally rescale a pair of raw implieds so they sum to 1.0.
-
-    If either side is missing the no-vig pair is undefined; both come back
-    as None and the caller should flag `odds_data_quality`.
-    """
-    if p_a_raw is None or p_b_raw is None:
-        return (None, None)
-    if math.isnan(p_a_raw) or math.isnan(p_b_raw):
-        return (None, None)
-    s = p_a_raw + p_b_raw
-    if s <= 0:
-        return (None, None)
-    return (p_a_raw / s, p_b_raw / s)
-
-
 # ---------------------------------------------------------------------------
 # Pandas enrichment
 

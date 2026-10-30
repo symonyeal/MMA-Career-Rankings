@@ -19,6 +19,13 @@ Codex reads the same file through [AGENTS.md](AGENTS.md).
 | Everything a published board reads is committed: the snapshot folder whole, plus the Sherdog extracts beside the page store. Local caches hold nothing a rebuild needs. | Until 2026-10-14 the fit's inputs and the fitted ratings were gitignored. A second machine had to re-crawl the sources, came back with 43 fewer birth dates and no odds rows, and nothing failed. `tests/test_release_committed.py` now fails on a fresh clone, which is how CI runs. |
 | A solver change ships only as a setting that defaults to the published behaviour. | The 2026-10-09 WHR repair replaced the solver outright, then the boards were refitted with it before any held-out test on production inputs. Every tuned constant had been set against the old solver, so the published boards changed and none of those constants had been re-checked. It is now `WHR_CENTER_EACH_PASS`, and on 2026-10-23 the exact solver lost its held-out test, so it stays `True`. |
 | The Rust WHR backend must match the numpy solver bit for bit. | `rust/whr_rs` runs the same passes about 44 times faster and is used whenever it is installed (`WHR_BACKEND = "auto"`). A tolerance would let a reordered sum move a board by one place without anyone seeing it, so `tests/test_whr_backend.py` requires exact equality. CI builds the extension and fails rather than skips if it is missing. Change the numpy loop and the Rust kernel together, in the same floating-point order. |
+| The Rust Glicko solver must match its Python reference bit for bit. | `rust/rating_rs` computes updates and monthly inactivity transitions; `ratings/_glicko2.py` retains the reference (`backend="python"`). CI requires the native backend and compares complete published-corpus histories. Keep runtime C math calls: replacing `pow(x, 2)` with `x*x` changes some last bits. |
+
+Shared fight preparation lives in `ratings/fights.py`; division labels in `ratings/divisions.py`;
+history lookups in `ratings/history.py`; probability metrics in `ratings/evaluation.py`;
+snapshot bootstrap policy in `ratings/bootstrap.py`; board metadata and gates in `ratings/boards.py`.
+Import each definition from its owner. Keep source fetching in `loaders/` and score ledgers in
+`ratings/legacy_resume.py`.
 
 ## Re-score before you publish
 
@@ -50,8 +57,6 @@ every number, interval, named fighter and file path survives.
 
 ## Things that are not defects
 
-- **`analysis/notebook.ipynb` is generated** by `analysis/build_notebook.py` and is excluded from
-  linting. Edit the builder, not the artifact.
 - **The blind `except Exception` in `loaders/`** is deliberate and carries a `noqa` saying why. A
   multi-day crawl must survive one bad page.
 - **`date.today()` in the snapshot-label arguments** is a local calendar date, not an instant. It

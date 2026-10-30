@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from ratings.rate_snapshot import attach_bout_weights
+from ratings.fights import attach_bout_weights
 from ratings.rules_era import (
     RULES_ERA_NON_UFC,
     RULES_ERA_PRE,

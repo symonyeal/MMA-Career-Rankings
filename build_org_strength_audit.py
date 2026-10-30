@@ -30,7 +30,7 @@ from ratings.org_strength import (
     default_org_weight_specs,
     organization_bridge_table,
 )
-from ratings.rate_snapshot import attach_bout_weights
+from ratings.fights import attach_bout_weights
 from ratings.scope import DEFAULT_PUBLISHED_SCOPE
 from ratings.symon_score import DEFAULT_CAREER_REFERENCE, career_skill_mass, parse_reference
 from ratings.whr import run_whr

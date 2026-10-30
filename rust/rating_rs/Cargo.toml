@@ -1,0 +1,16 @@
+[package]
+name = "rating_rs"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+name = "rating_rs"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.30", features = ["extension-module", "abi3-py312"] }
+
+[profile.release]
+codegen-units = 1
+lto = true

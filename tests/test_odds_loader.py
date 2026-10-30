@@ -19,7 +19,6 @@ from loaders.odds_loader import (
     decimal_to_implied,
     has_odds_artifact,
     load_odds_lines,
-    remove_vig,
 )
 
 
@@ -77,30 +76,6 @@ def test_decimal_invalid_inputs_return_none():
 
 # ---------------------------------------------------------------------------
 # Vig removal
-
-def test_remove_vig_sums_to_one_for_typical_juiced_line():
-    # -110 / -110 raws are ~0.524 / ~0.524, sum 1.048 -> 0.5 / 0.5 after no-vig.
-    p_a = american_to_implied(-110)
-    p_b = american_to_implied(-110)
-    nva, nvb = remove_vig(p_a, p_b)
-    assert nva + nvb == pytest.approx(1.0, abs=1e-12)
-    assert nva == pytest.approx(0.5)
-
-
-def test_remove_vig_sums_to_one_for_lopsided_line():
-    # -500 favorite vs +400 underdog
-    p_a = american_to_implied(-500)  # ~0.833
-    p_b = american_to_implied(400)   # 0.2
-    nva, nvb = remove_vig(p_a, p_b)
-    assert nva + nvb == pytest.approx(1.0, abs=1e-12)
-    # favorite still favored after no-vig
-    assert nva > nvb
-
-
-def test_remove_vig_handles_missing_sides():
-    assert remove_vig(None, 0.5) == (None, None)
-    assert remove_vig(0.5, None) == (None, None)
-    assert remove_vig(float("nan"), 0.5) == (None, None)
 
 
 # ---------------------------------------------------------------------------

@@ -38,6 +38,7 @@ import numpy as np
 import pandas as pd
 
 from .age import load_birth_dates
+from .evaluation import losses
 from .glicko2_engine import RatingEngine, predict_win_prob_from_ratings
 
 ROSTER = frozenset({"UFC", "UFC (pre-unified)", "Ultimate Fighting Championship (UFC)", "PRIDE", "WEC",
@@ -212,7 +213,8 @@ def walk_forward(X: pd.DataFrame, F: pd.DataFrame) -> pd.DataFrame:
 def score(p: np.ndarray, y: np.ndarray) -> np.ndarray:
     """Per bout: log loss, Brier, winner picked (a coin's 0.5 counts as half)."""
     p = np.clip(p, EPS, 1 - EPS)
-    return np.c_[-(y * np.log(p) + (1 - y) * np.log(1 - p)), (p - y) ** 2,
+    ll, br = losses(p, y)
+    return np.c_[ll, br,
                  np.where(p == .5, .5, (p > .5) == (y == 1))]
 
 

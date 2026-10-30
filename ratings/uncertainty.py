@@ -173,21 +173,6 @@ def career_mass_bootstrap(
     return out
 
 
-def rank_is_separated(board: pd.DataFrame, a: str, b: str) -> bool:
-    """True when two fighters' bootstrap rank intervals do not overlap.
-
-    The honest reading of the board: a rank difference is only claimed where
-    the intervals are disjoint.
-    """
-    rows = board.set_index("fighter")
-    if a not in rows.index or b not in rows.index:
-        return False
-    ra, rb = rows.loc[a], rows.loc[b]
-    if pd.isna(ra["rank_lo"]) or pd.isna(rb["rank_lo"]):
-        return False
-    return bool(ra["rank_hi"] < rb["rank_lo"] or rb["rank_hi"] < ra["rank_lo"])
-
-
 TIER_COLUMNS = [
     "tier",
     "tier_label",

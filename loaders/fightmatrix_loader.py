@@ -16,6 +16,7 @@ from urllib.parse import urljoin
 import pandas as pd
 import requests
 from bs4 import BeautifulSoup
+from project_helpers import project_path
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -42,8 +43,6 @@ ALL_TIME_URLS = {
 }
 
 PAGE_URLS = {**DIVISION_URLS, **ALL_TIME_URLS}
-
-
 def _cache_path(cache_dir: Path, division: str) -> Path:
     safe = re.sub(r"[^a-z0-9_-]+", "_", division.lower())
     return cache_dir / f"{safe}.html"
@@ -177,7 +176,8 @@ def build_snapshot(
         html = fetch_division_html(division, cache_dir=cache_dir, refresh=refresh, sleep_seconds=sleep_seconds)
         parsed = parse_rankings_html(html, division)
         frames.append(parsed)
-        fetched.append({"division": division, "rows": len(parsed), "cache": str(_cache_path(cache_dir, division))})
+        cache = project_path(_cache_path(cache_dir, division))
+        fetched.append({"division": division, "rows": len(parsed), "cache": cache})
 
     rankings = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
     rankings.to_parquet(snapshot_dir / "fightmatrix_rankings.parquet", index=False)
@@ -188,7 +188,8 @@ def build_snapshot(
         html = fetch_division_html(page, cache_dir=cache_dir, refresh=refresh, sleep_seconds=sleep_seconds)
         parsed = parse_rankings_html(html, page)
         all_time_frames.append(parsed)
-        all_time_fetched.append({"page": page, "rows": len(parsed), "cache": str(_cache_path(cache_dir, page))})
+        cache = project_path(_cache_path(cache_dir, page))
+        all_time_fetched.append({"page": page, "rows": len(parsed), "cache": cache})
     all_time = pd.concat(all_time_frames, ignore_index=True) if all_time_frames else pd.DataFrame()
     all_time.to_parquet(snapshot_dir / "fightmatrix_all_time.parquet", index=False)
 
@@ -198,10 +199,10 @@ def build_snapshot(
         "divisions": fetched,
         "all_time_rows": len(all_time),
         "all_time_pages": all_time_fetched,
-        "output": str((snapshot_dir / "fightmatrix_rankings.parquet").relative_to(PROJECT_ROOT)),
-        "all_time_output": str((snapshot_dir / "fightmatrix_all_time.parquet").relative_to(PROJECT_ROOT)),
+        "output": project_path(snapshot_dir / "fightmatrix_rankings.parquet"),
+        "all_time_output": project_path(snapshot_dir / "fightmatrix_all_time.parquet"),
     }
-    (snapshot_dir / "fightmatrix_summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    (snapshot_dir / "fightmatrix_summary.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
     return summary
 
 
