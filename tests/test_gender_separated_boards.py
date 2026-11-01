@@ -16,7 +16,6 @@ import pytest
 
 import build_boards
 import build_top100_audit
-import build_uncertainty
 import refresh
 from ratings.gender import (
     DEFAULT_GENDER,
@@ -126,10 +125,9 @@ def test_a_snapshot_without_gender_prints_one_unlabelled_board(capsys):
     assert "Prime [" not in out and "=== Prime ===" in out
 
 
-@pytest.mark.parametrize("module", [build_uncertainty, refresh])
-def test_bootstrap_entry_points_scope_the_population(module):
+def test_bootstrap_entry_point_scopes_the_population():
     """A mixed interval asks whether a woman is separated from a man."""
-    source = inspect.getsource(module)
+    source = inspect.getsource(refresh)
     assert "bootstrap_snapshot" in source
 
 
@@ -146,13 +144,6 @@ def test_bootstrap_component_filter_excludes_unrelated_cards():
     selected = select_component_fights(fights, population)
 
     assert selected["fight_url"].tolist() == ["m/1"]
-
-
-def test_uncertainty_artifacts_are_named_per_component():
-    source = inspect.getsource(build_uncertainty)
-    assert "career_mass_uncertainty{suffix}.parquet" in source
-    assert "career_mass_tiers{suffix}.parquet" in source
-    assert "career_mass_uncertainty{suffix}.json" in source
 
 
 def test_the_anchor_audit_scores_the_published_component():

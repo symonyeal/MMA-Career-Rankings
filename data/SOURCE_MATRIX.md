@@ -122,7 +122,7 @@ unresolved source-ID conflict.
 | method_raw / method_class   | Sherdog    | Parsed from fighter history pages for cross-org bouts. |
 | end_round / end_time_seconds| Sherdog    | Parsed from fighter history pages for cross-org bouts. |
 | is_title_fight              | Sherdog (derived) | Derived from event-title patterns for cross-org bouts. |
-| org_weight                  | Production unit / audit candidates | Production writes 1.0 for every admitted bout. `build_org_strength_audit.py` can overwrite it for explicit sensitivity models; old FightMatrix participant-caliber weights are research-only because they use eventual UFC-career information. |
+| org_weight                  | Production unit / audit candidates | Production writes 1.0 for every admitted bout. Old FightMatrix participant-caliber weights are research-only because they use eventual UFC-career information. |
 | datalab_bouts_all           | DataLab    | UFC-DataLab `stats_processed_all_bouts.csv`; staged in snapshot as parquet. |
 | datalab_merged_stats_scorecards | DataLab | UFC-DataLab merged stats + scorecards export; staged in snapshot as parquet. |
 | datalab_fighter_details     | DataLab    | UFC-DataLab fighter details export; staged in snapshot as parquet. |
@@ -204,51 +204,13 @@ diagnostic only. Only result/method/round/event/date fields enter the optional
 rating input. The standard snapshot uses `majors,pre_unified`; the explicit
 `2026-08-13-fightmatrix-public` snapshot preserves the bounded-cohort run.
 
-## 7. Local SQLite database
-
-`build_database.py` builds `data/ufc_rank_engine.sqlite` from the snapshot
-bundle. It is an organized local database for audit and notebook support; it is
-not a separate source of truth. The obsolete 2026-08-14 export was archived on
-2026-08-26. A local export was rebuilt on 2026-08-31 from the
-`data/snapshots/2026-08-13` bundle; it is gitignored, so any clone must run the
-builder itself. The database is assembled beside the target and promoted only
-after every required table and index succeeds, so a failed rebuild leaves the
-last known-good export in place.
-
-`TABLE_SPECS` in `build_database.py` is the authoritative list; the groups below
-name what it currently loads.
-
-- Canonical UFC tables: `canonical_events`, `canonical_fights`,
-  `canonical_rounds`, `canonical_fighters`.
-- Authoritative fight table: `combined_fights`.
-- Rating and derived tables: `ratings_current`, `ratings_history`,
-  `ratings_history_whr`, `integrity_appearances`, `performance_appearances`,
-  `fight_dominance`, `fighter_dominance`, `division_entropy`,
-  `division_resume`, `calibration_residuals`.
-- Policy/audit tables: `integrity_ledger`, `integrity_discounted_board`,
-  `completeness_gated_board`, `completeness_gated_board_women`, `prime_board`,
-  `prime_board_women`, `prime_elite_board`, `prime_elite_board_women`,
-  `excluded_bouts`, `ped_confirmed_bouts`, `missed_weight_bouts`.
-- External staged tables: `datalab_bouts_all`,
-  `datalab_merged_stats_scorecards`, `datalab_fighter_details`,
-  `datalab_scorecards`, `odds_lines`, `fightmatrix_rankings`,
-  `fightmatrix_all_time`, `fightmatrix_profiles`, `fightmatrix_bouts`.
-- Metadata tables: `source_manifest`, `snapshot_manifest`,
-  `table_row_counts`, `source_gaps`.
-
-The archived recursive-expansion tables were removed from `TABLE_SPECS` on
-2026-08-31, so a current export cannot contain them.
-
-SQLite indexes are created on fighter, event date, fight URL, event name, and
-source-specific fighter/division fields where those columns exist.
-
-## 8. Tertiary fallback (mmadecoded — populated only if higher-priority is null)
+## 7. Tertiary fallback (mmadecoded — populated only if higher-priority is null)
 
 | Field | Source     | Match key                                  | Notes |
 |-------|------------|--------------------------------------------|-------|
 | any   | mmadecoded | `(event_date, fighter_a, fighter_b)`       | Logged to `data/snapshots/<date>/_fallbacks.log`. |
 
-## 9. Committed UFC 1 backfill
+## 8. Committed UFC 1 backfill
 
 | Field | Source | Shape | Notes |
 |-------|--------|-------|-------|

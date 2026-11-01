@@ -73,10 +73,10 @@ def test_release_volume_and_date_match_the_manifests():
 
 def test_readme_explains_the_rules_that_change_the_rankings():
     text = (PROJECT_ROOT / "README.md").read_text(encoding="utf-8")
-    article = text.split("## What is published", 1)[0]
+    article = text.split("## Published rankings", 1)[0]
     flat = " ".join(article.split())
 
-    for heading in ("## The argument", "## What the score measures"):
+    for heading in ("## Model rules", "## What the score measures"):
         assert heading in article
 
     # Pin the rule, never the sentence. Wording is the author's; the decisive
