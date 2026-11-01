@@ -1,0 +1,27 @@
+[package]
+name = "mma-rankings"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+name = "mma_rankings"
+path = "src/lib.rs"
+
+[[bin]]
+name = "mma"
+path = "src/main.rs"
+
+[dependencies]
+arrow = { version = "57", default-features = false, features = ["prettyprint"] }
+parquet = { version = "57", default-features = false, features = ["arrow", "snap"] }
+csv = "1"
+regex = "1"
+unicode-normalization = "0.1"
+serde_json = { version = "1", features = ["preserve_order"] }
+
+[profile.release]
+# Fused multiply-add or reassociation would change the last bits of every
+# rating; keep the published numerical operation order.
+codegen-units = 1
+lto = true
