@@ -206,8 +206,7 @@ cards. **Did not resolve.** Birth dates were not available, so age drift was
 neutral, which means this is not the production model. It shows the repair does
 not damage prediction on that sample. It is not the held-out test a rating
 change must pass, which needs the production inputs. Evidence:
-`docs/validation/whr-solver-2026-10-09/`, harness
-`analysis/check_whr_solver.py`.
+`docs/validation/whr-solver-2026-10-09/`; the harness was archived on 2026-11-01.
 
 **The exact solver was published on 2026-10-13 and withdrawn on 2026-10-14.**
 A session on a second machine rebuilt the inputs, which were gitignored and
@@ -259,10 +258,8 @@ with the baseline revision `c0072b4`'s own numpy code and with the Rust
 re-centred solver, and required the two to match bit for bit. They did. Evidence:
 [`validation/whr-solver-2026-10-23/`](validation/whr-solver-2026-10-23/).
 
-To re-run it: `python analysis/check_whr_solver.py data/snapshots/2026-08-13
---years 2024 2025 --workers 4 --out docs/validation/whr-solver-<date>`.
-The current tool runs both variants in Rust; Python solvers and Git-loaded baseline execution
-were removed on 2026-10-30. The historical baseline check above describes the original run.
+The comparison harness was archived on 2026-11-01, once the decision was settled; the held-out
+test a rating change must pass is the production-against-candidate prequential evaluation.
 A new solver candidate has to win this comparison before it is promoted. Do not
 tune the constants around a solver to make the boards look like the old ones.
 

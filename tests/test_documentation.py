@@ -72,7 +72,7 @@ def test_generated_publication_carries_every_board():
 def test_overview_publishes_only_the_headline_boards():
     readme = (PROJECT_ROOT / "README.md").read_text(encoding="utf-8")
 
-    assert "## What is published" in readme
+    assert "## Published rankings" in readme
     for marker in OVERVIEW_MARKERS:
         assert readme.count(f"<!-- {marker}:BEGIN -->") == 1
         assert readme.count(f"<!-- {marker}:END -->") == 1
