@@ -4,8 +4,8 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from ratings.scope import UFC_ONLY, merge_scope
-from ratings.scope import SCOPE_ARTIFACT
+from loaders.scope import UFC_ONLY, merge_scope
+from loaders.scope import SCOPE_ARTIFACT
 
 
 def _bout(url: str, a: str, b: str, date: str, *, org: str = "PRIDE", winner: str | None = None) -> dict:

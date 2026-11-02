@@ -34,9 +34,8 @@ Columns added by `compute_implied_probs`:
 """
 from __future__ import annotations
 
-from ratings.odds import american_to_implied, decimal_to_implied
+from loaders.odds import american_to_implied, decimal_to_implied
 
-from pathlib import Path
 
 import pandas as pd
 
@@ -147,25 +146,3 @@ def compute_implied_probs(df: pd.DataFrame) -> pd.DataFrame:
 # ---------------------------------------------------------------------------
 # Snapshot I/O
 
-def _empty_enriched_frame() -> pd.DataFrame:
-    cols = list(RAW_ODDS_COLUMNS) + list(ENRICHED_ODDS_COLUMNS)
-    return pd.DataFrame({c: pd.Series(dtype="object") for c in cols})
-
-
-def load_odds_lines(snapshot_dir: Path) -> pd.DataFrame:
-    """Read `odds_lines.parquet` for a snapshot, enriched with implied probs.
-
-    Returns an empty frame (with the enriched schema) if the artifact is
-    absent. This lets downstream callers always do the merge without
-    branching on existence — empty merges are no-ops.
-    """
-    path = Path(snapshot_dir) / "odds_lines.parquet"
-    if not path.exists():
-        return _empty_enriched_frame()
-    raw = pd.read_parquet(path)
-    return compute_implied_probs(raw)
-
-
-def has_odds_artifact(snapshot_dir: Path) -> bool:
-    """True iff `odds_lines.parquet` exists for the snapshot."""
-    return (Path(snapshot_dir) / "odds_lines.parquet").exists()

@@ -54,14 +54,36 @@ pub struct Bout {
 pub fn staged(snapshot: &Path) -> Vec<Bout> {
     let f = Frame::read(&snapshot.join("combined_fights.parquet"));
     let s = |c: &str| f.str(c);
-    let (url, event, a, b, winner, loser) = (s("fight_url"), s("event_name"), s("fighter_a"), s("fighter_b"), s("winner"), s("loser"));
+    let (url, event, a, b, winner, loser) = (
+        s("fight_url"),
+        s("event_name"),
+        s("fighter_a"),
+        s("fighter_b"),
+        s("winner"),
+        s("loser"),
+    );
     let (wc, method, details, source, org, corpus, corpora) = (
-        s("weight_class"), s("method_class"), s("details_text"), s("source"), s("org"), s("source_corpus"),
+        s("weight_class"),
+        s("method_class"),
+        s("details_text"),
+        s("source"),
+        s("org"),
+        s("source_corpus"),
         s("available_in_corpora"),
     );
     let day = f.day("event_date");
-    let (draw, nc, excluded, title, model) = (f.bool("is_draw"), f.bool("is_nc"), f.bool("is_excluded"), f.bool("is_title_fight"), f.bool("is_model_bout"));
-    let (score, end_round, end_secs) = (f.f64("method_score_winner"), f.f64("end_round"), f.f64("end_time_seconds"));
+    let (draw, nc, excluded, title, model) = (
+        f.bool("is_draw"),
+        f.bool("is_nc"),
+        f.bool("is_excluded"),
+        f.bool("is_title_fight"),
+        f.bool("is_model_bout"),
+    );
+    let (score, end_round, end_secs) = (
+        f.f64("method_score_winner"),
+        f.f64("end_round"),
+        f.f64("end_time_seconds"),
+    );
     (0..f.len())
         .map(|i| Bout {
             url: url[i].clone(),
@@ -131,11 +153,21 @@ fn ped_fighter(x: &Bout) -> String {
     let lowered = x.details.to_lowercase();
     let mut scored: Vec<(usize, &str)> = Vec::new();
     for f in [&x.a, &x.b] {
-        let tokens: Vec<String> =
-            token.find_iter(f).map(|m| m.as_str().to_lowercase()).filter(|t| t.chars().count() > 1).collect();
+        let tokens: Vec<String> = token
+            .find_iter(f)
+            .map(|m| m.as_str().to_lowercase())
+            .filter(|t| t.chars().count() > 1)
+            .collect();
         let Some(last) = tokens.last() else { continue };
-        let score = tokens.iter().filter(|t| lowered.contains(t.as_str())).count()
-            + if lowered.contains(last.as_str()) { 2 } else { 0 };
+        let score = tokens
+            .iter()
+            .filter(|t| lowered.contains(t.as_str()))
+            .count()
+            + if lowered.contains(last.as_str()) {
+                2
+            } else {
+                0
+            };
         if score > 0 {
             scored.push((score, f));
         }
@@ -168,8 +200,9 @@ fn flag_integrity(bouts: &mut [Bout], root: &Path, names: &Names) {
             x.ped_detail = x.details.clone();
         }
         x.dq = x.method == "DQ";
-        x.missed_weight =
-            !x.winner.is_empty() && weight_re.is_match(&x.details) && winner_named(&x.winner, &x.details, names);
+        x.missed_weight = !x.winner.is_empty()
+            && weight_re.is_match(&x.details)
+            && winner_named(&x.winner, &x.details, names);
     }
     // Curated rows match on (date, event) and a named participant, and replace the text-derived citation.
     let path = root.join("data/external/integrity/ped_bouts.csv");
@@ -177,12 +210,19 @@ fn flag_integrity(bouts: &mut [Bout], root: &Path, names: &Names) {
     let h = rd.headers().unwrap().clone();
     let col = |n: &str| h.iter().position(|x| x == n).unwrap();
     let (date, event, fighter, body, substance, finding, url) = (
-        col("event_date"), col("event_name"), col("fighter"), col("sanctioning_body"), col("substance"),
-        col("finding_type"), col("source_url"),
+        col("event_date"),
+        col("event_name"),
+        col("fighter"),
+        col("sanctioning_body"),
+        col("substance"),
+        col("finding_type"),
+        col("source_url"),
     );
     for r in rd.records().map(Result::unwrap) {
         let day = crate::frame::parse_day(&r[date]);
-        for x in bouts.iter_mut().filter(|x| x.day == day && x.event == r[event] && (x.a == r[fighter] || x.b == r[fighter])) {
+        for x in bouts.iter_mut().filter(|x| {
+            x.day == day && x.event == r[event] && (x.a == r[fighter] || x.b == r[fighter])
+        }) {
             x.ped = true;
             x.ped_fighter = r[fighter].to_string();
             x.ped_source = format!("curated:{}", &r[body]);

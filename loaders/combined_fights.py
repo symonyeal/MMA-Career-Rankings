@@ -33,13 +33,12 @@ import pandas as pd
 
 from loaders.crossorg_identity import align_identities
 from project_helpers import bout_fingerprint, date_range
-from ratings.scope import (
+from loaders.scope import (
     DEFAULT_PUBLISHED_SCOPE,
     SCOPE_ARTIFACT,
     SCOPE_MERGE_ORDER,
     bout_dedupe_key,
     canonical_date_drift_matches,
-    corpora_for_scope,
     merge_scope,
     scope_guard,
     scope_sources,
@@ -281,106 +280,6 @@ def build_combined_fights(
             f"{summary['duplicate_bout_keys']}"
         )
     return combined, summary
-
-
-def select_scope(combined: pd.DataFrame, scope: str) -> pd.DataFrame:
-    """The rows of the authoritative table one named scope is allowed to see."""
-    admitted = corpora_for_scope(scope)
-    if "source_corpus" not in combined.columns:
-        raise ValueError(
-            "combined fight table carries no source_corpus column, so a scope "
-            "cannot be selected from it; rebuild it with write_combined_fights"
-        )
-    if AVAILABLE_IN_CORPORA in combined.columns:
-        membership = "," + combined[AVAILABLE_IN_CORPORA].fillna("").astype(str) + ","
-        selected = pd.Series(False, index=combined.index)
-        for corpus in admitted:
-            selected |= membership.str.contains(f",{corpus},", regex=False)
-    else:
-        # Legacy artifacts recorded only the winning parse. Permit that fallback
-        # only when an excluded higher-priority corpus cannot have hidden a
-        # requested lower-priority membership.
-        present = _corpora_present(combined)
-        if _legacy_selection_can_lose(present, set(admitted)):
-            raise ValueError(
-                f"combined fight table carries no {AVAILABLE_IN_CORPORA} provenance, "
-                f"so scope {scope!r} could lose shared bouts; rebuild the artifact"
-            )
-        selected = combined["source_corpus"].isin(admitted)
-    out = combined[selected].copy()
-    if out.empty:
-        raise ValueError(
-            f"scope {scope!r} selects zero bouts from the combined table "
-            f"(admitted corpora: {', '.join(admitted)}); the run would rate nothing"
-        )
-    out["rated_scope"] = str(scope)
-    return out.reset_index(drop=True)
-
-
-def load_combined_fights(
-    snapshot_dir: Path,
-    *,
-    scope: str = DEFAULT_PUBLISHED_SCOPE,
-    label: str = "combined",
-) -> tuple[pd.DataFrame, dict[str, object]]:
-    """Read the authoritative table and select one scope, or rebuild it.
-
-    Falls back to a rebuild when the artifact is absent or was written at a
-    coverage that does not contain the requested scope. It never quietly
-    returns a narrower table than the caller asked for: that is the failure the
-    scope module exists to prevent.
-    """
-    snapshot_dir = Path(snapshot_dir)
-    path = snapshot_dir / COMBINED_FIGHTS_ARTIFACT
-    if path.exists():
-        combined = pd.read_parquet(path)
-        present = _corpora_present(combined)
-        wanted = set(corpora_for_scope(scope))
-        legacy_risk = (
-            AVAILABLE_IN_CORPORA not in combined.columns
-            and _legacy_selection_can_lose(present, wanted)
-        )
-        # "ufc" is the base of every scope and is always present; a corpus that
-        # is genuinely empty in the snapshot would be indistinguishable from one
-        # that was never staged, so a missing corpus falls through to the
-        # rebuild, which raises with the builder's name.
-        if wanted <= present and not legacy_risk:
-            selected = select_scope(combined, scope)
-            return selected, combined_fights_summary(selected, scope=scope)
-
-        rebuild_scope = max_coverage_scope(snapshot_dir)
-        staged = set(corpora_for_scope(rebuild_scope))
-        required = present | wanted
-        if required <= staged:
-            if legacy_risk:
-                reason = f"has no {AVAILABLE_IN_CORPORA} provenance"
-            else:
-                reason = f"lacks {', '.join(sorted(wanted - present))}"
-            print(
-                f"[{label}] {COMBINED_FIGHTS_ARTIFACT} {reason}; "
-                "rebuilding maximum coverage from the staged corpora"
-            )
-            rebuilt, _ = build_combined_fights(
-                snapshot_dir,
-                scope=rebuild_scope,
-                label=label,
-            )
-            selected = select_scope(rebuilt, scope)
-            return selected, combined_fights_summary(selected, scope=scope)
-
-        if legacy_risk:
-            unavailable = required - staged
-            raise ValueError(
-                f"{COMBINED_FIGHTS_ARTIFACT} has no {AVAILABLE_IN_CORPORA} provenance, "
-                f"so scope {scope!r} could lose shared bouts whose winning parse came "
-                "from a higher-priority corpus; cannot safely rebuild because the staged "
-                f"inputs are missing {', '.join(sorted(unavailable))}"
-            )
-        print(
-            f"[{label}] {COMBINED_FIGHTS_ARTIFACT} lacks {', '.join(sorted(wanted - present))}; "
-            "rebuilding from the staged corpora"
-        )
-    return build_combined_fights(snapshot_dir, scope=scope, label=label)
 
 
 def write_combined_fights(

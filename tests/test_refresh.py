@@ -6,63 +6,45 @@ from pathlib import Path
 import refresh
 
 
-def test_refresh_writes_board_artifacts_immediately_after_ratings(
-    tmp_path: Path,
-    monkeypatch,
-):
+def test_refresh_stages_then_runs_the_model_then_writes_the_changelog(tmp_path: Path, monkeypatch):
     project_root = tmp_path / "project"
     greco_dir = tmp_path / "greco"
-    project_root.mkdir()
+    snapshot = project_root / "data" / "snapshots" / "2026-08-20"
+    snapshot.mkdir(parents=True)
     greco_dir.mkdir()
     order: list[str] = []
 
     monkeypatch.setattr(refresh, "copy_raw_inputs", lambda *_: None)
     monkeypatch.setattr(refresh, "previous_snapshot_dir", lambda *_: None)
     monkeypatch.setattr(refresh, "build_snapshot", lambda *_: ({"events_kept": 1}, None))
+    monkeypatch.setattr(refresh, "stage_scopes", lambda *_: order.append("stage"))
+    monkeypatch.setattr(refresh, "write_combined_fights", lambda *_: order.append("combined"))
 
-    def fake_ratings(*_args, **_kwargs):
-        order.append("ratings")
-        return {"current_fighters": 2, "history_rows": 3, "events_processed": 1}
-
-    def fake_boards(snapshot_dir, *, min_rating_periods, scope):
-        order.append("boards")
-        assert snapshot_dir == project_root / "data" / "snapshots" / "2026-08-20"
-        assert min_rating_periods == 4
+    def fake_coverage(snapshot_dir, scope):
+        order.append("coverage")
         assert scope == "majors,pre_unified"
-        return {
-            "core_rating_col": "public_legacy_score",
-            "integrity_rating_col": "mu_whr",
-            "ledger_rows": 1,
-            "ranked_fighters": 2,
-            "withheld_fighters": 0,
-        }
+        return {"eligible": 0}
 
-    def fake_changelog(*_args, **_kwargs):
+    def fake_model(command, *, cwd, check):
+        order.append("model")
+        assert command[-1] == str(snapshot) and cwd == project_root and check
+        (snapshot / "rating_run.json").write_text('{"current_fighters": 2}', encoding="utf-8")
+
+    def fake_changelog(root, date, counts, summary, coverage, previous):
         order.append("changelog")
+        assert summary == {"current_fighters": 2} and coverage == {"eligible": 0}
 
-    monkeypatch.setattr(refresh, "run_ratings", fake_ratings)
-    monkeypatch.setattr(refresh, "write_board_artifacts", fake_boards)
+    monkeypatch.setattr(refresh, "require_coverage", fake_coverage)
+    monkeypatch.setattr(refresh.subprocess, "run", fake_model)
     monkeypatch.setattr(refresh, "append_changelog", fake_changelog)
-    monkeypatch.setattr(
-        sys,
-        "argv",
-        [
-            "refresh.py",
-            "--project-root",
-            str(project_root),
-            "--greco-dir",
-            str(greco_dir),
-            "--snapshot-date",
-            "2026-08-20",
-            "--min-fights",
-            "4",
-            "--no-include-external",
-        ],
-    )
+    monkeypatch.setattr(sys, "argv", [
+        "refresh.py", "--project-root", str(project_root), "--greco-dir", str(greco_dir),
+        "--snapshot-date", "2026-08-20", "--no-include-external",
+    ])
 
     refresh.main()
 
-    assert order == ["ratings", "boards", "changelog"]
+    assert order == ["stage", "combined", "coverage", "model", "changelog"]
 
 
 def test_no_flags_means_the_published_configuration():
@@ -70,7 +52,6 @@ def test_no_flags_means_the_published_configuration():
     args = refresh.parse_args([])
     assert args.include_external
     assert args.include_fightmatrix_profiles
-    assert args.scope == "majors,pre_unified"
 
     opted_out = refresh.parse_args(["--no-include-external"])
     assert not opted_out.include_fightmatrix_profiles

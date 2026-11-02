@@ -4,7 +4,7 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from ratings.scope import (
+from loaders.scope import (
     SCOPE_ARTIFACT,
     SCOPE_MERGE_ORDER,
     UFC_ONLY,

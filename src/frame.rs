@@ -64,11 +64,17 @@ impl Frame {
         let schema = builder.schema().clone();
         let reader = builder.build().unwrap();
         let batches: Vec<RecordBatch> = reader.map(Result::unwrap).collect();
-        Frame { batch: concat_batches(&schema, &batches).unwrap() }
+        Frame {
+            batch: concat_batches(&schema, &batches).unwrap(),
+        }
     }
 
     pub fn len(&self) -> usize {
         self.batch.num_rows()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 
     pub fn has(&self, name: &str) -> bool {
@@ -76,26 +82,41 @@ impl Frame {
     }
 
     fn col(&self, name: &str, to: &DataType) -> ArrayRef {
-        let c = self.batch.column_by_name(name).unwrap_or_else(|| panic!("no column {name}"));
+        let c = self
+            .batch
+            .column_by_name(name)
+            .unwrap_or_else(|| panic!("no column {name}"));
         cast(c, to).unwrap()
     }
 
     pub fn str(&self, name: &str) -> Vec<String> {
         let c = self.col(name, &DataType::Utf8);
         let c = c.as_string::<i32>();
-        (0..c.len()).map(|i| if c.is_null(i) { String::new() } else { c.value(i).to_owned() }).collect()
+        (0..c.len())
+            .map(|i| {
+                if c.is_null(i) {
+                    String::new()
+                } else {
+                    c.value(i).to_owned()
+                }
+            })
+            .collect()
     }
 
     pub fn f64(&self, name: &str) -> Vec<f64> {
         let c = self.col(name, &DataType::Float64);
         let c = c.as_primitive::<Float64Type>();
-        (0..c.len()).map(|i| if c.is_null(i) { f64::NAN } else { c.value(i) }).collect()
+        (0..c.len())
+            .map(|i| if c.is_null(i) { f64::NAN } else { c.value(i) })
+            .collect()
     }
 
     pub fn i64(&self, name: &str) -> Vec<i64> {
         let c = self.col(name, &DataType::Int64);
         let c = c.as_primitive::<Int64Type>();
-        (0..c.len()).map(|i| if c.is_null(i) { 0 } else { c.value(i) }).collect()
+        (0..c.len())
+            .map(|i| if c.is_null(i) { 0 } else { c.value(i) })
+            .collect()
     }
 
     /// Booleans; a missing value reads false, as pandas' `fillna(False)` did.
@@ -105,15 +126,35 @@ impl Frame {
         (0..c.len()).map(|i| !c.is_null(i) && c.value(i)).collect()
     }
 
+    pub fn batch(&self) -> &RecordBatch {
+        &self.batch
+    }
+
+    pub fn from_batch(batch: RecordBatch) -> Frame {
+        Frame { batch }
+    }
+
     pub fn names(&self) -> Vec<String> {
-        self.batch.schema().fields().iter().map(|f| f.name().clone()).collect()
+        self.batch
+            .schema()
+            .fields()
+            .iter()
+            .map(|f| f.name().clone())
+            .collect()
     }
 
     /// Row `i` of the result is row `idx[i]` of `self`, all null where `None`.
     pub fn take(&self, idx: &[Option<usize>]) -> Frame {
         let ix: arrow::array::UInt64Array = idx.iter().map(|i| i.map(|i| i as u64)).collect();
-        let columns = self.batch.columns().iter().map(|c| arrow::compute::take(c, &ix, None).unwrap()).collect();
-        Frame { batch: RecordBatch::try_new(self.batch.schema(), columns).unwrap() }
+        let columns = self
+            .batch
+            .columns()
+            .iter()
+            .map(|c| arrow::compute::take(c, &ix, None).unwrap())
+            .collect();
+        Frame {
+            batch: RecordBatch::try_new(self.batch.schema(), columns).unwrap(),
+        }
     }
 
     /// Columns of `others` appended to `self` (equal row counts; later duplicates are dropped).
@@ -133,14 +174,26 @@ impl Frame {
     pub fn select(&self, names: &[&str]) -> Frame {
         let mut t = Table::default();
         for n in names {
-            t = t.push(n, self.batch.column_by_name(n).unwrap_or_else(|| panic!("no column {n}")).clone());
+            t = t.push(
+                n,
+                self.batch
+                    .column_by_name(n)
+                    .unwrap_or_else(|| panic!("no column {n}"))
+                    .clone(),
+            );
         }
         t.frame()
     }
 
     pub fn write(&self, path: &Path) {
         let mut t = Table::default();
-        for (fi, c) in self.batch.schema().fields().iter().zip(self.batch.columns()) {
+        for (fi, c) in self
+            .batch
+            .schema()
+            .fields()
+            .iter()
+            .zip(self.batch.columns())
+        {
             t = t.push(fi.name(), c.clone());
         }
         t.write(path)
@@ -156,7 +209,7 @@ impl Frame {
 }
 
 /// A table under construction, written once.
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct Table {
     fields: Vec<Field>,
     columns: Vec<ArrayRef>,
@@ -164,28 +217,47 @@ pub struct Table {
 
 impl Table {
     fn push(mut self, name: &str, a: ArrayRef) -> Table {
-        self.fields.push(Field::new(name, a.data_type().clone(), true));
+        self.fields
+            .push(Field::new(name, a.data_type().clone(), true));
         self.columns.push(a);
         self
     }
 
     pub fn str<S: AsRef<str>>(self, name: &str, v: &[S]) -> Table {
-        self.push(name, Arc::new(v.iter().map(|s| Some(s.as_ref())).collect::<StringArray>()))
+        self.push(
+            name,
+            Arc::new(v.iter().map(|s| Some(s.as_ref())).collect::<StringArray>()),
+        )
     }
 
     /// Strings with empty written as null.
     pub fn opt_str<S: AsRef<str>>(self, name: &str, v: &[S]) -> Table {
-        let a: StringArray = v.iter().map(|s| Some(s.as_ref()).filter(|s| !s.is_empty())).collect();
+        let a: StringArray = v
+            .iter()
+            .map(|s| Some(s.as_ref()).filter(|s| !s.is_empty()))
+            .collect();
         self.push(name, Arc::new(a))
     }
 
     /// Floats with NaN written as null.
     pub fn f64(self, name: &str, v: &[f64]) -> Table {
-        self.push(name, Arc::new(v.iter().map(|x| (!x.is_nan()).then_some(*x)).collect::<Float64Array>()))
+        self.push(
+            name,
+            Arc::new(
+                v.iter()
+                    .map(|x| (!x.is_nan()).then_some(*x))
+                    .collect::<Float64Array>(),
+            ),
+        )
     }
 
     pub fn i64(self, name: &str, v: &[i64]) -> Table {
         self.push(name, Arc::new(Int64Array::from(v.to_vec())))
+    }
+
+    /// Integers with `None` written as null.
+    pub fn opt_i64(self, name: &str, v: &[Option<i64>]) -> Table {
+        self.push(name, Arc::new(v.iter().copied().collect::<Int64Array>()))
     }
 
     pub fn bool(self, name: &str, v: &[bool]) -> Table {
@@ -193,19 +265,24 @@ impl Table {
     }
 
     pub fn day(self, name: &str, v: &[Option<Day>]) -> Table {
-        let a: TimestampMicrosecondArray = v.iter().map(|d| d.map(|d| d as i64 * US_PER_DAY)).collect();
+        let a: TimestampMicrosecondArray =
+            v.iter().map(|d| d.map(|d| d as i64 * US_PER_DAY)).collect();
         self.push(name, Arc::new(a))
     }
 
     pub fn frame(self) -> Frame {
         let schema = Arc::new(Schema::new(self.fields));
-        Frame { batch: RecordBatch::try_new(schema, self.columns).unwrap() }
+        Frame {
+            batch: RecordBatch::try_new(schema, self.columns).unwrap(),
+        }
     }
 
     pub fn write(self, path: &Path) {
         let schema = Arc::new(Schema::new(self.fields));
         let batch = RecordBatch::try_new(schema.clone(), self.columns).unwrap();
-        let props = WriterProperties::builder().set_compression(Compression::SNAPPY).build();
+        let props = WriterProperties::builder()
+            .set_compression(Compression::SNAPPY)
+            .build();
         let file = File::create(path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
         let mut w = ArrowWriter::try_new(file, schema, Some(props)).unwrap();
         w.write(&batch).unwrap();

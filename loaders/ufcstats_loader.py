@@ -18,7 +18,15 @@ from pathlib import Path
 
 import pandas as pd
 
-from ratings.constants import METHOD_SCORES
+# Winner's score by method: finishes 1.00, unanimous 0.95, majority or split 0.90, DQ 0.85.
+METHOD_SCORES = {
+    "KO/TKO": 1.00,
+    "Submission": 1.00,
+    "Decision - Unanimous": 0.95,
+    "Decision - Majority": 0.90,
+    "Decision - Split": 0.90,
+    "DQ": 0.85,
+}
 
 try:
     from .ped_flags import annotate_ped_flags

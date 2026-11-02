@@ -43,13 +43,17 @@ pub fn annual<F: Fn(&crate::history::Row) -> f64>(
 ) -> BTreeMap<i32, Vec<(String, f64)>> {
     let mut g: BTreeMap<(i32, &str), Vec<f64>> = BTreeMap::new();
     for r in rows {
-        g.entry((year(r.day), &r.fighter)).or_default().push(value(r));
+        g.entry((year(r.day), &r.fighter))
+            .or_default()
+            .push(value(r));
     }
     let mut out: BTreeMap<i32, Vec<(String, f64)>> = BTreeMap::new();
     let mut keys: Vec<_> = g.into_iter().collect();
     keys.sort_by(|a, b| (a.0 .1, a.0 .0).cmp(&(b.0 .1, b.0 .0)));
     for ((y, f), v) in keys {
-        out.entry(y).or_default().push((f.to_string(), kahan_mean(&v)));
+        out.entry(y)
+            .or_default()
+            .push((f.to_string(), kahan_mean(&v)));
     }
     out
 }
@@ -58,11 +62,18 @@ pub fn annual<F: Fn(&crate::history::Row) -> f64>(
 pub fn apply<F: Fn(&str) -> bool>(h: &mut History, female: F) {
     let mut shift: HashMap<(bool, i32), f64> = HashMap::new();
     for g in [false, true] {
-        let rows: Vec<&crate::history::Row> = h.rows.iter().filter(|r| female(&r.fighter) == g).collect();
+        let rows: Vec<&crate::history::Row> =
+            h.rows.iter().filter(|r| female(&r.fighter) == g).collect();
         let a = annual(&rows, |r| r.mu);
         let e: Vec<(i32, f64, f64)> = a
             .iter()
-            .map(|(y, v)| (*y, contender_bar(&v.iter().map(|p| p.1).collect::<Vec<_>>(), CAREER_N), v.len() as f64))
+            .map(|(y, v)| {
+                (
+                    *y,
+                    contender_bar(&v.iter().map(|p| p.1).collect::<Vec<_>>(), CAREER_N),
+                    v.len() as f64,
+                )
+            })
             .collect();
         let en: Vec<f64> = e.iter().map(|(_, b, n)| b * n).collect();
         let n: Vec<f64> = e.iter().map(|(_, _, n)| *n).collect();

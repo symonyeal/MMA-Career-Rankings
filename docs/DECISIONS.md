@@ -693,12 +693,18 @@ sets up the same published functional for both interval entry points. `ratings/b
 owns published filenames, score columns and eligibility rules; the command writes artifacts.
 The title, exposure and contender ledgers remain together in `ratings/legacy_resume.py`.
 
-Both numerical solvers have Rust kernels: WHR's coordinate-ascent passes in `rust/whr_rs`,
-and Glicko-2's weighted updates and monthly inactivity transitions in `rust/rating_rs`.
-Python keeps the input assembly and reference calculations. The Glicko port calls the runtime
-C math routines, as Python does, and prevents the compiler from replacing `pow(x, 2)` with
-`x*x`: those operations differed in the last bit during an inactivity transition. Tests
-compare full histories exactly, including weighted results; CI builds and requires both kernels.
+On 2026-11-01 the model moved whole into the Rust crate in `src/`; the Python model,
+its kernels and its reference calculations are archived outside the repository. Python
+keeps source fetching, parsing and staging. The Glicko port calls the runtime C math
+routines and avoids replacing `pow(x, 2)` with `x*x`: those differed in the last bit
+during an inactivity transition. The rebuild reproduces the Python build to 1e-9 with one
+exception: same-date history rows now keep path order. The Python build sorted dates with
+NumPy's unstable kernel, so tied rows came out in arbitrary order; with a stable sort
+forced, the Python build and the Rust build agree on every board and on `site/data.js`.
+The change moves All-time ranks 488 and 489 and some early-tournament strength values.
+Unused outputs were dropped: 37 performance columns, the calibration residual and Brier
+rows, and `public_legacy_rank_context_win_mass`. The held-out test reproduces all 1,924
+forecasts of the registered run exactly.
 
 The site is the maintained presentation. The notebook and its builders are archived under
 `_archive/20261029-notebook-retired/`; their definitions were different from the published
@@ -722,42 +728,24 @@ Use named scopes through `--scope`; the deprecated cross-organisation aliases ar
 The rating command no longer accepts the unused `--min-fights` option. The refresh command
 still accepts it as the board's eligibility floor.
 
-Every checkout holds everything below needs: the release snapshot is versioned
-whole, and the Sherdog extracts that staging reads sit beside the page store,
-which stays local. `python check_release.py` lists anything missing and exits
-non-zero; CI runs the same check on a fresh clone.
-
-A score or board change reads the existing ratings — but it must **re-score the
-snapshot first**. `build_boards.py` publishes the `public_legacy_*` columns
-already stored in `ratings_current.parquet`; it does not recompute them. Skip the
-first line below and the boards publish the old scores while the audit, which
-does recompute, publishes the new ones, and the two silently disagree:
+Every checkout holds everything a rebuild needs: the release snapshot is versioned
+whole, and the Sherdog extracts that staging reads sit beside the page store, which
+stays local. A score, board, data or rating change runs the whole build, about 10 seconds:
 
 ```text
-python -m ratings.rate_snapshot --snapshot-dir data/snapshots/2026-10-24 --scope majors,pre_unified --career-only
-python build_boards.py data/snapshots/2026-10-24 --scope majors,pre_unified --write-readme
-python build_top100_audit.py data/snapshots/2026-10-24 --scope majors,pre_unified
+cargo run --release -- data/snapshots/2026-10-24
+cargo test --release
 python -m pytest -q
 python -m ruff check .
 ```
 
-`--career-only` re-scores against the persisted fit and refuses if the scope does
-not match the fit that produced it, so it cannot quietly re-score one scope's
-board from another scope's ratings.
-
-A data or rating change needs the full path. With the Rust solver installed,
-`rate_snapshot` took 170.9 seconds on the 2026-10-14 release (measured 2026-10-23 on
-the work laptop while other checks were running). An earlier unprofiled run of the
-previous code on the same release recorded 479.4 seconds. These timings are not a
-controlled speed comparison. The Python hot-spot changes also contribute;
-the new pipeline's total runtime without Rust has not been measured:
+A data change stages first:
 
 ```text
 python build_sherdog_careers.py --report-only
-python -c "from loaders.majors_scope import stage_majors_scope; stage_majors_scope('data/snapshots/2026-10-24')"
-python -m ratings.rate_snapshot --snapshot-dir data/snapshots/2026-10-24 --scope majors,pre_unified
+python refresh.py --snapshot-date <YYYY-MM-DD>
 ```
 
-then the board block above. Never hand-edit a generated table. After any change,
+Never hand-edit a generated table. After any change,
 re-run the deviant-fighter audit and read `rating_run.json` before claiming
 anything about the top of the board.

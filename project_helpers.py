@@ -180,25 +180,6 @@ def date_range(df: pd.DataFrame) -> tuple[str | None, str | None]:
     return None, None
 
 
-def group_bounds(*keys: pd.Series) -> tuple[np.ndarray, np.ndarray]:
-    """Half-open row ranges of each run of equal key tuples in an already-sorted frame.
-
-    The equivalent of ``groupby(sort=False)`` over a frame that is already
-    ordered by those keys, without materializing a group object per event.
-    """
-    n = len(keys[0])
-    if n == 0:
-        return np.empty(0, dtype=np.int64), np.empty(0, dtype=np.int64)
-    changed = np.zeros(n - 1, dtype=bool)
-    for key in keys:
-        values = key.to_numpy()
-        changed |= values[1:] != values[:-1]
-    boundary = np.flatnonzero(changed) + 1
-    starts = np.concatenate(([0], boundary))
-    stops = np.concatenate((boundary, [n]))
-    return starts, stops
-
-
 def map_distinct(values: pd.Series, f) -> pd.Series:
     """``values.map(f)`` calling ``f`` once per distinct value (NaN included), same dtype inference as ``map``.
 

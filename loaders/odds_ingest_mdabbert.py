@@ -28,7 +28,7 @@ import pandas as pd
 if str(Path(__file__).resolve().parent.parent) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from ratings.odds import american_to_decimal
+from loaders.odds import american_to_decimal
 from loaders.odds_loader import (
     RAW_ODDS_COLUMNS, compute_implied_probs,
 )

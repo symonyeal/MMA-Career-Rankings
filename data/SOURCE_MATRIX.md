@@ -271,7 +271,7 @@ Three authoritative signals are OR-merged into per-fight audit flags:
 * Missed-weight winner: factor `0.94` (-6%). Detected from Greco
   `details_text` ("missed weight" phrase + winner name) and, when
   available, mdabbert `R_Weight_lbs`/`B_Weight_lbs` vs `weight_class`
-  divergence (cross-check). Audit export: `missed_weight_bouts.csv`.
+  divergence (cross-check).
 
 The standard board builder writes the event ledger and an optional direct
 rating-point debit against base WHR. It never propagates a policy penalty

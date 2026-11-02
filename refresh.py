@@ -1,8 +1,9 @@
-"""Refresh the UFC ranking snapshot end to end.
+"""Refresh the ranking snapshot end to end.
 
-This script copies the current Greco CSV inputs into data/raw/<date>/, rebuilds
-the canonical parquet snapshot, runs ratings and dominance, then updates the
-dated release entry in data/CHANGELOG.md.
+Copies the current Greco CSV inputs into data/raw/<date>/, stages every source
+into data/snapshots/<date>/, writes the combined fight table, runs the Rust
+model (`mma`: ratings, boards, RANKINGS.md, README tables, site data and the
+top-100 audit), then updates the dated entry in data/CHANGELOG.md.
 """
 from __future__ import annotations
 
@@ -10,6 +11,7 @@ import argparse
 import json
 import re
 import shutil
+import subprocess
 from datetime import date
 from pathlib import Path
 
@@ -17,6 +19,8 @@ import pandas as pd
 
 from project_helpers import PROJECT_ROOT
 
+from loaders.career_coverage import require_coverage
+from loaders.combined_fights import write_combined_fights
 from loaders.ufcstats_loader import (
     GRECO_FILES,
     build_snapshot,
@@ -26,11 +30,7 @@ from loaders.datalab_loader import DEFAULT_DATALAB_DIR, build_snapshot as build_
 from loaders.fightmatrix_loader import build_snapshot as build_fightmatrix_snapshot
 from loaders.fightmatrix_profiles import build_public_profile_snapshot
 from loaders.odds_ingest_mdabbert import run as ingest_mdabbert_odds
-from ratings.glicko2_engine import DEFAULT_TAU
-from ratings.rate_snapshot import run as run_ratings
-from ratings.rules_era import stage_pre_unified_scope
-from ratings.scope import DEFAULT_PUBLISHED_SCOPE
-from ratings.symon_score import DEFAULT_CAREER_REFERENCE
+from loaders.pre_unified import stage_pre_unified_scope
 
 
 def _coverage_line(summary: dict) -> str:
@@ -51,8 +51,8 @@ def stage_scopes(snapshot_dir: Path) -> dict[str, object]:
 
     Each one is optional and each failure is reported rather than raised: a
     missing Sherdog corpus is a reason not to be able to *select* that scope,
-    not a reason to fail the refresh. Selecting a scope that was not staged
-    still raises, at the point of selection, where it means something.
+    not a reason to fail the refresh. The model refuses a published scope whose
+    inputs are missing, at the point where that means something.
     """
     from loaders.majors_scope import stage_majors_scope  # local: pulls bs4
 
@@ -67,11 +67,6 @@ def stage_scopes(snapshot_dir: Path) -> dict[str, object]:
             staged[name] = f"not staged: {type(exc).__name__}: {exc}"
             print(f"[refresh] scope {name} not staged: {exc}")
     return staged
-from ratings.boards import RATING_FLOOR_IS_UNRANKED, select_core_rating_col
-from build_boards import write_board_artifacts
-from ratings.boards import completeness_gated_board
-from ratings.constants import SUSTAINED_PEAK_MIN_FIGHTS
-from ratings.gender import partition_by_gender
 
 
 _MDABBERT_CANDIDATES = (
@@ -139,46 +134,23 @@ def mover_lines(current_path: Path, previous_path: Path | None, limit: int = 10)
     return lines
 
 
-def _headline_top_line(current: pd.DataFrame, headline_col: str, limit: int = 10) -> str:
-    """The published men's top ``limit``, gated as the published board is gated."""
-    men = partition_by_gender(current).get("M")
-    population = current if men is None or men.empty else men
-    board = completeness_gated_board(
-        population,
-        rating_col=headline_col,
-        min_rating_periods=SUSTAINED_PEAK_MIN_FIGHTS,
-        unranked_at_or_below=RATING_FLOOR_IS_UNRANKED.get(headline_col),
-    )
+def _headline_top_line(snapshot_dir: Path, limit: int = 10) -> str:
+    """The published men's top ``limit``, read from the board the model wrote."""
+    board = pd.read_parquet(snapshot_dir / "completeness_gated_board.parquet")
     ranked = board[board["status"].eq("ranked")].head(limit)
     if ranked.empty:
         return "no fighter cleared the published evidence floor"
-    return "; ".join(
-        f"{row.fighter} {getattr(row, headline_col):.1f}"
-        for row in ranked.itertuples(index=False)
-    )
+    return "; ".join(f"{row.fighter} {row.public_legacy_score:.1f}" for row in ranked.itertuples(index=False))
 
 
 def append_changelog(project_root: Path, snapshot_date: str, counts: dict[str, int],
-                     ratings_summary: dict, previous_dir: Path | None) -> None:
+                     ratings_summary: dict, coverage: dict, previous_dir: Path | None) -> None:
     changelog = project_root / "data" / "CHANGELOG.md"
-    current_path = project_root / "data" / "snapshots" / snapshot_date / "ratings_current.parquet"
-    current = pd.read_parquet(current_path)
-    headline_col = select_core_rating_col(current)
-    # The changelog quotes the published board, so it has to be gated the way
-    # the published board is gated: the same rating-period floor, and one
-    # gender. It used to take the top ten of everyone above three periods, which
-    # printed a combined men-and-women list -- the exact ranking this project
-    # refuses to publish, because no result connects the two groups.
-    top_line = _headline_top_line(current, headline_col)
-    from ratings.constants import rating_label
-    headline_label = (
-        "Public Legacy Score"
-        if headline_col == "public_legacy_score"
-        else "Career Skill Mass"
-        if headline_col == "symon_career_skill_mass"
-        else rating_label(headline_col)
-    )
-
+    snapshot_dir = project_root / "data" / "snapshots" / snapshot_date
+    # The changelog quotes the published board: one gender, the published
+    # rating-period floor. A combined men-and-women list is the ranking this
+    # project refuses to publish, because no result connects the two groups.
+    top_line = _headline_top_line(snapshot_dir)
     lines = [
         "",
         f"## {snapshot_date} - Refresh run",
@@ -195,16 +167,16 @@ def append_changelog(project_root: Path, snapshot_date: str, counts: dict[str, i
         # record has no interior maximum, so its rating grows with how many of
         # the fighter's bouts the corpus holds; a run built on two coverage
         # rules reads the crawl's shape as skill.
-        f"- Career coverage: {_coverage_line(ratings_summary.get('career_coverage', {}))}",
+        f"- Career coverage: {_coverage_line(coverage)}",
         ("- Streams: canonical binary Glicko-2 comparison + method-aware WHR smoother; "
-        "binary WHR remains a research comparison."),
+         "binary WHR remains a research comparison."),
         ("- Public scores: Public Legacy Score (the core board) and fixed 10-year Prime. "
-        "Career Skill Mass is the skill diagnostic underneath the board; FightMatrix and the "
-        "public anchor lists are sanity checks for top-100 outliers, never tuning targets."),
+         "Career Skill Mass is the skill diagnostic underneath the board; FightMatrix and the "
+         "public anchor lists are sanity checks for top-100 outliers, never tuning targets."),
         "- Audit layers (integrity, dominance, odds, opponent context) do not enter the rating likelihood.",
-        f"- Top 10 by {headline_label}: {top_line}",
+        f"- Top 10 by Public Legacy Score: {top_line}",
     ]
-    lines.extend(mover_lines(current_path, previous_dir))
+    lines.extend(mover_lines(snapshot_dir / "ratings_current.parquet", previous_dir))
     content = changelog.read_text(encoding="utf-8")
     block = "\n".join(lines).strip() + "\n"
     section = re.compile(
@@ -224,30 +196,17 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     different corpus from the published one: among other things it lost the 53
     birth dates that only the Fight Matrix profiles carry, and nothing said so.
     """
-    parser = argparse.ArgumentParser(description="Refresh UFC snapshot, ratings, dominance, and changelog.")
+    parser = argparse.ArgumentParser(description="Stage the sources, run the model, update the changelog.")
     parser.add_argument("--snapshot-date", default=str(date.today()), help="YYYY-MM-DD snapshot label.")  # noqa: DTZ011 - the snapshot label is a local calendar date, not an instant
     parser.add_argument("--project-root", default=str(PROJECT_ROOT), help="Project root path.")
     parser.add_argument("--greco-dir", default=None, help="Path to Greco scrape_ufc_stats CSV directory.")
-    parser.add_argument("--tau", type=float, default=DEFAULT_TAU, help=f"Glicko-2 tau; default {DEFAULT_TAU}.")
-    parser.add_argument(
-        "--min-fights", type=int, default=SUSTAINED_PEAK_MIN_FIGHTS,
-        help="Completeness threshold for published ranking and uncertainty artifacts.",
-    )
-    parser.add_argument(
-        "--bootstrap-replicates", type=int, default=0,
-        help=(
-            "Refit the smoother this many times under Dirichlet-reweighted events to "
-                "publish rank intervals (0 skips; benchmark the selected scope before a release run)."
-        ),
-    )
     parser.add_argument("--include-external", action=argparse.BooleanOptionalAction, default=True,
                         help="Load UFC-DataLab, Fight Matrix and the odds into the snapshot. On by "
                              "default because the published release reads them.")
     parser.add_argument("--include-odds", action="store_true",
-                        help="Ingest the mdabbert ufc-master.csv before ratings so the performance "
-                             "sleeve's market sub-factor is active.")
+                        help="Ingest the mdabbert ufc-master.csv even without --include-external.")
     parser.add_argument("--mdabbert-csv", default=str(DEFAULT_MDABBERT_CSV),
-                        help="Path to mdabbert ufc-master.csv. Used for odds + missed-weight cross-check.")
+                        help="Path to mdabbert ufc-master.csv (odds lines).")
     parser.add_argument("--refresh-fightmatrix", action="store_true",
                         help="When --include-external is set, re-fetch FightMatrix HTML instead of using cache.")
     parser.add_argument(
@@ -263,14 +222,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--fightmatrix-insecure",
         action="store_true",
         help="Disable FightMatrix TLS verification only on a managed interception network.",
-    )
-    parser.add_argument(
-        "--scope", default=DEFAULT_PUBLISHED_SCOPE,
-        help=(
-            "Which bouts the rating may see: ufc, majors, pre_unified, "
-            "fightmatrix, all, or a comma-separated combination. Staging happens "
-            "either way; this only decides what is rated."
-        ),
     )
     args = parser.parse_args(argv)
     if args.include_fightmatrix_profiles is None:
@@ -336,75 +287,16 @@ def main() -> None:
             )
         else:
             print(f"[refresh] mdabbert csv not found, skipping odds ingest: {mdabbert_csv}")
-    # Stage every scope the inputs allow, then rate only the one asked for.
-    # Staging is cheap and reversible; rating is the decision. Keeping them
-    # apart means "the corpus is not staged" and "the corpus is not admitted"
-    # cannot be confused for each other.
+    # Stage every scope the inputs allow; the model selects the published one.
+    # Staging is cheap and reversible; rating is the decision.
     stage_scopes(snapshot_dir)
+    write_combined_fights(snapshot_dir)
+    # The published scope rates whole careers; refuse a corpus that holds them for only some fighters.
+    coverage = require_coverage(snapshot_dir, "majors,pre_unified")
 
-    ratings_summary = run_ratings(
-        snapshot_dir,
-        tau=args.tau,
-        mdabbert_csv=mdabbert_csv if mdabbert_csv and mdabbert_csv.exists() else None,
-        scope=args.scope,
-    )
-    board_summary = write_board_artifacts(
-        snapshot_dir,
-        min_rating_periods=args.min_fights,
-        scope=args.scope,
-    )
-    print(
-        "[refresh] board artifacts: "
-        f"core={board_summary['core_rating_col']}, "
-        f"integrity={board_summary['integrity_rating_col']}, "
-        f"ledger_rows={board_summary['ledger_rows']:,}, "
-        f"ranked={board_summary['ranked_fighters']:,}, "
-        f"withheld={board_summary['withheld_fighters']:,}"
-    )
-    if args.bootstrap_replicates > 0:
-        from ratings.bootstrap import bootstrap_snapshot
-        from ratings.gender import DEFAULT_GENDER, GENDER_LABEL
-        from ratings.uncertainty import career_tiers, tier_summary
-
-        board, draws = bootstrap_snapshot(
-            snapshot_dir, scope=args.scope, replicates=args.bootstrap_replicates,
-            min_rating_periods=args.min_fights,
-        )
-        board.to_parquet(snapshot_dir / "career_mass_uncertainty.parquet", index=False)
-        tiers = career_tiers(board, draws)
-        tiers.to_parquet(snapshot_dir / "career_mass_tiers.parquet", index=False)
-        widths = (board.head(50)["rank_hi"] - board.head(50)["rank_lo"]).median()
-        ranked_tiers = tiers[tiers["tier"].notna()]
-        uncertainty_summary = {
-            "replicates": int(args.bootstrap_replicates),
-            "seed": 0,
-            "scope": args.scope,
-            "score": "symon_career_skill_mass",
-            "gender": DEFAULT_GENDER,
-            "gender_label": GENDER_LABEL[DEFAULT_GENDER],
-            "interval": [0.025, 0.975],
-            "reference": str(DEFAULT_CAREER_REFERENCE),
-            "age_drift": True,
-            "tier_confidence": 0.95,
-            "min_rating_periods": int(args.min_fights),
-            "tiers": int(ranked_tiers["tier"].nunique()),
-            "tiered_fighters": len(ranked_tiers),
-            "unranked_at_floor": int(tiers["tier"].isna().sum()),
-            "fighters": len(board),
-            "median_rank_width_top50": float(widths),
-        }
-        (snapshot_dir / "career_mass_uncertainty.json").write_text(
-            json.dumps(uncertainty_summary, indent=2) + "\n", encoding="utf-8"
-        )
-        print(f"[refresh] rank intervals: {args.bootstrap_replicates} replicates, "
-              f"scope={args.scope}, median top-50 width {widths:.0f}")
-        print(f"[refresh] tiers: {ranked_tiers['tier'].nunique()} over "
-              f"{len(ranked_tiers):,} fighters, "
-              f"{int(tiers['tier'].isna().sum()):,} unranked at the score floor")
-        print(tier_summary(tiers).head(8).round(1).to_string(index=False))
-    else:
-        print("[refresh] rank intervals skipped (--bootstrap-replicates 0)")
-    append_changelog(project_root, args.snapshot_date, counts, ratings_summary, previous_dir)
+    subprocess.run(["cargo", "run", "--release", "--quiet", "--", str(snapshot_dir)], cwd=project_root, check=True)
+    ratings_summary = json.loads((snapshot_dir / "rating_run.json").read_text(encoding="utf-8"))
+    append_changelog(project_root, args.snapshot_date, counts, ratings_summary, coverage, previous_dir)
     print(f"[refresh] changelog appended: {project_root / 'data' / 'CHANGELOG.md'}")
 
 

@@ -26,7 +26,8 @@ pub struct Layoff(HashMap<(String, Day), f64>);
 impl Layoff {
     pub fn new(h: &History) -> Layoff {
         // Distinct dates per fighter, in date order (rows are already fighter-sorted).
-        let mut dates: Vec<(&str, Day)> = h.rows.iter().map(|r| (r.fighter.as_str(), r.day)).collect();
+        let mut dates: Vec<(&str, Day)> =
+            h.rows.iter().map(|r| (r.fighter.as_str(), r.day)).collect();
         dates.dedup();
         let gaps: Vec<(&str, Day, f64)> = dates
             .windows(2)
@@ -40,20 +41,36 @@ impl Layoff {
         }
         let normal: HashMap<i32, f64> = by_year
             .into_iter()
-            .map(|(y, v)| (y, if v.len() < MIN_SAMPLE { corpus } else { quantile(&v, Q) }.max(1.0)))
+            .map(|(y, v)| {
+                (
+                    y,
+                    if v.len() < MIN_SAMPLE {
+                        corpus
+                    } else {
+                        quantile(&v, Q)
+                    }
+                    .max(1.0),
+                )
+            })
             .collect();
         Layoff(
             gaps.into_iter()
                 .map(|(f, d, gap)| {
                     let reference = normal.get(&year(d)).copied().unwrap_or(FALLBACK_DAYS);
-                    ((f.to_string(), d), (gap / reference - 1.0).clamp(0.0, MAX_EXCESS))
+                    (
+                        (f.to_string(), d),
+                        (gap / reference - 1.0).clamp(0.0, MAX_EXCESS),
+                    )
                 })
                 .collect(),
         )
     }
 
     pub fn excess(&self, fighter: &str, day: Day) -> f64 {
-        self.0.get(&(fighter.to_string(), day)).copied().unwrap_or(0.0)
+        self.0
+            .get(&(fighter.to_string(), day))
+            .copied()
+            .unwrap_or(0.0)
     }
 
     /// `discount_opponent_mu`: the opponent's rating on the night.

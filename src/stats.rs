@@ -38,7 +38,11 @@ pub fn psum(a: &[f64]) -> f64 {
 /// `Series.mean()`: pairwise sum over the non-NaN values.
 pub fn mean(a: &[f64]) -> f64 {
     let v: Vec<f64> = a.iter().copied().filter(|x| !x.is_nan()).collect();
-    if v.is_empty() { f64::NAN } else { psum(&v) / v.len() as f64 }
+    if v.is_empty() {
+        f64::NAN
+    } else {
+        psum(&v) / v.len() as f64
+    }
 }
 
 /// pandas `groupby(...).mean()` of one group: Kahan sum over non-NaN values.
@@ -51,7 +55,11 @@ pub fn kahan_mean(a: &[f64]) -> f64 {
         s = t;
         n += 1;
     }
-    if n == 0 { f64::NAN } else { s / n as f64 }
+    if n == 0 {
+        f64::NAN
+    } else {
+        s / n as f64
+    }
 }
 
 /// pandas `groupby(...).std(ddof)` of one group: Welford's update.
@@ -63,7 +71,11 @@ pub fn welford_std(a: &[f64], ddof: usize) -> f64 {
         m += d / n as f64;
         s2 += d * (x - m);
     }
-    if n <= ddof { f64::NAN } else { (s2 / (n - ddof) as f64).sqrt() }
+    if n <= ddof {
+        f64::NAN
+    } else {
+        (s2 / (n - ddof) as f64).sqrt()
+    }
 }
 
 /// `np.var(a, ddof)`: two-pass, pairwise sums.
@@ -93,7 +105,11 @@ pub fn quantile_sorted(s: &[f64], q: f64) -> f64 {
     // NumPy's `_lerp`: a + (b - a)·g, taken from the far end when g ≥ ½.
     let (a, b) = (s[lo], s[hi]);
     let d = b - a;
-    if g >= 0.5 { b - d * (1.0 - g) } else { a + d * g }
+    if g >= 0.5 {
+        b - d * (1.0 - g)
+    } else {
+        a + d * g
+    }
 }
 
 pub fn quantile(a: &[f64], q: f64) -> f64 {
@@ -105,7 +121,11 @@ pub fn quantile(a: &[f64], q: f64) -> f64 {
 /// NumPy `round(x, d)`: rint(x·10ᵈ)/10ᵈ, ties to even.
 pub fn np_round(x: f64, d: i32) -> f64 {
     let p = 10f64.powi(d);
-    if d >= 0 { (x * p).round_ties_even() / p } else { (x / 10f64.powi(-d)).round_ties_even() * 10f64.powi(-d) }
+    if d >= 0 {
+        (x * p).round_ties_even() / p
+    } else {
+        (x / 10f64.powi(-d)).round_ties_even() * 10f64.powi(-d)
+    }
 }
 
 /// Python `round(x, d)`: the decimal nearest the exact binary value, ties to even.
@@ -125,7 +145,11 @@ pub fn py_repr(x: f64) -> String {
         return if x > 0.0 { "inf".into() } else { "-inf".into() };
     }
     if x == 0.0 {
-        return if x.is_sign_negative() { "-0.0".into() } else { "0.0".into() };
+        return if x.is_sign_negative() {
+            "-0.0".into()
+        } else {
+            "0.0".into()
+        };
     }
     // Shortest digits and decimal exponent from Rust's round-trip formatting.
     let e = format!("{x:e}");
@@ -146,14 +170,132 @@ pub fn py_repr(x: f64) -> String {
         };
         format!("{sign}{s}")
     } else {
-        let m = if digits.len() > 1 { format!("{}.{}", &digits[..1], &digits[1..]) } else { digits };
-        format!("{sign}{m}e{}{:02}", if exp < 0 { '-' } else { '+' }, exp.abs())
+        let m = if digits.len() > 1 {
+            format!("{}.{}", &digits[..1], &digits[1..])
+        } else {
+            digits
+        };
+        format!(
+            "{sign}{m}e{}{:02}",
+            if exp < 0 { '-' } else { '+' },
+            exp.abs()
+        )
     }
 }
 
 /// Python `f"{x:.0f}"` of a float: exact binary value rounded half-even.
 pub fn fmt0(x: f64) -> String {
-    if x.is_nan() { String::new() } else { format!("{x:.0}") }
+    if x.is_nan() {
+        String::new()
+    } else {
+        format!("{x:.0}")
+    }
+}
+
+/// NumPy `default_rng(seed)`: PCG64 (XSL-RR 128/64) seeded through `SeedSequence`.
+pub struct Pcg64 {
+    state: u128,
+    inc: u128,
+    half: Option<u32>,
+}
+
+const PCG_MULT: u128 = 0x2360_ED05_1FC6_5DA4_4385_DF64_9FCC_F645;
+
+impl Pcg64 {
+    pub fn new(seed: u32) -> Pcg64 {
+        const INIT_A: u32 = 0x43b0_d7e5;
+        const MULT_A: u32 = 0x931e_8875;
+        const INIT_B: u32 = 0x8b51_f9dd;
+        const MULT_B: u32 = 0x58f3_8ded;
+        let mut hc = INIT_A;
+        let mut hashmix = |mut v: u32| {
+            v ^= hc;
+            hc = hc.wrapping_mul(MULT_A);
+            v = v.wrapping_mul(hc);
+            v ^ (v >> 16)
+        };
+        let mix = |x: u32, y: u32| {
+            let r = 0xca01_f9ddu32
+                .wrapping_mul(x)
+                .wrapping_sub(0x4973_f715u32.wrapping_mul(y));
+            r ^ (r >> 16)
+        };
+        let mut pool = [0u32; 4];
+        for (i, p) in pool.iter_mut().enumerate() {
+            *p = hashmix(if i == 0 { seed } else { 0 });
+        }
+        for s in 0..4 {
+            for d in 0..4 {
+                if s != d {
+                    pool[d] = mix(pool[d], hashmix(pool[s]));
+                }
+            }
+        }
+        let mut hb = INIT_B;
+        let w: Vec<u64> = (0..8)
+            .map(|i| {
+                let mut v = pool[i % 4] ^ hb;
+                hb = hb.wrapping_mul(MULT_B);
+                v = v.wrapping_mul(hb);
+                (v ^ (v >> 16)) as u64
+            })
+            .collect();
+        let s: Vec<u128> = (0..4)
+            .map(|j| (w[2 * j] | (w[2 * j + 1] << 32)) as u128)
+            .collect();
+        let mut r = Pcg64 {
+            state: 0,
+            inc: ((s[2] << 64 | s[3]) << 1) | 1,
+            half: None,
+        };
+        r.step();
+        r.state = r.state.wrapping_add(s[0] << 64 | s[1]);
+        r.step();
+        r
+    }
+
+    fn step(&mut self) {
+        self.state = self.state.wrapping_mul(PCG_MULT).wrapping_add(self.inc);
+    }
+
+    fn next64(&mut self) -> u64 {
+        self.step();
+        (((self.state >> 64) as u64) ^ (self.state as u64)).rotate_right((self.state >> 122) as u32)
+    }
+
+    /// Low half first; the high half is kept for the next call.
+    fn next32(&mut self) -> u32 {
+        if let Some(h) = self.half.take() {
+            return h;
+        }
+        let x = self.next64();
+        self.half = Some((x >> 32) as u32);
+        x as u32
+    }
+
+    /// `Generator.integers(0, n)`: Lemire's bounded draw on 32-bit words.
+    pub fn below(&mut self, n: u32) -> usize {
+        let mut m = self.next32() as u64 * n as u64;
+        if (m as u32) < n {
+            let t = (u32::MAX - (n - 1)) % n;
+            while (m as u32) < t {
+                m = self.next32() as u64 * n as u64;
+            }
+        }
+        (m >> 32) as usize
+    }
+}
+
+/// pandas `groupby(...).sum()` of one group: Kahan sum over non-NaN values.
+pub fn kahan_sum(a: &[f64]) -> f64 {
+    let (mut s, mut c) = (0.0_f64, 0.0_f64);
+    for &x in a.iter().filter(|x| !x.is_nan()) {
+        let y = x - c;
+        let t = s + y;
+        c = (t - s) - y;
+        s = t;
+    }
+    s
 }
 
 #[cfg(test)]
@@ -162,8 +304,16 @@ mod tests {
 
     #[test]
     fn repr_matches_python() {
-        for (x, s) in [(1.0, "1.0"), (1813.7, "1813.7"), (1e-5, "1e-05"), (0.0001, "0.0001"), (1e16, "1e+16"),
-                       (123456789012345.6, "123456789012345.6"), (-2.5, "-2.5"), (0.1 + 0.2, "0.30000000000000004")] {
+        for (x, s) in [
+            (1.0, "1.0"),
+            (1813.7, "1813.7"),
+            (1e-5, "1e-05"),
+            (0.0001, "0.0001"),
+            (1e16, "1e+16"),
+            (123456789012345.6, "123456789012345.6"),
+            (-2.5, "-2.5"),
+            (0.1 + 0.2, "0.30000000000000004"),
+        ] {
             assert_eq!(py_repr(x), s);
         }
     }

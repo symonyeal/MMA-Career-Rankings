@@ -21,15 +21,24 @@ jobs:
       - run: node --check site/app.js
       - run: npm test
 
-  checks:
+  model:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: cargo fmt --check
+      - run: cargo clippy --release --all-targets -- -D warnings
+      - run: cargo test --release
+      # The release snapshot is versioned whole, so a fresh clone rebuilds every
+      # published text output; any difference from the committed files fails.
+      - run: cargo run --release -- data/snapshots/2026-10-24
+      - run: git diff --exit-code -- RANKINGS.md README.md site '*.csv' '*.json'
+
+  staging:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         python: ["3.12", "3.13", "3.14"]
-    # Keep array operations consistent across runner CPU generations.
-    env:
-      NPY_DISABLE_CPU_FEATURES: "X86_V4 AVX512F AVX512CD AVX512_SKX AVX512_CLX AVX512_CNL AVX512_ICL AVX512_SPR"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -37,18 +46,6 @@ jobs:
           python-version: ${{ matrix.python }}
       - run: python -m pip install --upgrade pip
       - run: python -m pip install -r requirements.txt
-      - run: python -c "import numpy; numpy.show_runtime()"
-      # Both compiled solvers are mandatory; imports fail if either is missing.
-      - run: python -m pip install maturin==1.15.0 && python -m pip install ./rust/whr_rs ./rust/rating_rs
-      - run: cargo clippy --manifest-path rust/whr_rs/Cargo.toml --release -- -D warnings
-      - run: cargo fmt --manifest-path rust/whr_rs/Cargo.toml --check
-      - run: cargo test --manifest-path rust/whr_rs/Cargo.toml --release
-      - run: cargo clippy --manifest-path rust/rating_rs/Cargo.toml --release -- -D warnings
-      - run: cargo fmt --manifest-path rust/rating_rs/Cargo.toml --check
-      # The release snapshot is versioned whole, so the tests that read it run
-      # here on a fresh clone instead of skipping, and test_release_committed
-      # fails if any file a rebuild needs is missing or gitignored.
       - run: python -m pytest -q
       - run: python -m ruff check .
       - run: python -m pip check
-      - run: python check_release.py
