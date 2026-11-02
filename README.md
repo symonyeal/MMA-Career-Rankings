@@ -390,44 +390,39 @@ conflict. See the [decision register](docs/DECISIONS.md).
 | Path | Use it for |
 | --- | --- |
 | [`RANKINGS.md`](RANKINGS.md) | Full rankings |
-| `ratings/` / `loaders/` | Model / data assembly |
-| `ratings/fights.py`, `divisions.py`, `history.py` | Shared fight preparation, division names and pre-fight lookups |
-| `ratings/evaluation.py`, `bootstrap.py`, `boards.py` | Probability metrics, interval setup and published board definitions |
-| `rust/whr_rs/` | Whole-History Rating fitting and conditional variances in Rust |
-| `rust/rating_rs/` | Glicko-2 updates and inactivity transitions in Rust |
+| `src/` | The model in Rust: ratings, scores, boards, this README's tables and figures, site data |
+| `loaders/`, `refresh.py`, `build_sherdog_*.py` | Source acquisition and staging in Python |
 | `data/snapshots/<date>/` | The release: inputs, fitted ratings and boards, all versioned |
 | [`docs/`](docs/) | Method and decisions |
 | [`docs/FORECAST.md`](docs/FORECAST.md) | The pre-fight forecast benchmark against betting odds, and the selection leak it avoids |
 | [`docs/RELEASE_CHECK.md`](docs/RELEASE_CHECK.md) | Source freshness, fresh-checkout reproduction and the limits of current predictive evidence |
 | [`site/`](site/) | Interactive analysis site, published at <https://symonyeal.github.io/MMA-Career-Rankings/>; open `site/index.html` locally |
-| `tests/` | Verification |
+| `tests/` | Staging tests (Python) and the site browser test |
 
-Use the system Python:
+Rebuild every published output from the committed snapshot with a Rust toolchain
+([rustup](https://rustup.rs)):
+
+```text
+cargo run --release -- data/snapshots/2026-10-24
+```
+
+It writes the fitted ratings and boards into the snapshot, `RANKINGS.md`, this README's tables and
+narrative figures, `site/data.js`, plus a local top-100 audit in `data/model_tuning/` that is not committed. CI
+runs it on a fresh clone and fails if a committed text output changes.
+
+`refresh.py` stages new source data into a dated snapshot and then runs the same command. The
+staging code is Python; use the system Python:
 
 ```text
 python -m pip install -r requirements.txt
-python -m pip install maturin ./rust/whr_rs ./rust/rating_rs
 python -m pytest -q
-python check_release.py
-python build_boards.py data/snapshots/2026-10-24 --scope majors,pre_unified --write-readme
+python refresh.py --snapshot-date <YYYY-MM-DD>
 ```
-
-The second line requires a Rust toolchain ([rustup](https://rustup.rs)). Both compiled extensions
-are required: there is no Python solver or fallback. Tests check captured numerical results and model behavior.
-
-Refresh the narrative figures after rebuilding a release:
-`python analysis/readme_figures.py --write-readme`. The tests check these figures against the data.
-
-The site draws its analyses from one snapshot. Its data file, `site/data.js`, is
-generated; rebuild it after the boards change:
-
-```text
-python analysis/build_site.py data/snapshots/2026-10-24
-```
-
-Use `--output <directory>` to build an isolated copy for review. The retired notebook and its
-builders are preserved in `_archive/20261029-notebook-retired/`.
 
 `index.html` loads each asset as `name?v=<content hash>`, so a browser never pairs the page with a
-cached older asset. After editing `app.js` or `style.css` alone, re-stamp with
-`python analysis/build_site.py --stamp`; a test fails while the stamp is stale.
+cached older asset. The rebuild re-stamps it; after editing `app.js` or `style.css` alone, run
+`cargo run --release -- stamp`.
+
+A rating change must pass the held-out test first: `cargo run --release -- heldout
+data/snapshots/2026-10-24` scores the published WHR against a candidate setting on rolling-origin
+predictions.

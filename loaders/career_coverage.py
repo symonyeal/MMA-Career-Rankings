@@ -37,7 +37,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from ratings.scope import scope_sources
+from loaders.scope import scope_sources
 from loaders.page_cache import open_cache
 
 CAREER_COVERAGE_ARTIFACT = "career_coverage.parquet"

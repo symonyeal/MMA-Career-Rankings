@@ -1,4 +1,4 @@
-// Draws site/data.js (written by analysis/build_site.py). Headlines and chart titles are fixed in index.html;
+// Draws site/data.js (written by the mma crate). Headlines and chart titles are fixed in index.html;
 // the numbers speak in each chart's insight line, computed from DATA under the current controls. Sections draw
 // when visible and redraw when a control they read changes. Colours: style.css tokens.
 "use strict";

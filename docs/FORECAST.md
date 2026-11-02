@@ -1,8 +1,8 @@
 # Pre-fight forecast benchmark
 
-`ratings/forecast.py` builds forecasts of UFC bouts from information available before each fight. They are scored
+`src/forecast.rs` builds forecasts of UFC bouts from information available before each fight. They are scored
 against the no-vig betting price and the actual result. The site's Forecast accuracy section draws these numbers
-through `analysis/build_site.py`. To print them, run `python -m ratings.forecast data/snapshots/<date>`.
+from the same module when `mma` writes `site/data.js`. The held-out comparison runs with `cargo run --release -- heldout data/snapshots/<date>`.
 
 ## Design
 

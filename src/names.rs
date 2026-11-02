@@ -15,7 +15,11 @@ use unicode_normalization::UnicodeNormalization;
 fn basic(name: &str) -> String {
     static SID: OnceLock<Regex> = OnceLock::new();
     let sid = SID.get_or_init(|| Regex::new(r"(?i)\s*\(sherdog:\d+\)\s*$").unwrap());
-    let folded: String = sid.replace(name, "").nfkd().filter(|c| !is_combining_mark(*c)).collect();
+    let folded: String = sid
+        .replace(name, "")
+        .nfkd()
+        .filter(|c| !is_combining_mark(*c))
+        .collect();
     folded.trim().to_lowercase()
 }
 
@@ -39,14 +43,22 @@ impl Names {
             }
         };
         let aliases = root.join("data/external/aliases/fighter_aliases.csv");
-        for r in csv::Reader::from_path(aliases).unwrap().records().map(Result::unwrap) {
+        for r in csv::Reader::from_path(aliases)
+            .unwrap()
+            .records()
+            .map(Result::unwrap)
+        {
             add(&r[0], &r[1]);
         }
         let overrides = root.join("data/external/crossorg/identity_overrides.csv");
         let mut rd = csv::Reader::from_path(overrides).unwrap();
         let h = rd.headers().unwrap().clone();
         let col = |n: &str| h.iter().position(|x| x == n).unwrap();
-        let (sid, name, canonical) = (col("sherdog_id"), col("sherdog_name"), col("canonical_name"));
+        let (sid, name, canonical) = (
+            col("sherdog_id"),
+            col("sherdog_name"),
+            col("canonical_name"),
+        );
         for r in rd.records().map(Result::unwrap) {
             if r[sid].trim().is_empty() {
                 add(&r[canonical], &r[name]);
@@ -58,12 +70,20 @@ impl Names {
     pub fn key(&self, name: &str, compact: bool) -> String {
         let k = basic(name);
         let k = self.alias.get(&k).cloned().unwrap_or(k);
-        if compact { compacted(&k) } else { k }
+        if compact {
+            compacted(&k)
+        } else {
+            k
+        }
     }
 }
 
 /// The key without aliases, as `normalize_name_key(apply_aliases=False)`.
 pub fn plain_key(name: &str, compact: bool) -> String {
     let k = basic(name);
-    if compact { compacted(&k) } else { k }
+    if compact {
+        compacted(&k)
+    } else {
+        k
+    }
 }

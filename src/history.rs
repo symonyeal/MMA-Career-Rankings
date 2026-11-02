@@ -32,7 +32,10 @@ impl History {
         let mut by = HashMap::new();
         let mut i = 0;
         while i < rows.len() {
-            let j = i + rows[i..].iter().take_while(|r| r.fighter == rows[i].fighter).count();
+            let j = i + rows[i..]
+                .iter()
+                .take_while(|r| r.fighter == rows[i].fighter)
+                .count();
             by.insert(rows[i].fighter.clone(), i..j);
             i = j;
         }
@@ -41,8 +44,13 @@ impl History {
 
     pub fn read(snapshot: &Path) -> History {
         let f = Frame::read(&snapshot.join("ratings_history_whr.parquet"));
-        let (fighter, event, day, mu, era) =
-            (f.str("fighter"), f.str("event_name"), f.day("event_date"), f.f64("mu_whr"), f.f64("mu_era"));
+        let (fighter, event, day, mu, era) = (
+            f.str("fighter"),
+            f.str("event_name"),
+            f.day("event_date"),
+            f.f64("mu_whr"),
+            f.f64("mu_era"),
+        );
         History::new(
             (0..f.len())
                 .map(|i| Row {

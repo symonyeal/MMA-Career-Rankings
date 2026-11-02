@@ -30,12 +30,11 @@ limits remain in the snapshot's `ATTRIBUTION.txt` and the source folders.
 
 ## Rebuild the boards from a fresh checkout
 
-Install `requirements.txt` using the Python environment you intend to check.
-Choose a persistent output directory outside the snapshot, then run:
+Install Rust and `requirements.txt`, then run:
 
 ```text
-python check_release.py
-python build_boards.py data/snapshots/2026-10-14 --scope majors,pre_unified --out-dir /path/to/persistent/rebuilt
+cargo run --release -- data/snapshots/2026-10-24
+git diff --exit-code
 python -m pytest -q
 python -m ruff check .
 python -m pip check

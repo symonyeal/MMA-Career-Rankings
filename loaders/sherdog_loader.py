@@ -68,9 +68,6 @@ _TITLE_PATTERNS = re.compile(
     re.IGNORECASE,
 )
 
-_DATE_RE = re.compile(r"([A-Z][a-z]{2})\s*/\s*(\d{1,2})\s*/\s*(\d{4})")
-
-
 # ---------------------------------------------------------------------------
 # Network (cached)
 

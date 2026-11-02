@@ -5,14 +5,13 @@ weight-assignment math is exercised in `test_odds_adjustment.py`.
 """
 from __future__ import annotations
 
-from pathlib import Path
 
 import pandas as pd
 import pytest
 
-from ratings.odds import american_to_decimal, american_to_implied, decimal_to_implied
+from loaders.odds import american_to_decimal, american_to_implied, decimal_to_implied
 from loaders.odds_loader import (
-    ENRICHED_ODDS_COLUMNS, RAW_ODDS_COLUMNS, compute_implied_probs, has_odds_artifact, load_odds_lines,
+    ENRICHED_ODDS_COLUMNS, RAW_ODDS_COLUMNS, compute_implied_probs,
 )
 
 
@@ -176,29 +175,3 @@ def test_compute_implied_probs_on_empty_frame_returns_enriched_schema():
 # ---------------------------------------------------------------------------
 # Snapshot I/O
 
-def test_load_odds_lines_absent_artifact_returns_empty(tmp_path: Path):
-    snap = tmp_path / "snap"
-    snap.mkdir()
-    assert has_odds_artifact(snap) is False
-    df = load_odds_lines(snap)
-    assert df.empty
-    # enriched schema still present so downstream merges don't KeyError
-    for col in list(RAW_ODDS_COLUMNS) + list(ENRICHED_ODDS_COLUMNS):
-        assert col in df.columns
-
-
-def test_load_odds_lines_round_trip(tmp_path: Path):
-    snap = tmp_path / "snap"
-    snap.mkdir()
-    raw = _sample_raw_odds()
-    raw.to_parquet(snap / "odds_lines.parquet", index=False)
-    assert has_odds_artifact(snap) is True
-
-    df = load_odds_lines(snap)
-    assert len(df) == 4
-    # enriched columns populated
-    for col in ENRICHED_ODDS_COLUMNS:
-        assert col in df.columns
-    qualities = set(df["odds_data_quality"])
-    assert "ok" in qualities
-    assert "one_side_missing" in qualities
