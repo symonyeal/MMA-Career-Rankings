@@ -26,8 +26,11 @@ pub struct Layoff(HashMap<(String, Day), f64>);
 impl Layoff {
     pub fn new(h: &History) -> Layoff {
         // Distinct dates per fighter, in date order (rows are already fighter-sorted).
-        let mut dates: Vec<(&str, Day)> =
-            h.rows.iter().map(|r| (r.fighter.as_str(), r.day)).collect();
+        let mut dates: Vec<(&str, Day)> = h
+            .rows()
+            .iter()
+            .map(|r| (r.fighter.as_str(), r.day))
+            .collect();
         dates.dedup();
         let gaps: Vec<(&str, Day, f64)> = dates
             .windows(2)

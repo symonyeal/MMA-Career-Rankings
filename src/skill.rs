@@ -165,13 +165,13 @@ pub fn softplus(x: f64, s: f64) -> f64 {
 pub fn annual(h: &History, rating: fn(&Row) -> f64) -> Vec<(&str, i32, f64)> {
     let mut out = Vec::new();
     let mut i = 0;
-    while i < h.rows.len() {
-        let (f, y) = (&h.rows[i].fighter, year(h.rows[i].day));
-        let j = i + h.rows[i..]
+    while i < h.rows().len() {
+        let (f, y) = (&h.rows()[i].fighter, year(h.rows()[i].day));
+        let j = i + h.rows()[i..]
             .iter()
             .take_while(|r| &r.fighter == f && year(r.day) == y)
             .count();
-        let v: Vec<f64> = h.rows[i..j].iter().map(rating).collect();
+        let v: Vec<f64> = h.rows()[i..j].iter().map(rating).collect();
         out.push((f.as_str(), y, kahan_mean(&v)));
         i = j;
     }

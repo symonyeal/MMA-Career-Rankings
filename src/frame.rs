@@ -1,7 +1,8 @@
 //! Parquet shell: columns in as plain vectors, columns out as a table.
 //!
-//! Dates are days since 1970-01-01 (`Day`); missing numbers are NaN, missing
-//! strings are empty, missing days are `None`. Pandas wrote every snapshot
+//! Dates are days since 1970-01-01 (`Day`); missing floats are NaN, missing
+//! strings are empty, missing days/optional integers are `None`. Required
+//! integers and booleans reject nulls. Pandas wrote every snapshot
 //! date as a midnight `timestamp[us]`, and `Table` writes them back the same way.
 
 use std::fs::File;
@@ -23,7 +24,39 @@ pub type Day = i32;
 
 /// Days since 1970-01-01 of an ISO `YYYY-MM-DD` date (proleptic Gregorian).
 pub fn parse_day(s: &str) -> Day {
+    let s = s.trim();
+    assert!(
+        s.len() == 10
+            && s.as_bytes()[4] == b'-'
+            && s.as_bytes()[7] == b'-'
+            && s.bytes()
+                .enumerate()
+                .all(|(i, b)| i == 4 || i == 7 || b.is_ascii_digit()),
+        "date must be YYYY-MM-DD: {s}"
+    );
     let p: Vec<i64> = s.trim().split('-').map(|x| x.parse().unwrap()).collect();
+    assert_eq!(p.len(), 3, "date must be YYYY-MM-DD: {s}");
+    assert!((1..=9999).contains(&p[0]), "invalid year: {s}");
+    assert!((1..=12).contains(&p[1]), "invalid month: {s}");
+    let leap = p[0] % 4 == 0 && (p[0] % 100 != 0 || p[0] % 400 == 0);
+    let days = [
+        31,
+        if leap { 29 } else { 28 },
+        31,
+        30,
+        31,
+        30,
+        31,
+        31,
+        30,
+        31,
+        30,
+        31,
+    ];
+    assert!(
+        (1..=days[p[1] as usize - 1]).contains(&p[2]),
+        "invalid day: {s}"
+    );
     let (y, m, d) = (if p[1] <= 2 { p[0] - 1 } else { p[0] }, p[1], p[2]);
     let era = y.div_euclid(400);
     let yoe = y - era * 400;
@@ -64,9 +97,7 @@ impl Frame {
         let schema = builder.schema().clone();
         let reader = builder.build().unwrap();
         let batches: Vec<RecordBatch> = reader.map(Result::unwrap).collect();
-        Frame {
-            batch: concat_batches(&schema, &batches).unwrap(),
-        }
+        Frame::from_batch(concat_batches(&schema, &batches).unwrap())
     }
 
     pub fn len(&self) -> usize {
@@ -112,18 +143,27 @@ impl Frame {
     }
 
     pub fn i64(&self, name: &str) -> Vec<i64> {
-        let c = self.col(name, &DataType::Int64);
-        let c = c.as_primitive::<Int64Type>();
-        (0..c.len())
-            .map(|i| if c.is_null(i) { 0 } else { c.value(i) })
+        self.opt_i64(name)
+            .into_iter()
+            .map(|x| x.unwrap_or_else(|| panic!("null in required integer column {name}")))
             .collect()
     }
 
-    /// Booleans; a missing value reads false, as pandas' `fillna(False)` did.
+    /// Nullable integers retain missingness; callers choose any domain default explicitly.
+    pub fn opt_i64(&self, name: &str) -> Vec<Option<i64>> {
+        let c = self.col(name, &DataType::Int64);
+        let c = c.as_primitive::<Int64Type>();
+        (0..c.len())
+            .map(|i| (!c.is_null(i)).then(|| c.value(i)))
+            .collect()
+    }
+
+    /// Required booleans; missing is not evidence of false.
     pub fn bool(&self, name: &str) -> Vec<bool> {
         let c = self.col(name, &DataType::Boolean);
         let c = c.as_boolean();
-        (0..c.len()).map(|i| !c.is_null(i) && c.value(i)).collect()
+        assert_eq!(c.null_count(), 0, "null in required boolean column {name}");
+        (0..c.len()).map(|i| c.value(i)).collect()
     }
 
     pub fn batch(&self) -> &RecordBatch {
@@ -131,6 +171,14 @@ impl Frame {
     }
 
     pub fn from_batch(batch: RecordBatch) -> Frame {
+        let mut names = std::collections::HashSet::new();
+        for f in batch.schema().fields() {
+            assert!(
+                names.insert(f.name().clone()),
+                "duplicate column {}",
+                f.name()
+            );
+        }
         Frame { batch }
     }
 
@@ -157,14 +205,13 @@ impl Frame {
         }
     }
 
-    /// Columns of `others` appended to `self` (equal row counts; later duplicates are dropped).
+    /// Append disjoint columns with equal row counts. A collision is a schema error.
     pub fn hstack(&self, others: &[&Frame]) -> Frame {
         let mut t = Table::default();
         for f in std::iter::once(self).chain(others.iter().copied()) {
+            assert_eq!(self.len(), f.len(), "hstack row count mismatch");
             for (fi, c) in f.batch.schema().fields().iter().zip(f.batch.columns()) {
-                if !t.fields.iter().any(|x| x.name() == fi.name()) {
-                    t = t.push(fi.name(), c.clone());
-                }
+                t = t.push(fi.name(), c.clone());
             }
         }
         t.frame()
@@ -217,6 +264,10 @@ pub struct Table {
 
 impl Table {
     fn push(mut self, name: &str, a: ArrayRef) -> Table {
+        assert!(
+            !self.fields.iter().any(|f| f.name() == name),
+            "duplicate column {name}"
+        );
         self.fields
             .push(Field::new(name, a.data_type().clone(), true));
         self.columns.push(a);
@@ -287,5 +338,55 @@ impl Table {
         let mut w = ArrowWriter::try_new(file, schema, Some(props)).unwrap();
         w.write(&batch).unwrap();
         w.close().unwrap();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn gregorian_dates_reject_normalization() {
+        for s in [
+            "2026-02-30",
+            "2026-13-01",
+            "1900-02-29",
+            "2026-04-31",
+            "2026-01-01-02",
+            "2026-00-10",
+        ] {
+            assert!(std::panic::catch_unwind(|| parse_day(s)).is_err(), "{s}");
+        }
+        for s in ["2000-02-29", "2024-02-29", "1970-01-01", "2026-12-31"] {
+            assert_eq!(iso(parse_day(s)), s);
+        }
+    }
+
+    #[test]
+    fn required_columns_do_not_impute_missing_values() {
+        let f = Table::default().opt_i64("count", &[None, Some(0)]).frame();
+        assert_eq!(f.opt_i64("count"), [None, Some(0)]);
+        assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f.i64("count"))).is_err());
+        let f = Frame::from_batch(
+            RecordBatch::try_new(
+                Arc::new(Schema::new(vec![Field::new(
+                    "flag",
+                    DataType::Boolean,
+                    true,
+                )])),
+                vec![Arc::new(BooleanArray::from(vec![None, Some(false)]))],
+            )
+            .unwrap(),
+        );
+        assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f.bool("flag"))).is_err());
+    }
+
+    #[test]
+    #[should_panic(expected = "duplicate column score")]
+    fn stages_cannot_silently_shadow_columns() {
+        Table::default()
+            .i64("score", &[1])
+            .frame()
+            .hstack(&[&Table::default().i64("score", &[99]).frame()]);
     }
 }

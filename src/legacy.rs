@@ -55,13 +55,13 @@ pub struct Win {
 fn wins<'a>(bouts: impl Iterator<Item = &'a Bout> + Clone) -> Vec<(&'a Bout, &'a str, &'a str)> {
     let mut out: Vec<(&Bout, &str, &str)> = bouts
         .clone()
-        .filter(|b| b.winner == b.a)
-        .map(|b| (b, b.a.as_str(), b.b.as_str()))
+        .filter(|b| b.winner() == b.a())
+        .map(|b| (b, b.a().as_str(), b.b().as_str()))
         .collect();
     out.extend(
         bouts
-            .filter(|b| b.winner == b.b)
-            .map(|b| (b, b.b.as_str(), b.a.as_str())),
+            .filter(|b| b.winner() == b.b())
+            .map(|b| (b, b.b().as_str(), b.a().as_str())),
     );
     out.sort_by_key(|w| w.0.day);
     out
@@ -75,7 +75,7 @@ fn ufc_family(b: &Bout) -> bool {
 pub fn debuts(bouts: &[Bout]) -> HashMap<String, Day> {
     let mut out: HashMap<String, Day> = HashMap::new();
     for b in bouts.iter().filter(|b| ufc_family(b)) {
-        for f in [&b.a, &b.b] {
+        for f in [b.a(), b.b()] {
             let d = out.entry(f.clone()).or_insert(b.day);
             *d = (*d).min(b.day);
         }
@@ -87,7 +87,7 @@ pub fn debuts(bouts: &[Bout]) -> HashMap<String, Day> {
 pub fn ufc_bouts(bouts: &[Bout]) -> HashMap<String, usize> {
     let mut out = HashMap::new();
     for b in bouts.iter().filter(|b| ufc_family(b) && b.model) {
-        for f in [&b.a, &b.b] {
+        for f in [b.a(), b.b()] {
             *out.entry(f.clone()).or_insert(0) += 1;
         }
     }
@@ -127,7 +127,7 @@ impl Pricing<'_> {
 }
 
 fn flagged(b: &Bout) -> bool {
-    b.excluded || b.draw || b.nc
+    b.excluded || b.draw() || b.nc()
 }
 
 /// `title_quality_rows`: every title win priced, on or after `since` (fractional day) when given.
@@ -329,7 +329,7 @@ fn source_titles(rated: &[Bout], ctx: &HashMap<String, Org>) -> HashMap<String, 
     let mut champion: HashMap<String, &str> = HashMap::new();
     let mut defence: HashSet<(&str, &str)> = HashSet::new();
     for b in &f {
-        if b.winner.is_empty() || b.draw {
+        if b.winner().is_empty() || b.draw() {
             continue;
         }
         let key = format!(
@@ -337,18 +337,18 @@ fn source_titles(rated: &[Bout], ctx: &HashMap<String, Org>) -> HashMap<String, 
             ctx[&b.url].identity,
             bucket(&b.weight_class).unwrap_or_default()
         );
-        if champion.get(&key) == Some(&b.winner.as_str()) {
-            defence.insert((&b.url, &b.winner));
+        if champion.get(&key) == Some(&b.winner().as_str()) {
+            defence.insert((&b.url, b.winner()));
         }
-        champion.insert(key, &b.winner);
+        champion.insert(key, b.winner());
     }
     // Undivisioned wins: every win after the first in (fighter, lineage), by (date, url).
     let mut undivided: Vec<(&str, &str, Day, &str)> = f
         .iter()
-        .filter(|b| !b.winner.is_empty() && !b.draw && bucket(&b.weight_class).is_none())
+        .filter(|b| !b.winner().is_empty() && !b.draw() && bucket(&b.weight_class).is_none())
         .map(|b| {
             (
-                b.winner.as_str(),
+                b.winner().as_str(),
                 ctx[&b.url].identity.as_str(),
                 b.day,
                 b.url.as_str(),
@@ -365,8 +365,8 @@ fn source_titles(rated: &[Bout], ctx: &HashMap<String, Org>) -> HashMap<String, 
     let mut divisions: HashMap<&str, HashSet<String>> = HashMap::new();
     for side in [0, 1] {
         for b in &f {
-            let fighter = if side == 0 { &b.a } else { &b.b };
-            let win = b.winner == *fighter && !b.draw;
+            let fighter = if side == 0 { b.a() } else { b.b() };
+            let win = b.winner() == fighter && !b.draw();
             let e = out.entry(fighter.clone()).or_default();
             e[0] += 1;
             e[1] += i64::from(win);
@@ -392,7 +392,7 @@ fn exposure(rated: &[Bout], ctx: &HashMap<String, Org>) -> HashMap<String, (f64,
             let c = &ctx[&b.url];
             let known = c.canonical != "Unknown";
             sides.push((
-                if side == 0 { &b.a } else { &b.b },
+                if side == 0 { b.a() } else { b.b() },
                 known.then_some(c.factor),
                 c.canonical == "UFC",
             ));

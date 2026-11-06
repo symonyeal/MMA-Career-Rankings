@@ -34,6 +34,7 @@ pub mod orgs;
 pub mod perf;
 pub mod publish;
 pub mod pyjson;
+pub mod release;
 pub mod roster;
 pub mod site;
 pub mod skill;

@@ -2,7 +2,7 @@
 //! change passes a held-out prediction test").
 //!
 //! Rolling origin over every decided UFC card of the chosen years: both the
-//! production fit and a candidate are refitted on all rated bouts strictly
+//! production fit and a candidate are refitted on card-enumerated bouts strictly
 //! before the card, each fighter's last rating is carried to the card date
 //! along the learned age curve, and a bout is scored when both fighters have
 //! at least three earlier appearances. The comparison is paired by bout;
@@ -57,7 +57,7 @@ pub struct Report {
 }
 
 fn decided(x: &Bout) -> bool {
-    !x.draw && !x.nc && !x.winner.is_empty() && (x.winner == x.a || x.winner == x.b)
+    !x.draw() && !x.nc() && !x.winner().is_empty() && (x.winner() == x.a() || x.winner() == x.b())
 }
 
 /// Ratings entering `day` from a fit on `train`: last rating per fighter, age-projected.
@@ -75,8 +75,8 @@ fn entering(
     // ties within a day resolve to the later event name, as the sorted history does.
     let mut last: HashMap<&str, usize> = HashMap::new();
     for u in 0..r.len() {
-        let e = last.entry(&g.fighter[u]).or_insert(u);
-        if (g.day[u], &g.event[u]) >= (g.day[*e], &g.event[*e]) {
+        let e = last.entry(&g.fighter()[u]).or_insert(u);
+        if (g.day()[u], &g.event()[u]) >= (g.day()[*e], &g.event()[*e]) {
             *e = u;
         }
     }
@@ -87,7 +87,7 @@ fn entering(
                 f.to_string(),
                 project(
                     mu,
-                    (g.day[u] + 10957.0) as Day,
+                    (g.day()[u] + 10957.0) as Day,
                     day,
                     births.get(f).copied(),
                     &drift,
@@ -156,6 +156,13 @@ fn paired(metric: &'static str, f: &[Forecast], ncards: usize, loss: fn(f64, f64
 
 /// Production against `candidate` on every decided UFC card of `YEARS`.
 pub fn compare(rated: &[Bout], births: &HashMap<String, Day>, candidate: Settings) -> Report {
+    // Event-time filtering alone cannot remove retrospectively selected career coverage.
+    let history: Vec<Bout> = rated
+        .iter()
+        .filter(|b| crate::bouts::predictive(b))
+        .cloned()
+        .collect();
+    let rated = history.as_slice();
     let cards: Vec<(Day, String)> = rated
         .iter()
         .filter(|x| decided(x) && x.org == "UFC" && YEARS.contains(&year(x.day)))
@@ -169,8 +176,8 @@ pub fn compare(rated: &[Bout], births: &HashMap<String, Day>, candidate: Setting
         let train: Vec<Bout> = rated.iter().filter(|x| x.day < *day).cloned().collect();
         let mut prior: HashMap<&str, usize> = HashMap::new();
         for x in &train {
-            *prior.entry(&x.a).or_default() += 1;
-            *prior.entry(&x.b).or_default() += 1;
+            *prior.entry(x.a()).or_default() += 1;
+            *prior.entry(x.b()).or_default() += 1;
         }
         let mu: Vec<HashMap<String, f64>> = settings
             .iter()
@@ -180,16 +187,16 @@ pub fn compare(rated: &[Bout], births: &HashMap<String, Day>, candidate: Setting
         rated
             .iter()
             .filter(|x| x.day == *day && x.event == *event && x.org == "UFC" && decided(x))
-            .filter(|x| n(&x.a) >= MIN_PRIOR && n(&x.b) >= MIN_PRIOR)
+            .filter(|x| n(x.a()) >= MIN_PRIOR && n(x.b()) >= MIN_PRIOR)
             .map(|x| {
                 let p = |m: &HashMap<String, f64>| {
-                    1.0 / (1.0 + (-(m[&x.a] - m[&x.b]) / elo_per_nat()).exp())
+                    1.0 / (1.0 + (-(m[x.a()] - m[x.b()]) / elo_per_nat()).exp())
                 };
                 Forecast {
                     card: c,
                     url: x.url.clone(),
                     p: [p(&mu[0]), p(&mu[1])],
-                    y: f64::from(x.winner == x.a),
+                    y: f64::from(x.winner() == x.a()),
                 }
             })
             .collect::<Vec<_>>()
@@ -231,4 +238,43 @@ pub fn format(r: &Report) -> String {
         );
     }
     s
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::bouts::{Corner, Outcome};
+    use crate::frame::parse_day;
+
+    #[test]
+    fn retrospective_career_rows_cannot_change_heldout_forecasts() {
+        let bout = |date: &str, org: &str, source: &str| {
+            let mut b = Bout::new(
+                "Alice".into(),
+                "Bob".into(),
+                parse_day(date),
+                Outcome::Win(Corner::A),
+                1.0,
+            )
+            .unwrap();
+            b.org = org.into();
+            b.source = source.into();
+            b.event = date.into();
+            b.model = true;
+            b
+        };
+        let mut rows = vec![
+            bout("2023-01-01", "UFC", "ufc"),
+            bout("2023-03-01", "UFC", "ufc"),
+            bout("2023-06-01", "UFC", "ufc"),
+            bout("2024-02-01", "UFC", "ufc"),
+        ];
+        let births = HashMap::new();
+        let before = compare(&rows, &births, candidate());
+        rows.insert(0, bout("2022-01-01", "Regional", "sherdog"));
+        let after = compare(&rows, &births, candidate());
+        assert_eq!(before.forecasts.len(), 1);
+        assert_eq!(after.forecasts.len(), 1);
+        assert_eq!(before.forecasts[0].p, after.forecasts[0].p);
+    }
 }

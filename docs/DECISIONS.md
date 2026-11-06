@@ -749,3 +749,36 @@ python refresh.py --snapshot-date <YYYY-MM-DD>
 Never hand-edit a generated table. After any change,
 re-run the deviant-fighter audit and read `rating_run.json` before claiming
 anything about the top of the board.
+
+## Valid inputs and accepted releases (2026-11-06)
+
+Bout participants and outcomes are constructed together. A win names one of the two
+corners; draws and no-contests carry no winner or loser. Invalid source combinations
+fail before rating. WHR retains neutral evidence for no-contests; Glicko retains no
+scoring update for them. These are separate existing model choices. Gregorian dates,
+required integer/boolean columns and disjoint stage columns reject invalid input.
+History, Glicko and WHR indexes expose read-only views; era adjustment can change
+only era values. The Current score and board share the same window constant.
+Python staging and Rust publication read the published scope from `src/scope.txt`.
+
+Held-out comparisons now use the same card-enumerated history rule as forecasts.
+Date filtering alone cannot remove the retrospective selection in whole-career
+crawls. Earlier recorded held-out results describe their original corpus; they do
+not establish a result for this narrower information set. Production solver settings
+and ranking scope are unchanged.
+
+A release computes in an isolated generation, checks its required output inventory,
+and records input, source and output SHA-256 hashes in `release_manifest.json`.
+Git preserves committed bytes on all platforms so receipts bind the same bytes. An operating-system
+lock gives each checkout one release writer. Readers requiring a complete generation
+pin `target/releases/accepted.json` and read the named immutable root. Asset-only
+stamps use `accepted-site.json` and preserve the full model release pointer. Authored
+site and documentation edits made during computation cause admission to fail. Existing fixed
+paths remain a working-tree projection: failed writes roll back, and interrupted
+projection recovers when the next writer starts. Concurrent readers of those fixed
+paths are not promised atomic multi-file visibility. Synced files do not establish
+directory-entry durability across power loss.
+
+CI checks regenerated Parquet as well as text, and Pages deploys the accepted site
+artifact from the exact successful checks run. A failed check cannot supply a deployed
+artifact. A completed run for an obsolete main revision is skipped.

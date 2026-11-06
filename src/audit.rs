@@ -425,7 +425,7 @@ pub fn write(
     let who: Vec<&str> = top.iter().map(|&(i, _)| names[i].as_str()).collect();
     let mut bouts: HashMap<&str, (i64, i64)> = HashMap::new();
     for b in rated {
-        for f in [&b.a, &b.b] {
+        for f in [b.a(), b.b()] {
             let e = bouts.entry(f).or_default();
             e.0 += 1;
             e.1 += i64::from(b.source == "ufc");
@@ -441,7 +441,10 @@ pub fn write(
             *counts.entry(f.clone()).or_default() += 1;
         }
     }
-    let graph = Graph::new(rated.iter().map(|b| (b.a.as_str(), b.b.as_str())), &counts);
+    let graph = Graph::new(
+        rated.iter().map(|b| (b.a().as_str(), b.b().as_str())),
+        &counts,
+    );
     let span = |f: &str| {
         let rows = history.of(f);
         (
@@ -607,7 +610,7 @@ pub fn write(
     };
     let summary = json!({
         "snapshot": snapshot.file_name().unwrap().to_string_lossy(),
-        "scope": "majors,pre_unified",
+        "scope": crate::bouts::SCOPE.trim(),
         "published_score": SCORE,
         "diagnostic_score": SKILL,
         "board": "men (the published default)",

@@ -53,14 +53,17 @@ pub fn score(
     let resume = resume_ledger(&resume_rows(rated, p, Some(since)));
     let mut title_wins: HashMap<&str, i64> = HashMap::new();
     for b in rated.iter().filter(|b| {
-        b.title && !(b.excluded || b.draw || b.nc) && b.day as f64 >= since && !b.winner.is_empty()
+        b.title
+            && !(b.excluded || b.draw() || b.nc())
+            && b.day as f64 >= since
+            && !b.winner().is_empty()
     }) {
-        *title_wins.entry(&b.winner).or_insert(0) += 1;
+        *title_wins.entry(b.winner()).or_insert(0) += 1;
     }
     let mut best: HashMap<&str, f64> = HashMap::new();
     for b in rated {
-        for (f, o) in [(&b.a, &b.b), (&b.b, &b.a)] {
-            if b.winner != *f {
+        for (f, o) in [(b.a(), b.b()), (b.b(), b.a())] {
+            if b.winner() != f {
                 continue;
             }
             if let Some(r) = p.h.before(o, b.day) {
@@ -71,7 +74,7 @@ pub fn score(
     }
     let mut last: HashMap<&str, Day> = HashMap::new();
     for b in recorded.iter().filter(|b| is_ufc(b)) {
-        for f in [&b.a, &b.b] {
+        for f in [b.a(), b.b()] {
             let d = last.entry(f).or_insert(b.day);
             *d = (*d).max(b.day);
         }

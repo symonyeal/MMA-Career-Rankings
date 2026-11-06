@@ -29,9 +29,22 @@ jobs:
       - run: cargo clippy --release --all-targets -- -D warnings
       - run: cargo test --release
       # The release snapshot is versioned whole, so a fresh clone rebuilds every
-      # published text output; any difference from the committed files fails.
+      # published output, including Parquet; any difference fails acceptance.
       - run: cargo run --release -- data/snapshots/2026-10-24
-      - run: git diff --exit-code -- RANKINGS.md README.md site '*.csv' '*.json'
+      - run: git diff --exit-code -- RANKINGS.md README.md site '*.csv' '*.json' '*.parquet'
+      - id: accepted
+        run: |
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          from pathlib import Path
+          accepted = json.loads(Path('target/releases/accepted.json').read_text())
+          print(f"site={accepted['root']}/site")
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: accepted-site
+          path: ${{ steps.accepted.outputs.site }}
+          if-no-files-found: error
 
   staging:
     runs-on: ubuntu-latest

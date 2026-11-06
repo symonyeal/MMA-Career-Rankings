@@ -62,8 +62,11 @@ pub fn annual<F: Fn(&crate::history::Row) -> f64>(
 pub fn apply<F: Fn(&str) -> bool>(h: &mut History, female: F) {
     let mut shift: HashMap<(bool, i32), f64> = HashMap::new();
     for g in [false, true] {
-        let rows: Vec<&crate::history::Row> =
-            h.rows.iter().filter(|r| female(&r.fighter) == g).collect();
+        let rows: Vec<&crate::history::Row> = h
+            .rows()
+            .iter()
+            .filter(|r| female(&r.fighter) == g)
+            .collect();
         let a = annual(&rows, |r| r.mu);
         let e: Vec<(i32, f64, f64)> = a
             .iter()
@@ -82,9 +85,5 @@ pub fn apply<F: Fn(&str) -> bool>(h: &mut History, female: F) {
             shift.insert((g, y), b - star);
         }
     }
-    for i in 0..h.rows.len() {
-        let g = female(&h.rows[i].fighter);
-        let r = &mut h.rows[i];
-        r.era = r.mu - shift[&(g, year(r.day))];
-    }
+    h.set_era(|r| r.mu - shift[&(female(&r.fighter), year(r.day))]);
 }

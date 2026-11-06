@@ -74,7 +74,7 @@ pub fn values(
     let d = ea - eb;
     let gender: HashMap<String, String> = f.iter().cloned().zip(cur.str("gender")).collect();
     let men: Vec<Row> = h
-        .rows
+        .rows()
         .iter()
         .filter(|r| gender.get(&r.fighter).map(String::as_str) != Some("F"))
         .cloned()

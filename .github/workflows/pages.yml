@@ -1,15 +1,14 @@
 name: pages
 
-# Publishes site/ as it stands on main. site/data.js is generated locally by
-# the mma crate from a versioned snapshot. The generated data is
-# committed so deployment only needs to upload the static site.
+# Deploy the immutable artifact accepted by all checks at this exact revision.
 on:
-  push:
+  workflow_run:
+    workflows: [checks]
+    types: [completed]
     branches: [main]
-    paths: ["site/**", ".github/workflows/pages.yml"]
-  workflow_dispatch:
 
 permissions:
+  actions: read
   contents: read
   pages: write
   id-token: write
@@ -20,15 +19,41 @@ concurrency:
 
 jobs:
   deploy:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
     runs-on: ubuntu-latest
     environment:
       name: github-pages
       url: ${{ steps.deploy.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+      - id: current
+        env:
+          ACCEPTED_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          main_sha=$(git ls-remote origin refs/heads/main | cut -f1)
+          if [ "$main_sha" = "$ACCEPTED_SHA" ]; then
+            echo 'main=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'main=false' >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/download-artifact@v4
+        if: steps.current.outputs.main == 'true'
+        with:
+          name: accepted-site
+          path: site
+          github-token: ${{ github.token }}
+          run-id: ${{ github.event.workflow_run.id }}
       - uses: actions/configure-pages@v5
+        if: steps.current.outputs.main == 'true'
       - uses: actions/upload-pages-artifact@v3
+        if: steps.current.outputs.main == 'true'
         with:
           path: site
       - id: deploy
+        if: steps.current.outputs.main == 'true'
         uses: actions/deploy-pages@v4

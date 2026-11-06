@@ -131,7 +131,7 @@ pub fn data(x: &Inputs) -> String {
     let long = division_appearances(&ufc);
     let whr_e: Vec<&Row> = x
         .history
-        .rows
+        .rows()
         .iter()
         .filter(|r| set.contains(r.fighter.as_str()))
         .collect();
@@ -391,7 +391,7 @@ fn fighters(x: &Inputs, e: &[usize], names: &[String]) -> J {
         f1(at(&t), 3)
     };
     let mut peak: HashMap<&str, f64> = HashMap::new();
-    for r in &x.history.rows {
+    for r in x.history.rows() {
         if !r.era.is_nan() {
             let p = peak.entry(&r.fighter).or_insert(f64::NEG_INFINITY);
             *p = p.max(r.era);
@@ -522,7 +522,7 @@ fn trajectories(
         by.entry((&a.fighter, a.day, &a.event)).or_default().push(a);
     }
     let rows: Vec<&Row> = h
-        .rows
+        .rows()
         .iter()
         .filter(|r| set.contains(r.fighter.as_str()))
         .collect();
@@ -608,7 +608,7 @@ fn trajectories(
 /// Each fighter-year's last rating in path order (`_annual_ratings`), over the whole history.
 fn year_end(h: &History) -> HashMap<(&str, i32), f64> {
     let mut out = HashMap::new();
-    for r in h.rows.iter().filter(|r| !r.mu.is_nan()) {
+    for r in h.rows().iter().filter(|r| !r.mu.is_nan()) {
         out.insert((r.fighter.as_str(), year(r.day)), r.mu);
     }
     out
@@ -623,8 +623,8 @@ fn division_appearances<'a>(ufc: &[&'a Bout]) -> Vec<(i32, String, &'a str)> {
             .filter(|r| !r.2.is_empty())
             .collect::<Vec<_>>()
     };
-    let mut out = rows(|b| &b.a);
-    out.extend(rows(|b| &b.b));
+    let mut out = rows(|b| b.a());
+    out.extend(rows(|b| b.b()));
     out
 }
 
@@ -710,10 +710,10 @@ fn movers(h: &[&Row], staged: &[Bout], y: i32) -> J {
     let mut fl: HashMap<(&str, Day), Vec<(&str, &str)>> = HashMap::new();
     for side in [true, false] {
         for b in staged.iter().filter(|b| year(b.day) == y) {
-            let (f, o) = if side { (&b.a, &b.b) } else { (&b.b, &b.a) };
+            let (f, o) = if side { (b.a(), b.b()) } else { (b.b(), b.a()) };
             fl.entry((f, b.day))
                 .or_default()
-                .push((o, if b.winner == *f { "W" } else { "L" }));
+                .push((o, if b.winner() == f { "W" } else { "L" }));
         }
     }
     // fighter -> [(day, delta, opponent, result)] in join order
@@ -1203,7 +1203,7 @@ fn market(x: &Inputs) -> (J, J, J, J) {
     for b in x
         .staged
         .iter()
-        .filter(|b| !b.excluded && !b.draw && !b.nc && !b.winner.is_empty())
+        .filter(|b| !b.excluded && !b.draw() && !b.nc() && !b.winner().is_empty())
     {
         bouts.entry(&b.url).or_default().push(b);
     }
@@ -1217,7 +1217,7 @@ fn market(x: &Inputs) -> (J, J, J, J) {
                 .flatten()
                 .map(move |b| (i, *b))
         })
-        .map(|(i, b)| (i, b, if b.winner == fa[i] { 1.0 } else { 0.0 }))
+        .map(|(i, b)| (i, b, if *b.winner() == fa[i] { 1.0 } else { 0.0 }))
         .filter(|&(i, _, _)| (0.001..=0.999).contains(&pa[i]))
         .collect();
 
@@ -1244,7 +1244,7 @@ fn market(x: &Inputs) -> (J, J, J, J) {
                 };
                 J::Arr(vec![
                     s(&iso(oday[i].unwrap())),
-                    s(&b.winner),
+                    s(b.winner()),
                     s(loser),
                     num(pw(r), 3),
                     opt_s(&b.method),
@@ -1259,7 +1259,7 @@ fn market(x: &Inputs) -> (J, J, J, J) {
     let mut seen: Vec<(&str, Day)> = x
         .staged
         .iter()
-        .flat_map(|b| [(b.a.as_str(), b.day), (b.b.as_str(), b.day)])
+        .flat_map(|b| [(b.a().as_str(), b.day), (b.b().as_str(), b.day)])
         .collect();
     seen.sort();
     seen.dedup();
