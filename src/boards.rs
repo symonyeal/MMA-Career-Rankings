@@ -26,7 +26,7 @@ const MIN_OPPONENT_UFC_BOUTS: usize = 8;
 /// `MIN_QUALITY_WINS`.
 const MIN_QUALITY_WINS: usize = 4;
 /// `CURRENT_WINDOW_MONTHS`.
-const CURRENT_MONTHS: f64 = 18.0;
+use crate::current::WINDOW_MONTHS as CURRENT_MONTHS;
 /// `round(JULIAN_YEAR_DAYS · ELITE_DECADE_SPAN_YEARS)`.
 const DECADE_DAYS: Day = 3652;
 /// `INTEGRITY_PENALTY_SCALE`: Elo removed per discounted win, times the sleeve's relative severity.
@@ -180,8 +180,8 @@ pub fn decades(
         .iter()
         .filter(|b| (b.corpus == "ufc" || b.corpus == "pre_unified") && b.model)
     {
-        *ufc.entry(&b.a).or_default() += 1;
-        *ufc.entry(&b.b).or_default() += 1;
+        *ufc.entry(b.a()).or_default() += 1;
+        *ufc.entry(b.b()).or_default() += 1;
     }
     let layoff = Layoff::new(history);
     let mut wins: BTreeMap<&str, Vec<Day>> = BTreeMap::new();
@@ -286,10 +286,10 @@ pub fn ledger(integrity: &Frame, rated: &[Bout]) -> Vec<Debit> {
                 url: url[i].clone(),
                 day: b.day,
                 event: b.event.clone(),
-                opponent: if fighter[i] == b.a {
-                    b.b.clone()
+                opponent: if fighter[i] == *b.a() {
+                    b.b().clone()
                 } else {
-                    b.a.clone()
+                    b.a().clone()
                 },
                 reason,
                 detail: format!("{label}{extra}"),

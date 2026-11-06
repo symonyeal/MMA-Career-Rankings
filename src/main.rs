@@ -5,7 +5,7 @@
 //! The snapshot is `<root>/data/snapshots/<date>`, written by the Python staging. Text outputs use LF.
 
 use std::collections::{HashMap, HashSet};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use mma_rankings::frame::{Frame, Table};
 use mma_rankings::layoff::Layoff;
@@ -15,7 +15,7 @@ use mma_rankings::orgs::Rules;
 use mma_rankings::publish::Release;
 use mma_rankings::{
     age, appearances, audit, boards, bouts, classes, current, dominance, era, figures, forecast,
-    glicko, heldout, integrity, legacy, narrative, publish, roster, site, skill, whr,
+    glicko, heldout, integrity, legacy, narrative, publish, release, roster, site, skill, whr,
 };
 use serde_json::json;
 use sha2::{Digest, Sha256};
@@ -111,12 +111,16 @@ fn write(p: &Path, text: &str) {
 
 /// Rows of `f` reordered to `order` by `fighter`, without the key; absent fighters read null.
 fn align(f: &Frame, order: &[String]) -> Frame {
-    let at: HashMap<String, usize> = f
-        .str("fighter")
-        .into_iter()
-        .enumerate()
-        .map(|(i, k)| (k, i))
-        .collect();
+    let mut at = HashMap::new();
+    for (i, fighter) in f.str("fighter").into_iter().enumerate() {
+        assert!(!fighter.is_empty(), "stage has an empty fighter key");
+        assert!(
+            at.insert(fighter.clone(), i).is_none(),
+            "duplicate stage fighter: {fighter}"
+        );
+    }
+    let unique: HashSet<&String> = order.iter().collect();
+    assert_eq!(unique.len(), order.len(), "duplicate target fighter keys");
     let rest: Vec<String> = f.names().into_iter().filter(|c| c != "fighter").collect();
     let rest: Vec<&str> = rest.iter().map(String::as_str).collect();
     f.take(&order.iter().map(|k| at.get(k).copied()).collect::<Vec<_>>())
@@ -205,30 +209,34 @@ fn build(s: &Path, root: &Path) {
         .str(
             "fighter",
             &history
-                .rows
+                .rows()
                 .iter()
                 .map(|r| r.fighter.as_str())
                 .collect::<Vec<_>>(),
         )
         .day(
             "event_date",
-            &history.rows.iter().map(|r| Some(r.day)).collect::<Vec<_>>(),
+            &history
+                .rows()
+                .iter()
+                .map(|r| Some(r.day))
+                .collect::<Vec<_>>(),
         )
         .str(
             "event_name",
             &history
-                .rows
+                .rows()
                 .iter()
                 .map(|r| r.event.as_str())
                 .collect::<Vec<_>>(),
         )
         .f64(
             "mu_whr",
-            &history.rows.iter().map(|r| r.mu).collect::<Vec<_>>(),
+            &history.rows().iter().map(|r| r.mu).collect::<Vec<_>>(),
         )
         .f64(
             "mu_era",
-            &history.rows.iter().map(|r| r.era).collect::<Vec<_>>(),
+            &history.rows().iter().map(|r| r.era).collect::<Vec<_>>(),
         )
         .write(&s.join("ratings_history_whr.parquet"));
     appearances::write(s, &apps);
@@ -289,7 +297,7 @@ fn build(s: &Path, root: &Path) {
     let run = json!({
         "rated_bouts": rated.len(),
         "birth_dates": births.len(),
-        "history_rows": history.rows.len(),
+        "history_rows": history.rows().len(),
         "current_fighters": cur.len(),
         "events_processed": events.len(),
         "career_coverage": {"eligible": eligible, "whole_career_merged": merged},
@@ -367,23 +375,15 @@ fn build(s: &Path, root: &Path) {
     audit::write(&out, s, &cur, &history, &rated, &canonical, &births);
 }
 
-/// `<root>/data/snapshots/<date>` → `<root>`.
-fn root_of(s: &Path) -> PathBuf {
-    s.parent()
-        .and_then(Path::parent)
-        .and_then(Path::parent)
-        .expect("snapshot must be <root>/data/snapshots/<date>")
-        .to_path_buf()
-}
-
 fn main() {
     let a: Vec<String> = std::env::args().skip(1).collect();
     match a.iter().map(String::as_str).collect::<Vec<_>>().as_slice() {
-        ["stamp"] => stamp(Path::new("site")),
+        ["stamp"] => release::stamp(&std::env::current_dir().unwrap(), stamp).unwrap(),
         ["heldout", s] => {
             let s = Path::new(s);
-            let names = Names::load(&root_of(s));
-            let rated = bouts::rated(&bouts::prepared(s, &root_of(s), &names));
+            let root = release::root_of(s).unwrap();
+            let names = Names::load(&root);
+            let rated = bouts::rated(&bouts::prepared(s, &root, &names));
             print!(
                 "{}",
                 heldout::format(&heldout::compare(
@@ -393,7 +393,7 @@ fn main() {
                 ))
             );
         }
-        [s] => build(Path::new(s), &root_of(Path::new(s))),
+        [s] => release::build(Path::new(s), build).unwrap(),
         _ => panic!("usage: mma <snapshot> | mma heldout <snapshot> | mma stamp"),
     }
 }

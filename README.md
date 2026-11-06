@@ -408,7 +408,12 @@ cargo run --release -- data/snapshots/2026-10-24
 
 It writes the fitted ratings and boards into the snapshot, `RANKINGS.md`, this README's tables and
 narrative figures, `site/data.js`, plus a local top-100 audit in `data/model_tuning/` that is not committed. CI
-runs it on a fresh clone and fails if a committed text output changes.
+runs it on a fresh clone and fails if a committed text or Parquet output changes.
+Each rebuild records source, input and output hashes in the snapshot's
+`release_manifest.json`. It computes a separate generation before updating the
+checkout; recovery and reader guarantees are documented in
+[the decision register](docs/DECISIONS.md#valid-inputs-and-accepted-releases-2026-11-06).
+Pages deploys the accepted site's artifact only after all checks pass.
 
 `refresh.py` stages new source data into a dated snapshot and then runs the same command. The
 staging code is Python; use the system Python:
@@ -425,4 +430,5 @@ cached older asset. The rebuild re-stamps it; after editing `app.js` or `style.c
 
 A rating change must pass the held-out test first: `cargo run --release -- heldout
 data/snapshots/2026-10-24` scores the published WHR against a candidate setting on rolling-origin
-predictions.
+predictions. Both this comparison and the forecast benchmark restrict history to
+card-enumerated sources, excluding retrospectively selected whole-career crawls.

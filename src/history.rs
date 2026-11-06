@@ -20,8 +20,15 @@ pub struct Row {
     pub era: f64,
 }
 
+/// Indexed history exposes rows only as a shared slice.
+///
+/// ```compile_fail
+/// use mma_rankings::history::History;
+/// let mut h = History::new(vec![]);
+/// h.rows.clear();
+/// ```
 pub struct History {
-    pub rows: Vec<Row>,
+    rows: Vec<Row>,
     by: HashMap<String, Range<usize>>,
 }
 
@@ -40,6 +47,18 @@ impl History {
             i = j;
         }
         History { rows, by }
+    }
+
+    /// Rows in indexed path order; indexed keys cannot be mutated.
+    pub fn rows(&self) -> &[Row] {
+        &self.rows
+    }
+
+    /// Change only the era value, preserving row identity and the index.
+    pub fn set_era<F: Fn(&Row) -> f64>(&mut self, value: F) {
+        for row in &mut self.rows {
+            row.era = value(row);
+        }
     }
 
     pub fn read(snapshot: &Path) -> History {
@@ -76,5 +95,33 @@ impl History {
     pub fn before(&self, fighter: &str, day: Day) -> Option<&Row> {
         let rows = self.of(fighter);
         rows[..rows.partition_point(|r| r.day < day)].last()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn era_updates_preserve_index_and_strictly_prior_lookup() {
+        let row = |f: &str, day, mu| Row {
+            fighter: f.into(),
+            day,
+            event: "card".into(),
+            mu,
+            era: f64::NAN,
+        };
+        let mut h = History::new(vec![
+            row("Bob", 2, 1200.0),
+            row("Alice", 3, 1600.0),
+            row("Alice", 1, 1500.0),
+        ]);
+        h.set_era(|r| r.mu - 100.0);
+        assert_eq!(h.rows().len(), 3);
+        assert_eq!(h.of("Alice").len(), 2);
+        assert_eq!(h.of("Bob")[0].fighter, "Bob");
+        assert_eq!(h.before("Alice", 3).unwrap().era, 1400.0);
+        assert_eq!(h.before("Alice", 4).unwrap().era, 1500.0);
+        assert!(h.before("Alice", 1).is_none());
     }
 }

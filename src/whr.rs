@@ -24,7 +24,7 @@
 
 use std::collections::HashMap;
 
-use crate::bouts::Bout;
+use crate::bouts::{Bout, Corner, Outcome};
 use crate::frame::{Day, Table};
 use crate::history::{History, Row};
 use crate::stats::psum;
@@ -103,24 +103,38 @@ fn thomas(a: &[f64], b: &[f64], y: &[f64], x: &mut [f64], c: &mut [f64], d: &mut
 
 /// The appearance graph of a bout list.
 pub struct Graph {
-    pub fighter: Vec<String>,
-    pub event: Vec<String>,
+    fighter: Vec<String>,
+    event: Vec<String>,
     /// Days since 2000-01-01.
-    pub day: Vec<f64>,
-    pub o: Vec<usize>,
-    pub s: Vec<f64>,
-    pub pt: Vec<usize>,
-    pub ix: Vec<usize>,
-    pub gp: Vec<f64>,
-    pub bn: Vec<i64>,
-    /// Age in years at each node; NaN without a birth date.
-    pub age: Vec<f64>,
+    day: Vec<f64>,
+    o: Vec<usize>,
+    s: Vec<f64>,
+    pt: Vec<usize>,
+    ix: Vec<usize>,
+    gp: Vec<f64>,
+    bn: Vec<i64>,
 }
 
 impl Graph {
+    pub fn fighter(&self) -> &[String] {
+        &self.fighter
+    }
+    pub fn event(&self) -> &[String] {
+        &self.event
+    }
+    pub fn day(&self) -> &[f64] {
+        &self.day
+    }
+
     /// `_build_appearances`; `bouts` must be in `(day, event)` order, as `bouts::rated` returns them.
-    /// A draw outranks a recorded winner; a winner who is neither fighter scores as a draw.
+    /// Draws and no-contests have neutral WHR evidence; decided outcomes are participant wins.
     pub fn new(bouts: &[Bout], births: &HashMap<String, Day>, graded: bool) -> Graph {
+        assert!(
+            bouts
+                .windows(2)
+                .all(|b| (b[0].day, &b[0].event) <= (b[1].day, &b[1].event)),
+            "WHR bouts must be ordered by day and event"
+        );
         let n = 2 * bouts.len();
         let (mut fighter, mut event, mut day, mut o, mut s) = (
             Vec::with_capacity(n),
@@ -130,28 +144,17 @@ impl Graph {
             Vec::with_capacity(n),
         );
         for (i, x) in bouts.iter().enumerate() {
-            let w = if graded && !x.score.is_nan() {
-                x.score
+            let w = if graded && !x.score().is_nan() {
+                x.score()
             } else {
                 1.0
             };
-            let a_won = !x.draw && x.winner == x.a;
-            let b_won = !x.draw && !a_won && x.winner == x.b;
-            let sa = if a_won {
-                w
-            } else if b_won {
-                1.0 - w
-            } else {
-                0.5
+            let (sa, sb) = match x.outcome() {
+                Outcome::Win(Corner::A) => (w, 1.0 - w),
+                Outcome::Win(Corner::B) => (1.0 - w, w),
+                Outcome::Draw | Outcome::NoContest => (0.5, 0.5),
             };
-            let sb = if a_won {
-                1.0 - w
-            } else if b_won {
-                w
-            } else {
-                0.5
-            };
-            for (f, sc, opp) in [(&x.a, sa, 2 * i + 1), (&x.b, sb, 2 * i)] {
+            for (f, sc, opp) in [(x.a(), sa, 2 * i + 1), (x.b(), sb, 2 * i)] {
                 fighter.push(f.clone());
                 event.push(x.event.clone());
                 day.push(x.day as f64 - EPOCH);
@@ -211,7 +214,6 @@ impl Graph {
             ix,
             gp,
             bn,
-            age,
         }
     }
 
@@ -401,7 +403,7 @@ pub fn run(rated: &[Bout], births: &HashMap<String, Day>) -> Whr {
     );
     let target = rated.iter().map(|x| x.day).max().unwrap_or(0);
     let last: Vec<&Row> = history
-        .rows
+        .rows()
         .chunk_by(|x, y| x.fighter == y.fighter)
         .map(|c| c.last().unwrap())
         .collect();
@@ -438,6 +440,30 @@ pub fn run(rated: &[Bout], births: &HashMap<String, Day>) -> Whr {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn admitted_outcomes_have_explicit_whr_evidence() {
+        for (outcome, expected) in [
+            (Outcome::Win(Corner::A), [0.9, 0.1]),
+            (Outcome::Win(Corner::B), [0.1, 0.9]),
+            (Outcome::Draw, [0.5, 0.5]),
+            (Outcome::NoContest, [0.5, 0.5]),
+        ] {
+            let bout = Bout::new("Alice".into(), "Bob".into(), 1, outcome, 0.9).unwrap();
+            let graph = Graph::new(&[bout], &HashMap::new(), true);
+            for (actual, expected) in graph.s.iter().zip(expected) {
+                assert!((actual - expected).abs() < 1e-15);
+            }
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "WHR bouts must be ordered")]
+    fn rejects_backward_appearance_paths() {
+        let b =
+            |day| Bout::new("Alice".into(), "Bob".into(), day, Outcome::Draw, f64::NAN).unwrap();
+        Graph::new(&[b(2), b(1)], &HashMap::new(), true);
+    }
 
     #[test]
     fn tridiagonal_known_solution() {

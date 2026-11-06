@@ -43,7 +43,7 @@ SCOPE_ARTIFACT: dict[str, str] = {
 }
 UFC_ONLY = "ufc"
 ALL_SCOPES = "all"
-DEFAULT_PUBLISHED_SCOPE = "majors,pre_unified"
+DEFAULT_PUBLISHED_SCOPE = (Path(__file__).resolve().parents[1] / "src/scope.txt").read_text().strip()
 CANONICAL_DATE_DRIFT_DAYS = 1
 
 # Merge order is by **source authority**, not alphabetical, because the dedupe

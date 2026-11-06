@@ -46,8 +46,8 @@ pub fn filled_divisions(bouts: &[Bout]) -> Vec<Option<String>> {
     // Sides in pandas concat order: every a-side, then every b-side.
     let sides = || {
         (0..bouts.len())
-            .map(|i| (i, &bouts[i].a))
-            .chain((0..bouts.len()).map(|i| (i, &bouts[i].b)))
+            .map(|i| (i, bouts[i].a()))
+            .chain((0..bouts.len()).map(|i| (i, bouts[i].b())))
     };
     // Labelled (date, division) per fighter, first side per (fighter, date) kept, in date order.
     let mut known: HashMap<&str, Vec<(Day, &str)>> = HashMap::new();
@@ -113,7 +113,7 @@ pub fn appearances(rated: &[Bout]) -> Vec<Appearance> {
     let mut interims: HashMap<&str, &str> = HashMap::new();
     let names: std::collections::HashSet<&str> = rated
         .iter()
-        .flat_map(|b| [b.a.as_str(), b.b.as_str()])
+        .flat_map(|b| [b.a().as_str(), b.b().as_str()])
         .filter(|f| !f.is_empty())
         .collect();
     let mut lo = 0;
@@ -125,7 +125,7 @@ pub fn appearances(rated: &[Bout]) -> Vec<Appearance> {
                 .count();
         for k in lo..hi {
             if let Some(d) = division[k].as_deref() {
-                for (s, f) in [&rated[k].a, &rated[k].b].into_iter().enumerate() {
+                for (s, f) in [rated[k].a(), rated[k].b()].into_iter().enumerate() {
                     champ[k][s] = champions.get(d) == Some(&f.as_str());
                     interim_champ[k][s] = interims.get(d) == Some(&f.as_str());
                 }
@@ -136,13 +136,13 @@ pub fn appearances(rated: &[Bout]) -> Vec<Appearance> {
                 continue;
             };
             // A winner who is no rated fighter leaves the lineage unchanged.
-            if !names.contains(b.winner.as_str()) || !title_bout(&b.weight_class) {
+            if !names.contains(b.winner().as_str()) || !title_bout(&b.weight_class) {
                 continue;
             }
             if interim_title_bout(&b.weight_class) {
-                interims.insert(d, &b.winner);
+                interims.insert(d, b.winner());
             } else {
-                champions.insert(d, &b.winner);
+                champions.insert(d, b.winner());
                 interims.remove(d);
             }
         }
@@ -151,8 +151,12 @@ pub fn appearances(rated: &[Bout]) -> Vec<Appearance> {
     let mut out = Vec::with_capacity(2 * n);
     for s in 0..2 {
         for (k, b) in rated.iter().enumerate() {
-            let (fighter, opponent) = if s == 0 { (&b.a, &b.b) } else { (&b.b, &b.a) };
-            let won = b.winner == *fighter && !b.draw;
+            let (fighter, opponent) = if s == 0 {
+                (b.a(), b.b())
+            } else {
+                (b.b(), b.a())
+            };
+            let won = b.winner() == fighter && !b.draw();
             out.push(Appearance {
                 url: b.url.clone(),
                 day: b.day,
@@ -161,8 +165,8 @@ pub fn appearances(rated: &[Bout]) -> Vec<Appearance> {
                 opponent: opponent.clone(),
                 division: division[k].clone().unwrap_or_default(),
                 won,
-                draw: b.draw,
-                score: if b.draw {
+                draw: b.draw(),
+                score: if b.draw() {
                     0.5
                 } else if won {
                     1.0

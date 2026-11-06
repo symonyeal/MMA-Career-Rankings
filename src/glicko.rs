@@ -13,7 +13,7 @@
 
 use std::collections::HashMap;
 
-use crate::bouts::Bout;
+use crate::bouts::{Bout, Corner, Outcome};
 use crate::divisions::normalize;
 use crate::frame::{Day, Table};
 use crate::stats::kahan_mean;
@@ -195,31 +195,27 @@ struct State {
 }
 
 pub struct Glicko {
-    pub names: Vec<String>,
+    names: Vec<String>,
     /// History rows ordered `(fighter, day, event)`, one per fighter per event.
-    pub rows: Vec<Row>,
+    rows: Vec<Row>,
     /// Per fighter: canonical, method, last event day.
     states: Vec<State>,
 }
 
-/// Winner-first score pairs `(canonical, method)` for the two corners; `None` when the bout is unscoreable.
+/// Scores for the two corners; no-contests carry no Glicko scoring evidence.
 fn scores(x: &Bout) -> Option<([f64; 2], [f64; 2])> {
-    if x.draw {
-        return Some(([0.5; 2], [0.5; 2]));
-    }
-    let c = if x.winner == x.a {
-        [1.0, 0.0]
-    } else if x.winner == x.b && !x.b.is_empty() {
-        [0.0, 1.0]
-    } else {
-        return None;
+    let c = match x.outcome() {
+        Outcome::Draw => return Some(([0.5; 2], [0.5; 2])),
+        Outcome::NoContest => return None,
+        Outcome::Win(Corner::A) => [1.0, 0.0],
+        Outcome::Win(Corner::B) => [0.0, 1.0],
     };
-    let m = if x.score.is_nan() {
+    let m = if x.score().is_nan() {
         c
     } else if c[0] == 1.0 {
-        [x.score, 1.0 - x.score]
+        [x.score(), 1.0 - x.score()]
     } else {
-        [1.0 - x.score, x.score]
+        [1.0 - x.score(), x.score()]
     };
     Some((c, m))
 }
@@ -242,7 +238,7 @@ pub fn engine(bouts: &[&Bout]) -> Glicko {
         let card = &order[i..j];
         let mut on: Vec<usize> = Vec::new();
         for x in card {
-            for f in [&x.a, &x.b] {
+            for f in [x.a(), x.b()] {
                 let k = *id.entry(f.clone()).or_insert_with(|| {
                     names.push(f.clone());
                     states.push(State {
@@ -272,7 +268,7 @@ pub fn engine(bouts: &[&Bout]) -> Glicko {
         let mut series: HashMap<usize, (Vec<(f64, Rating)>, Vec<(f64, Rating)>)> = HashMap::new();
         for x in card {
             let Some((c, m)) = scores(x) else { continue };
-            let (a, b) = (id[&x.a], id[&x.b]);
+            let (a, b) = (id[x.a()], id[x.b()]);
             for (f, o, side) in [(a, b, 0), (b, a, 1)] {
                 let e = series.entry(f).or_default();
                 e.0.push((c[side], pre[&o].0));
@@ -312,6 +308,13 @@ pub fn run(rated: &[Bout]) -> Glicko {
 }
 
 impl Glicko {
+    pub fn names(&self) -> &[String] {
+        &self.names
+    }
+    pub fn rows(&self) -> &[Row] {
+        &self.rows
+    }
+
     /// `ratings_current` Glicko columns; `rating_periods` counts history rows.
     pub fn current(&self) -> Table {
         let mut periods = vec![0i64; self.names.len()];
@@ -365,11 +368,11 @@ pub fn calibration(g: &Glicko, rated: &[Bout]) -> Table {
     let mut left: Vec<(Option<String>, f64, f64)> = Vec::new();
     for x in rated
         .iter()
-        .filter(|x| !x.draw && !x.winner.is_empty() && !x.a.is_empty() && !x.b.is_empty())
+        .filter(|x| !x.draw() && !x.winner().is_empty() && !x.a().is_empty() && !x.b().is_empty())
     {
         let (a, b) = (
-            pre[&(x.a.as_str(), x.day, x.event.as_str())],
-            pre[&(x.b.as_str(), x.day, x.event.as_str())],
+            pre[&(x.a().as_str(), x.day, x.event.as_str())],
+            pre[&(x.b().as_str(), x.day, x.event.as_str())],
         );
         if a.1 < 3 || b.1 < 3 {
             continue;
@@ -378,7 +381,7 @@ pub fn calibration(g: &Glicko, rated: &[Bout]) -> Table {
         left.push((
             normalize(&x.weight_class),
             p,
-            if x.winner == x.a { 1.0 } else { 0.0 },
+            if x.winner() == x.a() { 1.0 } else { 0.0 },
         ));
     }
     let apps: Vec<(Option<String>, f64, f64)> = left
@@ -435,4 +438,33 @@ pub fn calibration(g: &Glicko, rated: &[Bout]) -> Table {
         .f64("predicted_mean", &pm)
         .f64("empirical_win_rate", &ew)
         .i64("n", &n)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn admitted_outcomes_have_explicit_glicko_evidence() {
+        for (outcome, canonical) in [
+            (Outcome::Win(Corner::A), [1.0, 0.0]),
+            (Outcome::Win(Corner::B), [0.0, 1.0]),
+            (Outcome::Draw, [0.5, 0.5]),
+        ] {
+            let bout = Bout::new("Alice".into(), "Bob".into(), 1, outcome, f64::NAN).unwrap();
+            assert_eq!(scores(&bout), Some((canonical, canonical)));
+        }
+        let nc = Bout::new(
+            "Alice".into(),
+            "Bob".into(),
+            1,
+            Outcome::NoContest,
+            f64::NAN,
+        )
+        .unwrap();
+        assert_eq!(scores(&nc), None);
+        let g = run(&[nc]);
+        let current = g.current().frame();
+        assert_eq!(current.f64("mu_canonical"), [1500.0, 1500.0]);
+    }
 }

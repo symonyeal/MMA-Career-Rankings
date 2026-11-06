@@ -3,7 +3,7 @@
 //! Each calendar year Y ≥ 2012 is forecast by models fitted on bouts dated
 //! before 1 January Y, and every feature reads only earlier dates. Features
 //! read only bouts from promotions the corpus enumerates card by card
-//! (`ROSTER`), so a fighter's recorded past does not depend on their future;
+//! (`bouts::predictive`), so a fighter's recorded past does not depend on their future;
 //! Glicko-2 is re-run on that history unchanged. Every model is antisymmetric
 //! in the corners (docs/DECISIONS.md).
 //!
@@ -24,17 +24,6 @@ use crate::frame::{parse_day, Day, Frame};
 use crate::glicko::{engine, predict};
 use crate::stats::{kahan_mean, psum, py_round, quantile_sorted, Pcg64};
 
-const ROSTER: [&str; 9] = [
-    "UFC",
-    "UFC (pre-unified)",
-    "Ultimate Fighting Championship (UFC)",
-    "PRIDE",
-    "WEC",
-    "Strikeforce",
-    "Affliction",
-    "Bellator",
-    "RIZIN",
-];
 const Y0: i32 = 2012;
 const SEED: u32 = 20261027;
 const B: usize = 2000;
@@ -61,16 +50,16 @@ fn records(cb: &[&Bout]) -> HashMap<(String, Day), Rec> {
     let mut d: BTreeMap<(&str, Day), (f64, f64, f64, f64)> = BTreeMap::new();
     for side in 0..2 {
         for x in cb {
-            let f = if side == 0 { &x.a } else { &x.b };
+            let f = if side == 0 { &x.a() } else { &x.b() };
             if f.is_empty() {
                 continue;
             }
-            let w = if x.draw {
+            let w = if x.draw() {
                 0.5
             } else {
-                f64::from(u8::from(&x.winner == f))
+                f64::from(u8::from(&x.winner() == f))
             };
-            let kol = f64::from(u8::from(&x.loser == f && x.method == "KO/TKO"));
+            let kol = f64::from(u8::from(&x.loser() == f && x.method == "KO/TKO"));
             let e = d
                 .entry((f, x.day))
                 .or_insert((0.0, 0.0, 0.0, f64::INFINITY));
@@ -364,14 +353,14 @@ fn bout_frame(snapshot: &Path, staged: &[Bout], births: &HashMap<String, Day>) -
 
     let cb: Vec<&Bout> = staged
         .iter()
-        .filter(|x| x.model && !x.nc && (x.source == "ufc" || ROSTER.contains(&x.org.as_str())))
+        .filter(|x| crate::bouts::predictive(x))
         .collect();
     let rec = records(&cb);
     let (rates, debut) = ufc_rates(snapshot, &secs);
     let g = engine(&cb);
     let mut gl: HashMap<(&str, Day), (f64, f64)> = HashMap::new();
-    for r in &g.rows {
-        gl.entry((g.names[r.fighter].as_str(), r.day))
+    for r in g.rows() {
+        gl.entry((g.names()[r.fighter].as_str(), r.day))
             .or_insert(r.pre);
     }
     let fi = Frame::read(&snapshot.join("canonical_fighters.parquet"));
@@ -629,9 +618,9 @@ pub fn market(snapshot: &Path, staged: &[Bout], births: &HashMap<String, Day>) -
     let mut won: HashMap<&str, Vec<&str>> = HashMap::new();
     for b in staged
         .iter()
-        .filter(|b| !b.excluded && !b.draw && !b.nc && !b.winner.is_empty())
+        .filter(|b| !b.excluded && !b.draw() && !b.nc() && !b.winner().is_empty())
     {
-        won.entry(&b.url).or_default().push(&b.winner);
+        won.entry(&b.url).or_default().push(b.winner());
     }
     let od = Frame::read(&snapshot.join("odds_lines.parquet"));
     let (ou, oq, oa, op, od_day) = (

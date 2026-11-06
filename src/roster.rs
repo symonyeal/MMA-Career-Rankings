@@ -27,9 +27,12 @@ const DAYS_PER_MONTH: f64 = 365.25 / 12.0;
 
 fn women(rated: &[Bout]) -> HashSet<&str> {
     let mut adj: HashMap<&str, Vec<&str>> = HashMap::new();
-    for b in rated.iter().filter(|b| !b.a.is_empty() && !b.b.is_empty()) {
-        adj.entry(&b.a).or_default().push(&b.b);
-        adj.entry(&b.b).or_default().push(&b.a);
+    for b in rated
+        .iter()
+        .filter(|b| !b.a().is_empty() && !b.b().is_empty())
+    {
+        adj.entry(b.a()).or_default().push(b.b());
+        adj.entry(b.b()).or_default().push(b.a());
     }
     let mut comp: HashMap<&str, usize> = HashMap::new();
     let mut n = 0;
@@ -51,7 +54,7 @@ fn women(rated: &[Bout]) -> HashSet<&str> {
     }
     let mut tally = vec![(0usize, 0usize); n];
     for b in rated {
-        let Some(&c) = comp.get(b.a.as_str()) else {
+        let Some(&c) = comp.get(b.a().as_str()) else {
             continue;
         };
         let d = normalize(&b.weight_class).unwrap_or_default();
@@ -77,16 +80,16 @@ pub fn columns(
     let sides = || {
         rated
             .iter()
-            .map(|b| (&b.a, b))
-            .chain(rated.iter().map(|b| (&b.b, b)))
+            .map(|b| (b.a(), b))
+            .chain(rated.iter().map(|b| (b.b(), b)))
     };
     let mut record: BTreeMap<&str, [i64; 3]> = BTreeMap::new();
     let mut recent: HashMap<&str, Vec<(Day, &str, Option<String>)>> = HashMap::new();
     for (f, b) in sides().filter(|(f, _)| !f.is_empty()) {
         let r = record.entry(f).or_default();
-        r[0] += (b.winner == *f && !b.draw) as i64;
-        r[1] += (!b.winner.is_empty() && b.winner != *f && !b.draw) as i64;
-        r[2] += b.draw as i64;
+        r[0] += (b.winner() == f && !b.draw()) as i64;
+        r[1] += (!b.winner().is_empty() && b.winner() != f && !b.draw()) as i64;
+        r[2] += b.draw() as i64;
         recent
             .entry(f)
             .or_default()
@@ -96,18 +99,18 @@ pub fn columns(
     let mut last: HashMap<&str, Day> = HashMap::new();
     let mut counts: HashMap<&str, [i64; 3]> = HashMap::new();
     for b in prepared {
-        for f in [&b.a, &b.b].into_iter().filter(|f| !f.is_empty()) {
+        for f in [b.a(), b.b()].into_iter().filter(|f| !f.is_empty()) {
             let d = last.entry(f).or_insert(b.day);
             *d = (*d).max(b.day);
         }
         if b.ped && !b.ped_fighter.is_empty() {
             counts.entry(&b.ped_fighter).or_default()[0] += 1;
         }
-        if b.dq && !b.winner.is_empty() {
-            counts.entry(&b.winner).or_default()[1] += 1;
+        if b.dq && !b.winner().is_empty() {
+            counts.entry(b.winner()).or_default()[1] += 1;
         }
-        if b.missed_weight && !b.winner.is_empty() {
-            counts.entry(&b.winner).or_default()[2] += 1;
+        if b.missed_weight && !b.winner().is_empty() {
+            counts.entry(b.winner()).or_default()[2] += 1;
         }
     }
     let fighters: Vec<&str> = record.keys().copied().collect();

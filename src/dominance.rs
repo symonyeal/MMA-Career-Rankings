@@ -103,7 +103,10 @@ fn per_fight(snapshot: &Path, rated: &[Bout], names: &Names) -> Vec<f64> {
         .into_iter()
         .filter_map(|(u, i)| {
             let b = &rated[i];
-            let (x, y) = (bout.get(&(u, b.a.as_str()))?, bout.get(&(u, b.b.as_str()))?);
+            let (x, y) = (
+                bout.get(&(u, b.a().as_str()))?,
+                bout.get(&(u, b.b().as_str()))?,
+            );
             let m = minutes(b);
             Some((i, [0, 1, 2].map(|j| x[j] / m - y[j] / m)))
         })
@@ -148,7 +151,7 @@ fn per_fight(snapshot: &Path, rated: &[Bout], names: &Names) -> Vec<f64> {
     let gap: Vec<f64> = rated
         .iter()
         .map(|b| {
-            let (a, o) = (names.key(&b.a, false), names.key(&b.b, false));
+            let (a, o) = (names.key(b.a(), false), names.key(b.b(), false));
             let pair = if a <= o {
                 (a.clone(), o)
             } else {
@@ -175,9 +178,9 @@ fn per_fight(snapshot: &Path, rated: &[Bout], names: &Names) -> Vec<f64> {
     }
     for (i, b) in rated.iter().enumerate() {
         if b.method == "KO/TKO" || b.method == "Submission" {
-            if b.winner == b.a {
+            if b.winner() == b.a() {
                 dom[i] = dom[i].max(FINISH_FLOOR_Z);
-            } else if b.winner == b.b {
+            } else if b.winner() == b.b() {
                 dom[i] = dom[i].min(-FINISH_FLOOR_Z);
             }
         }
@@ -190,10 +193,10 @@ pub fn fighters(snapshot: &Path, rated: &[Bout], names: &Names) -> Table {
     let dom = per_fight(snapshot, rated, names);
     let mut wins: BTreeMap<&str, Vec<f64>> = BTreeMap::new();
     for (b, d) in rated.iter().zip(dom) {
-        if !b.winner.is_empty() && (b.winner == b.a || b.winner == b.b) {
-            wins.entry(&b.winner)
+        if !b.winner().is_empty() && (b.winner() == b.a() || b.winner() == b.b()) {
+            wins.entry(b.winner())
                 .or_default()
-                .push(if b.winner == b.a { d } else { -d });
+                .push(if b.winner() == b.a() { d } else { -d });
         }
     }
     let f: Vec<&str> = wins.keys().copied().collect();

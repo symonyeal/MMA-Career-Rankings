@@ -16,13 +16,13 @@ const FLOOR: f64 = 0.90;
 pub fn appearances(rated: &[Bout]) -> Table {
     let rows: Vec<(&Bout, &str)> = rated
         .iter()
-        .map(|b| (b, b.a.as_str()))
-        .chain(rated.iter().map(|b| (b, b.b.as_str())))
+        .map(|b| (b, b.a().as_str()))
+        .chain(rated.iter().map(|b| (b, b.b().as_str())))
         .collect();
     let factor = |flag: fn(&Bout, &str) -> bool, x: f64| -> Vec<f64> {
         rows.iter()
             .map(|&(b, f)| {
-                if b.winner == f && !b.draw && flag(b, f) {
+                if b.winner() == f && !b.draw() && flag(b, f) {
                     x
                 } else {
                     1.0
