@@ -22,16 +22,59 @@ jobs:
       - run: npm test
 
   model:
-    runs-on: ubuntu-latest
+    # Published binary64 tables use the Windows UCRT/MSVC math backend.
+    # Keep exact-byte acceptance on that producer, and test Linux separately.
+    runs-on: windows-2022
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.98.1"
+          components: clippy, rustfmt
+      - run: rustc -Vv
       - run: cargo fmt --check
       - run: cargo clippy --release --all-targets -- -D warnings
       - run: cargo test --release
       # The release snapshot is versioned whole, so a fresh clone rebuilds every
       # published output, including Parquet; any difference fails acceptance.
       - run: cargo run --release -- data/snapshots/2026-10-24
-      - run: git diff --exit-code -- RANKINGS.md README.md site '*.csv' '*.json' '*.parquet'
+      - name: Verify committed release outputs
+        run: |
+          python - <<'PY'
+          import json
+          import subprocess
+          from pathlib import Path
+
+          paths = ['RANKINGS.md', 'README.md', 'site', '*.csv', '*.json', '*.parquet']
+          result = subprocess.run(['git', 'diff', '--exit-code', '--', *paths],
+                                  capture_output=True, text=True)
+          Path('target/rebuild.diff').write_text(result.stdout + result.stderr)
+          if result.returncode:
+              print(result.stdout + result.stderr)
+              changed = subprocess.check_output(
+                  ['git', 'diff', '--name-only', '--', *paths], text=True).splitlines()
+              for path in changed:
+                  print(f'::error file={path}::Rebuild changed a committed release artifact')
+              path = 'data/snapshots/2026-10-24/release_manifest.json'
+              before = json.loads(subprocess.check_output(['git', 'show', f'HEAD:{path}']))
+              after = json.loads(Path(path).read_text())
+              for section in ['source_sha256', 'input_sha256', 'output_sha256']:
+                  old, new = before.get(section, {}), after.get(section, {})
+                  for key in sorted(old.keys() | new.keys()):
+                      if old.get(key) != new.get(key):
+                          print(f'::error file={key}::{section}: committed={old.get(key)}, rebuilt={new.get(key)}')
+          raise SystemExit(result.returncode)
+          PY
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: rebuild-failure
+          path: |
+            target/rebuild.diff
+            data/snapshots/2026-10-24/release_manifest.json
       - id: accepted
         run: |
           python - <<'PY' >> "$GITHUB_OUTPUT"
@@ -45,6 +88,18 @@ jobs:
           name: accepted-site
           path: ${{ steps.accepted.outputs.site }}
           if-no-files-found: error
+
+  native-portability:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.98.1"
+          components: clippy, rustfmt
+      - run: cargo fmt --check
+      - run: cargo clippy --release --all-targets -- -D warnings
+      - run: cargo test --release
 
   staging:
     runs-on: ubuntu-latest
