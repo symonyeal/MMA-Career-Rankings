@@ -779,6 +779,14 @@ projection recovers when the next writer starts. Concurrent readers of those fix
 paths are not promised atomic multi-file visibility. Synced files do not establish
 directory-entry durability across power loss.
 
-CI checks regenerated Parquet as well as text, and Pages deploys the accepted site
+The published binary64 outputs use Rust 1.98.1 on x86-64 Windows with MSVC and UCRT.
+The expanded acceptance gate exposed different rating-table and audit bytes on Ubuntu,
+while its source/input receipts and published boards/site text agreed. Native transcendental
+functions do not promise identical last bits across math libraries. CI therefore checks
+exact regenerated Parquet and text on the declared Windows producer; separate Ubuntu
+jobs retain native formatting, lint and domain tests. This preserves the published
+tables and introduces no numerical tolerance or model change.
+
+Pages deploys the accepted site
 artifact from the exact successful checks run. A failed check cannot supply a deployed
 artifact. A completed run for an obsolete main revision is skipped.
