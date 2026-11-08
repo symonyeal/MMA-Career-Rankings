@@ -14,13 +14,11 @@ use crate::bouts::Bout;
 use crate::divisions::female;
 use crate::frame::{Day, Frame, Table};
 use crate::history::History;
+use crate::integrity::{DQ, MISSED_WEIGHT, PED};
 use crate::layoff::Layoff;
+use crate::policy::{CONTENDER, MIN_PERIODS};
 use crate::stats::{kahan_mean, psum};
 
-/// `SUSTAINED_PEAK_MIN_FIGHTS`: the rating-period floor of every board.
-pub const MIN_PERIODS: i64 = 13;
-/// `CONTENDER_LINE_MU`.
-pub const CONTENDER: f64 = 1750.0;
 /// `MIN_OPPONENT_UFC_BOUTS`: an opponent's tested UFC record, and the Current board's UFC-bout floor.
 const MIN_OPPONENT_UFC_BOUTS: usize = 8;
 /// `MIN_QUALITY_WINS`.
@@ -33,9 +31,9 @@ const DECADE_DAYS: Day = 3652;
 const PENALTY_SCALE: f64 = 250.0;
 /// Integrity reasons: name, factor, ledger label.
 const REASONS: [(&str, f64, &str); 3] = [
-    ("ped", 0.90, "PED-confirmed win"),
-    ("dq", 0.96, "win by disqualification"),
-    ("missed_weight", 0.94, "won after missing weight"),
+    ("ped", PED, "PED-confirmed win"),
+    ("dq", DQ, "win by disqualification"),
+    ("missed_weight", MISSED_WEIGHT, "won after missing weight"),
 ];
 
 pub const UNRANKED_AT_FLOOR: &str = "unranked (no year above the bar)";

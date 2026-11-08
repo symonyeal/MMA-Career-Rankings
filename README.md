@@ -19,7 +19,7 @@ The [interactive site](https://symonyeal.github.io/MMA-Career-Rankings/) filters
 
 | Design choice | Rationale |
 | --- | --- |
-| **Whole-History Rating** (Coulom, 2008) | A one-pass rating like Elo never goes back. If an opponent you beat later becomes a champion, that win should count for more, and here it does. Fitting all careers together also keeps fighters from different decades on one scale. |
+| **Whole-History Rating, re-centred** (after Coulom, 2008) | A one-pass rating like Elo never goes back. If an opponent you beat later becomes a champion, that win should count for more, and here it does. Fitting all careers together also keeps fighters from different decades on one scale. The solver is not Coulom's exact fit: it takes one Newton step per fighter per pass, clipped to 1.5 on the natural scale, runs a fixed 50 passes, and re-centres the mean rating after each pass. `rating_run.json` records the order of magnitude of the largest rating change in the last pass. |
 | **A neutral starting bout** | Without it, a fighter at 2-0 has no upper limit and can top the board. With it, an unbeaten record has to keep growing against real opposition to climb. |
 | **Graded results** | A knockout says more about who was better than a split decision does. |
 | **A contender line for each year** | The rating scale drifts upward over time. Measuring against that year's contenders compares a 2007 win and a 2023 win fairly. |

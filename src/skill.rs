@@ -20,10 +20,11 @@ use crate::divisions::female;
 use crate::era::{contender_bar, year, CAREER_N};
 use crate::frame::{Day, Frame, Table};
 use crate::history::{History, Row};
+use crate::policy::MIN_PERIODS;
 use crate::stats::{kahan_mean, kahan_sum, mean, var, welford_std};
 
 const WINDOW_DAYS: Day = 3652;
-const MIN_FIGHTS: usize = 13;
+const MIN_FIGHTS: usize = MIN_PERIODS as usize;
 const DIVISION_N: usize = 5;
 const DIVISION_MIN_POPULATION: usize = 30;
 const FIELD_MIN_POPULATION: usize = 5;

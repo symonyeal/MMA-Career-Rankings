@@ -20,6 +20,8 @@ use parquet::arrow::ArrowWriter;
 use parquet::basic::Compression;
 use parquet::file::properties::WriterProperties;
 
+use crate::error::Error;
+
 pub type Day = i32;
 
 /// Days since 1970-01-01 of an ISO `YYYY-MM-DD` date (proleptic Gregorian).
@@ -92,12 +94,38 @@ pub struct Frame {
 
 impl Frame {
     pub fn read(path: &Path) -> Frame {
-        let file = File::open(path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
-        let builder = ParquetRecordBatchReaderBuilder::try_new(file).unwrap();
+        Frame::try_read(path).unwrap_or_else(|e| panic!("{e}"))
+    }
+
+    /// `read`, with the file named in every error.
+    pub fn try_read(path: &Path) -> Result<Frame, Error> {
+        let at = |e: &dyn std::fmt::Display| Error::at(path.display(), e);
+        let file = File::open(path).map_err(|e| at(&e))?;
+        let builder = ParquetRecordBatchReaderBuilder::try_new(file).map_err(|e| at(&e))?;
         let schema = builder.schema().clone();
-        let reader = builder.build().unwrap();
-        let batches: Vec<RecordBatch> = reader.map(Result::unwrap).collect();
-        Frame::from_batch(concat_batches(&schema, &batches).unwrap())
+        let reader = builder.build().map_err(|e| at(&e))?;
+        let batches = reader
+            .collect::<Result<Vec<RecordBatch>, _>>()
+            .map_err(|e| at(&e))?;
+        let batch = concat_batches(&schema, &batches).map_err(|e| at(&e))?;
+        Ok(Frame::from_batch(batch))
+    }
+
+    /// An error naming `file` and every column of `cols` the frame lacks.
+    pub fn need(&self, file: &str, cols: &[&str]) -> Result<(), Error> {
+        let lacking: Vec<&str> = cols.iter().copied().filter(|c| !self.has(c)).collect();
+        if lacking.is_empty() {
+            Ok(())
+        } else {
+            Err(Error::at(
+                file,
+                format!(
+                    "missing column {} (has {})",
+                    lacking.join(", "),
+                    self.names().join(", ")
+                ),
+            ))
+        }
     }
 
     pub fn len(&self) -> usize {
@@ -344,6 +372,24 @@ impl Table {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_missing_column_is_named_with_its_file() {
+        let t = Table::default()
+            .f64("mu", &[1.0])
+            .str("fighter", &["A"])
+            .frame();
+        assert_eq!(t.need("ratings.parquet", &["mu", "fighter"]), Ok(()));
+        let e = t
+            .need("ratings.parquet", &["mu", "phi", "sigma"])
+            .unwrap_err();
+        assert_eq!(
+            e.0,
+            "ratings.parquet: missing column phi, sigma (has mu, fighter)"
+        );
+        let e = Frame::try_read(Path::new("no/such.parquet")).err().unwrap();
+        assert!(e.0.starts_with("no/such.parquet: "), "{e}");
+    }
 
     #[test]
     fn gregorian_dates_reject_normalization() {

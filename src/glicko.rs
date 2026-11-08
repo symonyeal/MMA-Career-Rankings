@@ -16,6 +16,7 @@ use std::collections::HashMap;
 use crate::bouts::{Bout, Corner, Outcome};
 use crate::divisions::normalize;
 use crate::frame::{Day, Table};
+use crate::policy::DAYS_PER_MONTH;
 use crate::stats::kahan_mean;
 
 const MU: f64 = 1500.0;
@@ -25,7 +26,6 @@ const TAU: f64 = 0.5;
 const EPS: f64 = 1e-6;
 const RATIO: f64 = 173.7178;
 const PI: f64 = std::f64::consts::PI;
-const DAYS_PER_MONTH: f64 = 365.25 / 12.0;
 
 #[cfg_attr(windows, link(name = "ucrt"))]
 #[cfg_attr(not(windows), link(name = "m"))]

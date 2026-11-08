@@ -23,11 +23,10 @@ use crate::frame::{Day, Frame, Table};
 use crate::history::{History, Row};
 use crate::layoff::Layoff;
 use crate::orgs::{Org, Rules, TIER4};
+use crate::policy::{ufc_corpus, CONTENDER, TIER1};
 use crate::skill::annual;
 use crate::stats::{kahan_mean, kahan_sum, mean, psum, quantile};
 
-/// `CONTENDER_LINE_MU`.
-pub const CONTENDER: f64 = 1750.0;
 const MIN_OPPONENT_UFC_BOUTS: usize = 8;
 const POOL_OFFSET: f64 = 54.0;
 const MAJOR_FLOOR: f64 = 0.05;
@@ -67,14 +66,10 @@ fn wins<'a>(bouts: impl Iterator<Item = &'a Bout> + Clone) -> Vec<(&'a Bout, &'a
     out
 }
 
-fn ufc_family(b: &Bout) -> bool {
-    b.corpus == "ufc" || b.corpus == "pre_unified"
-}
-
 /// `ufc_debut_dates_from`: first UFC-family bout of each fighter.
 pub fn debuts(bouts: &[Bout]) -> HashMap<String, Day> {
     let mut out: HashMap<String, Day> = HashMap::new();
-    for b in bouts.iter().filter(|b| ufc_family(b)) {
+    for b in bouts.iter().filter(|b| ufc_corpus(b)) {
         for f in [b.a(), b.b()] {
             let d = out.entry(f.clone()).or_insert(b.day);
             *d = (*d).min(b.day);
@@ -86,7 +81,7 @@ pub fn debuts(bouts: &[Bout]) -> HashMap<String, Day> {
 /// `ufc_bout_counts`: UFC-family model bouts per fighter.
 pub fn ufc_bouts(bouts: &[Bout]) -> HashMap<String, usize> {
     let mut out = HashMap::new();
-    for b in bouts.iter().filter(|b| ufc_family(b) && b.model) {
+    for b in bouts.iter().filter(|b| ufc_corpus(b) && b.model) {
         for f in [b.a(), b.b()] {
             *out.entry(f.clone()).or_insert(0) += 1;
         }
@@ -411,7 +406,7 @@ fn exposure(rated: &[Bout], ctx: &HashMap<String, Org>) -> HashMap<String, (f64,
             e.0.push(v);
         }
         e.1 += i64::from(ufc);
-        e.2 += i64::from(v.is_some_and(|v| v >= 0.82));
+        e.2 += i64::from(v.is_some_and(|v| v >= TIER1));
         e.3 += i64::from(v.is_none());
     }
     g.into_iter()

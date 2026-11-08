@@ -7,10 +7,11 @@
 
 use std::collections::HashMap;
 
-use crate::boards::{Boards, CONTENDER, MIN_PERIODS};
+use crate::boards::Boards;
 use crate::divisions::{pool, MEN_LIMIT_LB};
 use crate::frame::{iso, Frame};
 use crate::history::History;
+use crate::policy::{CONTENDER, MIN_PERIODS};
 use crate::stats::{fmt0, np_round, py_repr};
 
 /// `GENDER_GAUGE_NOTE`, printed above the women's All-time board.

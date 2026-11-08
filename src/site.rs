@@ -20,19 +20,17 @@ use crate::era::year;
 use crate::frame::{iso, Day, Frame};
 use crate::history::{History, Row};
 use crate::names::Names;
+use crate::policy::{is_ufc, CONTENDER, DAYS_PER_MONTH, MIN_PERIODS};
 use crate::pyjson::{ints, num, opt, opt_s, s, J};
 use crate::skill::Year;
 use crate::stats::{np_round, psum, var};
 
-const MIN_PERIODS: i64 = 13;
-const CONTENDER: f64 = 1750.0;
 /// Legacy weights: achievement share a, skill share s of the quality term, display scale.
 const A: f64 = 0.30;
 const S: f64 = 0.25;
 const SCALE: f64 = 1000.0;
 const TOP_N: usize = 100;
 const JULIAN_YEAR_DAYS: f64 = 365.25;
-const DAYS_PER_MONTH: f64 = JULIAN_YEAR_DAYS / 12.0;
 const METHODS: [&str; 7] = [
     "KO/TKO",
     "Submission",
@@ -59,12 +57,6 @@ const LAYOFF_BANDS: [(f64, f64, &str); 6] = [
     (12.0, 18.0, "12–18"),
     (18.0, 24.0, "18–24"),
     (24.0, 999.0, "24+"),
-];
-const UFC_CORPORA: [&str; 2] = ["ufc", "pre_unified"];
-const UFC_ORGS: [&str; 3] = [
-    "UFC",
-    "UFC (pre-unified)",
-    "Ultimate Fighting Championship (UFC)",
 ];
 
 /// Inputs of `data`; boards are (men, women) pairs as `build_boards` writes them.
@@ -248,11 +240,6 @@ fn asc(a: f64, b: f64) -> std::cmp::Ordering {
         (false, true) => std::cmp::Ordering::Less,
         _ => a.partial_cmp(&b).unwrap(),
     }
-}
-
-/// `is_ufc_bout`: UFC corpora or a UFC organisation label.
-fn is_ufc(b: &Bout) -> bool {
-    UFC_CORPORA.contains(&b.corpus.as_str()) || UFC_ORGS.contains(&b.org.as_str())
 }
 
 fn count_years(bouts: &[&Bout], min: usize) -> Vec<i32> {

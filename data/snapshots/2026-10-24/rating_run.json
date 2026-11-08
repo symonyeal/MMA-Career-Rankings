@@ -2,6 +2,7 @@
   "rated_bouts": 81643,
   "birth_dates": 6205,
   "history_rows": 163286,
+  "whr_final_shift_below": "1e-8",
   "current_fighters": 34150,
   "events_processed": 28851,
   "career_coverage": {

@@ -14,6 +14,7 @@ use crate::division;
 use crate::divisions::normalize;
 use crate::frame::{Day, Frame, Table};
 use crate::history::History;
+use crate::policy::DAYS_PER_MONTH;
 use crate::stats::np_round;
 
 const MENS_ONLY: [&str; 5] = [
@@ -23,7 +24,6 @@ const MENS_ONLY: [&str; 5] = [
     "Welterweight",
     "Lightweight",
 ];
-const DAYS_PER_MONTH: f64 = 365.25 / 12.0;
 
 fn women(rated: &[Bout]) -> HashSet<&str> {
     let mut adj: HashMap<&str, Vec<&str>> = HashMap::new();
@@ -172,7 +172,9 @@ pub fn columns(
             &fighters.iter().map(|f| c(f, 2)).collect::<Vec<_>>(),
         )
         .frame();
-    let div = division::primary(rated, apps, history).frame();
+    let div = division::primary(rated, apps, history)
+        .unwrap_or_else(|e| panic!("{e}"))
+        .frame();
     let at: HashMap<String, usize> = div
         .str("fighter")
         .into_iter()

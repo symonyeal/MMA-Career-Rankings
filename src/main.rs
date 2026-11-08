@@ -150,6 +150,7 @@ fn build(s: &Path, root: &Path) {
     // Ratings: Glicko streams, WHR path, roster facts; ratings_current is ordered by mu_canonical.
     let g = glicko::run(&rated);
     let w = whr::run(&rated, &births);
+    let whr_shift = shift_bound(w.shift);
     let mut history = w.history;
     let apps = mma_rankings::perf::appearances(&rated);
     let max = rated.iter().map(|b| b.day).max().unwrap();
@@ -298,6 +299,7 @@ fn build(s: &Path, root: &Path) {
         "rated_bouts": rated.len(),
         "birth_dates": births.len(),
         "history_rows": history.rows().len(),
+        "whr_final_shift_below": whr_shift,
         "current_fighters": cur.len(),
         "events_processed": events.len(),
         "career_coverage": {"eligible": eligible, "whole_career_merged": merged},
@@ -329,9 +331,9 @@ fn build(s: &Path, root: &Path) {
         .zip(pr[0].f64("elite_level"))
         .collect();
     let mut readme = publish::splice(&read(&root.join("README.md")), &blocks, &publish::README);
-    for (start, text) in
-        figures::paragraphs(&figures::values(&cur, &rated, &era_p, &history, &elite))
-    {
+    let figs = figures::values(&cur, &rated, &era_p, &history, &elite)
+        .unwrap_or_else(|e| panic!("README.md narrative: {e}"));
+    for (start, text) in figures::paragraphs(&figs) {
         readme =
             narrative::splice(&readme, start, &text).unwrap_or_else(|e| panic!("README.md: {e}"));
     }
@@ -373,6 +375,15 @@ fn build(s: &Path, root: &Path) {
     let out = root.join("data/model_tuning/top100-audit");
     std::fs::create_dir_all(&out).unwrap();
     audit::write(&out, s, &cur, &history, &rated, &canonical, &births);
+}
+
+/// The decade above the WHR fit's largest rating change in its last pass, as text ("1e-12"):
+/// the change itself is a last-bit quantity, its order of magnitude is the convergence record.
+fn shift_bound(shift: f64) -> String {
+    let e = (-12..=1)
+        .find(|e| shift < format!("1e{e}").parse::<f64>().unwrap())
+        .unwrap_or(2);
+    format!("1e{e}")
 }
 
 fn main() {

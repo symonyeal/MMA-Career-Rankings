@@ -15,6 +15,7 @@ use regex::Regex;
 use crate::bouts::Bout;
 use crate::era::year;
 use crate::frame::parse_day;
+use crate::policy::TIER1;
 
 struct Rule {
     pattern: Regex,
@@ -52,7 +53,7 @@ pub const TIER4: f64 = 0.20;
 
 fn tier_factor(tier: i64) -> f64 {
     match tier {
-        1 => 0.82,
+        1 => TIER1,
         2 => 0.60,
         3 => 0.42,
         _ => TIER4,

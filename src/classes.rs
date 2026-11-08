@@ -12,12 +12,12 @@ use regex::Regex;
 
 use crate::appearances::Appearance;
 use crate::bouts::Bout;
-use crate::current::is_ufc;
 use crate::divisions::{normalize, womens, MEN_LIMIT_LB};
 use crate::era::year;
 use crate::frame::{Frame, Table};
 use crate::legacy::{points, resume_rows, title_rows, Pricing};
 use crate::orgs::Org;
+use crate::policy::is_ufc;
 use crate::skill::Year;
 use crate::stats::kahan_sum;
 

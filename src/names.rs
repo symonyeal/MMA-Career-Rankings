@@ -12,6 +12,8 @@ use regex::Regex;
 use unicode_normalization::char::is_combining_mark;
 use unicode_normalization::UnicodeNormalization;
 
+use crate::error::Error;
+
 fn basic(name: &str) -> String {
     static SID: OnceLock<Regex> = OnceLock::new();
     let sid = SID.get_or_init(|| Regex::new(r"(?i)\s*\(sherdog:\d+\)\s*$").unwrap());
@@ -35,6 +37,11 @@ pub struct Names {
 
 impl Names {
     pub fn load(root: &Path) -> Names {
+        Names::try_load(root).unwrap_or_else(|e| panic!("{e}"))
+    }
+
+    /// `load`, with the file, and for a row its number, named in every error.
+    pub fn try_load(root: &Path) -> Result<Names, Error> {
         let mut alias = HashMap::new();
         let mut add = |canonical: &str, other: &str| {
             let (c, a) = (basic(canonical), basic(other));
@@ -43,28 +50,35 @@ impl Names {
             }
         };
         let aliases = root.join("data/external/aliases/fighter_aliases.csv");
-        for r in csv::Reader::from_path(aliases)
-            .unwrap()
-            .records()
-            .map(Result::unwrap)
-        {
+        let at = |p: &Path, e: &dyn std::fmt::Display| Error::at(p.display(), e);
+        let mut rd = csv::Reader::from_path(&aliases).map_err(|e| at(&aliases, &e))?;
+        for (i, r) in rd.records().enumerate() {
+            let r = r.map_err(|e| at(&aliases, &e))?;
+            if r.len() < 2 {
+                return Err(at(&aliases, &format!("row {}: expected 2 columns", i + 2)));
+            }
             add(&r[0], &r[1]);
         }
         let overrides = root.join("data/external/crossorg/identity_overrides.csv");
-        let mut rd = csv::Reader::from_path(overrides).unwrap();
-        let h = rd.headers().unwrap().clone();
-        let col = |n: &str| h.iter().position(|x| x == n).unwrap();
+        let mut rd = csv::Reader::from_path(&overrides).map_err(|e| at(&overrides, &e))?;
+        let h = rd.headers().map_err(|e| at(&overrides, &e))?.clone();
+        let col = |n: &str| {
+            h.iter()
+                .position(|x| x == n)
+                .ok_or_else(|| at(&overrides, &format!("missing column {n}")))
+        };
         let (sid, name, canonical) = (
-            col("sherdog_id"),
-            col("sherdog_name"),
-            col("canonical_name"),
+            col("sherdog_id")?,
+            col("sherdog_name")?,
+            col("canonical_name")?,
         );
-        for r in rd.records().map(Result::unwrap) {
+        for r in rd.records() {
+            let r = r.map_err(|e| at(&overrides, &e))?;
             if r[sid].trim().is_empty() {
                 add(&r[canonical], &r[name]);
             }
         }
-        Names { alias }
+        Ok(Names { alias })
     }
 
     pub fn key(&self, name: &str, compact: bool) -> String {
@@ -85,5 +99,16 @@ pub fn plain_key(name: &str, compact: bool) -> String {
         compacted(&k)
     } else {
         k
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_missing_alias_file_is_named() {
+        let e = Names::try_load(Path::new("no/such/root")).err().unwrap();
+        assert!(e.0.contains("fighter_aliases.csv"), "{e}");
     }
 }

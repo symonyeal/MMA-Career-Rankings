@@ -12,13 +12,14 @@
 //! one with the latest title win, then eff, else the career division. Only
 //! weight-limited divisions qualify unless a fighter has no other. The division
 //! score is a further tie-break in the source; it is not ported, and a tie on
-//! the keys above panics rather than being resolved silently.
+//! the keys above is an `Error` naming the fighter, not a silent pick.
 
 use std::collections::HashMap;
 
 use crate::appearances::Appearance;
 use crate::bouts::Bout;
 use crate::divisions::normalize;
+use crate::error::Error;
 use crate::frame::{Day, Table};
 use crate::history::History;
 use crate::stats::psum;
@@ -49,7 +50,7 @@ struct Resume<'a> {
 }
 
 /// `apps` are `perf::appearances(rated)`; the joined division is the reported one, never the vote.
-pub fn primary(rated: &[Bout], apps: &[Appearance], history: &History) -> Table {
+pub fn primary(rated: &[Bout], apps: &[Appearance], history: &History) -> Result<Table, Error> {
     let reported: HashMap<&str, Option<String>> = rated
         .iter()
         .map(|b| (b.url.as_str(), normalize(&b.weight_class)))
@@ -111,15 +112,6 @@ pub fn primary(rated: &[Bout], apps: &[Appearance], history: &History) -> Table 
         });
     }
     let reliability = |r: &Resume| r.eff / (r.eff + K);
-    let best = |f: &str, c: Vec<&Resume>, key: &dyn Fn(&Resume) -> (f64, f64)| -> Option<usize> {
-        let top = (0..c.len()).max_by(|&i, &j| key(c[i]).partial_cmp(&key(c[j])).unwrap())?;
-        let ties = c.iter().filter(|r| key(r) == key(c[top])).count();
-        assert!(
-            ties == 1,
-            "{f}: division pick ties on its live keys; the division score tie-break is needed"
-        );
-        Some(top)
-    };
     let mut out: (Vec<String>, Vec<String>, Vec<f64>, Vec<String>, Vec<f64>) = Default::default();
     for f in order {
         let rs = &by_fighter[f];
@@ -129,24 +121,69 @@ pub fn primary(rated: &[Bout], apps: &[Appearance], history: &History) -> Table 
         } else {
             real
         };
-        let career = cand[best(f, cand.clone(), &|r| (r.eff, r.recency)).unwrap()];
+        let career = cand[best(f, &cand, &|r| (r.eff, r.recency))?.unwrap()];
         let champ: Vec<&Resume> = cand
             .iter()
             .copied()
             .filter(|r| r.last_win.is_some())
             .collect();
-        let current = best(f, champ.clone(), &|r| (r.last_win.unwrap() as f64, r.eff))
-            .map_or(career, |i| champ[i]);
+        let current =
+            best(f, &champ, &|r| (r.last_win.unwrap() as f64, r.eff))?.map_or(career, |i| champ[i]);
         out.0.push(f.to_string());
         out.1.push(career.division.to_string());
         out.2.push(reliability(career));
         out.3.push(current.division.to_string());
         out.4.push(reliability(current));
     }
-    Table::default()
+    Ok(Table::default()
         .str("fighter", &out.0)
         .str("career_division", &out.1)
         .f64("career_division_reliability", &out.2)
         .str("current_division", &out.3)
-        .f64("current_division_reliability", &out.4)
+        .f64("current_division_reliability", &out.4))
+}
+
+/// The index of the unique maximum of `key`; `None` for no candidate, an error for a tie.
+fn best(
+    f: &str,
+    c: &[&Resume],
+    key: &dyn Fn(&Resume) -> (f64, f64),
+) -> Result<Option<usize>, Error> {
+    let Some(top) = (0..c.len()).max_by(|&i, &j| key(c[i]).partial_cmp(&key(c[j])).unwrap()) else {
+        return Ok(None);
+    };
+    if c.iter().filter(|r| key(r) == key(c[top])).count() > 1 {
+        return Err(Error::at(
+            f,
+            "division pick ties on its live keys; the division score tie-break is needed",
+        ));
+    }
+    Ok(Some(top))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn resume(division: &str, eff: f64) -> Resume<'_> {
+        Resume {
+            division,
+            eff,
+            recency: 1.0,
+            last_win: None,
+        }
+    }
+
+    #[test]
+    fn a_tie_names_the_fighter() {
+        let (a, b) = (resume("Lightweight", 5.0), resume("Welterweight", 5.0));
+        let key = |r: &Resume| (r.eff, r.recency);
+        let e = best("Jane Doe", &[&a, &b], &key).unwrap_err();
+        assert!(e.0.starts_with("Jane Doe: division pick ties"), "{e}");
+        assert_eq!(
+            best("Jane Doe", &[&a, &resume("Heavyweight", 6.0)], &key),
+            Ok(Some(1))
+        );
+        assert_eq!(best("Jane Doe", &[], &key), Ok(None));
+    }
 }

@@ -219,6 +219,14 @@ impl Graph {
 
     /// Node ratings and the drift per day of each age bucket (all zero without age drift).
     pub fn fit(&self, p: &Settings, age_drift: bool) -> (Vec<f64>, Vec<f64>) {
+        let (r, dr, _) = self.fit_traced(p, age_drift);
+        (r, dr)
+    }
+
+    /// `fit` plus the largest change of any node rating over the last pass, natural units: the
+    /// fit has converged when it is near zero, and nothing else in the loop tests for that.
+    /// (The Newton step itself stays nonzero under re-centring, so it is no test.)
+    pub fn fit_traced(&self, p: &Settings, age_drift: bool) -> (Vec<f64>, Vec<f64>, f64) {
         let (o, s, pt, ix, gp, bn) = (&self.o, &self.s, &self.pt, &self.ix, &self.gp, &self.bn);
         let n = o.len();
         let nf = pt.len() - 1;
@@ -233,7 +241,10 @@ impl Graph {
         let (mut rk, mut ok, mut pr, mut g, mut h, mut a, mut b, mut x) =
             (z(), z(), z(), z(), z(), z(), z(), z());
         let (mut e, mut c, mut d) = (z(), z(), z());
+        let mut shift = 0.0f64;
+        let mut before = r.clone();
         for pass in 0..tot {
+            before.copy_from_slice(&r);
             for f in 0..nf {
                 let lo = pt[f];
                 let nd = &ix[lo..pt[f + 1]];
@@ -308,12 +319,16 @@ impl Graph {
                     *v -= m;
                 }
             }
+            shift = r
+                .iter()
+                .zip(&before)
+                .fold(0.0, |m, (a, b)| m.max((a - b).abs()));
             if age_drift && pass == p.passes - 1 {
                 dr = self.drift(&r, lim);
                 r.fill(0.0);
             }
         }
-        (r, dr)
+        (r, dr, shift)
     }
 
     /// Mean rating change per day in each age bucket, relative to the first, clipped to ±25 Elo/yr.
@@ -382,12 +397,14 @@ pub struct Whr {
     pub current: Table,
     /// Age drift per bucket, Elo per year.
     pub drift: Vec<f64>,
+    /// Largest node rating change of the last pass, natural units (`Graph::fit_traced`).
+    pub shift: f64,
 }
 
 /// The published fit: graded winners, age drift from `births`, projected to the last rated date.
 pub fn run(rated: &[Bout], births: &HashMap<String, Day>) -> Whr {
     let graph = Graph::new(rated, births, true);
-    let (r, dr) = graph.fit(&Settings::default(), true);
+    let (r, dr, shift) = graph.fit_traced(&Settings::default(), true);
     let k = elo_per_nat();
     let drift: Vec<f64> = dr.iter().map(|x| x * k * YEAR_DAYS).collect();
     let history = History::new(
@@ -434,6 +451,7 @@ pub fn run(rated: &[Bout], births: &HashMap<String, Day>) -> Whr {
         history,
         current,
         drift,
+        shift,
     }
 }
 
@@ -479,5 +497,83 @@ mod tests {
         for (actual, expected) in x.iter().zip([1.0, -1.0, 2.0]) {
             assert!((actual - expected).abs() < 1e-12);
         }
+    }
+
+    /// Eight fighters with strengths 0, 0.4, … 2.8 (natural scale), every pair meeting 30 times
+    /// in a fixed pseudo-random order; the winner follows the logistic chance.
+    fn synthetic() -> (Vec<Bout>, Vec<f64>) {
+        let truth: Vec<f64> = (0..8).map(|i| 0.4 * i as f64).collect();
+        let (mut state, mut day) = (12345u64, 0);
+        let mut bouts = Vec::new();
+        for _ in 0..30 {
+            for i in 0..8 {
+                for j in i + 1..8 {
+                    state = state
+                        .wrapping_mul(6364136223846793005)
+                        .wrapping_add(1442695040888963407);
+                    let u = (state >> 11) as f64 / (1u64 << 53) as f64;
+                    let p = 1.0 / (1.0 + (-(truth[i] - truth[j])).exp());
+                    let win = if u < p { Corner::A } else { Corner::B };
+                    day += 1;
+                    let name = |k: usize| format!("F{k}");
+                    bouts.push(
+                        Bout::new(name(i), name(j), day, Outcome::Win(win), f64::NAN).unwrap(),
+                    );
+                }
+            }
+        }
+        (bouts, truth)
+    }
+
+    #[test]
+    fn fit_converges_at_published_passes() {
+        let (bouts, _) = synthetic();
+        let g = Graph::new(&bouts, &HashMap::new(), false);
+        let p = Settings::default();
+        let (r, _, shift) = g.fit_traced(&p, false);
+        let (long, _, _) = g.fit_traced(
+            &Settings {
+                passes: 10 * p.passes,
+                ..p
+            },
+            false,
+        );
+        let gap = r
+            .iter()
+            .zip(&long)
+            .map(|(a, b)| (a - b).abs())
+            .fold(0.0, f64::max);
+        assert!(
+            shift < 1e-9,
+            "ratings still move {shift:e} in pass {}",
+            p.passes
+        );
+        assert!(gap < 1e-9, "ratings move {gap:e} when passes grow tenfold");
+        let (_, _, early) = g.fit_traced(&Settings { passes: 5, ..p }, false);
+        assert!(
+            early > 1e-6,
+            "five passes should not have converged: {early:e}"
+        );
+    }
+
+    #[test]
+    fn fit_recovers_simulated_strengths() {
+        let (bouts, truth) = synthetic();
+        let g = Graph::new(&bouts, &HashMap::new(), false);
+        let (r, _, _) = g.fit_traced(&Settings::default(), false);
+        let mut mean = [0.0; 8];
+        let mut count = [0.0; 8];
+        for (f, x) in g.fighter().iter().zip(&r) {
+            let k: usize = f[1..].parse().unwrap();
+            mean[k] += x;
+            count[k] += 1.0;
+        }
+        let m: Vec<f64> = mean.iter().zip(&count).map(|(s, c)| s / c).collect();
+        let (mt, mm) = (truth.iter().sum::<f64>() / 8.0, m.iter().sum::<f64>() / 8.0);
+        let cov: f64 = truth.iter().zip(&m).map(|(t, x)| (t - mt) * (x - mm)).sum();
+        let vt: f64 = truth.iter().map(|t| (t - mt).powi(2)).sum();
+        let vm: f64 = m.iter().map(|x| (x - mm).powi(2)).sum();
+        let corr = cov / (vt * vm).sqrt();
+        assert!(corr > 0.95, "correlation {corr}: {m:?}");
     }
 }

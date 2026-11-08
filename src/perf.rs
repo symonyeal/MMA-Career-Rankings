@@ -11,33 +11,13 @@ use std::collections::HashMap;
 
 use crate::appearances::Appearance;
 use crate::bouts::Bout;
-use crate::divisions::normalize;
+use crate::divisions::{normalize, ufc_title};
 use crate::frame::Day;
 
 const NEIGHBOURS: usize = 4;
 
-/// `is_real_ufc_title_bout`: a UFC undisputed or interim title bout, not a TUF or Road to UFC final.
-pub fn title_bout(weight_class: &str) -> bool {
-    let t = weight_class
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ")
-        .to_lowercase()
-        .replace("titlebout", "title bout");
-    t.contains("title bout")
-        && ![
-            "ultimate fighter",
-            "road to ufc",
-            "tuf nations",
-            "tournament",
-        ]
-        .iter()
-        .any(|x| t.contains(x))
-        && t.starts_with("ufc ")
-}
-
 pub fn interim_title_bout(weight_class: &str) -> bool {
-    title_bout(weight_class) && weight_class.to_lowercase().contains("interim")
+    ufc_title(weight_class) && weight_class.to_lowercase().contains("interim")
 }
 
 /// Division of each bout: reported, else the career vote; `None` when neither exists.
@@ -136,7 +116,7 @@ pub fn appearances(rated: &[Bout]) -> Vec<Appearance> {
                 continue;
             };
             // A winner who is no rated fighter leaves the lineage unchanged.
-            if !names.contains(b.winner().as_str()) || !title_bout(&b.weight_class) {
+            if !names.contains(b.winner().as_str()) || !ufc_title(&b.weight_class) {
                 continue;
             }
             if interim_title_bout(&b.weight_class) {
@@ -174,7 +154,7 @@ pub fn appearances(rated: &[Bout]) -> Vec<Appearance> {
                     0.0
                 },
                 method: b.method.clone(),
-                title: title_bout(&b.weight_class),
+                title: ufc_title(&b.weight_class),
                 interim: interim_title_bout(&b.weight_class),
                 champion: champ[k][s],
                 interim_champion: interim_champ[k][s],

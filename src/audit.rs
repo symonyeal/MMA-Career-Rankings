@@ -24,6 +24,7 @@ use crate::divisions::female;
 use crate::era::year;
 use crate::frame::{iso, Day, Frame, Table};
 use crate::history::History;
+use crate::policy::MIN_PERIODS;
 use crate::stats::{py_repr, py_round};
 
 const SCORE: &str = "public_legacy_score";
@@ -273,7 +274,7 @@ fn ranked(c: &Frame, pop: &[usize], col: &str) -> Vec<(usize, f64)> {
         .iter()
         .copied()
         .filter(|&i| {
-            let floor = periods[i] >= 13.0
+            let floor = periods[i] >= MIN_PERIODS as f64
                 || (col == SCORE && title_override(periods[i], ufc[i], total[i], wins[i], def[i]));
             floor && score[i] > 0.0
         })

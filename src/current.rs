@@ -10,26 +10,12 @@ use std::collections::HashMap;
 
 use crate::bouts::Bout;
 use crate::frame::{Day, Frame, Table};
-use crate::legacy::{
-    points, resume_ledger, resume_rows, title_ledger, title_rows, total, Pricing, CONTENDER,
-};
+use crate::legacy::{points, resume_ledger, resume_rows, title_ledger, title_rows, total, Pricing};
 use crate::orgs::Org;
+use crate::policy::{is_ufc, CONTENDER, DAYS_PER_MONTH};
 use crate::stats::np_round;
 
-/// `DAYS_PER_MONTH`.
-pub const DAYS_PER_MONTH: f64 = 365.25 / 12.0;
 pub const WINDOW_MONTHS: f64 = 18.0;
-const UFC_ORGS: [&str; 3] = [
-    "UFC",
-    "UFC (pre-unified)",
-    "Ultimate Fighting Championship (UFC)",
-];
-
-/// `is_ufc_bout`: a UFC-family corpus row or a bout another source labels UFC.
-pub fn is_ufc(b: &Bout) -> bool {
-    b.corpus == "ufc" || b.corpus == "pre_unified" || UFC_ORGS.contains(&b.org.as_str())
-}
-
 /// `current_score_rows` for every fighter of `cur` (`fighter`, `mu_whr_age_activity_adjusted`,
 /// `public_legacy_exposure_factor`); `p` reads raw `mu_whr`; `recorded` holds every prepared bout.
 pub fn score(

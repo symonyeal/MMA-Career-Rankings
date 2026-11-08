@@ -11,7 +11,8 @@ use crate::bouts::Bout;
 use crate::era::{contender_bar, CAREER_N};
 use crate::frame::Frame;
 use crate::history::{History, Row};
-use crate::legacy::{points, resume_rows, Pricing, CONTENDER};
+use crate::legacy::{points, resume_rows, Pricing};
+use crate::policy::CONTENDER;
 use crate::skill::annual;
 use crate::stats::{fmt0, py_round};
 
@@ -42,14 +43,16 @@ impl Figure {
 
 /// The 22 figures in print order. `cur` holds every fighter (`fighter, gender, public_legacy_*`),
 /// `p` is the era pricing, `h` the history (its raw `mu` gives the era line) and `elite` maps
-/// fighter → `prime_elite_board.elite_level`.
+/// fighter → `prime_elite_board.elite_level`. An error names the fighter or the sentence the
+/// data no longer supports: the paragraphs assert that Jones leads on points, on the résumé and
+/// on Prime, that his two best wins stand above St-Pierre's best, and that the scale drifts up.
 pub fn values(
     cur: &Frame,
     rated: &[Bout],
     p: &Pricing,
     h: &History,
     elite: &HashMap<String, f64>,
-) -> Vec<(&'static str, Figure)> {
+) -> Result<Vec<(&'static str, Figure)>, String> {
     use Figure::{Name, Num};
     let f = cur.str("fighter");
     let n0 = |c: &str| {
@@ -64,13 +67,32 @@ pub fn values(
         &n0("public_legacy_resume_score"),
     );
     let score = cur.f64("public_legacy_score");
-    let at = |name: &str| f.iter().position(|x| x == name).unwrap();
-    let (a, b) = (at(PAIR[0]), at(PAIR[1]));
+    let at = |name: &str| {
+        f.iter()
+            .position(|x| x == name)
+            .ok_or(format!("{name} is not in the current table"))
+    };
+    let (a, b) = (at(PAIR[0])?, at(PAIR[1])?);
     let mut r = resume_rows(rated, p, None);
     r.sort_by(|x, y| y.mu.total_cmp(&x.mu));
     let best = |name: &str| r.iter().filter(|w| w.fighter == name).collect::<Vec<_>>();
     let (ra, rb) = (best(PAIR[0]), best(PAIR[1]));
-    let (ea, eb) = (elite[PAIR[0]], elite[PAIR[1]]);
+    let level = |name: &str| {
+        elite
+            .get(name)
+            .copied()
+            .ok_or(format!("{name} is not on the Prime board"))
+    };
+    let (ea, eb) = (level(PAIR[0])?, level(PAIR[1])?);
+    if ra.len() < 2 || rb.is_empty() {
+        return Err(format!(
+            "{} has {} priced wins and {} has {}; the text needs two and one",
+            PAIR[0],
+            ra.len(),
+            PAIR[1],
+            rb.len()
+        ));
+    }
     let d = ea - eb;
     let gender: HashMap<String, String> = f.iter().cloned().zip(cur.str("gender")).collect();
     let men: Vec<Row> = h
@@ -89,7 +111,7 @@ pub fn values(
         contender_bar(&v, CAREER_N)
     };
     let (lo, hi) = (line(ERA_YEARS[0]), line(ERA_YEARS[1]));
-    vec![
+    let out = vec![
         ("score_a", Num(score[a])),
         ("score_b", Num(score[b])),
         ("ratio", Num(score[a] / score[b] - 1.0)),
@@ -112,7 +134,32 @@ pub fn values(
         ("era_lo", Num(lo)),
         ("era_hi", Num(hi)),
         ("era_gap", Num(hi - lo)),
-    ]
+    ];
+    verify(&out)?;
+    Ok(out)
+}
+
+/// The paragraphs' fixed claims against the figures: a is ahead on points, résumé and Prime,
+/// a's two best wins both stand above b's best, and the era line rises.
+fn verify(v: &[(&'static str, Figure)]) -> Result<(), String> {
+    let g = |k: &str| v.iter().find(|p| p.0 == k).map_or(f64::NAN, |p| p.1.num());
+    let checks = [
+        ("ahead on points", g("ratio") > 0.0),
+        ("ahead on résumé", g("resume_a") > g("resume_b")),
+        (
+            "two best wins above the other's best",
+            g("elite_2_above") > g("best_b_above"),
+        ),
+        ("ahead on Prime", g("prime_edge") > 0.0),
+        ("era line rises", g("era_gap") > 0.0),
+    ];
+    match checks.iter().find(|c| !c.1) {
+        Some(c) => Err(format!(
+            "{} is not {}; the README text claims it",
+            PAIR[0], c.0
+        )),
+        None => Ok(()),
+    }
 }
 
 /// Python `f"{round(x):,}"`.
@@ -139,7 +186,12 @@ fn pct(x: f64) -> String {
 
 /// The two narrative paragraphs (`write_readme`), unwrapped: `(opening words, text)`.
 pub fn paragraphs(v: &[(&'static str, Figure)]) -> [(&'static str, String); 2] {
-    let g = |k: &str| v.iter().find(|p| p.0 == k).map(|p| p.1.clone()).unwrap();
+    let g = |k: &str| {
+        v.iter()
+            .find(|p| p.0 == k)
+            .map(|p| p.1.clone())
+            .unwrap_or_else(|| panic!("figure {k} missing"))
+    };
     let x = |k: &str| n(g(k).num());
     let era = format!(
         "All-time and Prime read every rating against its own year's contender line. The \
@@ -185,4 +237,61 @@ pub fn paragraphs(v: &[(&'static str, Figure)]) -> [(&'static str, String); 2] {
         ("All-time and Prime read every rating", era),
         ("**The score is a points total, not a ratio.**", points),
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn figures(edit: impl Fn(&str, f64) -> f64) -> Vec<(&'static str, Figure)> {
+        [
+            ("ratio", 0.2),
+            ("resume_a", 900.0),
+            ("resume_b", 700.0),
+            ("elite_2_above", 150.0),
+            ("best_b_above", 100.0),
+            ("prime_edge", 30.0),
+            ("era_gap", 40.0),
+        ]
+        .into_iter()
+        .map(|(k, x)| (k, Figure::Num(edit(k, x))))
+        .collect()
+    }
+
+    #[test]
+    fn claims_hold_or_error() {
+        assert!(verify(&figures(|_, x| x)).is_ok());
+        let e = verify(&figures(|k, x| if k == "era_gap" { -x } else { x })).unwrap_err();
+        assert!(e.contains("era line rises"), "{e}");
+        let e = verify(&figures(|k, x| if k == "resume_a" { 0.0 } else { x })).unwrap_err();
+        assert!(e.contains("ahead on résumé"), "{e}");
+    }
+
+    #[test]
+    fn missing_fighter_is_an_error() {
+        use crate::frame::Table;
+        use crate::layoff::Layoff;
+        let cur = Table::default()
+            .str("fighter", &[PAIR[0], PAIR[1]])
+            .str("gender", &["M", "M"])
+            .f64("public_legacy_title_score", &[1.0, 1.0])
+            .f64("public_legacy_skill_score", &[1.0, 1.0])
+            .f64("public_legacy_resume_score", &[1.0, 1.0])
+            .f64("public_legacy_score", &[2.0, 1.0])
+            .frame();
+        let h = History::new(vec![]);
+        let layoff = Layoff::new(&h);
+        let p = Pricing {
+            h: &h,
+            rating: |r| r.mu,
+            layoff: &layoff,
+        };
+        let mut elite = HashMap::new();
+        elite.insert(PAIR[1].to_string(), 1.0);
+        let e = values(&cur, &[], &p, &h, &elite).unwrap_err();
+        assert!(e.contains("Jon Jones is not on the Prime board"), "{e}");
+        elite.insert(PAIR[0].to_string(), 2.0);
+        let e = values(&cur, &[], &p, &h, &elite).unwrap_err();
+        assert!(e.contains("priced wins"), "{e}");
+    }
 }
