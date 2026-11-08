@@ -1,5 +1,11 @@
 # Snapshot Changelog
 
+## 2026-11-08 - Superseded snapshot folders removed from the tree
+
+`data/snapshots/2026-08-13` and `data/snapshots/2026-10-14` are no longer tracked. Their file
+names, sizes and SHA-256 hashes are kept in `data/snapshots/superseded_manifest.json`; the
+files remain in git history. The published release is `data/snapshots/2026-10-24`.
+
 ## 2026-10-20 - Prime needs four contender wins, not five
 
 Board rebuild only; no score or rating changed. See "Prime needs four contender

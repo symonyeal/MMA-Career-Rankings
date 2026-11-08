@@ -1,0 +1,450 @@
+{
+ "2026-08-13": {
+  "ATTRIBUTION.txt": {
+   "bytes": 1778,
+   "sha256": "ed2144c8afab96f8c2974338ac53539dbac498711d079ccc1055fd5ca4746d4d"
+  },
+  "_excluded_bouts.csv": {
+   "bytes": 144260,
+   "sha256": "dd3881d5162270b2c3b51ee395811544ffc5e5ecba32e56010df3b073187648d"
+  },
+  "calibration_residuals.parquet": {
+   "bytes": 24209,
+   "sha256": "665f945cd91fcf0af5421356f7360da7fe746cd3be1f42820a8ddd7cf4659ba4"
+  },
+  "canonical_events.parquet": {
+   "bytes": 39563,
+   "sha256": "91c5e411b52eed5bba0d938dc720445917ec97d134654a4c97081f9e00d857b2"
+  },
+  "canonical_events.schema.json": {
+   "bytes": 295,
+   "sha256": "b7d1650a53f432c67b4a574d247890da4ab85f0ac67d8815492ae254c3c1f178"
+  },
+  "canonical_fighters.parquet": {
+   "bytes": 271475,
+   "sha256": "5630d1a91dfe04a01fe17fd644605da376fbea2ba70043fa360587c72ae4e041"
+  },
+  "canonical_fighters.schema.json": {
+   "bytes": 678,
+   "sha256": "265e616dd950c3e18da52b7125edf378abe399fb8195da15b8c520074d02e218"
+  },
+  "canonical_fights.parquet": {
+   "bytes": 663249,
+   "sha256": "8d20b6d3ff2466760cedee05880b6b16af63d1651d29c62c88bd3278593bc501"
+  },
+  "canonical_fights.schema.json": {
+   "bytes": 1993,
+   "sha256": "38b619c4b6bffb199e715bb3b78778370d1bd3d6294a2693591bb1d0967b9733"
+  },
+  "canonical_rounds.parquet": {
+   "bytes": 1201200,
+   "sha256": "2b639decfb5118f47b68302ee19c24b5b583c82add252426d983826455e8dbda"
+  },
+  "canonical_rounds.schema.json": {
+   "bytes": 760,
+   "sha256": "c2b11f92c78355f91ed690c273f2b0d6d5b1896f103362a08e18ffbf7ca4ce4f"
+  },
+  "career_coverage.parquet": {
+   "bytes": 63697,
+   "sha256": "4915b12336581e4a548874acda138f9054663ecd93a1503a6c3348c7a17532a1"
+  },
+  "class_board.parquet": {
+   "bytes": 336650,
+   "sha256": "ab0db55ea55685bcbdabf994e448dc63cf1e7d6b20a6b78550578159fa2d452e"
+  },
+  "combined_fights.parquet": {
+   "bytes": 7140853,
+   "sha256": "27f5cdaa0d745f1202f51cefaeb71064af98f9aaef1027d25d28fcc9db7accb3"
+  },
+  "combined_fights_summary.json": {
+   "bytes": 3352,
+   "sha256": "8e92f7c3051c16a38032a94a2ecb901910eed4042035892f92d3dcfad3c4afb7"
+  },
+  "completeness_gated_board.parquet": {
+   "bytes": 821532,
+   "sha256": "cabd37b5f9e3806a6b050945c87991f604239128d936a5baa913547065195984"
+  },
+  "completeness_gated_board_women.parquet": {
+   "bytes": 61425,
+   "sha256": "409b06aaa752b78741e91736a3008cb285da800603ba31f9e53c9410acfc518a"
+  },
+  "current_board.parquet": {
+   "bytes": 890225,
+   "sha256": "dac75aa56e7964098a6467790944636567f1853ca1fa75569b7b7e096ee549a2"
+  },
+  "current_board_women.parquet": {
+   "bytes": 71281,
+   "sha256": "bc9af5229e4a2cafa35c0e2732b649c88ce3d23ffeb860651ff7830f845943f6"
+  },
+  "datalab_bouts_all.parquet": {
+   "bytes": 775611,
+   "sha256": "bd2134a942f92763ec9ceda99c839f9d1fe329af401f575a6ab419eaf9194e05"
+  },
+  "datalab_fighter_details.parquet": {
+   "bytes": 120477,
+   "sha256": "fd18cfb9e3c8e1b8462980c6b1343aefb50380fc86d78a84ea9cc5bf573fc075"
+  },
+  "datalab_merged_stats_scorecards.parquet": {
+   "bytes": 921287,
+   "sha256": "e00221188e6ea25595e252e1e480967dcf2698f71b5fe1228dbfc0e951242801"
+  },
+  "datalab_scorecards.parquet": {
+   "bytes": 40925,
+   "sha256": "47faeb20c65862221b696c37582dec987bf403ce7b7289da9e43cb83ac5139e7"
+  },
+  "datalab_summary.json": {
+   "bytes": 5479,
+   "sha256": "a5ed99b09d3cad9ec32fa323c84aea9e84fe6c61bc7b864b68fac2e7e635e4f3"
+  },
+  "division_entropy.parquet": {
+   "bytes": 47103,
+   "sha256": "a4d96aaa2c9bbda5b368611e9b2bcdf3b483f9ede3a4aac63533d84147d5a8e0"
+  },
+  "division_resume.parquet": {
+   "bytes": 878278,
+   "sha256": "338190d46b198939169c06625f80afd74215a15e86129aeceb565fbff8c44ac9"
+  },
+  "fight_dominance.parquet": {
+   "bytes": 1635691,
+   "sha256": "4c3b7c3b0c63d6e8a32bb54071e8df29106b09f48ab685e209b6378caeddf7af"
+  },
+  "fighter_dominance.parquet": {
+   "bytes": 214411,
+   "sha256": "788fa4a907d95fec7e360369536aee8d3065257cf7d5dcee7a27adabadec41ff"
+  },
+  "fightmatrix_all_time.parquet": {
+   "bytes": 13735,
+   "sha256": "13d867c3c2497f0a6616367f5673a32ac6c1ad99caf34151266a472dd7f74a6c"
+  },
+  "fightmatrix_bouts.parquet": {
+   "bytes": 722865,
+   "sha256": "a8a72505af634b2693e8e9095d9eb91d7c071e978b0dfc1eb4d2bd94ebff9511"
+  },
+  "fightmatrix_crossorg_fights.parquet": {
+   "bytes": 571243,
+   "sha256": "dc83ceacd8e37342a7d0caf9ba1053196bce44f44929e8d26be4ed540763311c"
+  },
+  "fightmatrix_profiles.parquet": {
+   "bytes": 66521,
+   "sha256": "021f1197b68a1923e169b5d4c9b81cac5a6b5dadc75af3fd99f30be1a9b0297e"
+  },
+  "fightmatrix_profiles_summary.json": {
+   "bytes": 1494,
+   "sha256": "1f454bb8d217ac86138e6036fcc20236e47665e46f17f1ab9f45aff3cce90439"
+  },
+  "fightmatrix_rankings.parquet": {
+   "bytes": 46784,
+   "sha256": "3ec296d62a8a027211863024260ee19f643496afec9cd9cf1cd21e3fac5c45bb"
+  },
+  "fightmatrix_scope_comparison.parquet": {
+   "bytes": 32637,
+   "sha256": "00536cd6c23d727ee0662822b553166460a1646bb2768ef0ba5827f7052006ba"
+  },
+  "fightmatrix_summary.json": {
+   "bytes": 3688,
+   "sha256": "f512fb92d2f04400d770ce50cc293e28f65dbd31f92592a0ca9bc7b88b5095ae"
+  },
+  "integrity_appearances.parquet": {
+   "bytes": 3234013,
+   "sha256": "3f98a60d5d9458d96176506f13475a5d34af72c01417386c35e52f10604f310a"
+  },
+  "integrity_discounted_board.parquet": {
+   "bytes": 1592334,
+   "sha256": "559b8933fd1c9865c06c1855a37da704a197a04aaf1a5ca023748b3a8de19c20"
+  },
+  "integrity_ledger.parquet": {
+   "bytes": 33863,
+   "sha256": "ab34857576ad6f0945ad7024c1dfb4d15cb18d5d52f11d75b4a83f30ddb063a9"
+  },
+  "majors_fights.parquet": {
+   "bytes": 4649131,
+   "sha256": "f57ad41f4c73c0701c9ee6940210c5634d1dcdd233f643c31027b385a9071fe0"
+  },
+  "missed_weight_bouts.csv": {
+   "bytes": 317,
+   "sha256": "24939b66682bfebe14bf7ed8cb21363bf050c5dcf76939b8f607b6ec3537b5dd"
+  },
+  "odds_lines.parquet": {
+   "bytes": 481591,
+   "sha256": "23b53fa5fb5785daaf62a68f4f4ca88f4d9514be04147460676e281c1ccb5869"
+  },
+  "ped_confirmed_bouts.csv": {
+   "bytes": 1298,
+   "sha256": "2001b802f8b3d1b2a986010b1d45c0973a3a2b6bccb042dd069017d623967d71"
+  },
+  "performance_appearances.parquet": {
+   "bytes": 12753453,
+   "sha256": "510acf84487685890f9d68151a2d9ff625ebfd1026115658fa13c3a95389e24a"
+  },
+  "pre_unified_fights.parquet": {
+   "bytes": 45941,
+   "sha256": "e203f6cb1bce906094f68d2cb763f5c2f7f6c640ff803a13c267204e7111b3f9"
+  },
+  "prequential_paired.parquet": {
+   "bytes": 5976,
+   "sha256": "c4ad3c6f2cb73358bc9c0b0d1f28e4001cc94a4f465395c49d9456dd34423ec7"
+  },
+  "prequential_predictions.parquet": {
+   "bytes": 47341,
+   "sha256": "a5e65183c4b3c52fd149b7552a1f78b6fb32c35fc3415b860390b8dff951b984"
+  },
+  "prequential_scores.parquet": {
+   "bytes": 12037,
+   "sha256": "faaf8f0c4eda4dc2a558458636f0e0ba31dd61bb34de7db5ca60577072c60cdf"
+  },
+  "prequential_summary.json": {
+   "bytes": 503,
+   "sha256": "1783f106832b41db04e48f4167e47fed60c13ed70db602437a4fe2674e385358"
+  },
+  "prime_board.parquet": {
+   "bytes": 538522,
+   "sha256": "534890b5e1ff576f8c074c97488e4f821ad1f8bb13a2c6654b4be03a54ea7ba9"
+  },
+  "prime_board_women.parquet": {
+   "bytes": 41743,
+   "sha256": "7a6edd1117541fa747efdabf1446cfefaab7e1861765cbbd2d1c3182a8e2ba8e"
+  },
+  "prime_elite_board.parquet": {
+   "bytes": 511496,
+   "sha256": "1e759dcd324c51693424f68befd040f1e20c81395141a56fdb56476de86575a8"
+  },
+  "prime_elite_board_women.parquet": {
+   "bytes": 42132,
+   "sha256": "e1a76c4fe3901dc3a24573764da28299b1663a0b58d6644e58d83e77db02c7a4"
+  },
+  "rating_run.json": {
+   "bytes": 4264,
+   "sha256": "fa56efeaaadb822f3380d8f0725979961ee5791639a5cf44acf6e92cd632ae37"
+  },
+  "ratings_current.parquet": {
+   "bytes": 6221694,
+   "sha256": "1614b2dd28ccb6decabede05e31544aced261c3a7725ca234b6bf2a88b303e9c"
+  },
+  "ratings_history.parquet": {
+   "bytes": 16056426,
+   "sha256": "804e6f4385bea8cd49249f9ca9ef857484564b396eb43e3823b69573ba3c35a5"
+  },
+  "ratings_history_whr.parquet": {
+   "bytes": 4133319,
+   "sha256": "31599bdf18b3b9252de2b6c1f60af279b8d62766c725d8b6bbcf5d18e91728f3"
+  },
+  "sherdog_birth_dates.parquet": {
+   "bytes": 135428,
+   "sha256": "e15a9a36313f70ac972c161ef4c513932511d486a64bbc8c13db60ef55842027"
+  }
+ },
+ "2026-10-14": {
+  "ATTRIBUTION.txt": {
+   "bytes": 1798,
+   "sha256": "a01ebe4bb15f5ee87c98d9c28303dbd6fa7f5d273940f810324e51e8eb945f41"
+  },
+  "_excluded_bouts.csv": {
+   "bytes": 144248,
+   "sha256": "66bb50ccf4584d685cea3e8f9122606653444311cd3fb62b52749381345d6074"
+  },
+  "calibration_residuals.parquet": {
+   "bytes": 24210,
+   "sha256": "654802fbcf4bbf86749c06932a16d2187e78122d7e7480dfc7d7cdb5007234cf"
+  },
+  "canonical_events.parquet": {
+   "bytes": 39886,
+   "sha256": "d3cd4feb0bc65e86e62af5ef769d42974e125894c6b9789058ec15d2022122bc"
+  },
+  "canonical_events.schema.json": {
+   "bytes": 295,
+   "sha256": "b7d1650a53f432c67b4a574d247890da4ab85f0ac67d8815492ae254c3c1f178"
+  },
+  "canonical_fighters.parquet": {
+   "bytes": 278473,
+   "sha256": "47f7dd429a14715d7639ef7f8ad713e413018d6ab55286ef5df554cc6d7022ec"
+  },
+  "canonical_fighters.schema.json": {
+   "bytes": 678,
+   "sha256": "265e616dd950c3e18da52b7125edf378abe399fb8195da15b8c520074d02e218"
+  },
+  "canonical_fights.parquet": {
+   "bytes": 669907,
+   "sha256": "daeaa6d46c9c64ad4081a8b53ce09fae8451301358ef80c2762812152cb650b3"
+  },
+  "canonical_fights.schema.json": {
+   "bytes": 1993,
+   "sha256": "38b619c4b6bffb199e715bb3b78778370d1bd3d6294a2693591bb1d0967b9733"
+  },
+  "canonical_rounds.parquet": {
+   "bytes": 1219728,
+   "sha256": "1ca8f330a8a4549c403698e469095461fbf180bfd24e0d29a650d4d1a4835f52"
+  },
+  "canonical_rounds.schema.json": {
+   "bytes": 760,
+   "sha256": "c2b11f92c78355f91ed690c273f2b0d6d5b1896f103362a08e18ffbf7ca4ce4f"
+  },
+  "career_coverage.parquet": {
+   "bytes": 64454,
+   "sha256": "c45ceb21f50373f596df38e03578b3241eb786476a088d3b5efa79b899f93459"
+  },
+  "class_board.parquet": {
+   "bytes": 118465,
+   "sha256": "286974bebe629a1630483dbe67c321595f7a495d2abb258ab219d523275b662f"
+  },
+  "combined_fights.parquet": {
+   "bytes": 7143695,
+   "sha256": "4996fd5908c4f35405cd2c66608cd868cfc7da92eaf1f094e1a563a4405e0136"
+  },
+  "combined_fights_summary.json": {
+   "bytes": 3352,
+   "sha256": "d53ba1eeaca5eaa4772355b2d45d6815bbf89934cb2fbba9512d7ce627c83a6f"
+  },
+  "completeness_gated_board.parquet": {
+   "bytes": 822474,
+   "sha256": "77b39fc72998c1901908be2af720479beba351457088e6db350961358d634028"
+  },
+  "completeness_gated_board_women.parquet": {
+   "bytes": 61486,
+   "sha256": "4db8140bc4ee9b5163bb24d479f10f9f4b4957e66c81c96f983896dead6a6671"
+  },
+  "current_board.parquet": {
+   "bytes": 511415,
+   "sha256": "60ecd6e1457ca8d55f6a02cc24f9da6d130839bf367ad55367a8705effd6481b"
+  },
+  "current_board_women.parquet": {
+   "bytes": 42302,
+   "sha256": "fc28bf7dd2d13634887dcee77ae2284231e1ceb442f177b2b74c063ae237eece"
+  },
+  "datalab_bouts_all.parquet": {
+   "bytes": 775611,
+   "sha256": "bd2134a942f92763ec9ceda99c839f9d1fe329af401f575a6ab419eaf9194e05"
+  },
+  "datalab_fighter_details.parquet": {
+   "bytes": 120477,
+   "sha256": "fd18cfb9e3c8e1b8462980c6b1343aefb50380fc86d78a84ea9cc5bf573fc075"
+  },
+  "datalab_merged_stats_scorecards.parquet": {
+   "bytes": 921287,
+   "sha256": "e00221188e6ea25595e252e1e480967dcf2698f71b5fe1228dbfc0e951242801"
+  },
+  "datalab_scorecards.parquet": {
+   "bytes": 40925,
+   "sha256": "47faeb20c65862221b696c37582dec987bf403ce7b7289da9e43cb83ac5139e7"
+  },
+  "datalab_summary.json": {
+   "bytes": 5479,
+   "sha256": "f08947d54d9749525b898acd4d8cfae03b008dbc2eb0bd5611498123f96cf3e9"
+  },
+  "division_entropy.parquet": {
+   "bytes": 47098,
+   "sha256": "352206c8b745469dc5f19fce6a9c9c3f43d3ab9343177ed8b629f8b8bb78b89b"
+  },
+  "division_resume.parquet": {
+   "bytes": 880457,
+   "sha256": "79d5e4f143293a91c5665906fc2782fc2cd8d2359ac7a319baf7d1108fd98a93"
+  },
+  "fight_dominance.parquet": {
+   "bytes": 1641398,
+   "sha256": "8bf0376a14725bbc5d4f636de5fc3303e53afd35963104aa827e01b79a76f5f5"
+  },
+  "fighter_dominance.parquet": {
+   "bytes": 214611,
+   "sha256": "d3f65a748b77af053ec29c674fdbffaa424db703c8605d217ed509645447e95d"
+  },
+  "fightmatrix_all_time.parquet": {
+   "bytes": 13735,
+   "sha256": "13d867c3c2497f0a6616367f5673a32ac6c1ad99caf34151266a472dd7f74a6c"
+  },
+  "fightmatrix_bouts.parquet": {
+   "bytes": 722865,
+   "sha256": "a8a72505af634b2693e8e9095d9eb91d7c071e978b0dfc1eb4d2bd94ebff9511"
+  },
+  "fightmatrix_crossorg_fights.parquet": {
+   "bytes": 540940,
+   "sha256": "073e383a2a4175c62951d7d29b028c38036d06e7a8c332984441953805da3cfc"
+  },
+  "fightmatrix_profiles.parquet": {
+   "bytes": 66521,
+   "sha256": "021f1197b68a1923e169b5d4c9b81cac5a6b5dadc75af3fd99f30be1a9b0297e"
+  },
+  "fightmatrix_profiles_summary.json": {
+   "bytes": 1494,
+   "sha256": "376166af794686dcda8c3591f05371a246ce94c8cb6c52f92de2affbea621a1f"
+  },
+  "fightmatrix_rankings.parquet": {
+   "bytes": 46784,
+   "sha256": "3ec296d62a8a027211863024260ee19f643496afec9cd9cf1cd21e3fac5c45bb"
+  },
+  "fightmatrix_summary.json": {
+   "bytes": 3688,
+   "sha256": "d9859f1c857238c090b41c1398573062e48564a2321d1ba40816b3afc18f6ddd"
+  },
+  "integrity_appearances.parquet": {
+   "bytes": 3238233,
+   "sha256": "cd24bd6ba00eac675a9edffd4a501ee5df8a310315d980e3bd5315f1896f3120"
+  },
+  "integrity_discounted_board.parquet": {
+   "bytes": 1593238,
+   "sha256": "2164badd9df6dfda00e638ca8e64f4bbe55e5fa2f8ce0b527e18856018c39e5c"
+  },
+  "integrity_ledger.parquet": {
+   "bytes": 34000,
+   "sha256": "c719b362cb038e81f7bb770541c62a335b7dc4405a123e3b7652a11bf345168d"
+  },
+  "majors_fights.parquet": {
+   "bytes": 4649131,
+   "sha256": "f57ad41f4c73c0701c9ee6940210c5634d1dcdd233f643c31027b385a9071fe0"
+  },
+  "missed_weight_bouts.csv": {
+   "bytes": 317,
+   "sha256": "24939b66682bfebe14bf7ed8cb21363bf050c5dcf76939b8f607b6ec3537b5dd"
+  },
+  "odds_lines.parquet": {
+   "bytes": 481562,
+   "sha256": "2d74a4ae3ac5e0f1ae29acf5323988ea5a7daa87293af39616a48d5f4964f126"
+  },
+  "ped_confirmed_bouts.csv": {
+   "bytes": 1298,
+   "sha256": "2001b802f8b3d1b2a986010b1d45c0973a3a2b6bccb042dd069017d623967d71"
+  },
+  "performance_appearances.parquet": {
+   "bytes": 12772605,
+   "sha256": "aa3c4d61c4807b9e4e14f52cbf5650a3f5a36cd5c02dc0f100ea85624e4be00a"
+  },
+  "pre_unified_fights.parquet": {
+   "bytes": 45941,
+   "sha256": "e203f6cb1bce906094f68d2cb763f5c2f7f6c640ff803a13c267204e7111b3f9"
+  },
+  "prime_board.parquet": {
+   "bytes": 538755,
+   "sha256": "8c2e15877f26b6decbcecec7877d46c8bd46b2dda601508672b1586e38f15c17"
+  },
+  "prime_board_women.parquet": {
+   "bytes": 42114,
+   "sha256": "98ed4d66c9588abd59e3655b8e7f3e27a8024b3e6ce59908d82476145498ab6b"
+  },
+  "prime_elite_board.parquet": {
+   "bytes": 516963,
+   "sha256": "a2dbf1743258f2fdd2e47fe3283ceb15819e4097949e9008b678352c19b17e99"
+  },
+  "prime_elite_board_women.parquet": {
+   "bytes": 42410,
+   "sha256": "b37f95efc602f16f80d502b22898d0b1e99e58c583424827ad330d5d467773b8"
+  },
+  "rating_run.json": {
+   "bytes": 4280,
+   "sha256": "f49eaacc5f91ccf5af615519ba5e3e0e611c850fa7c266654d58910ec658f293"
+  },
+  "ratings_current.parquet": {
+   "bytes": 6513861,
+   "sha256": "d5db4ad15c3942a937921ad2fb1165b9ad76112480dab607dae45b2c378113b5"
+  },
+  "ratings_history.parquet": {
+   "bytes": 16073049,
+   "sha256": "5b45dccc074a1abcbc3ef0e02b8df65f48d0fe7ebe6bd495410bcc0bb4b6d2e4"
+  },
+  "ratings_history_whr.parquet": {
+   "bytes": 5717633,
+   "sha256": "ce3703920c889302ce9e380c4200eeacf6451d62cc2ad0108f667ea7993b53dc"
+  },
+  "sherdog_birth_dates.parquet": {
+   "bytes": 135428,
+   "sha256": "e15a9a36313f70ac972c161ef4c513932511d486a64bbc8c13db60ef55842027"
+  }
+ }
+}
