@@ -9,6 +9,7 @@ use std::collections::HashMap;
 
 use crate::bouts::Bout;
 use crate::era::{contender_bar, CAREER_N};
+use crate::fm;
 use crate::frame::Frame;
 use crate::history::{History, Row};
 use crate::legacy::{points, resume_rows, Pricing};
@@ -130,7 +131,7 @@ pub fn values(
         ("prime_a", Num(ea)),
         ("prime_b", Num(eb)),
         ("prime_edge", Num(d)),
-        ("prime_win", Num(1.0 / (1.0 + 10f64.powf(-d / 400.0)))),
+        ("prime_win", Num(1.0 / (1.0 + fm::pow(10.0, -d / 400.0)))),
         ("era_lo", Num(lo)),
         ("era_hi", Num(hi)),
         ("era_gap", Num(hi - lo)),

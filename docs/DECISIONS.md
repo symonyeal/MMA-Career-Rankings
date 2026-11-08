@@ -779,13 +779,25 @@ projection recovers when the next writer starts. Concurrent readers of those fix
 paths are not promised atomic multi-file visibility. Synced files do not establish
 directory-entry durability across power loss.
 
-The published binary64 outputs use Rust 1.98.1 on x86-64 Windows with MSVC and UCRT.
-The expanded acceptance gate exposed different rating-table and audit bytes on Ubuntu,
-while its source/input receipts and published boards/site text agreed. Native transcendental
-functions do not promise identical last bits across math libraries. CI therefore checks
-exact regenerated Parquet and text on the declared Windows producer; separate Ubuntu
-jobs retain native formatting, lint and domain tests. This preserves the published
-tables and introduces no numerical tolerance or model change.
+The expanded acceptance gate (run 42231978106, 2026-11-06) exposed different rating-table and
+audit bytes on Ubuntu, while its source/input receipts and published boards/site text agreed.
+The size of the difference was not recorded: the failing run's artifact was not kept, and no
+Linux machine was available to measure it. The cause is that the platform C library (UCRT on
+Windows, glibc on Linux) rounds `exp`, `ln` and `pow` differently in the last bit. On
+2026-11-08 every such call moved to the pure-Rust `libm` crate (`src/fm.rs`), the FFI
+into the C library in `glicko.rs` was removed, and the release was republished once from the
+Windows build (the difference against the previous publication is recorded below). CI runs the
+exact regeneration check on Windows and on Ubuntu (`model-linux`). The Ubuntu result is the
+open evidence: until that job has passed, cross-platform identity is expected, not shown.
+
+Republication difference (Windows UCRT bytes against `libm` bytes, 2026-11-08, measured on
+this machine; it shows the size of a last-bit difference, not the Ubuntu one). README.md,
+RANKINGS.md and `site/` were byte-identical. Eleven Parquet files changed. The largest
+differences per column: Glicko `mu_canonical` 3.0e-08 absolute (1.6e-11 relative),
+`phi_canonical` 4.0e-08 (3.6e-10), `sigma_canonical` 1.6e-10 (2.7e-09), `mu_method` 5.6e-09,
+`phi_method` 3.7e-09; WHR `mu_whr` 3.2e-12 (2.4e-15); every score and board column 3.2e-12
+absolute or less, 6.0e-14 relative or less; calibration `predicted_mean` 1.3e-12 (7.8e-12).
+No rank, rounded figure or published text changed.
 
 Pages deploys the accepted site
 artifact from the exact successful checks run. A failed check cannot supply a deployed

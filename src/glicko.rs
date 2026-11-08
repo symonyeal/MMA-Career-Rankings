@@ -7,14 +7,14 @@
 //! fighter's deviation inflates once per elapsed month (365.25/12 days).
 //! Constants: centre 1500, φ₀ 350, σ₀ 0.06, τ 0.5, ε 1e-6, scale 173.7178.
 //!
-//! The C library's `pow`, `exp`, `sqrt` and `log` are called directly: the
-//! published ratings were computed with them, and LLVM would otherwise fold
-//! `pow(x, 2)` into `x*x`, whose last bit can differ.
+//! `pow`, `exp` and `log` come from the pure-Rust `libm` crate (`fm`), so the ratings are the
+//! same on every platform; `pow(x, 2)` is kept as a call, not folded into `x*x`.
 
 use std::collections::HashMap;
 
 use crate::bouts::{Bout, Corner, Outcome};
 use crate::divisions::normalize;
+use crate::fm::{exp, ln as log, pow};
 use crate::frame::{Day, Table};
 use crate::policy::DAYS_PER_MONTH;
 use crate::stats::kahan_mean;
@@ -27,33 +27,8 @@ const EPS: f64 = 1e-6;
 const RATIO: f64 = 173.7178;
 const PI: f64 = std::f64::consts::PI;
 
-#[cfg_attr(windows, link(name = "ucrt"))]
-#[cfg_attr(not(windows), link(name = "m"))]
-extern "C" {
-    #[link_name = "pow"]
-    fn c_pow(x: f64, y: f64) -> f64;
-    #[link_name = "exp"]
-    fn c_exp(x: f64) -> f64;
-    #[link_name = "sqrt"]
-    fn c_sqrt(x: f64) -> f64;
-    #[link_name = "log"]
-    fn c_log(x: f64) -> f64;
-}
-
-pub(crate) fn pow(x: f64, y: f64) -> f64 {
-    unsafe { c_pow(x, std::hint::black_box(y)) }
-}
-
-pub(crate) fn exp(x: f64) -> f64 {
-    unsafe { c_exp(std::hint::black_box(x)) }
-}
-
-pub(crate) fn sqrt(x: f64) -> f64 {
-    unsafe { c_sqrt(x) }
-}
-
-pub(crate) fn log(x: f64) -> f64 {
-    unsafe { c_log(x) }
+fn sqrt(x: f64) -> f64 {
+    x.sqrt()
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -466,5 +441,31 @@ mod tests {
         let g = run(&[nc]);
         let current = g.current().frame();
         assert_eq!(current.f64("mu_canonical"), [1500.0, 1500.0]);
+    }
+
+    /// Glickman (2012), "Example of the Glicko-2 system": 1500/200/0.06 against three opponents.
+    #[test]
+    fn glickman_worked_example() {
+        let o = |mu, phi| Rating {
+            mu,
+            phi,
+            sigma: SIGMA,
+        };
+        let r = Rating {
+            mu: 1500.0,
+            phi: 200.0,
+            sigma: SIGMA,
+        };
+        let out = rate(
+            r,
+            &[
+                (1.0, o(1400.0, 30.0)),
+                (0.0, o(1550.0, 100.0)),
+                (0.0, o(1700.0, 300.0)),
+            ],
+        );
+        assert!((out.mu - 1464.05).abs() < 0.01, "{out:?}");
+        assert!((out.phi - 151.52).abs() < 0.01, "{out:?}");
+        assert!((out.sigma - 0.05999).abs() < 1e-5, "{out:?}");
     }
 }

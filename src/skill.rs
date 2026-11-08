@@ -18,6 +18,7 @@ use std::collections::HashMap;
 
 use crate::divisions::female;
 use crate::era::{contender_bar, year, CAREER_N};
+use crate::fm;
 use crate::frame::{Day, Frame, Table};
 use crate::history::{History, Row};
 use crate::policy::MIN_PERIODS;
@@ -155,9 +156,9 @@ pub fn softplus(x: f64, s: f64) -> f64 {
     s * if z > 30.0 {
         z
     } else if z < -30.0 {
-        z.exp()
+        fm::exp(z)
     } else {
-        z.exp().ln_1p()
+        fm::ln_1p(fm::exp(z))
     }
 }
 

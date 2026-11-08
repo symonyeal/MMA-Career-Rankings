@@ -13,6 +13,7 @@ use std::collections::{BTreeSet, HashMap};
 
 use crate::bouts::Bout;
 use crate::era::year;
+use crate::fm;
 use crate::frame::Day;
 use crate::stats::{mean, psum, quantile, Pcg64};
 use crate::whr::{elo_per_nat, project, Graph, Settings, YEAR_DAYS};
@@ -190,7 +191,7 @@ pub fn compare(rated: &[Bout], births: &HashMap<String, Day>, candidate: Setting
             .filter(|x| n(x.a()) >= MIN_PRIOR && n(x.b()) >= MIN_PRIOR)
             .map(|x| {
                 let p = |m: &HashMap<String, f64>| {
-                    1.0 / (1.0 + (-(m[x.a()] - m[x.b()]) / elo_per_nat()).exp())
+                    1.0 / (1.0 + fm::exp(-(m[x.a()] - m[x.b()]) / elo_per_nat()))
                 };
                 Forecast {
                     card: c,
@@ -204,7 +205,7 @@ pub fn compare(rated: &[Bout], births: &HashMap<String, Day>, candidate: Setting
     let forecasts: Vec<Forecast> = per_card.into_iter().flatten().collect();
     let metrics = vec![
         paired("log loss", &forecasts, cards.len(), |p, y| {
-            -(y * p.ln() + (1.0 - y) * (1.0 - p).ln())
+            -(y * fm::ln(p) + (1.0 - y) * fm::ln(1.0 - p))
         }),
         paired("Brier score", &forecasts, cards.len(), |p, y| {
             (p - y) * (p - y)

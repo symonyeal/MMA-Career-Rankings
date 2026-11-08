@@ -19,6 +19,7 @@ parquet = { version = "57", default-features = false, features = ["arrow", "snap
 csv = "1"
 regex = "1"
 unicode-normalization = "0.1"
+libm = "0.2"
 serde_json = { version = "1", features = ["preserve_order"] }
 sha2 = "0.10"
 

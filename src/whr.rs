@@ -25,6 +25,7 @@
 use std::collections::HashMap;
 
 use crate::bouts::{Bout, Corner, Outcome};
+use crate::fm;
 use crate::frame::{Day, Table};
 use crate::history::{History, Row};
 use crate::stats::psum;
@@ -70,7 +71,7 @@ const EDGES: [f64; 7] = [24.0, 27.0, 30.0, 33.0, 36.0, 39.0, 42.0];
 const NB: usize = EDGES.len() + 1;
 
 pub fn elo_per_nat() -> f64 {
-    400.0 / 10f64.ln()
+    400.0 / fm::ln(10.0)
 }
 
 /// `np.digitize(x, EDGES)`: the number of edges ≤ x.
@@ -254,7 +255,7 @@ impl Graph {
                     ok[j] = r[o[nd[j]]];
                 }
                 for j in 0..k {
-                    pr[j] = 1.0 / (1.0 + (-(rk[j] - ok[j])).exp());
+                    pr[j] = 1.0 / (1.0 + fm::exp(-(rk[j] - ok[j])));
                     g[j] = s[nd[j]] - pr[j];
                     h[j] = -pr[j] * (1.0 - pr[j]);
                 }
@@ -266,7 +267,7 @@ impl Graph {
                 if vg > 0.0 {
                     let v = vg / k as f64;
                     for j in 0..k {
-                        let p0 = 1.0 / (1.0 + (-rk[j]).exp());
+                        let p0 = 1.0 / (1.0 + fm::exp(-rk[j]));
                         g[j] += v * (0.5 - p0);
                         h[j] -= v * p0 * (1.0 - p0);
                     }

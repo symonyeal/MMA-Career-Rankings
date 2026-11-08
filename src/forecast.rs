@@ -20,6 +20,7 @@ use serde_json::{json, Value};
 
 use crate::bouts::Bout;
 use crate::era::year;
+use crate::fm;
 use crate::frame::{parse_day, Day, Frame};
 use crate::glicko::{engine, predict};
 use crate::stats::{kahan_mean, psum, py_round, quantile_sorted, Pcg64};
@@ -33,7 +34,7 @@ const JULIAN_YEAR_DAYS: f64 = 365.25;
 
 fn logit(p: f64) -> f64 {
     let p = p.clamp(EPS, 1.0 - EPS);
-    (p / (1.0 - p)).ln()
+    fm::ln(p / (1.0 - p))
 }
 
 /// Earlier record at (fighter, day): bouts, wins, streak, days since last bout, KO losses in 730 days.
@@ -265,7 +266,7 @@ fn fit(a: &[Vec<f64>], y: &[f64]) -> Vec<f64> {
         let mut gs = vec![0.0; k];
         for (r, y) in &rows {
             let z: f64 = r.iter().zip(&w).map(|(x, w)| x * w).sum();
-            let p = 1.0 / (1.0 + (-z).exp());
+            let p = 1.0 / (1.0 + fm::exp(-z));
             let c = p * (1.0 - p);
             for i in 0..k {
                 gs[i] += r[i] * (p - y);
@@ -316,7 +317,7 @@ fn solve(mut h: Vec<Vec<f64>>, mut g: Vec<f64>) -> Vec<f64> {
 
 fn prob(r: &[f64], sd: &[f64], w: &[f64]) -> f64 {
     let z: f64 = r.iter().zip(sd).zip(w).map(|((x, s), w)| x / s * w).sum();
-    1.0 / (1.0 + (-z).exp())
+    1.0 / (1.0 + fm::exp(-z))
 }
 
 /// One decided UFC bout with its forecasts.
@@ -423,16 +424,16 @@ fn bout_frame(snapshot: &Path, staged: &[Bout], births: &HashMap<String, Day>) -
             d(over32(aa), over32(ab)),
             d(ha, hb),
             d(ca, cb_),
-            d(lay(&ra).ln_1p(), lay(&rb).ln_1p()),
+            d(fm::ln_1p(lay(&ra)), fm::ln_1p(lay(&rb))),
             d(
                 f64::from(u8::from(ra.lay > 365.0)),
                 f64::from(u8::from(rb.lay > 365.0)),
             ),
-            d(ra.n.ln_1p(), rb.n.ln_1p()),
+            d(fm::ln_1p(ra.n), fm::ln_1p(rb.n)),
             wr(&ra) - wr(&rb),
             d(ra.streak, rb.streak),
             d(ra.ko2, rb.ko2),
-            d(na.ln_1p(), nb.ln_1p()),
+            d(fm::ln_1p(na), fm::ln_1p(nb)),
         ];
         f.extend((0..11).map(|k| d(ua[k], ub[k])));
         let p_m = odds.get(&url[i]).map(|(fa, p)| {
@@ -496,7 +497,7 @@ fn walk_forward(x: &mut [Test]) {
 fn score(p: f64, y: f64) -> [f64; 3] {
     let p = p.clamp(EPS, 1.0 - EPS);
     [
-        -(y * p.ln() + (1.0 - y) * (1.0 - p).ln()),
+        -(y * fm::ln(p) + (1.0 - y) * fm::ln(1.0 - p)),
         (p - y) * (p - y),
         if p == 0.5 {
             0.5

@@ -21,6 +21,7 @@ pub mod dominance;
 pub mod era;
 pub mod error;
 pub mod figures;
+pub mod fm;
 pub mod forecast;
 pub mod frame;
 pub mod glicko;

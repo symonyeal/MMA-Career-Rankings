@@ -20,6 +20,7 @@ use crate::appearances::Appearance;
 use crate::bouts::Bout;
 use crate::divisions::normalize;
 use crate::error::Error;
+use crate::fm;
 use crate::frame::{Day, Table};
 use crate::history::History;
 use crate::stats::psum;
@@ -93,7 +94,7 @@ pub fn primary(rated: &[Bout], apps: &[Appearance], history: &History) -> Result
             wins += m * w as usize;
             defences += m * (w && (a.champion || a.interim_champion)) as usize;
             recency.extend(std::iter::repeat_n(
-                0.5f64.powf((as_of - a.day).max(0) as f64 / HALFLIFE_DAYS),
+                fm::pow(0.5, (as_of - a.day).max(0) as f64 / HALFLIFE_DAYS),
                 m,
             ));
             if w {

@@ -22,8 +22,8 @@ jobs:
       - run: npm test
 
   model:
-    # Published binary64 tables use the Windows UCRT/MSVC math backend.
-    # Keep exact-byte acceptance on that producer, and test Linux separately.
+    # Transcendental functions come from the pure-Rust libm crate, so Windows and Linux
+    # must regenerate the same bytes; `model-linux` checks the same release on Ubuntu.
     runs-on: windows-2022
     defaults:
       run:
@@ -89,7 +89,7 @@ jobs:
           path: ${{ steps.accepted.outputs.site }}
           if-no-files-found: error
 
-  native-portability:
+  model-linux:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -100,6 +100,9 @@ jobs:
       - run: cargo fmt --check
       - run: cargo clippy --release --all-targets -- -D warnings
       - run: cargo test --release
+      - run: cargo run --release -- data/snapshots/2026-10-24
+      - name: Verify committed release outputs
+        run: git diff --exit-code -- RANKINGS.md README.md site '*.csv' '*.json' '*.parquet'
 
   staging:
     runs-on: ubuntu-latest

@@ -19,6 +19,7 @@ use crate::appearances::Appearance;
 use crate::bouts::Bout;
 use crate::divisions::{normalize, ufc_title};
 use crate::era::{contender_bar, year, CAREER_N};
+use crate::fm;
 use crate::frame::{Day, Frame, Table};
 use crate::history::{History, Row};
 use crate::layoff::Layoff;
@@ -91,7 +92,7 @@ pub fn ufc_bouts(bouts: &[Bout]) -> HashMap<String, usize> {
 
 /// `title_quality`: q^k, q the chance a fighter at `bar` loses to an opponent rated `mu`.
 pub fn quality(mu: f64, bar: f64, k: f64) -> f64 {
-    (1.0 / (1.0 + 10f64.powf(-(mu - bar) / 400.0))).powf(k)
+    fm::pow(1.0 / (1.0 + fm::pow(10.0, -(mu - bar) / 400.0)), k)
 }
 
 /// The rating paths and pricing rules every ledger shares.
@@ -459,7 +460,7 @@ pub fn points(title: &[f64], skill: &[f64], resume: &[f64]) -> [Vec<f64>; 3] {
     let part = |x: &[f64], w: f64| {
         scale(x)
             .into_iter()
-            .map(|v| SCALE * w * v.powf(POWER))
+            .map(|v| SCALE * w * fm::pow(v, POWER))
             .collect::<Vec<_>>()
     };
     [part(title, W[0]), part(skill, W[1]), part(resume, W[2])]
