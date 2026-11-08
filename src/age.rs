@@ -3,10 +3,11 @@
 use std::collections::HashMap;
 use std::path::Path;
 
+use crate::error::Error;
 use crate::frame::{Day, Frame};
 
 /// `load_birth_dates`: one date per fighter, UFCStats first, then Sherdog, then Fight Matrix.
-pub fn births(snapshot: &Path) -> HashMap<String, Day> {
+pub fn births(snapshot: &Path) -> Result<HashMap<String, Day>, Error> {
     let mut out = HashMap::new();
     for (file, col) in [
         ("canonical_fighters", "dob"),
@@ -17,14 +18,11 @@ pub fn births(snapshot: &Path) -> HashMap<String, Day> {
         if !p.exists() {
             continue;
         }
-        let f = Frame::read(&p);
-        if !f.has("fighter") || !f.has(col) {
-            continue;
-        }
+        let f = Frame::read(&p, &["fighter", col])?;
         let mut rows: Vec<(String, Day)> = f
-            .str("fighter")
+            .str("fighter")?
             .into_iter()
-            .zip(f.day(col))
+            .zip(f.day(col)?)
             .filter_map(|(n, d)| Some((n, d?)))
             .filter(|p| !p.0.is_empty())
             .collect();
@@ -34,5 +32,5 @@ pub fn births(snapshot: &Path) -> HashMap<String, Day> {
             out.entry(n).or_insert(d);
         }
     }
-    out
+    Ok(out)
 }

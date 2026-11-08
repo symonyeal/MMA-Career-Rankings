@@ -18,6 +18,7 @@ use std::collections::HashMap;
 
 use crate::divisions::female;
 use crate::era::{contender_bar, year, CAREER_N};
+use crate::error::Error;
 use crate::fm;
 use crate::frame::{Day, Frame, Table};
 use crate::history::{History, Row};
@@ -67,8 +68,8 @@ fn best_window(rows: &[Row]) -> Option<(f64, usize, Day, Day, usize, usize)> {
 }
 
 /// `symon_prime_score` per gender cohort of `cur` (`fighter`, `gender`), on raw `mu_whr`.
-pub fn prime(h: &History, cur: &Frame) -> Table {
-    let (names, gender) = (cur.str("fighter"), cur.str("gender"));
+pub fn prime(h: &History, cur: &Frame) -> Result<Table, Error> {
+    let (names, gender) = (cur.str("fighter")?, cur.str("gender")?);
     let mut out: Vec<(String, f64, f64, f64, usize, Day, Day, f64, f64)> = Vec::new();
     for g in [false, true] {
         let mut cohort: Vec<&String> = names
@@ -116,7 +117,7 @@ pub fn prime(h: &History, cur: &Frame) -> Table {
     let col = |g: fn(&(String, f64, f64, f64, usize, Day, Day, f64, f64)) -> f64| {
         out.iter().map(g).collect::<Vec<_>>()
     };
-    Table::default()
+    Ok(Table::default()
         .str(
             "fighter",
             &out.iter().map(|r| r.0.as_str()).collect::<Vec<_>>(),
@@ -134,7 +135,7 @@ pub fn prime(h: &History, cur: &Frame) -> Table {
             &out.iter().map(|r| Some(r.6)).collect::<Vec<_>>(),
         )
         .f64("symon_prime_within_var", &col(|r| r.7))
-        .f64("symon_prime_sampling_var", &col(|r| r.8))
+        .f64("symon_prime_sampling_var", &col(|r| r.8)))
 }
 
 /// One fighter-year of the career receipt.
@@ -303,16 +304,16 @@ pub fn career(years: &[Year]) -> Table {
 }
 
 /// Fighter → career pool (`division_labels`) from `cur` (`fighter`, `career_division`, `gender`).
-pub fn pools(cur: &Frame) -> HashMap<String, Option<String>> {
+pub fn pools(cur: &Frame) -> Result<HashMap<String, Option<String>>, Error> {
     let (f, d, g) = (
-        cur.str("fighter"),
-        cur.str("career_division"),
-        cur.str("gender"),
+        cur.str("fighter")?,
+        cur.str("career_division")?,
+        cur.str("gender")?,
     );
     let mut out = HashMap::new();
     for i in 0..f.len() {
         out.entry(f[i].clone())
             .or_insert_with(|| crate::divisions::pool(&d[i], &g[i]));
     }
-    out
+    Ok(out)
 }

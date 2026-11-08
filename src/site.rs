@@ -17,6 +17,7 @@ use crate::appearances::Appearance;
 use crate::bouts::Bout;
 use crate::divisions::{display, pool, SHORT};
 use crate::era::year;
+use crate::error::Error;
 use crate::frame::{iso, Day, Frame};
 use crate::history::{History, Row};
 use crate::names::Names;
@@ -102,11 +103,11 @@ fn receipt(years: &[Year], set: &HashSet<&str>) -> J {
 }
 
 /// The full text of `site/data.js`.
-pub fn data(x: &Inputs) -> String {
+pub fn data(x: &Inputs) -> Result<String, Error> {
     let rc = x.current;
-    let fighter = rc.str("fighter");
-    let periods = rc.i64("rating_periods");
-    let score = rc.f64("public_legacy_score");
+    let fighter = rc.str("fighter")?;
+    let periods = rc.i64("rating_periods")?;
+    let score = rc.f64("public_legacy_score")?;
     let mut e: Vec<usize> = (0..rc.len())
         .filter(|&i| periods[i] >= MIN_PERIODS)
         .collect();
@@ -116,7 +117,12 @@ pub fn data(x: &Inputs) -> String {
 
     let ufc: Vec<&Bout> = x.staged.iter().filter(|b| is_ufc(b)).collect();
     let (traj, n) = trajectories(&names, &set, x.history, x.apps);
-    let through = x.staged.iter().map(|b| b.day).max().unwrap();
+    let through = x
+        .staged
+        .iter()
+        .map(|b| b.day)
+        .max()
+        .ok_or_else(|| Error::at("site", "no bouts"))?;
     let years = count_years(x.staged.iter().collect::<Vec<_>>().as_slice(), 100);
     let uyears = count_years(&ufc, 30);
     let eoy = year_end(x.history);
@@ -127,7 +133,7 @@ pub fn data(x: &Inputs) -> String {
         .iter()
         .filter(|r| set.contains(r.fighter.as_str()))
         .collect();
-    let (vs, upsets, age, layoff) = market(x);
+    let (vs, upsets, age, layoff) = market(x)?;
 
     let obj = |v: Vec<(&str, J)>| J::Obj(v.into_iter().map(|(k, v)| (k.to_string(), v)).collect());
     let data = obj(vec![
@@ -136,7 +142,9 @@ pub fn data(x: &Inputs) -> String {
             obj(vec![
                 (
                     "snapshot",
-                    s(&x.snapshot.file_name().unwrap().to_string_lossy()),
+                    s(&x.snapshot
+                        .file_name()
+                        .map_or_else(String::new, |n| n.to_string_lossy().into_owned())),
                 ),
                 ("through", s(&iso(through))),
                 ("rated_bouts", J::Int(x.rated_bouts)),
@@ -159,8 +167,8 @@ pub fn data(x: &Inputs) -> String {
             "short",
             J::Obj(SHORT.iter().map(|p| (p.0.to_string(), s(p.1))).collect()),
         ),
-        ("F", fighters(x, &e, &names)),
-        ("classes", classes(x.class, &names)),
+        ("F", fighters(x, &e, &names)?),
+        ("classes", classes(x.class, &names)?),
         ("N", J::Arr(n.iter().map(|f| s(f)).collect())),
         ("traj", traj),
         ("receipt", receipt(x.years, &set)),
@@ -211,16 +219,16 @@ pub fn data(x: &Inputs) -> String {
                     .collect(),
             ),
         ),
-        ("streaks", streaks(x)),
-        ("bench", bench(x)),
-        ("integrity", integrity(x.integrity, x.ledger)),
-        ("calib", calib(x.calib)),
+        ("streaks", streaks(x)?),
+        ("bench", bench(x)?),
+        ("integrity", integrity(x.integrity, x.ledger)?),
+        ("calib", calib(x.calib)?),
         ("market", vs),
         ("upsets", upsets),
         ("age", age),
         ("layoff", layoff),
     ]);
-    format!("window.DATA = {};\n", data.dump())
+    Ok(format!("window.DATA = {};\n", data.dump()))
 }
 
 /// Descending with NaN last (pandas `sort_values(ascending=False)`), ties in input order under a stable sort.
@@ -251,12 +259,12 @@ fn count_years(bouts: &[&Bout], min: usize) -> Vec<i32> {
 }
 
 /// Row index by fighter.
-fn index(f: &Frame) -> HashMap<String, usize> {
-    f.str("fighter")
+fn index(f: &Frame) -> Result<HashMap<String, usize>, Error> {
+    Ok(f.str("fighter")?
         .into_iter()
         .enumerate()
         .map(|(i, n)| (n, i))
-        .collect()
+        .collect())
 }
 
 /// One published board (men then women) as fighter → row; `rank` is withheld unless `status == "ranked"`.
@@ -265,22 +273,21 @@ struct Board<'a> {
 }
 
 impl<'a> Board<'a> {
-    fn new(pair: [&'a Frame; 2]) -> Board<'a> {
-        Board {
-            at: pair
-                .iter()
-                .map(|f| {
-                    let st = f.str("status");
-                    let rank = f
-                        .f64("rank")
-                        .into_iter()
-                        .zip(st)
-                        .map(|(r, s)| if s == "ranked" { r } else { f64::NAN })
-                        .collect();
-                    (*f, index(f), rank)
-                })
-                .collect(),
-        }
+    fn new(pair: [&'a Frame; 2]) -> Result<Board<'a>, Error> {
+        let at = pair
+            .iter()
+            .map(|f| {
+                let st = f.str("status")?;
+                let rank = f
+                    .f64("rank")?
+                    .into_iter()
+                    .zip(st)
+                    .map(|(r, s)| if s == "ranked" { r } else { f64::NAN })
+                    .collect();
+                Ok((*f, index(f)?, rank))
+            })
+            .collect::<Result<_, Error>>()?;
+        Ok(Board { at })
     }
 
     fn row(&self, fighter: &str) -> Option<(usize, usize)> {
@@ -296,32 +303,44 @@ impl<'a> Board<'a> {
             .filter(|x| !x.is_nan())
     }
 
-    fn f64(&self, col: &str, names: &[String]) -> Vec<Option<f64>> {
-        let c: Vec<Vec<f64>> = self.at.iter().map(|(f, _, _)| f.f64(col)).collect();
-        names
+    fn f64(&self, col: &str, names: &[String]) -> Result<Vec<Option<f64>>, Error> {
+        let c: Vec<Vec<f64>> = self
+            .at
+            .iter()
+            .map(|(f, _, _)| f.f64(col))
+            .collect::<Result<_, _>>()?;
+        Ok(names
             .iter()
             .map(|n| self.row(n).map(|(k, i)| c[k][i]).filter(|x| !x.is_nan()))
-            .collect()
+            .collect())
     }
 
-    fn i64(&self, col: &str, names: &[String]) -> Vec<Option<i64>> {
-        let c: Vec<Vec<i64>> = self.at.iter().map(|(f, _, _)| f.i64(col)).collect();
-        names
+    fn i64(&self, col: &str, names: &[String]) -> Result<Vec<Option<i64>>, Error> {
+        let c: Vec<Vec<i64>> = self
+            .at
+            .iter()
+            .map(|(f, _, _)| f.i64(col))
+            .collect::<Result<_, _>>()?;
+        Ok(names
             .iter()
             .map(|n| self.row(n).map(|(k, i)| c[k][i]))
-            .collect()
+            .collect())
     }
 
-    fn year(&self, col: &str, names: &[String]) -> Vec<Option<i64>> {
-        let c: Vec<Vec<Option<Day>>> = self.at.iter().map(|(f, _, _)| f.day(col)).collect();
-        names
+    fn year(&self, col: &str, names: &[String]) -> Result<Vec<Option<i64>>, Error> {
+        let c: Vec<Vec<Option<Day>>> = self
+            .at
+            .iter()
+            .map(|(f, _, _)| f.day(col))
+            .collect::<Result<_, _>>()?;
+        Ok(names
             .iter()
             .map(|n| {
                 self.row(n)
                     .and_then(|(k, i)| c[k][i])
                     .map(|d| year(d) as i64)
             })
-            .collect()
+            .collect())
     }
 }
 
@@ -344,38 +363,38 @@ fn scaled(v: &[f64]) -> Vec<f64> {
         .collect()
 }
 
-fn fighters(x: &Inputs, e: &[usize], names: &[String]) -> J {
+fn fighters(x: &Inputs, e: &[usize], names: &[String]) -> Result<J, Error> {
     let rc = x.current;
     let at = |c: &[f64]| {
         e.iter()
             .map(|&i| Some(c[i]).filter(|v| !v.is_nan()))
             .collect::<Vec<_>>()
     };
-    let int = |c: &str| {
-        let v = rc.i64(c);
-        e.iter().map(|&i| Some(v[i])).collect::<Vec<_>>()
+    let int = |c: &str| -> Result<Vec<Option<i64>>, Error> {
+        let v = rc.i64(c)?;
+        Ok(e.iter().map(|&i| Some(v[i])).collect())
     };
-    let col = |c: &str| at(&rc.f64(c));
+    let col = |c: &str| rc.f64(c).map(|v| at(&v));
     let f1 = |v: Vec<Option<f64>>, nd: usize| J::Arr(v.into_iter().map(|x| opt(x, nd)).collect());
-    let gender = rc.str("gender");
-    let div = |c: &str| {
-        let d = rc.str(c);
-        J::Arr(
+    let gender = rc.str("gender")?;
+    let div = |c: &str| -> Result<J, Error> {
+        let d = rc.str(c)?;
+        Ok(J::Arr(
             e.iter()
                 .map(|&i| s(&pool(&d[i], &gender[i]).unwrap_or_default()))
                 .collect(),
-        )
+        ))
     };
     let (at_b, pr, cu) = (
-        Board::new(x.all_time),
-        Board::new(x.prime),
-        Board::new(x.current_board),
+        Board::new(x.all_time)?,
+        Board::new(x.prime)?,
+        Board::new(x.current_board)?,
     );
     let rank = |b: &Board| f1(names.iter().map(|n| b.rank(n)).collect(), 1);
-    let last = rc.day("whr_last_event_date");
-    let part = |c: &str| {
-        let t = scaled(&rc.f64(&format!("public_legacy_{c}_score")));
-        f1(at(&t), 3)
+    let last = rc.day("whr_last_event_date")?;
+    let part = |c: &str| -> Result<J, Error> {
+        let t = scaled(&rc.f64(&format!("public_legacy_{c}_score"))?);
+        Ok(f1(at(&t), 3))
     };
     let mut peak: HashMap<&str, f64> = HashMap::new();
     for r in x.history.rows() {
@@ -384,17 +403,17 @@ fn fighters(x: &Inputs, e: &[usize], names: &[String]) -> J {
             *p = p.max(r.era);
         }
     }
-    let dom = index(x.dominance);
-    let (dmean, dwins) = (x.dominance.f64("mean_dominance"), x.dominance.i64("wins"));
+    let dom = index(x.dominance)?;
+    let (dmean, dwins) = (x.dominance.f64("mean_dominance")?, x.dominance.i64("wins")?);
     let obj: Vec<(&str, J)> = vec![
         ("name", J::Arr(names.iter().map(|n| s(n)).collect())),
         ("g", J::Arr(e.iter().map(|&i| opt_s(&gender[i])).collect())),
-        ("div", div("career_division")),
-        ("cdiv", div("current_division")),
-        ("n", ints(&int("rating_periods"), 1)),
-        ("w", ints(&int("wins"), 1)),
-        ("l", ints(&int("losses"), 1)),
-        ("d", ints(&int("draws"), 1)),
+        ("div", div("career_division")?),
+        ("cdiv", div("current_division")?),
+        ("n", ints(&int("rating_periods")?, 1)),
+        ("w", ints(&int("wins")?, 1)),
+        ("l", ints(&int("losses")?, 1)),
+        ("d", ints(&int("draws")?, 1)),
         (
             "last",
             J::Arr(
@@ -404,24 +423,24 @@ fn fighters(x: &Inputs, e: &[usize], names: &[String]) -> J {
             ),
         ),
         ("at", rank(&at_b)),
-        ("score", f1(col("public_legacy_score"), 1)),
-        ("T", part("title")),
-        ("S", part("skill")),
-        ("R", part("resume")),
-        ("tw", ints(&int("public_legacy_qualifying_title_wins"), 1)),
-        ("cw", ints(&int("public_legacy_contender_wins"), 1)),
-        ("cy", ints(&int("symon_career_contributing_years"), 1)),
-        ("ay", ints(&int("symon_career_active_years"), 1)),
-        ("mass", f1(col("symon_career_skill_mass"), 1)),
+        ("score", f1(col("public_legacy_score")?, 1)),
+        ("T", part("title")?),
+        ("S", part("skill")?),
+        ("R", part("resume")?),
+        ("tw", ints(&int("public_legacy_qualifying_title_wins")?, 1)),
+        ("cw", ints(&int("public_legacy_contender_wins")?, 1)),
+        ("cy", ints(&int("symon_career_contributing_years")?, 1)),
+        ("ay", ints(&int("symon_career_active_years")?, 1)),
+        ("mass", f1(col("symon_career_skill_mass")?, 1)),
         ("pr", rank(&pr)),
-        ("plevel", f1(pr.f64("elite_level", names), 1)),
-        ("pwins", f1(pr.f64("tested_opponent_wins", names), 1)),
-        ("p0", ints(&pr.year("elite_window_start", names), 1)),
-        ("p1", ints(&pr.year("elite_window_end", names), 1)),
+        ("plevel", f1(pr.f64("elite_level", names)?, 1)),
+        ("pwins", f1(pr.f64("tested_opponent_wins", names)?, 1)),
+        ("p0", ints(&pr.year("elite_window_start", names)?, 1)),
+        ("p1", ints(&pr.year("elite_window_end", names)?, 1)),
         ("cr", rank(&cu)),
-        ("cur", f1(cu.f64("current_board_score", names), 1)),
-        ("ufc", ints(&cu.i64("tested_opponent_wins", names), 1)),
-        ("whr", f1(col("mu_whr"), 1)),
+        ("cur", f1(cu.f64("current_board_score", names)?, 1)),
+        ("ufc", ints(&cu.i64("tested_opponent_wins", names)?, 1)),
+        ("whr", f1(col("mu_whr")?, 1)),
         (
             "peak",
             f1(
@@ -432,7 +451,7 @@ fn fighters(x: &Inputs, e: &[usize], names: &[String]) -> J {
                 1,
             ),
         ),
-        ("glicko", f1(col("mu_canonical"), 1)),
+        ("glicko", f1(col("mu_canonical")?, 1)),
         (
             "dom",
             f1(
@@ -454,11 +473,13 @@ fn fighters(x: &Inputs, e: &[usize], names: &[String]) -> J {
             ),
         ),
     ];
-    J::Obj(obj.into_iter().map(|(k, v)| (k.to_string(), v)).collect())
+    Ok(J::Obj(
+        obj.into_iter().map(|(k, v)| (k.to_string(), v)).collect(),
+    ))
 }
 
 /// Class-board rows of the established fighters, components back on the scale of T, S, R.
-fn classes(cb: &Frame, names: &[String]) -> J {
+fn classes(cb: &Frame, names: &[String]) -> Result<J, Error> {
     let idx: HashMap<&str, usize> = names
         .iter()
         .enumerate()
@@ -469,9 +490,9 @@ fn classes(cb: &Frame, names: &[String]) -> J {
         SCALE * ((1.0 - A) * S),
         SCALE * ((1.0 - A) * (1.0 - S)),
     ];
-    let (f, d, r) = (cb.str("fighter"), cb.str("division"), cb.i64("rank"));
-    let (t, k, q) = (cb.f64("title"), cb.f64("skill"), cb.f64("resume"));
-    J::Arr(
+    let (f, d, r) = (cb.str("fighter")?, cb.str("division")?, cb.i64("rank")?);
+    let (t, k, q) = (cb.f64("title")?, cb.f64("skill")?, cb.f64("resume")?);
+    Ok(J::Arr(
         (0..cb.len())
             .filter_map(|i| {
                 let &x = idx.get(f[i].as_str())?;
@@ -485,7 +506,7 @@ fn classes(cb: &Frame, names: &[String]) -> J {
                 ]))
             })
             .collect(),
-    )
+    ))
 }
 
 /// Per fighter: [first day, day increments, era rating, method codes, W/L/D/N, opponent index], and the name list.
@@ -842,30 +863,48 @@ fn lineage(apps: &[Appearance], division: &str, interim: bool) -> J {
 }
 
 /// Win streaks of three or more over the UFC record (`canonical_fights`), longest and strongest first.
-fn streaks(x: &Inputs) -> J {
-    let cf = Frame::read(&x.snapshot.join("canonical_fights.parquet"));
-    let (a, b, w) = (cf.str("fighter_a"), cf.str("fighter_b"), cf.str("winner"));
+fn streaks(x: &Inputs) -> Result<J, Error> {
+    let cf = Frame::read(
+        &x.snapshot.join("canonical_fights.parquet"),
+        &[
+            "fighter_a",
+            "fighter_b",
+            "winner",
+            "weight_class",
+            "method_class",
+            "event_date",
+            "is_draw",
+            "is_nc",
+            "is_title_fight",
+            "is_excluded",
+        ],
+    )?;
+    let (a, b, w) = (
+        cf.str("fighter_a")?,
+        cf.str("fighter_b")?,
+        cf.str("winner")?,
+    );
     let (wc, method, day) = (
-        cf.str("weight_class"),
-        cf.str("method_class"),
-        cf.day("event_date"),
+        cf.str("weight_class")?,
+        cf.str("method_class")?,
+        cf.day("event_date")?,
     );
     let (draw, nc, title, excl) = (
-        cf.bool("is_draw"),
-        cf.bool("is_nc"),
-        cf.bool("is_title_fight"),
-        cf.bool("is_excluded"),
+        cf.bool("is_draw")?,
+        cf.bool("is_nc")?,
+        cf.bool("is_title_fight")?,
+        cf.bool("is_excluded")?,
     );
     let rc = x.current;
     let mu: HashMap<String, f64> = rc
-        .str("fighter")
+        .str("fighter")?
         .into_iter()
-        .zip(rc.f64("mu_canonical"))
+        .zip(rc.f64("mu_canonical")?)
         .collect();
     let gender: HashMap<String, String> = rc
-        .str("fighter")
+        .str("fighter")?
         .into_iter()
-        .zip(rc.str("gender"))
+        .zip(rc.str("gender")?)
         .collect();
     // (fighter, day, opponent, bout)
     let mut long: Vec<(&str, Day, &str, usize)> = Vec::new();
@@ -873,7 +912,14 @@ fn streaks(x: &Inputs) -> J {
         for i in (0..cf.len()).filter(|&i| !excl[i]) {
             let (f, o) = if side { (&a[i], &b[i]) } else { (&b[i], &a[i]) };
             if !f.is_empty() {
-                long.push((f, day[i].unwrap(), o, i));
+                long.push((
+                    f,
+                    day[i].ok_or_else(|| {
+                        Error::at(format!("canonical_fights row {i}"), "no event_date")
+                    })?,
+                    o,
+                    i,
+                ));
             }
         }
     }
@@ -974,24 +1020,27 @@ fn streaks(x: &Inputs) -> J {
         .collect();
     let mut rows = rows;
     rows.sort_by(|p, q| q.0.cmp(&p.0).then(desc(p.1, q.1)).then(q.2.cmp(&p.2)));
-    J::Arr(rows.into_iter().map(|r| r.3).collect())
+    Ok(J::Arr(rows.into_iter().map(|r| r.3).collect()))
 }
 
 /// Top 100 established men by All-time score against Fight Matrix's all-time list.
-fn bench(x: &Inputs) -> J {
+fn bench(x: &Inputs) -> Result<J, Error> {
     let rc = x.current;
     let (f, g, p, score) = (
-        rc.str("fighter"),
-        rc.str("gender"),
-        rc.i64("rating_periods"),
-        rc.f64("public_legacy_score"),
+        rc.str("fighter")?,
+        rc.str("gender")?,
+        rc.i64("rating_periods")?,
+        rc.f64("public_legacy_score")?,
     );
     let mut men: Vec<usize> = (0..rc.len())
         .filter(|&i| p[i] >= MIN_PERIODS && g[i] == "M" && !score[i].is_nan())
         .collect();
     men.sort_by(|&i, &j| desc(score[i], score[j]));
-    let fm = Frame::read(&x.snapshot.join("fightmatrix_all_time.parquet"));
-    let (ff, fr, fp) = (fm.str("fighter"), fm.i64("rank"), fm.i64("points"));
+    let fm = Frame::read(
+        &x.snapshot.join("fightmatrix_all_time.parquet"),
+        &["fighter", "rank", "points"],
+    )?;
+    let (ff, fr, fp) = (fm.str("fighter")?, fm.i64("rank")?, fm.i64("points")?);
     let mut order: Vec<usize> = (0..fm.len())
         .filter(|&i| !x.names.key(&ff[i], true).is_empty())
         .collect();
@@ -1023,7 +1072,7 @@ fn bench(x: &Inputs) -> J {
         (Some(v), true) => J::Int(v),
         (v, _) => opt(v.map(|v| v as f64), 1),
     };
-    J::Arr(
+    Ok(J::Arr(
         top.iter()
             .map(|(i, rank, r)| {
                 J::Arr(vec![
@@ -1036,21 +1085,21 @@ fn bench(x: &Inputs) -> J {
                 ])
             })
             .collect(),
-    )
+    ))
 }
 
 /// The integrity-policy board summary and the per-result ledger.
-fn integrity(ib: &Frame, il: &Frame) -> J {
+fn integrity(ib: &Frame, il: &Frame) -> Result<J, Error> {
     let (f, mu, cost) = (
-        ib.str("fighter"),
-        ib.f64("mu_whr"),
-        ib.f64("integrity_cost"),
+        ib.str("fighter")?,
+        ib.f64("mu_whr")?,
+        ib.f64("integrity_cost")?,
     );
-    let (ur, rank) = (ib.f64("undiscounted_rank"), ib.i64("rank"));
+    let (ur, rank) = (ib.f64("undiscounted_rank")?, ib.i64("rank")?);
     let (ped, dq, mw) = (
-        ib.i64("ped_discounted_fights"),
-        ib.i64("dq_discounted_fights"),
-        ib.i64("missed_weight_discounted_fights"),
+        ib.i64("ped_discounted_fights")?,
+        ib.i64("dq_discounted_fights")?,
+        ib.i64("missed_weight_discounted_fights")?,
     );
     let mut db: Vec<usize> = (0..ib.len()).filter(|&i| cost[i] > 0.0).collect();
     db.sort_by(|&i, &j| desc(mu[i], mu[j]));
@@ -1080,15 +1129,15 @@ fn integrity(ib: &Frame, il: &Frame) -> J {
         ("won_after_missing_weight", "Missed-weight win"),
     ];
     let (lf, lo, lr, ld) = (
-        il.str("fighter"),
-        il.str("opponent"),
-        il.str("reason"),
-        il.str("detail"),
+        il.str("fighter")?,
+        il.str("opponent")?,
+        il.str("reason")?,
+        il.str("detail")?,
     );
     let (lw, lp, lday) = (
-        il.f64("integrity_weight"),
-        il.f64("discount_pct"),
-        il.day("event_date"),
+        il.f64("integrity_weight")?,
+        il.f64("discount_pct")?,
+        il.day("event_date")?,
     );
     let pct: Vec<f64> = (0..il.len())
         .map(|i| {
@@ -1129,26 +1178,26 @@ fn integrity(ib: &Frame, il: &Frame) -> J {
         .collect();
     let min = c.iter().copied().fold(f64::INFINITY, f64::min);
     let max = c.iter().copied().fold(f64::NEG_INFINITY, f64::max);
-    J::Obj(vec![
+    Ok(J::Obj(vec![
         ("n".into(), J::Int(db.len() as i64)),
         ("rated".into(), J::Int(ib.len() as i64)),
         ("cost".into(), J::Arr(vec![num(min, 1), num(max, 1)])),
         ("debits".into(), J::Arr(debits)),
         ("ledger".into(), J::Arr(ledger)),
-    ])
+    ]))
 }
 
 /// Calibration of the pre-fight Glicko-2 forecast: all bouts, then divisions with 1,000 or more appearances.
-fn calib(cr: &Frame) -> J {
+fn calib(cr: &Frame) -> Result<J, Error> {
     let (t, v, b) = (
-        cr.str("segment_type"),
-        cr.str("segment_value"),
-        cr.i64("prob_bin"),
+        cr.str("segment_type")?,
+        cr.str("segment_value")?,
+        cr.i64("prob_bin")?,
     );
     let (p, y, n) = (
-        cr.f64("predicted_mean"),
-        cr.f64("empirical_win_rate"),
-        cr.i64("n"),
+        cr.f64("predicted_mean")?,
+        cr.f64("empirical_win_rate")?,
+        cr.i64("n")?,
     );
     let mut o: Vec<usize> = (0..cr.len()).filter(|&i| t[i] == "overall").collect();
     o.sort_by_key(|&i| b[i]);
@@ -1168,24 +1217,34 @@ fn calib(cr: &Frame) -> J {
             J::Int(n[i]),
         ])
     };
-    J::Arr(
+    Ok(J::Arr(
         o.iter()
             .map(|&i| row(i, "All bouts"))
             .chain(big.map(|i| row(i, &v[i])))
             .collect(),
-    )
+    ))
 }
 
 /// The forecast benchmark (given), the fifteen biggest upsets, and win rate against price by age and layoff.
-fn market(x: &Inputs) -> (J, J, J, J) {
-    let od = Frame::read(&x.snapshot.join("odds_lines.parquet"));
+fn market(x: &Inputs) -> Result<(J, J, J, J), Error> {
+    let od = Frame::read(
+        &x.snapshot.join("odds_lines.parquet"),
+        &[
+            "odds_data_quality",
+            "fight_url",
+            "fighter_a",
+            "fighter_b",
+            "implied_prob_a_no_vig",
+            "event_date",
+        ],
+    )?;
     let (q, url, fa, fb) = (
-        od.str("odds_data_quality"),
-        od.str("fight_url"),
-        od.str("fighter_a"),
-        od.str("fighter_b"),
+        od.str("odds_data_quality")?,
+        od.str("fight_url")?,
+        od.str("fighter_a")?,
+        od.str("fighter_b")?,
     );
-    let (pa, oday) = (od.f64("implied_prob_a_no_vig"), od.day("event_date"));
+    let (pa, oday) = (od.f64("implied_prob_a_no_vig")?, od.days("event_date")?);
     let mut bouts: HashMap<&str, Vec<&Bout>> = HashMap::new();
     for b in x
         .staged
@@ -1230,7 +1289,7 @@ fn market(x: &Inputs) -> (J, J, J, J) {
                     )
                 };
                 J::Arr(vec![
-                    s(&iso(oday[i].unwrap())),
+                    s(&iso(oday[i])),
                     s(b.winner()),
                     s(loser),
                     num(pw(r), 3),
@@ -1261,7 +1320,7 @@ fn market(x: &Inputs) -> (J, J, J, J) {
         for r in &m {
             let i = r.0;
             let f = if side { fa[i].as_str() } else { fb[i].as_str() };
-            let d = oday[i].unwrap();
+            let d = oday[i];
             let age = x
                 .births
                 .get(f)
@@ -1299,10 +1358,10 @@ fn market(x: &Inputs) -> (J, J, J, J) {
                 .collect(),
         )
     };
-    (
+    Ok((
         J::from(x.market),
         upsets,
         bands(|c| c.0, &AGE_BANDS),
         bands(|c| c.1, &LAYOFF_BANDS),
-    )
+    ))
 }

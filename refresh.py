@@ -31,6 +31,7 @@ from loaders.fightmatrix_loader import build_snapshot as build_fightmatrix_snaps
 from loaders.fightmatrix_profiles import build_public_profile_snapshot
 from loaders.odds_ingest_mdabbert import run as ingest_mdabbert_odds
 from loaders.pre_unified import stage_pre_unified_scope
+from loaders.scope import DEFAULT_PUBLISHED_SCOPE
 
 
 def _coverage_line(summary: dict) -> str:
@@ -49,10 +50,9 @@ def _coverage_line(summary: dict) -> str:
 def stage_scopes(snapshot_dir: Path) -> dict[str, object]:
     """Write every non-UFC scope artifact the inputs support.
 
-    Each one is optional and each failure is reported rather than raised: a
-    missing Sherdog corpus is a reason not to be able to *select* that scope,
-    not a reason to fail the refresh. The model refuses a published scope whose
-    inputs are missing, at the point where that means something.
+    A scope outside the published one is optional: a failure is reported, not raised. A scope the
+    published fit reads (``src/scope.txt``) must stage, or the refresh stops here instead of
+    publishing boards built on fewer sources.
     """
     from loaders.majors_scope import stage_majors_scope  # local: pulls bs4
 
@@ -64,20 +64,14 @@ def stage_scopes(snapshot_dir: Path) -> dict[str, object]:
             print(f"[refresh] staged scope {name}: "
                   f"{staged[name].get('rateable_bouts', staged[name].get('bouts'))} bouts")
         except (FileNotFoundError, ValueError) as exc:
+            if name in DEFAULT_PUBLISHED_SCOPE.split(","):
+                raise
             staged[name] = f"not staged: {type(exc).__name__}: {exc}"
             print(f"[refresh] scope {name} not staged: {exc}")
     return staged
 
 
-_MDABBERT_CANDIDATES = (
-    PROJECT_ROOT / "data" / "external" / "api_sources" / "ultimate_ufc_dataset" / "ufc-master.csv",
-    PROJECT_ROOT.parent / "archive" / "ufc-master.csv",
-    PROJECT_ROOT.parent.parent / "archive" / "ufc-master.csv",
-)
-DEFAULT_MDABBERT_CSV = next(
-    (path for path in _MDABBERT_CANDIDATES if path.exists()),
-    _MDABBERT_CANDIDATES[0],
-)
+DEFAULT_MDABBERT_CSV = PROJECT_ROOT / "data" / "external" / "api_sources" / "ultimate_ufc_dataset" / "ufc-master.csv"
 
 
 def copy_raw_inputs(greco_dir: Path, raw_dir: Path) -> None:
@@ -286,7 +280,7 @@ def main() -> None:
                 f"snapshot odds_lines={odds_info['odds_lines_rows']:,}"
             )
         else:
-            print(f"[refresh] mdabbert csv not found, skipping odds ingest: {mdabbert_csv}")
+            raise FileNotFoundError(f"odds source not found: {mdabbert_csv}")
     # Stage every scope the inputs allow; the model selects the published one.
     # Staging is cheap and reversible; rating is the decision.
     stage_scopes(snapshot_dir)

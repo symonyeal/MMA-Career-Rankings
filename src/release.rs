@@ -17,6 +17,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 
+use crate::error::Error;
+
 const EXTERNAL: [&str; 4] = [
     "data/external/aliases/fighter_aliases.csv",
     "data/external/crossorg/identity_overrides.csv",
@@ -281,6 +283,29 @@ impl Writer {
         Ok((id, root))
     }
 
+    /// Generation ids the two acceptance pointers name.
+    fn accepted(&self) -> Vec<String> {
+        [Pointer::Release, Pointer::Site]
+            .iter()
+            .filter_map(|p| json_file(&self.store.join(p.file())).ok())
+            .filter_map(|j| j["generation"].as_str().map(str::to_owned))
+            .collect()
+    }
+
+    /// Delete every generation folder except those `keep` names.
+    fn prune(&self, keep: &[String]) -> io::Result<()> {
+        for entry in fs::read_dir(&self.store)? {
+            let entry = entry?;
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if entry.file_type()?.is_dir() && !keep.contains(&name) {
+                fs::remove_dir_all(entry.path())?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Project generation `id` into the checkout and accept it; the accepted generation and the
+    /// one it replaces are kept, older ones deleted.
     fn promote(
         &self,
         id: &str,
@@ -288,6 +313,7 @@ impl Writer {
         pointer: Pointer,
         fail_after: Option<usize>,
     ) -> io::Result<()> {
+        let mut keep = self.accepted();
         let generation = self.store.join(id);
         let mut entries = Vec::new();
         for p in paths {
@@ -329,7 +355,9 @@ impl Writer {
             self.recover()?;
             return Err(error);
         }
-        self.recover()
+        self.recover()?;
+        keep.push(id.to_owned());
+        self.prune(&keep)
     }
 }
 
@@ -355,7 +383,10 @@ pub fn root_of(snapshot: &Path) -> io::Result<PathBuf> {
 }
 
 /// Compute entirely off-tree, validate a required inventory, then accept its projection.
-pub fn build(snapshot: &Path, compute: impl FnOnce(&Path, &Path)) -> io::Result<()> {
+pub fn build(
+    snapshot: &Path,
+    compute: impl FnOnce(&Path, &Path) -> Result<(), Error>,
+) -> io::Result<()> {
     let root = root_of(snapshot)?;
     let snapshot = snapshot.canonicalize()?;
     let relative_snapshot = snapshot
@@ -390,7 +421,7 @@ pub fn build(snapshot: &Path, compute: impl FnOnce(&Path, &Path)) -> io::Result<
     if receipt(&root, &input_paths)? != inputs {
         return Err(invalid("release inputs changed while being copied"));
     }
-    compute(&stage.join(relative_snapshot), &stage);
+    compute(&stage.join(relative_snapshot), &stage).map_err(|e| invalid(e.0))?;
     if receipt(&root, &input_paths)? != inputs || receipt(&root, &code)? != source {
         return Err(invalid(
             "release inputs or source changed during computation",
@@ -435,12 +466,12 @@ pub fn build(snapshot: &Path, compute: impl FnOnce(&Path, &Path)) -> io::Result<
 }
 
 /// Stamp a copied site under the same writer ownership as a model release.
-pub fn stamp(root: &Path, compute: impl FnOnce(&Path)) -> io::Result<()> {
+pub fn stamp(root: &Path, compute: impl FnOnce(&Path) -> Result<(), Error>) -> io::Result<()> {
     let writer = Writer::new(root)?;
     let (id, stage) = writer.generation()?;
     let authored = Authored::capture(&writer.root, false)?;
     authored.copy(&writer.root, &stage, false)?;
-    compute(&stage.join("site"));
+    compute(&stage.join("site")).map_err(|e| invalid(e.0))?;
     let paths = files(&stage.join("site"))?
         .into_iter()
         .map(|p| PathBuf::from("site").join(p))
@@ -513,6 +544,24 @@ mod tests {
     }
 
     #[test]
+    fn only_the_accepted_and_previous_generations_are_kept() {
+        let root = fixture();
+        let writer = Writer::new(&root).unwrap();
+        let mut ids = vec![];
+        for _ in 0..3 {
+            let (id, stage) = writer.generation().unwrap();
+            fs::write(stage.join("a"), b"x").unwrap();
+            writer
+                .promote(&id, &[PathBuf::from("a")], Pointer::Release, None)
+                .unwrap();
+            ids.push(id);
+        }
+        assert!(!writer.store.join(&ids[0]).exists());
+        assert!(writer.store.join(&ids[1]).exists());
+        assert!(writer.store.join(&ids[2]).exists());
+    }
+
+    #[test]
     fn interrupted_projection_is_recovered_by_next_exclusive_writer() {
         let root = fixture();
         let writer = Writer::new(&root).unwrap();
@@ -571,7 +620,8 @@ mod tests {
         let original = br#"{"generation":"model","root":"model/root"}"#;
         fs::write(&accepted, original).unwrap();
         stamp(&root, |site| {
-            fs::write(site.join("index.html"), b"new").unwrap()
+            fs::write(site.join("index.html"), b"new").unwrap();
+            Ok(())
         })
         .unwrap();
         assert_eq!(fs::read(&accepted).unwrap(), original);
@@ -580,6 +630,7 @@ mod tests {
         assert!(stamp(&root, |site| {
             fs::write(site.join("index.html"), b"staged").unwrap();
             fs::write(root.join("site/index.html"), b"user edit").unwrap();
+            Ok(())
         })
         .is_err());
         assert_eq!(
@@ -644,6 +695,7 @@ mod tests {
             .unwrap();
             assert!(!s.join("ratings_current.parquet").exists());
             assert!(!stage.join("site/data.js").exists());
+            Ok(())
         });
         assert!(result.is_err());
         assert_eq!(

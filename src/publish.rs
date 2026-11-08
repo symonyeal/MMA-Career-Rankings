@@ -9,6 +9,7 @@ use std::collections::HashMap;
 
 use crate::boards::Boards;
 use crate::divisions::{pool, MEN_LIMIT_LB};
+use crate::error::Error;
 use crate::frame::{iso, Frame};
 use crate::history::History;
 use crate::policy::{CONTENDER, MIN_PERIODS};
@@ -108,25 +109,25 @@ struct Lookup<'a> {
 }
 
 impl<'a> Lookup<'a> {
-    fn new(c: &Frame, fighter: &'a [String]) -> Lookup<'a> {
+    fn new(c: &Frame, fighter: &'a [String]) -> Result<Lookup<'a>, Error> {
         let (u, r, w) = (
-            c.day("last_ufc_event_date"),
-            c.day("last_recorded_event_date"),
-            c.day("whr_last_event_date"),
+            c.day("last_ufc_event_date")?,
+            c.day("last_recorded_event_date")?,
+            c.day("whr_last_event_date")?,
         );
-        Lookup {
+        Ok(Lookup {
             row: fighter
                 .iter()
                 .enumerate()
                 .map(|(i, f)| (f.as_str(), i))
                 .collect(),
-            gender: c.str("gender"),
-            career: c.str("career_division"),
-            now: c.str("current_division"),
-            title_wins: c.f64("current_title_wins"),
-            contender_wins: c.f64("current_contender_wins"),
+            gender: c.str("gender")?,
+            career: c.str("career_division")?,
+            now: c.str("current_division")?,
+            title_wins: c.f64("current_title_wins")?,
+            contender_wins: c.f64("current_contender_wins")?,
             last: (0..u.len()).map(|i| u[i].or(r[i]).or(w[i])).collect(),
-        }
+        })
     }
 
     fn division(&self, f: &str, current: bool) -> String {
@@ -257,14 +258,14 @@ fn class_order() -> Vec<&'static str> {
 }
 
 /// `class_board_markdown`: top 10 men / 5 women per class with at least 10 ranked.
-fn class_board(classes: &Frame, b: &Boards) -> String {
+fn class_board(classes: &Frame, b: &Boards) -> Result<String, Error> {
     let (g, d, rank, fighter, score, share) = (
-        classes.str("gender"),
-        classes.str("division"),
-        classes.i64("rank"),
-        classes.str("fighter"),
-        classes.f64("score"),
-        classes.f64("share"),
+        classes.str("gender")?,
+        classes.str("division")?,
+        classes.i64("rank")?,
+        classes.str("fighter")?,
+        classes.f64("score")?,
+        classes.f64("share")?,
     );
     let mut parts = Vec::new();
     for (k, (gender, label, n)) in [("M", "Men", 10), ("F", "Women", 5)]
@@ -309,12 +310,12 @@ fn class_board(classes: &Frame, b: &Boards) -> String {
             ));
         }
     }
-    parts.join("\n\n")
+    Ok(parts.join("\n\n"))
 }
 
 /// `contender_line_reach`: share of established fighters whose era-adjusted peak reached the contender line.
-fn reach(current: &Frame, history: &History) -> f64 {
-    let (fighter, periods) = (current.str("fighter"), current.i64("rating_periods"));
+fn reach(current: &Frame, history: &History) -> Result<f64, Error> {
+    let (fighter, periods) = (current.str("fighter")?, current.i64("rating_periods")?);
     let peaks: Vec<f64> = fighter
         .iter()
         .zip(&periods)
@@ -328,7 +329,7 @@ fn reach(current: &Frame, history: &History) -> f64 {
                 .reduce(f64::max)
         })
         .collect();
-    peaks.iter().filter(|&&x| x >= CONTENDER).count() as f64 / peaks.len() as f64
+    Ok(peaks.iter().filter(|&&x| x >= CONTENDER).count() as f64 / peaks.len() as f64)
 }
 
 /// Release facts that come from the run rather than the tables.
@@ -346,7 +347,7 @@ pub struct Release<'a> {
 }
 
 /// `publication_release_markdown`: the release facts, generated from the same snapshot as the tables.
-fn release(r: &Release, current: &Frame, history: &History, b: &Boards) -> String {
+fn release(r: &Release, current: &Frame, history: &History, b: &Boards) -> Result<String, Error> {
     let (eligible, merged) = (r.eligible, r.merged);
     let (men, women) = (b.prime_ranked[0] as i64, b.prime_ranked[1] as i64);
     let rows = [
@@ -374,7 +375,7 @@ fn release(r: &Release, current: &Frame, history: &History, b: &Boards) -> Strin
             format!(
                 "{} — reached by {:.1}% of established fighters",
                 commas(CONTENDER as i64),
-                reach(current, history) * 100.0
+                reach(current, history)? * 100.0
             ),
         ),
         (
@@ -393,7 +394,7 @@ fn release(r: &Release, current: &Frame, history: &History, b: &Boards) -> Strin
         "| --- | ---: |".to_string(),
     ];
     lines.extend(rows.iter().map(|(l, v)| format!("| {l} | {v} |")));
-    lines.join("\n")
+    Ok(lines.join("\n"))
 }
 
 /// Every block body by marker name. `current` is ratings_current, `classes` the class board.
@@ -403,21 +404,21 @@ pub fn blocks(
     history: &History,
     classes: &Frame,
     r: &Release,
-) -> Vec<(&'static str, String)> {
-    let fighter = current.str("fighter");
-    let look = Lookup::new(current, &fighter);
+) -> Result<Vec<(&'static str, String)>, Error> {
+    let fighter = current.str("fighter")?;
+    let look = Lookup::new(current, &fighter)?;
     let legacy: HashMap<&str, f64> = fighter
         .iter()
         .map(String::as_str)
-        .zip(current.f64("public_legacy_score"))
+        .zip(current.f64("public_legacy_score")?)
         .collect();
     let bouts: HashMap<&str, f64> = fighter
         .iter()
         .map(String::as_str)
-        .zip(current.f64("public_legacy_ufc_bouts"))
+        .zip(current.f64("public_legacy_ufc_bouts")?)
         .collect();
-    vec![
-        ("PUBLICATION:RELEASE", release(r, current, history, b)),
+    Ok(vec![
+        ("PUBLICATION:RELEASE", release(r, current, history, b)?),
         (
             "BOARD:TOP100",
             top_board(
@@ -459,8 +460,8 @@ pub fn blocks(
             "BOARD:ELITEPRIMEWOMEN10",
             top_board(&b.prime_top[1], WOMEN_TOP, &look, b, None, None),
         ),
-        ("BOARD:CLASS", class_board(classes, b)),
-    ]
+        ("BOARD:CLASS", class_board(classes, b)?),
+    ])
 }
 
 /// Replaces the named blocks of `text`; the result has LF line endings. Panics unless each marker pair occurs exactly once.

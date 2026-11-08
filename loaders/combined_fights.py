@@ -295,11 +295,11 @@ def write_combined_fights(
     older artifact deliberately -- every consumer selects from this file, so a
     narrow one silently caps what any later run can rate.
 
-    **A write that would remove a corpus is skipped, not performed.** The staged
-    per-corpus parquets are build inputs, and once they are archived a rebuild
-    sees fewer of them; without this guard the next run would quietly replace a
-    whole-sport table with a UFC-only one and every later reader would inherit
-    it. ``allow_narrowing=True`` performs the write anyway, for when dropping a
+    **A write that would remove a corpus raises.** The staged per-corpus parquets
+    are build inputs, and once they are archived a rebuild sees fewer of them;
+    without this guard the next run would quietly replace a whole-sport table
+    with a UFC-only one and every later reader would inherit it.
+    ``allow_narrowing=True`` performs the write anyway, for when dropping a
     corpus is the actual intent.
     """
     snapshot_dir = Path(snapshot_dir)
@@ -315,12 +315,10 @@ def write_combined_fights(
         held = set(existing.get(AVAILABLE_IN_CORPORA) or existing.get("source_corpora", {}))
         writing = set(summary.get(AVAILABLE_IN_CORPORA) or summary.get("source_corpora", {}))
         if held - writing:
-            print(
-                f"[{label}] keeping the existing {COMBINED_FIGHTS_ARTIFACT}: it holds "
-                f"{', '.join(sorted(held - writing))}, which the staged corpora no longer "
-                "supply. Pass allow_narrowing=True to drop them on purpose."
+            raise ValueError(
+                f"[{label}] {COMBINED_FIGHTS_ARTIFACT} holds {', '.join(sorted(held - writing))}, "
+                "which the staged corpora no longer supply. Pass allow_narrowing=True to drop them on purpose."
             )
-            return existing
 
     combined.to_parquet(snapshot_dir / COMBINED_FIGHTS_ARTIFACT, index=False)
     summary_path.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")

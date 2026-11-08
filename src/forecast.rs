@@ -20,6 +20,7 @@ use serde_json::{json, Value};
 
 use crate::bouts::Bout;
 use crate::era::year;
+use crate::error::Error;
 use crate::fm;
 use crate::frame::{parse_day, Day, Frame};
 use crate::glicko::{engine, predict};
@@ -118,8 +119,21 @@ fn records(cb: &[&Bout]) -> HashMap<(String, Day), Rec> {
 fn ufc_rates(
     snapshot: &Path,
     secs: &HashMap<String, (Day, f64)>,
-) -> (HashMap<(String, Day), ([f64; 11], f64)>, [f64; 11]) {
-    let rd = Frame::read(&snapshot.join("canonical_rounds.parquet"));
+) -> Result<(HashMap<(String, Day), ([f64; 11], f64)>, [f64; 11]), Error> {
+    let rd = Frame::read(
+        &snapshot.join("canonical_rounds.parquet"),
+        &[
+            "fight_url",
+            "fighter",
+            "sig_str_landed",
+            "sig_str_attempted",
+            "td_landed",
+            "td_attempted",
+            "sub_att",
+            "ctrl_seconds",
+            "kd",
+        ],
+    )?;
     let q = [
         "sig_str_landed",
         "sig_str_attempted",
@@ -129,8 +143,8 @@ fn ufc_rates(
         "ctrl_seconds",
         "kd",
     ];
-    let cols: Vec<Vec<f64>> = q.iter().map(|c| rd.f64(c)).collect();
-    let (url, fighter) = (rd.str("fight_url"), rd.str("fighter"));
+    let cols: Vec<Vec<f64>> = q.iter().map(|c| rd.f64(c)).collect::<Result<_, _>>()?;
+    let (url, fighter) = (rd.str("fight_url")?, rd.str("fighter")?);
     let mut g: BTreeMap<(&str, &str), [f64; 7]> = BTreeMap::new();
     for i in 0..rd.len() {
         let e = g.entry((&url[i], &fighter[i])).or_insert([0.0; 7]);
@@ -163,7 +177,7 @@ fn ufc_rates(
         }
         i = j;
     }
-    let y0 = parse_day(&format!("{Y0}-01-01"));
+    let y0 = parse_day(&format!("{Y0}-01-01"))?;
     let mut pre = [0.0; 15];
     for ((_, d), v) in &by {
         if *d < y0 {
@@ -217,7 +231,7 @@ fn ufc_rates(
             .collect();
         *x = psum(&v) / v.len() as f64;
     }
-    (out, debut)
+    Ok((out, debut))
 }
 
 /// NumPy `std(axis=0)` of the rows `a` and their mirror `−a`, summed row by row.
@@ -332,22 +346,41 @@ struct Test {
     p_3: f64,
 }
 
-fn bout_frame(snapshot: &Path, staged: &[Bout], births: &HashMap<String, Day>) -> Vec<Test> {
-    let cf = Frame::read(&snapshot.join("canonical_fights.parquet"));
+fn bout_frame(
+    snapshot: &Path,
+    staged: &[Bout],
+    births: &HashMap<String, Day>,
+) -> Result<Vec<Test>, Error> {
+    let cf = Frame::read(
+        &snapshot.join("canonical_fights.parquet"),
+        &[
+            "fight_url",
+            "event_name",
+            "fighter_a",
+            "fighter_b",
+            "winner",
+            "event_date",
+            "is_excluded",
+            "is_draw",
+            "is_nc",
+            "end_round",
+            "end_time_seconds",
+        ],
+    )?;
     let (url, event, a, b, winner) = (
-        cf.str("fight_url"),
-        cf.str("event_name"),
-        cf.str("fighter_a"),
-        cf.str("fighter_b"),
-        cf.str("winner"),
+        cf.str("fight_url")?,
+        cf.str("event_name")?,
+        cf.str("fighter_a")?,
+        cf.str("fighter_b")?,
+        cf.str("winner")?,
     );
-    let day: Vec<Day> = cf
-        .day("event_date")
-        .into_iter()
-        .map(Option::unwrap)
-        .collect();
-    let (excl, draw, nc) = (cf.bool("is_excluded"), cf.bool("is_draw"), cf.bool("is_nc"));
-    let (er, et) = (cf.f64("end_round"), cf.f64("end_time_seconds"));
+    let day = cf.days("event_date")?;
+    let (excl, draw, nc) = (
+        cf.bool("is_excluded")?,
+        cf.bool("is_draw")?,
+        cf.bool("is_nc")?,
+    );
+    let (er, et) = (cf.f64("end_round")?, cf.f64("end_time_seconds")?);
     let secs: HashMap<String, (Day, f64)> = (0..cf.len())
         .map(|i| (url[i].clone(), (day[i], (er[i] - 1.0) * 300.0 + et[i])))
         .collect();
@@ -357,31 +390,42 @@ fn bout_frame(snapshot: &Path, staged: &[Bout], births: &HashMap<String, Day>) -
         .filter(|x| crate::bouts::predictive(x))
         .collect();
     let rec = records(&cb);
-    let (rates, debut) = ufc_rates(snapshot, &secs);
+    let (rates, debut) = ufc_rates(snapshot, &secs)?;
     let g = engine(&cb);
     let mut gl: HashMap<(&str, Day), (f64, f64)> = HashMap::new();
     for r in g.rows() {
         gl.entry((g.names()[r.fighter].as_str(), r.day))
             .or_insert(r.pre);
     }
-    let fi = Frame::read(&snapshot.join("canonical_fighters.parquet"));
+    let fi = Frame::read(
+        &snapshot.join("canonical_fighters.parquet"),
+        &["fighter", "height_inches", "reach_inches"],
+    )?;
     let mut body: HashMap<String, (f64, f64)> = HashMap::new();
     for ((f, h), r) in fi
-        .str("fighter")
+        .str("fighter")?
         .into_iter()
-        .zip(fi.f64("height_inches"))
-        .zip(fi.f64("reach_inches"))
+        .zip(fi.f64("height_inches")?)
+        .zip(fi.f64("reach_inches")?)
     {
         body.entry(f).or_insert((h, r));
     }
-    let od = Frame::read(&snapshot.join("odds_lines.parquet"));
+    let od = Frame::read(
+        &snapshot.join("odds_lines.parquet"),
+        &[
+            "fight_url",
+            "odds_data_quality",
+            "fighter_a",
+            "implied_prob_a_no_vig",
+        ],
+    )?;
     let mut odds: HashMap<String, (String, f64)> = HashMap::new();
     for (((u, q), fa), p) in od
-        .str("fight_url")
+        .str("fight_url")?
         .into_iter()
-        .zip(od.str("odds_data_quality"))
-        .zip(od.str("fighter_a"))
-        .zip(od.f64("implied_prob_a_no_vig"))
+        .zip(od.str("odds_data_quality")?)
+        .zip(od.str("fighter_a")?)
+        .zip(od.f64("implied_prob_a_no_vig")?)
     {
         if q == "ok" && (0.001..=0.999).contains(&p) {
             odds.insert(u, (fa, p));
@@ -436,10 +480,15 @@ fn bout_frame(snapshot: &Path, staged: &[Bout], births: &HashMap<String, Day>) -
             d(fm::ln_1p(na), fm::ln_1p(nb)),
         ];
         f.extend((0..11).map(|k| d(ua[k], ub[k])));
-        let p_m = odds.get(&url[i]).map(|(fa, p)| {
-            assert_eq!(fa, &a[i], "odds corner order differs");
-            *p
-        });
+        let p_m = match odds.get(&url[i]) {
+            Some((fa, _)) if *fa != a[i] => {
+                return Err(Error::at(
+                    &url[i],
+                    "odds corner order differs from the fight",
+                ))
+            }
+            found => found.map(|(_, p)| *p),
+        };
         f.push(logit(p_m.unwrap_or(0.5)));
         out.push(Test {
             event: event[i].clone(),
@@ -452,13 +501,17 @@ fn bout_frame(snapshot: &Path, staged: &[Bout], births: &HashMap<String, Day>) -
             p_3: f64::NAN,
         });
     }
-    out
+    Ok(out)
 }
 
 /// p_1 and p_3: each test year forecast by fits on bouts dated before that year.
-fn walk_forward(x: &mut [Test]) {
-    let last = x.iter().map(|t| year(t.day)).max().unwrap();
-    let m = x[0].f.len() - 1;
+fn walk_forward(x: &mut [Test]) -> Result<(), Error> {
+    let (Some(last), Some(m)) = (
+        x.iter().map(|t| year(t.day)).max(),
+        x.first().map(|t| t.f.len() - 1),
+    ) else {
+        return Err(Error::at("forecast", "no bouts to forecast"));
+    };
     for yy in Y0..=last {
         for three in [false, true] {
             let cols = |t: &Test| -> Vec<f64> {
@@ -474,6 +527,12 @@ fn walk_forward(x: &mut [Test]) {
                 .iter()
                 .filter(|t| year(t.day) < yy && (!three || t.p_m.is_some()))
                 .collect();
+            if train.is_empty() {
+                return Err(Error::at(
+                    "forecast",
+                    format!("no training bouts before {yy}"),
+                ));
+            }
             let a: Vec<Vec<f64>> = train.iter().map(|t| cols(t)).collect();
             let sd = mirrored_sd(&a);
             let scaled: Vec<Vec<f64>> = a
@@ -491,6 +550,7 @@ fn walk_forward(x: &mut [Test]) {
             }
         }
     }
+    Ok(())
 }
 
 /// Per bout: log loss, Brier, winner picked (a coin's ½ counts as half).
@@ -562,13 +622,20 @@ fn cal(p: &[f64], y: &[f64]) -> Value {
 
 /// The site's `market` block: the forecast benchmark on test bouts with odds, beside
 /// the count, favourite win rate and years of every priced UFC bout in the whole table.
-pub fn market(snapshot: &Path, staged: &[Bout], births: &HashMap<String, Day>) -> Value {
-    let mut x = bout_frame(snapshot, staged, births);
-    walk_forward(&mut x);
+pub fn market(
+    snapshot: &Path,
+    staged: &[Bout],
+    births: &HashMap<String, Day>,
+) -> Result<Value, Error> {
+    let mut x = bout_frame(snapshot, staged, births)?;
+    walk_forward(&mut x)?;
     let e: Vec<&Test> = x
         .iter()
         .filter(|t| year(t.day) >= Y0 && t.p_m.is_some())
         .collect();
+    if e.is_empty() {
+        return Err(Error::at("forecast", "no test bouts with odds"));
+    }
     let y: Vec<f64> = e.iter().map(|t| t.y).collect();
     let ev: Vec<&str> = e.iter().map(|t| t.event.as_str()).collect();
     let forecasts: [(&str, &str, Vec<f64>); 5] = [
@@ -623,13 +690,22 @@ pub fn market(snapshot: &Path, staged: &[Bout], births: &HashMap<String, Day>) -
     {
         won.entry(&b.url).or_default().push(b.winner());
     }
-    let od = Frame::read(&snapshot.join("odds_lines.parquet"));
+    let od = Frame::read(
+        &snapshot.join("odds_lines.parquet"),
+        &[
+            "fight_url",
+            "odds_data_quality",
+            "fighter_a",
+            "implied_prob_a_no_vig",
+            "event_date",
+        ],
+    )?;
     let (ou, oq, oa, op, od_day) = (
-        od.str("fight_url"),
-        od.str("odds_data_quality"),
-        od.str("fighter_a"),
-        od.f64("implied_prob_a_no_vig"),
-        od.day("event_date"),
+        od.str("fight_url")?,
+        od.str("odds_data_quality")?,
+        od.str("fighter_a")?,
+        od.f64("implied_prob_a_no_vig")?,
+        od.days("event_date")?,
     );
     let (mut fav, mut years) = (Vec::new(), Vec::new());
     for i in 0..od.len() {
@@ -639,14 +715,14 @@ pub fn market(snapshot: &Path, staged: &[Bout], births: &HashMap<String, Day>) -
         for w in won.get(ou[i].as_str()).into_iter().flatten() {
             let yy = f64::from(u8::from(*w == oa[i]));
             fav.push(if op[i] >= 0.5 { yy } else { 1.0 - yy });
-            years.push(year(od_day[i].unwrap()));
+            years.push(year(od_day[i]));
         }
     }
     let mut events: Vec<&str> = ev.clone();
     events.sort_unstable();
     events.dedup();
     let iso = |d: Day| crate::frame::iso(d);
-    json!({
+    Ok(json!({
         "n": e.len(),
         "events": events.len(),
         "span": [iso(e.iter().map(|t| t.day).min().unwrap()), iso(e.iter().map(|t| t.day).max().unwrap())],
@@ -657,12 +733,75 @@ pub fn market(snapshot: &Path, staged: &[Bout], births: &HashMap<String, Day>) -
         "rows": rows,
         "cal_market": cal(&forecasts[3].2, &y),
         "cal_model": cal(&forecasts[2].2, &y),
-    })
+    }))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Forty bouts a year from `Y0 - 2` to `Y0 + 1`: features from a fixed stream, outcome from the first.
+    fn synthetic(flip_after: Option<i32>) -> Vec<Test> {
+        let mut r = Pcg64::new(7);
+        let mut out = vec![];
+        for yy in (Y0 - 2)..=(Y0 + 1) {
+            for k in 0..40 {
+                let f: Vec<f64> = (0..3)
+                    .map(|_| r.below(2000) as f64 / 1000.0 - 1.0)
+                    .collect();
+                let y = f64::from(u8::from(f[0] + 0.3 * f[1] > 0.1 * (k % 3) as f64 - 0.1));
+                let y = if flip_after.is_some_and(|a| yy > a) {
+                    1.0 - y
+                } else {
+                    y
+                };
+                out.push(Test {
+                    event: format!("{yy}-{k}"),
+                    day: crate::frame::parse_day(&format!("{yy}-{:02}-15", 1 + k % 12)).unwrap(),
+                    y,
+                    p_g: 0.5,
+                    p_m: Some(0.5),
+                    f,
+                    p_1: f64::NAN,
+                    p_3: f64::NAN,
+                });
+            }
+        }
+        out
+    }
+
+    /// A year's forecast reads only bouts dated before that year: dropping or reversing every later
+    /// bout leaves it unchanged.
+    #[test]
+    fn a_forecast_ignores_later_bouts() {
+        let mut full = synthetic(None);
+        walk_forward(&mut full).unwrap();
+        let mut cut: Vec<Test> = synthetic(None)
+            .into_iter()
+            .filter(|t| year(t.day) <= Y0)
+            .collect();
+        walk_forward(&mut cut).unwrap();
+        let mut flipped = synthetic(Some(Y0));
+        walk_forward(&mut flipped).unwrap();
+        for (i, t) in cut.iter().filter(|t| year(t.day) == Y0).enumerate() {
+            let same = |u: &Test| (u.p_1.to_bits(), u.p_3.to_bits());
+            let at = |v: &[Test]| same(v.iter().filter(|u| year(u.day) == Y0).nth(i).unwrap());
+            assert!(t.p_1.is_finite());
+            assert_eq!(same(t), at(&full));
+            assert_eq!(same(t), at(&flipped));
+        }
+    }
+
+    #[test]
+    fn an_empty_training_set_is_a_named_error() {
+        let mut only: Vec<Test> = synthetic(None)
+            .into_iter()
+            .filter(|t| year(t.day) == Y0)
+            .collect();
+        let e = walk_forward(&mut only).unwrap_err();
+        assert!(e.0.contains("no training bouts before 2012"), "{e}");
+        assert!(walk_forward(&mut []).is_err());
+    }
 
     #[test]
     fn numpy_stream() {

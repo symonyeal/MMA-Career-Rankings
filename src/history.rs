@@ -7,9 +7,8 @@
 
 use std::collections::HashMap;
 use std::ops::Range;
-use std::path::Path;
 
-use crate::frame::{Day, Frame};
+use crate::frame::Day;
 
 #[derive(Clone, Debug)]
 pub struct Row {
@@ -59,28 +58,6 @@ impl History {
         for row in &mut self.rows {
             row.era = value(row);
         }
-    }
-
-    pub fn read(snapshot: &Path) -> History {
-        let f = Frame::read(&snapshot.join("ratings_history_whr.parquet"));
-        let (fighter, event, day, mu, era) = (
-            f.str("fighter"),
-            f.str("event_name"),
-            f.day("event_date"),
-            f.f64("mu_whr"),
-            f.f64("mu_era"),
-        );
-        History::new(
-            (0..f.len())
-                .map(|i| Row {
-                    fighter: fighter[i].clone(),
-                    day: day[i].unwrap(),
-                    event: event[i].clone(),
-                    mu: mu[i],
-                    era: era[i],
-                })
-                .collect(),
-        )
     }
 
     /// One fighter's rows in path order; empty when unrated.

@@ -14,7 +14,8 @@ use regex::Regex;
 
 use crate::bouts::Bout;
 use crate::era::year;
-use crate::frame::parse_day;
+use crate::error::Error;
+use crate::frame::{csv_rows, parse_day};
 use crate::policy::TIER1;
 
 struct Rule {
@@ -75,33 +76,45 @@ fn within(when: Option<f64>, (start, end): (Option<f64>, Option<f64>)) -> bool {
 }
 
 impl Rules {
-    pub fn load(root: &Path) -> Rules {
+    pub fn load(root: &Path) -> Result<Rules, Error> {
         let path = root.join("data/external/fightmatrix/organization_normalization.csv");
-        let mut rd = csv::Reader::from_path(path).unwrap();
-        let h = rd.headers().unwrap().clone();
-        let col = |n: &str| h.iter().position(|x| x == n).unwrap();
-        let (p, c, t, af, at, tf, tt) = (
-            col("pattern"),
-            col("canonical_organization"),
-            col("tier"),
-            col("active_from"),
-            col("active_to"),
-            col("tier_from"),
-            col("tier_to"),
-        );
-        let day = |s: &str| (!s.is_empty()).then(|| parse_day(s) as f64);
-        Rules(
-            rd.records()
-                .map(Result::unwrap)
-                .map(|r| Rule {
-                    pattern: Regex::new(&format!("(?i){}", &r[p])).unwrap(),
-                    canonical: r[c].to_string(),
-                    tier: r[t].parse().unwrap(),
-                    active: (day(&r[af]), day(&r[at])),
-                    tiered: (day(&r[tf]), day(&r[tt])),
+        let cols = [
+            "pattern",
+            "canonical_organization",
+            "tier",
+            "active_from",
+            "active_to",
+            "tier_from",
+            "tier_to",
+        ];
+        let day = |s: &str| -> Result<Option<f64>, Error> {
+            (!s.is_empty())
+                .then(|| parse_day(s).map(f64::from))
+                .transpose()
+        };
+        let rules = csv_rows(&path, &cols)?
+            .into_iter()
+            .enumerate()
+            .map(|(i, r)| {
+                let at = |e: &dyn std::fmt::Display| {
+                    Error::at(path.display(), format!("row {}: {e}", i + 2))
+                };
+                Ok(Rule {
+                    pattern: Regex::new(&format!("(?i){}", r[0])).map_err(|e| at(&e))?,
+                    canonical: r[1].clone(),
+                    tier: r[2].parse().map_err(|e| at(&e))?,
+                    active: (
+                        day(&r[3]).map_err(|e| at(&e))?,
+                        day(&r[4]).map_err(|e| at(&e))?,
+                    ),
+                    tiered: (
+                        day(&r[5]).map_err(|e| at(&e))?,
+                        day(&r[6]).map_err(|e| at(&e))?,
+                    ),
                 })
-                .collect(),
-        )
+            })
+            .collect::<Result<_, Error>>()?;
+        Ok(Rules(rules))
     }
 
     /// `normalize_organization`: (canonical, tier) of a label on a day (fractional days allowed).
@@ -191,5 +204,29 @@ impl Rules {
                 .or_insert_with(|| resolved[&(label(b), b.event.as_str(), year(b.day))].clone());
         }
         out
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `tests/fixtures/rule_parity.json` is also asserted by `tests/test_rule_parity.py`.
+    #[test]
+    fn organization_rules_match_the_python_staging() {
+        let rules = Rules::load(Path::new(env!("CARGO_MANIFEST_DIR"))).unwrap();
+        for c in crate::names::parity_cases()["orgs"].as_array().unwrap() {
+            let when = c[1].as_str().map(|d| parse_day(d).unwrap() as f64);
+            let (canonical, tier) =
+                rules.normalize(c[0].as_str().unwrap(), when, c[2].as_bool().unwrap());
+            let want = (c[3].as_str().unwrap(), c[4].as_i64().unwrap());
+            assert_eq!((canonical.as_str(), tier), want, "{c}");
+        }
+    }
+
+    #[test]
+    fn a_missing_rules_file_is_named() {
+        let e = Rules::load(Path::new("no/such/root")).err().unwrap();
+        assert!(e.0.contains("organization_normalization.csv"), "{e}");
     }
 }

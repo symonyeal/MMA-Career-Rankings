@@ -9,6 +9,7 @@ use std::collections::HashMap;
 
 use crate::bouts::Bout;
 use crate::era::{contender_bar, CAREER_N};
+use crate::error::Error;
 use crate::fm;
 use crate::frame::Frame;
 use crate::history::{History, Row};
@@ -53,25 +54,20 @@ pub fn values(
     p: &Pricing,
     h: &History,
     elite: &HashMap<String, f64>,
-) -> Result<Vec<(&'static str, Figure)>, String> {
+) -> Result<Vec<(&'static str, Figure)>, Error> {
     use Figure::{Name, Num};
-    let f = cur.str("fighter");
-    let n0 = |c: &str| {
-        cur.f64(c)
-            .into_iter()
-            .map(|x| if x.is_nan() { 0.0 } else { x })
-            .collect::<Vec<_>>()
-    };
+    let f = cur.str("fighter")?;
+    let n0 = |c: &str| cur.f64_or(c, 0.0);
     let [t, k, q] = points(
-        &n0("public_legacy_title_score"),
-        &n0("public_legacy_skill_score"),
-        &n0("public_legacy_resume_score"),
+        &n0("public_legacy_title_score")?,
+        &n0("public_legacy_skill_score")?,
+        &n0("public_legacy_resume_score")?,
     );
-    let score = cur.f64("public_legacy_score");
+    let score = cur.f64("public_legacy_score")?;
     let at = |name: &str| {
         f.iter()
             .position(|x| x == name)
-            .ok_or(format!("{name} is not in the current table"))
+            .ok_or_else(|| Error::at("figures", format!("{name} is not in the current table")))
     };
     let (a, b) = (at(PAIR[0])?, at(PAIR[1])?);
     let mut r = resume_rows(rated, p, None);
@@ -82,20 +78,23 @@ pub fn values(
         elite
             .get(name)
             .copied()
-            .ok_or(format!("{name} is not on the Prime board"))
+            .ok_or_else(|| Error::at("figures", format!("{name} is not on the Prime board")))
     };
     let (ea, eb) = (level(PAIR[0])?, level(PAIR[1])?);
     if ra.len() < 2 || rb.is_empty() {
-        return Err(format!(
-            "{} has {} priced wins and {} has {}; the text needs two and one",
-            PAIR[0],
-            ra.len(),
-            PAIR[1],
-            rb.len()
+        return Err(Error::at(
+            "figures",
+            format!(
+                "{} has {} priced wins and {} has {}; the text needs two and one",
+                PAIR[0],
+                ra.len(),
+                PAIR[1],
+                rb.len()
+            ),
         ));
     }
     let d = ea - eb;
-    let gender: HashMap<String, String> = f.iter().cloned().zip(cur.str("gender")).collect();
+    let gender: HashMap<String, String> = f.iter().cloned().zip(cur.str("gender")?).collect();
     let men: Vec<Row> = h
         .rows()
         .iter()
@@ -142,7 +141,7 @@ pub fn values(
 
 /// The paragraphs' fixed claims against the figures: a is ahead on points, résumé and Prime,
 /// a's two best wins both stand above b's best, and the era line rises.
-fn verify(v: &[(&'static str, Figure)]) -> Result<(), String> {
+fn verify(v: &[(&'static str, Figure)]) -> Result<(), Error> {
     let g = |k: &str| v.iter().find(|p| p.0 == k).map_or(f64::NAN, |p| p.1.num());
     let checks = [
         ("ahead on points", g("ratio") > 0.0),
@@ -155,9 +154,9 @@ fn verify(v: &[(&'static str, Figure)]) -> Result<(), String> {
         ("era line rises", g("era_gap") > 0.0),
     ];
     match checks.iter().find(|c| !c.1) {
-        Some(c) => Err(format!(
-            "{} is not {}; the README text claims it",
-            PAIR[0], c.0
+        Some(c) => Err(Error::at(
+            "figures",
+            format!("{} is not {}; the README text claims it", PAIR[0], c.0),
         )),
         None => Ok(()),
     }
@@ -263,9 +262,9 @@ mod tests {
     fn claims_hold_or_error() {
         assert!(verify(&figures(|_, x| x)).is_ok());
         let e = verify(&figures(|k, x| if k == "era_gap" { -x } else { x })).unwrap_err();
-        assert!(e.contains("era line rises"), "{e}");
+        assert!(e.0.contains("era line rises"), "{e}");
         let e = verify(&figures(|k, x| if k == "resume_a" { 0.0 } else { x })).unwrap_err();
-        assert!(e.contains("ahead on résumé"), "{e}");
+        assert!(e.0.contains("ahead on résumé"), "{e}");
     }
 
     #[test]
@@ -290,9 +289,9 @@ mod tests {
         let mut elite = HashMap::new();
         elite.insert(PAIR[1].to_string(), 1.0);
         let e = values(&cur, &[], &p, &h, &elite).unwrap_err();
-        assert!(e.contains("Jon Jones is not on the Prime board"), "{e}");
+        assert!(e.0.contains("Jon Jones is not on the Prime board"), "{e}");
         elite.insert(PAIR[0].to_string(), 2.0);
         let e = values(&cur, &[], &p, &h, &elite).unwrap_err();
-        assert!(e.contains("priced wins"), "{e}");
+        assert!(e.0.contains("priced wins"), "{e}");
     }
 }

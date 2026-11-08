@@ -89,11 +89,6 @@ pub fn var(a: &[f64], ddof: usize) -> f64 {
     psum(&d) / (n - ddof) as f64
 }
 
-/// `np.std(a, ddof)`.
-pub fn std(a: &[f64], ddof: usize) -> f64 {
-    var(a, ddof).sqrt()
-}
-
 /// Linear-interpolated quantile of sorted values (`np.percentile`, pandas `quantile`).
 pub fn quantile_sorted(s: &[f64], q: f64) -> f64 {
     if s.is_empty() {

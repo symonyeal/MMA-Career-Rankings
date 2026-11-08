@@ -7,7 +7,8 @@
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
-use mma_rankings::frame::{Frame, Table};
+use mma_rankings::error::Error;
+use mma_rankings::frame::{read_text, write_text, Frame, Table};
 use mma_rankings::layoff::Layoff;
 use mma_rankings::legacy::Pricing;
 use mma_rankings::names::Names;
@@ -99,20 +100,10 @@ const CURRENT: [&str; 71] = [
 /// Whole-career coverage counts fighters with at least this many UFC bouts.
 const COVERAGE_MIN_UFC: i64 = 3;
 
-fn read(p: &Path) -> String {
-    std::fs::read_to_string(p)
-        .unwrap_or_else(|e| panic!("{}: {e}", p.display()))
-        .replace("\r\n", "\n")
-}
-
-fn write(p: &Path, text: &str) {
-    std::fs::write(p, text).unwrap_or_else(|e| panic!("{}: {e}", p.display()));
-}
-
 /// Rows of `f` reordered to `order` by `fighter`, without the key; absent fighters read null.
-fn align(f: &Frame, order: &[String]) -> Frame {
+fn align(f: &Frame, order: &[String]) -> Result<Frame, Error> {
     let mut at = HashMap::new();
-    for (i, fighter) in f.str("fighter").into_iter().enumerate() {
+    for (i, fighter) in f.str("fighter")?.into_iter().enumerate() {
         assert!(!fighter.is_empty(), "stage has an empty fighter key");
         assert!(
             at.insert(fighter.clone(), i).is_none(),
@@ -123,29 +114,29 @@ fn align(f: &Frame, order: &[String]) -> Frame {
     assert_eq!(unique.len(), order.len(), "duplicate target fighter keys");
     let rest: Vec<String> = f.names().into_iter().filter(|c| c != "fighter").collect();
     let rest: Vec<&str> = rest.iter().map(String::as_str).collect();
-    f.take(&order.iter().map(|k| at.get(k).copied()).collect::<Vec<_>>())
+    f.take(&order.iter().map(|k| at.get(k).copied()).collect::<Vec<_>>())?
         .select(&rest)
 }
 
-fn stamp(site: &Path) {
+fn stamp(site: &Path) -> Result<(), Error> {
     let p = site.join("index.html");
-    let mut h = read(&p);
+    let mut h = read_text(&p)?;
     for a in ASSETS {
-        let v = &format!("{:x}", Sha256::digest(read(&site.join(a)).as_bytes()))[..10];
+        let v = &format!("{:x}", Sha256::digest(read_text(&site.join(a))?.as_bytes()))[..10];
         let re = regex::Regex::new(&format!(r#""{}(\?v=\w+)?""#, regex::escape(a))).unwrap();
         h = re
             .replace_all(&h, format!("\"{a}?v={v}\"").as_str())
             .into_owned();
     }
-    write(&p, &h);
+    write_text(&p, &h)
 }
 
-fn build(s: &Path, root: &Path) {
-    let names = Names::load(root);
-    let prepared = bouts::prepared(s, root, &names);
+fn build(s: &Path, root: &Path) -> Result<(), Error> {
+    let names = Names::load(root)?;
+    let prepared = bouts::prepared(s, root, &names)?;
     let rated = bouts::rated(&prepared);
-    let staged = bouts::staged(s);
-    let births = age::births(s);
+    let staged = bouts::staged(s)?;
+    let births = age::births(s)?;
 
     // Ratings: Glicko streams, WHR path, roster facts; ratings_current is ordered by mu_canonical.
     let g = glicko::run(&rated);
@@ -153,26 +144,30 @@ fn build(s: &Path, root: &Path) {
     let whr_shift = shift_bound(w.shift);
     let mut history = w.history;
     let apps = mma_rankings::perf::appearances(&rated);
-    let max = rated.iter().map(|b| b.day).max().unwrap();
+    let max = rated
+        .iter()
+        .map(|b| b.day)
+        .max()
+        .ok_or_else(|| Error::at(s.display(), "no rated bouts"))?;
     let base = g.current().frame();
-    let (fighter, mu) = (base.str("fighter"), base.f64("mu_canonical"));
+    let (fighter, mu) = (base.str("fighter")?, base.f64("mu_canonical")?);
     let mut ix: Vec<usize> = (0..base.len()).collect();
     ix.sort_by(|&i, &j| {
         mu[j]
             .total_cmp(&mu[i])
             .then_with(|| fighter[i].cmp(&fighter[j]))
     });
-    let base = base.take(&ix.iter().map(|&i| Some(i)).collect::<Vec<_>>());
-    let order = base.str("fighter");
+    let base = base.take(&ix.iter().map(|&i| Some(i)).collect::<Vec<_>>())?;
+    let order = base.str("fighter")?;
     let roster = align(
-        &roster::columns(&prepared, &rated, &history, &apps, max),
+        &roster::columns(&prepared, &rated, &history, &apps, max)?,
         &order,
-    );
-    let mut cur = base.hstack(&[&align(&w.current.frame(), &order), &roster]);
+    )?;
+    let mut cur = base.hstack(&[&align(&w.current.frame(), &order)?, &roster]);
     let female: HashSet<String> = cur
-        .str("fighter")
+        .str("fighter")?
         .into_iter()
-        .zip(cur.str("gender"))
+        .zip(cur.str("gender")?)
         .filter(|(_, g)| g == "F")
         .map(|(f, _)| f)
         .collect();
@@ -180,7 +175,7 @@ fn build(s: &Path, root: &Path) {
 
     // Scores: Prime and career skill, All-time legacy, Current.
     let layoff = Layoff::new(&history);
-    let rules = Rules::load(root);
+    let rules = Rules::load(root)?;
     let ctx = rules.context(&rated);
     let era_p = Pricing {
         h: &history,
@@ -192,20 +187,20 @@ fn build(s: &Path, root: &Path) {
         rating: |r| r.mu,
         layoff: &layoff,
     };
-    let pools = skill::pools(&cur);
+    let pools = skill::pools(&cur)?;
     let years = skill::years(&history, |r| r.era, &pools);
-    cur = cur.hstack(&[&align(&skill::prime(&history, &cur).frame(), &order)]);
-    cur = cur.hstack(&[&align(&skill::career(&years).frame(), &order)]);
+    cur = cur.hstack(&[&align(&skill::prime(&history, &cur)?.frame(), &order)?]);
+    cur = cur.hstack(&[&align(&skill::career(&years).frame(), &order)?]);
     cur = cur.hstack(&[&align(
-        &legacy::score(&cur, &pools, &apps, &rated, &era_p, &rules).frame(),
+        &legacy::score(&cur, &pools, &apps, &rated, &era_p, &rules)?.frame(),
         &order,
-    )]);
+    )?]);
     cur = cur.hstack(&[&align(
-        &current::score(&cur, &pools, &rated, &prepared, &mu_p, &ctx).frame(),
+        &current::score(&cur, &pools, &rated, &prepared, &mu_p, &ctx)?.frame(),
         &order,
-    )]);
-    let cur = cur.select(&CURRENT);
-    cur.write(&s.join("ratings_current.parquet"));
+    )?]);
+    let cur = cur.select(&CURRENT)?;
+    cur.write(&s.join("ratings_current.parquet"))?;
     Table::default()
         .str(
             "fighter",
@@ -239,17 +234,17 @@ fn build(s: &Path, root: &Path) {
             "mu_era",
             &history.rows().iter().map(|r| r.era).collect::<Vec<_>>(),
         )
-        .write(&s.join("ratings_history_whr.parquet"));
-    appearances::write(s, &apps);
+        .write(&s.join("ratings_history_whr.parquet"))?;
+    appearances::write(s, &apps)?;
     let integ = integrity::appearances(&rated).frame();
-    integ.write(&s.join("integrity_appearances.parquet"));
-    let dom = dominance::fighters(s, &rated, &names).frame();
-    dom.write(&s.join("fighter_dominance.parquet"));
+    integ.write(&s.join("integrity_appearances.parquet"))?;
+    let dom = dominance::fighters(s, &rated, &names)?.frame();
+    dom.write(&s.join("fighter_dominance.parquet"))?;
     let cal = glicko::calibration(&g, &rated).frame();
-    cal.write(&s.join("calibration_residuals.parquet"));
+    cal.write(&s.join("calibration_residuals.parquet"))?;
 
     // Boards and the class ledger.
-    let b = boards::build(&cur, &history, &rated, &staged, &integ, &apps);
+    let b = boards::build(&cur, &history, &rated, &staged, &integ, &apps)?;
     let fr = |t: &Table| t.clone().frame();
     let (at, pr, cu) = (
         b.all_time.each_ref().map(fr),
@@ -267,26 +262,32 @@ fn build(s: &Path, root: &Path) {
         ("integrity_ledger", &ledger),
         ("integrity_discounted_board", &ib),
     ] {
-        f.write(&s.join(format!("{name}.parquet")));
+        f.write(&s.join(format!("{name}.parquet")))?;
     }
     let ranked: HashSet<String> = at
         .iter()
-        .flat_map(|f| f.str("fighter").into_iter().zip(f.str("status")))
+        .map(|f| Ok(f.str("fighter")?.into_iter().zip(f.str("status")?)))
+        .collect::<Result<Vec<_>, Error>>()?
+        .into_iter()
+        .flatten()
         .filter(|(_, st)| st == "ranked")
         .map(|(f, _)| f)
         .collect();
-    let class = classes::board(&cur, &pools, &apps, &rated, &era_p, &ctx, &years, &ranked).frame();
-    class.write(&s.join("class_board.parquet"));
+    let class = classes::board(&cur, &pools, &apps, &rated, &era_p, &ctx, &years, &ranked)?.frame();
+    class.write(&s.join("class_board.parquet"))?;
 
     // Run record.
-    let cov = Frame::read(&s.join("career_coverage.parquet"));
+    let cov = Frame::read(
+        &s.join("career_coverage.parquet"),
+        &["ufc_bouts", "whole_career_merged"],
+    )?;
     let eligible: Vec<bool> = cov
-        .i64("ufc_bouts")
+        .i64("ufc_bouts")?
         .iter()
         .map(|&n| n >= COVERAGE_MIN_UFC)
         .collect();
     let merged = cov
-        .bool("whole_career_merged")
+        .bool("whole_career_merged")?
         .iter()
         .zip(&eligible)
         .filter(|(m, e)| **m && **e)
@@ -294,7 +295,11 @@ fn build(s: &Path, root: &Path) {
     let eligible = eligible.iter().filter(|e| **e).count() as i64;
     let events: HashSet<(mma_rankings::frame::Day, &str)> =
         rated.iter().map(|b| (b.day, b.event.as_str())).collect();
-    let snapshot = s.file_name().unwrap().to_string_lossy().into_owned();
+    let snapshot = s
+        .file_name()
+        .ok_or_else(|| Error::at(s.display(), "snapshot path has no folder name"))?
+        .to_string_lossy()
+        .into_owned();
     let run = json!({
         "rated_bouts": rated.len(),
         "birth_dates": births.len(),
@@ -304,13 +309,18 @@ fn build(s: &Path, root: &Path) {
         "events_processed": events.len(),
         "career_coverage": {"eligible": eligible, "whole_career_merged": merged},
     });
-    write(
+    write_text(
         &s.join("rating_run.json"),
-        &(serde_json::to_string_pretty(&run).unwrap() + "\n"),
-    );
+        &(serde_json::to_string_pretty(&run).map_err(|e| Error::at("rating_run.json", e))? + "\n"),
+    )?;
 
     // RANKINGS.md and README.md: generated blocks, then the README narrative.
-    let through = mma_rankings::frame::iso(prepared.iter().map(|b| b.day).max().unwrap());
+    let through = prepared
+        .iter()
+        .map(|b| b.day)
+        .max()
+        .map(mma_rankings::frame::iso)
+        .ok_or_else(|| Error::at(s.display(), "no bouts"))?;
     let rel = Release {
         snapshot: &snapshot,
         through: &through,
@@ -319,28 +329,30 @@ fn build(s: &Path, root: &Path) {
         eligible,
         merged,
     };
-    let blocks = publish::blocks(&b, &cur, &history, &class, &rel);
+    let blocks = publish::blocks(&b, &cur, &history, &class, &rel)?;
     let rk = root.join("RANKINGS.md");
-    write(
+    write_text(
         &rk,
-        &publish::splice(&read(&rk), &blocks, &publish::RANKINGS),
-    );
+        &publish::splice(&read_text(&rk)?, &blocks, &publish::RANKINGS),
+    )?;
     let elite: HashMap<String, f64> = pr[0]
-        .str("fighter")
+        .str("fighter")?
         .into_iter()
-        .zip(pr[0].f64("elite_level"))
+        .zip(pr[0].f64("elite_level")?)
         .collect();
-    let mut readme = publish::splice(&read(&root.join("README.md")), &blocks, &publish::README);
-    let figs = figures::values(&cur, &rated, &era_p, &history, &elite)
-        .unwrap_or_else(|e| panic!("README.md narrative: {e}"));
+    let mut readme = publish::splice(
+        &read_text(&root.join("README.md"))?,
+        &blocks,
+        &publish::README,
+    );
+    let figs = figures::values(&cur, &rated, &era_p, &history, &elite)?;
     for (start, text) in figures::paragraphs(&figs) {
-        readme =
-            narrative::splice(&readme, start, &text).unwrap_or_else(|e| panic!("README.md: {e}"));
+        readme = narrative::splice(&readme, start, &text).map_err(|e| Error::at("README.md", e))?;
     }
-    write(&root.join("README.md"), &readme);
+    write_text(&root.join("README.md"), &readme)?;
 
     // Site data, then the asset stamp.
-    let market = forecast::market(s, &staged, &births);
+    let market = forecast::market(s, &staged, &births)?;
     let data = site::data(&site::Inputs {
         snapshot: s,
         rated_bouts: rated.len() as i64,
@@ -361,20 +373,23 @@ fn build(s: &Path, root: &Path) {
         births: &births,
         years: &years,
         market: &market,
-    });
-    write(&root.join("site/data.js"), &data);
-    stamp(&root.join("site"));
+    })?;
+    write_text(&root.join("site/data.js"), &data)?;
+    stamp(&root.join("site"))?;
 
     // Top-100 audit.
-    let cf = Frame::read(&s.join("canonical_fights.parquet"));
+    let cf = Frame::read(
+        &s.join("canonical_fights.parquet"),
+        &["fighter_a", "fighter_b"],
+    )?;
     let canonical: Vec<(String, String)> = cf
-        .str("fighter_a")
+        .str("fighter_a")?
         .into_iter()
-        .zip(cf.str("fighter_b"))
+        .zip(cf.str("fighter_b")?)
         .collect();
     let out = root.join("data/model_tuning/top100-audit");
-    std::fs::create_dir_all(&out).unwrap();
-    audit::write(&out, s, &cur, &history, &rated, &canonical, &births);
+    std::fs::create_dir_all(&out).map_err(|e| Error::at(out.display(), e))?;
+    audit::write(&out, s, &cur, &history, &rated, &canonical, &births)
 }
 
 /// The decade above the WHR fit's largest rating change in its last pass, as text ("1e-12"):
@@ -386,25 +401,37 @@ fn shift_bound(shift: f64) -> String {
     format!("1e{e}")
 }
 
-fn main() {
+fn run() -> Result<(), Error> {
     let a: Vec<String> = std::env::args().skip(1).collect();
+    let io = |e: std::io::Error| Error::at("mma", e);
     match a.iter().map(String::as_str).collect::<Vec<_>>().as_slice() {
-        ["stamp"] => release::stamp(&std::env::current_dir().unwrap(), stamp).unwrap(),
+        ["stamp"] => release::stamp(&std::env::current_dir().map_err(io)?, stamp).map_err(io),
         ["heldout", s] => {
             let s = Path::new(s);
-            let root = release::root_of(s).unwrap();
-            let names = Names::load(&root);
-            let rated = bouts::rated(&bouts::prepared(s, &root, &names));
+            let root = release::root_of(s).map_err(io)?;
+            let names = Names::load(&root)?;
+            let rated = bouts::rated(&bouts::prepared(s, &root, &names)?);
             print!(
                 "{}",
                 heldout::format(&heldout::compare(
                     &rated,
-                    &age::births(s),
+                    &age::births(s)?,
                     heldout::candidate()
                 ))
             );
+            Ok(())
         }
-        [s] => release::build(Path::new(s), build).unwrap(),
-        _ => panic!("usage: mma <snapshot> | mma heldout <snapshot> | mma stamp"),
+        [s] => release::build(Path::new(s), build).map_err(io),
+        _ => Err(Error::at(
+            "usage",
+            "mma <snapshot> | mma heldout <snapshot> | mma stamp",
+        )),
+    }
+}
+
+fn main() {
+    if let Err(e) = run() {
+        eprintln!("{e}");
+        std::process::exit(1);
     }
 }

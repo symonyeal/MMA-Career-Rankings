@@ -3,6 +3,8 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import pytest
+
 import refresh
 
 
@@ -84,3 +86,21 @@ def test_the_changelog_compares_against_the_previous_release_not_a_research_run(
         (folder / "ratings_current.parquet").write_bytes(b"")
     previous = refresh.previous_snapshot_dir(tmp_path, "2026-10-14")
     assert previous is not None and previous.name == "2026-08-13"
+
+
+def test_a_published_scope_that_cannot_stage_stops_the_refresh(tmp_path: Path, monkeypatch):
+    def missing(_snapshot):
+        raise FileNotFoundError("no sherdog corpus")
+
+    monkeypatch.setattr(refresh, "stage_pre_unified_scope", missing)
+    monkeypatch.setattr(refresh, "DEFAULT_PUBLISHED_SCOPE", "pre_unified,majors")
+    with pytest.raises(FileNotFoundError, match="sherdog"):
+        refresh.stage_scopes(tmp_path)
+
+
+def test_an_unpublished_scope_that_cannot_stage_is_reported(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(refresh, "stage_pre_unified_scope", lambda _s: {"bouts": 1})
+    monkeypatch.setattr("loaders.majors_scope.stage_majors_scope", lambda _s: (_ for _ in ()).throw(ValueError("x")))
+    monkeypatch.setattr(refresh, "DEFAULT_PUBLISHED_SCOPE", "pre_unified")
+    staged = refresh.stage_scopes(tmp_path)
+    assert staged["majors"].startswith("not staged")

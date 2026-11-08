@@ -12,6 +12,7 @@ use crate::appearances::Appearance;
 use crate::bouts::Bout;
 use crate::division;
 use crate::divisions::normalize;
+use crate::error::Error;
 use crate::frame::{Day, Frame, Table};
 use crate::history::History;
 use crate::policy::DAYS_PER_MONTH;
@@ -75,7 +76,7 @@ pub fn columns(
     history: &History,
     apps: &[Appearance],
     snapshot_max: Day,
-) -> Frame {
+) -> Result<Frame, Error> {
     // Record and latest division over rated sides in pandas order: a-sides, then b-sides.
     let sides = || {
         rated
@@ -172,22 +173,20 @@ pub fn columns(
             &fighters.iter().map(|f| c(f, 2)).collect::<Vec<_>>(),
         )
         .frame();
-    let div = division::primary(rated, apps, history)
-        .unwrap_or_else(|e| panic!("{e}"))
-        .frame();
+    let div = division::primary(rated, apps, history)?.frame();
     let at: HashMap<String, usize> = div
-        .str("fighter")
+        .str("fighter")?
         .into_iter()
         .enumerate()
         .map(|(i, f)| (f, i))
         .collect();
     let idx: Vec<Option<usize>> = fighters.iter().map(|f| at.get(*f).copied()).collect();
-    base.hstack(&[&div
+    Ok(base.hstack(&[&div
         .select(&[
             "career_division",
             "career_division_reliability",
             "current_division",
             "current_division_reliability",
-        ])
-        .take(&idx)])
+        ])?
+        .take(&idx)?]))
 }

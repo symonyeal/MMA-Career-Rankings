@@ -9,6 +9,7 @@
 use std::collections::HashMap;
 
 use crate::bouts::Bout;
+use crate::error::Error;
 use crate::frame::{Day, Frame, Table};
 use crate::legacy::{points, resume_ledger, resume_rows, title_ledger, title_rows, total, Pricing};
 use crate::orgs::Org;
@@ -25,16 +26,20 @@ pub fn score(
     recorded: &[Bout],
     p: &Pricing,
     ctx: &HashMap<String, Org>,
-) -> Table {
-    let reference: Day = rated.iter().map(|b| b.day).max().unwrap();
+) -> Result<Table, Error> {
+    let reference: Day = rated
+        .iter()
+        .map(|b| b.day)
+        .max()
+        .ok_or_else(|| Error::at("current", "no rated bouts"))?;
     let since = reference as f64 - WINDOW_MONTHS * DAYS_PER_MONTH;
-    let fighters = cur.str("fighter");
+    let fighters = cur.str("fighter")?;
     let e: Vec<f64> = cur
-        .f64("public_legacy_exposure_factor")
+        .f64("public_legacy_exposure_factor")?
         .into_iter()
         .map(|x| if x.is_nan() { 1.0 } else { x })
         .collect();
-    let aged = cur.f64("mu_whr_age_activity_adjusted");
+    let aged = cur.f64("mu_whr_age_activity_adjusted")?;
     let title = title_ledger(&title_rows(rated, p, pools, ctx, Some(since)));
     let resume = resume_ledger(&resume_rows(rated, p, Some(since)));
     let mut title_wins: HashMap<&str, i64> = HashMap::new();
@@ -108,7 +113,7 @@ pub fn score(
         })
         .collect();
     let int = |m: &dyn Fn(&str) -> i64| fighters.iter().map(|f| m(f)).collect::<Vec<i64>>();
-    Table::default()
+    Ok(Table::default()
         .str("fighter", &fighters)
         .f64("current_title_score", &ts)
         .i64(
@@ -125,5 +130,5 @@ pub fn score(
         .f64("current_skill_score", &ks)
         .f64("current_score", &score)
         .day("last_ufc_event_date", &lu)
-        .f64("months_since_ufc", &months)
+        .f64("months_since_ufc", &months))
 }

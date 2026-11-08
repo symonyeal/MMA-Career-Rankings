@@ -187,3 +187,13 @@ def test_narrowing_is_possible_when_it_is_the_intent(tmp_path: Path):
     write_combined_fights(snapshot)
     narrowed = write_combined_fights(snapshot, scope="majors", allow_narrowing=True)
     assert set(narrowed["source_corpora"]) == {"ufc", "majors"}
+
+
+def test_a_write_that_would_drop_a_corpus_raises(tmp_path: Path):
+    snapshot = tmp_path / "snapshot"
+    snapshot.mkdir()
+    _three_corpus_snapshot(snapshot)
+    write_combined_fights(snapshot)
+    (snapshot / SCOPE_ARTIFACT["majors"]).unlink()
+    with pytest.raises(ValueError, match="majors"):
+        write_combined_fights(snapshot, scope="pre_unified,fightmatrix")

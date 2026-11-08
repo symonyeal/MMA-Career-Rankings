@@ -440,7 +440,7 @@ mod tests {
         assert_eq!(scores(&nc), None);
         let g = run(&[nc]);
         let current = g.current().frame();
-        assert_eq!(current.f64("mu_canonical"), [1500.0, 1500.0]);
+        assert_eq!(current.f64("mu_canonical").unwrap(), [1500.0, 1500.0]);
     }
 
     /// Glickman (2012), "Example of the Glicko-2 system": 1500/200/0.06 against three opponents.

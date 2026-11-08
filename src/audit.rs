@@ -22,7 +22,8 @@ use crate::bouts::Bout;
 use crate::connectivity::{Graph, MIN_PATHS};
 use crate::divisions::female;
 use crate::era::year;
-use crate::frame::{iso, Day, Frame, Table};
+use crate::error::Error;
+use crate::frame::{iso, write_text, Day, Frame, Table};
 use crate::history::History;
 use crate::policy::MIN_PERIODS;
 use crate::stats::{py_repr, py_round};
@@ -173,7 +174,7 @@ struct Anchors {
 }
 
 impl Anchors {
-    fn new(snapshot: &Path) -> Anchors {
+    fn new(snapshot: &Path) -> Result<Anchors, Error> {
         let mut a = Anchors {
             rows: vec![],
             at: HashMap::new(),
@@ -190,15 +191,15 @@ impl Anchors {
         }
         let p = snapshot.join("fightmatrix_all_time.parquet");
         if p.exists() {
-            let fm = Frame::read(&p);
-            let rank = fm.f64("rank");
-            for (f, r) in fm.str("fighter").iter().zip(rank) {
+            let fm = Frame::read(&p, &["fighter", "rank"])?;
+            let rank = fm.f64("rank")?;
+            for (f, r) in fm.str("fighter")?.iter().zip(rank) {
                 if !f.is_empty() && !r.is_nan() {
                     a.add(f, "FightMatrix all-time local snapshot", r as i64);
                 }
             }
         }
-        a
+        Ok(a)
     }
 
     fn add(&mut self, fighter: &str, source: &'static str, rank: i64) {
@@ -261,15 +262,15 @@ fn title_override(periods: f64, ufc: f64, score: f64, wins: f64, defenses: f64) 
 
 /// `_ranked`: rows of `pop` eligible on `col` with a positive score, by score desc then name;
 /// returns `(row, score)` in rank order.
-fn ranked(c: &Frame, pop: &[usize], col: &str) -> Vec<(usize, f64)> {
-    let (score, periods) = (c.f64(col), c.f64("rating_periods"));
+fn ranked(c: &Frame, pop: &[usize], col: &str) -> Result<Vec<(usize, f64)>, Error> {
+    let (score, periods) = (c.f64(col)?, c.f64("rating_periods")?);
     let (ufc, total, wins, def) = (
-        c.f64("public_legacy_ufc_bouts"),
-        c.f64(SCORE),
-        c.f64("public_legacy_title_wins"),
-        c.f64("public_legacy_title_defenses"),
+        c.f64("public_legacy_ufc_bouts")?,
+        c.f64(SCORE)?,
+        c.f64("public_legacy_title_wins")?,
+        c.f64("public_legacy_title_defenses")?,
     );
-    let names = c.str("fighter");
+    let names = c.str("fighter")?;
     let mut out: Vec<(usize, f64)> = pop
         .iter()
         .copied()
@@ -284,7 +285,7 @@ fn ranked(c: &Frame, pop: &[usize], col: &str) -> Vec<(usize, f64)> {
         y.1.total_cmp(&x.1)
             .then_with(|| names[x.0].cmp(&names[y.0]))
     });
-    out
+    Ok(out)
 }
 
 /// `f"{x:,.{d}f}"`, "NA" for a missing value.
@@ -369,15 +370,15 @@ pub fn write(
     rated: &[Bout],
     canonical: &[(String, String)],
     births: &HashMap<String, Day>,
-) {
+) -> Result<(), Error> {
     let c = current;
-    let anchors = Anchors::new(snapshot);
-    let names = c.str("fighter");
-    let gender = c.str("gender");
+    let anchors = Anchors::new(snapshot)?;
+    let names = c.str("fighter")?;
+    let gender = c.str("gender")?;
     let (men, women): (Vec<usize>, Vec<usize>) = (0..c.len()).partition(|&i| !female(&gender[i]));
-    let published = ranked(c, &men, SCORE);
-    let published_women = ranked(c, &women, SCORE);
-    let skill = ranked(c, &men, SKILL);
+    let published = ranked(c, &men, SCORE)?;
+    let published_women = ranked(c, &women, SCORE)?;
+    let skill = ranked(c, &men, SKILL)?;
 
     // Score comparison: outer join on fighter, sorted by name.
     let mut cmp: BTreeMap<&str, [Option<(i64, f64)>; 2]> = BTreeMap::new();
@@ -418,8 +419,8 @@ pub fn write(
     } else {
         t.f64("rank_change_vs_skill_mass", &change)
     };
-    std::fs::create_dir_all(dir).unwrap();
-    write_parquet(&t.frame(), &dir.join("top100_score_comparison.parquet"));
+    std::fs::create_dir_all(dir).map_err(|e| Error::at(dir.display(), e))?;
+    write_parquet(&t.frame(), &dir.join("top100_score_comparison.parquet"))?;
 
     // The top 100 with coverage and connectivity.
     let top: Vec<(usize, f64)> = published.iter().take(100).copied().collect();
@@ -476,14 +477,14 @@ pub fn write(
 
     let g = |n: &str| c.f64(n);
     let (skill_mass, skill_score, exposure, resume, contender, tw, td, tdiv) = (
-        g(SKILL),
-        g("public_legacy_skill_score"),
-        g("public_legacy_exposure_factor"),
-        g("public_legacy_resume_score"),
-        g("public_legacy_contender_wins"),
-        g("public_legacy_title_wins"),
-        g("public_legacy_title_defenses"),
-        g("public_legacy_title_win_divisions"),
+        g(SKILL)?,
+        g("public_legacy_skill_score")?,
+        g("public_legacy_exposure_factor")?,
+        g("public_legacy_resume_score")?,
+        g("public_legacy_contender_wins")?,
+        g("public_legacy_title_wins")?,
+        g("public_legacy_title_defenses")?,
+        g("public_legacy_title_win_divisions")?,
     );
     let (mut reasons, mut classes, mut fixes) = (vec![], vec![], vec![]);
     for (k, &(i, s)) in top.iter().enumerate() {
@@ -548,10 +549,10 @@ pub fn write(
         .str("recommended_fix_or_explanation", &fixes)
         .frame();
     let audit = c
-        .take(&top.iter().map(|p| Some(p.0)).collect::<Vec<_>>())
+        .take(&top.iter().map(|p| Some(p.0)).collect::<Vec<_>>())?
         .hstack(&[&added]);
-    write_parquet(&audit, &dir.join("top100_audit.parquet"));
-    std::fs::write(dir.join("top100_audit.csv"), csv(&audit)).unwrap();
+    write_parquet(&audit, &dir.join("top100_audit.parquet"))?;
+    write_text(&dir.join("top100_audit.csv"), &csv(&audit))?;
 
     // Anchors absent from the 100, best rank first.
     let in_top: HashSet<String> = who.iter().map(|f| key(f)).collect();
@@ -578,7 +579,7 @@ pub fn write(
             cell(MISSING_FIX)
         );
     }
-    std::fs::write(dir.join("public_anchor_missing_from_model_top100.csv"), m).unwrap();
+    write_text(&dir.join("public_anchor_missing_from_model_top100.csv"), &m)?;
 
     // Summary.
     let mut on_board: HashMap<String, (i64, &str)> = HashMap::new();
@@ -634,27 +635,32 @@ pub fn write(
         "top10": (0..10.min(top.len())).map(|k| json!({
             "model_rank": k + 1, "fighter": who[k], "score": top[k].1, "model_reason": reasons[k]})).collect::<Vec<_>>(),
     });
-    std::fs::write(dir.join("top100_audit.json"), python_json(&summary) + "\n").unwrap();
+    write_text(
+        &dir.join("top100_audit.json"),
+        &(python_json(&summary) + "\n"),
+    )
 }
 
 /// Parquet as pandas writes it: strings as `large_string`.
-fn write_parquet(f: &Frame, path: &Path) {
+fn write_parquet(f: &Frame, path: &Path) -> Result<(), Error> {
     let b = f.batch();
-    let (fields, columns): (Vec<Field>, Vec<ArrayRef>) = b
-        .schema()
-        .fields()
-        .iter()
-        .zip(b.columns())
-        .map(|(fi, a)| match fi.data_type() {
-            DataType::Utf8 => (
-                Field::new(fi.name(), DataType::LargeUtf8, true),
-                cast(a, &DataType::LargeUtf8).unwrap(),
-            ),
-            _ => (fi.as_ref().clone(), a.clone()),
-        })
-        .unzip();
-    Frame::from_batch(RecordBatch::try_new(Arc::new(Schema::new(fields)), columns).unwrap())
-        .write(path);
+    let at = |e: &dyn std::fmt::Display| Error::at(path.display(), e);
+    let mut fields = vec![];
+    let mut columns: Vec<ArrayRef> = vec![];
+    for (fi, a) in b.schema().fields().iter().zip(b.columns()) {
+        match fi.data_type() {
+            DataType::Utf8 => {
+                fields.push(Field::new(fi.name(), DataType::LargeUtf8, true));
+                columns.push(cast(a, &DataType::LargeUtf8).map_err(|e| at(&e))?);
+            }
+            _ => {
+                fields.push(fi.as_ref().clone());
+                columns.push(a.clone());
+            }
+        }
+    }
+    let batch = RecordBatch::try_new(Arc::new(Schema::new(fields)), columns).map_err(|e| at(&e))?;
+    Frame::from_batch(batch)?.write(path)
 }
 
 /// A csv field quoted as Python's `csv.QUOTE_MINIMAL` does.

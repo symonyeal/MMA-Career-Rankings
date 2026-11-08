@@ -10,7 +10,8 @@ use std::path::Path;
 
 use regex::Regex;
 
-use crate::frame::{Day, Frame};
+use crate::error::Error;
+use crate::frame::{csv_rows, parse_day, Day, Frame};
 use crate::names::Names;
 
 /// Published non-UFC scope, shared with Python staging. UFC is always the base.
@@ -188,52 +189,78 @@ impl Bout {
         self.score
     }
 }
+/// Columns of `combined_fights.parquet` that `staged` reads.
+const STAGED: [&str; 22] = [
+    "fight_url",
+    "event_name",
+    "fighter_a",
+    "fighter_b",
+    "winner",
+    "loser",
+    "weight_class",
+    "method_class",
+    "details_text",
+    "source",
+    "org",
+    "source_corpus",
+    "available_in_corpora",
+    "event_date",
+    "is_draw",
+    "is_nc",
+    "is_excluded",
+    "is_title_fight",
+    "is_model_bout",
+    "method_score_winner",
+    "end_round",
+    "end_time_seconds",
+];
 /// Every staged row, in file order, with the staged winner score.
-pub fn staged(snapshot: &Path) -> Vec<Bout> {
-    let f = Frame::read(&snapshot.join("combined_fights.parquet"));
+pub fn staged(snapshot: &Path) -> Result<Vec<Bout>, Error> {
+    let f = Frame::read(&snapshot.join("combined_fights.parquet"), &STAGED)?;
     let s = |c: &str| f.str(c);
     let (url, event, a, b, winner, loser) = (
-        s("fight_url"),
-        s("event_name"),
-        s("fighter_a"),
-        s("fighter_b"),
-        s("winner"),
-        s("loser"),
+        s("fight_url")?,
+        s("event_name")?,
+        s("fighter_a")?,
+        s("fighter_b")?,
+        s("winner")?,
+        s("loser")?,
     );
     let (wc, method, details, source, org, corpus, corpora) = (
-        s("weight_class"),
-        s("method_class"),
-        s("details_text"),
-        s("source"),
-        s("org"),
-        s("source_corpus"),
-        s("available_in_corpora"),
+        s("weight_class")?,
+        s("method_class")?,
+        s("details_text")?,
+        s("source")?,
+        s("org")?,
+        s("source_corpus")?,
+        s("available_in_corpora")?,
     );
-    let day = f.day("event_date");
+    let day = f.day("event_date")?;
     let (draw, nc, excluded, title, model) = (
-        f.bool("is_draw"),
-        f.bool("is_nc"),
-        f.bool("is_excluded"),
-        f.bool("is_title_fight"),
-        f.bool("is_model_bout"),
+        f.bool("is_draw")?,
+        f.bool("is_nc")?,
+        f.bool("is_excluded")?,
+        f.bool("is_title_fight")?,
+        f.bool("is_model_bout")?,
     );
     let (score, end_round, end_secs) = (
-        f.f64("method_score_winner"),
-        f.f64("end_round"),
-        f.f64("end_time_seconds"),
+        f.f64("method_score_winner")?,
+        f.f64("end_round")?,
+        f.f64("end_time_seconds")?,
     );
     (0..f.len())
         .map(|i| {
+            let at = |e: &str| Error::at(format!("combined_fights row {i}"), e);
             let outcome = Outcome::from_record(&a[i], &b[i], &winner[i], &loser[i], draw[i], nc[i])
-                .unwrap_or_else(|e| panic!("combined_fights row {i}: {e}"));
+                .map_err(at)?;
             let mut bout = Bout::new(
                 a[i].clone(),
                 b[i].clone(),
-                day[i].expect("bout without a date"),
+                day[i].ok_or_else(|| at("bout without a date"))?,
                 outcome,
                 score[i],
             )
-            .unwrap_or_else(|e| panic!("combined_fights row {i}: {e}"));
+            .map_err(at)?;
             bout.url = url[i].clone();
             bout.event = event[i].clone();
             bout.excluded = excluded[i];
@@ -248,7 +275,7 @@ pub fn staged(snapshot: &Path) -> Vec<Bout> {
             bout.corpus = corpus[i].clone();
             bout.corpora = corpora[i].clone();
             bout.model = model[i];
-            bout
+            Ok(bout)
         })
         .collect()
 }
@@ -265,8 +292,8 @@ fn method_score(method: &str) -> Option<f64> {
 }
 
 /// The published scope, priced, ordered and integrity-flagged; excluded bouts included.
-pub fn prepared(snapshot: &Path, root: &Path, names: &Names) -> Vec<Bout> {
-    let mut out: Vec<Bout> = staged(snapshot)
+pub fn prepared(snapshot: &Path, root: &Path, names: &Names) -> Result<Vec<Bout>, Error> {
+    let mut out: Vec<Bout> = staged(snapshot)?
         .into_iter()
         .filter(|x| {
             let m = format!(",{},", x.corpora);
@@ -281,13 +308,20 @@ pub fn prepared(snapshot: &Path, root: &Path, names: &Names) -> Vec<Bout> {
         }
     }
     out.sort_by(|x, y| (x.day, &x.event).cmp(&(y.day, &y.event)));
-    flag_integrity(&mut out, root, names);
-    out
+    flag_integrity(&mut out, root, names)?;
+    Ok(out)
 }
 
 /// Bouts that enter the rating: prepared and not excluded.
 pub fn rated(prepared: &[Bout]) -> Vec<Bout> {
     prepared.iter().filter(|x| !x.excluded).cloned().collect()
+}
+
+/// The details text confirms a failed drug test or illegal inhaler use.
+fn ped_text(details: &str) -> bool {
+    static RE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
+    RE.get_or_init(|| Regex::new(r"(?i)(?:failed\s+drug\s+test|illegal\s+inhaler\s+use)").unwrap())
+        .is_match(details)
 }
 
 fn ped_fighter(x: &Bout) -> String {
@@ -331,11 +365,10 @@ fn winner_named(winner: &str, text: &str, names: &Names) -> bool {
         .any(|p| text_key.contains(&names.key(p, true)))
 }
 
-fn flag_integrity(bouts: &mut [Bout], root: &Path, names: &Names) {
-    let ped_re = Regex::new(r"(?i)(?:failed\s+drug\s+test|illegal\s+inhaler\s+use)").unwrap();
+fn flag_integrity(bouts: &mut [Bout], root: &Path, names: &Names) -> Result<(), Error> {
     let weight_re = Regex::new(r"(?i)missed?\s+weight").unwrap();
     for x in bouts.iter_mut() {
-        x.ped = ped_re.is_match(&x.details);
+        x.ped = ped_text(&x.details);
         if x.ped {
             x.ped_fighter = ped_fighter(x);
             x.ped_source = "Greco details_text".into();
@@ -348,34 +381,61 @@ fn flag_integrity(bouts: &mut [Bout], root: &Path, names: &Names) {
     }
     // Curated rows match on (date, event) and a named participant, and replace the text-derived citation.
     let path = root.join("data/external/integrity/ped_bouts.csv");
-    let mut rd = csv::Reader::from_path(path).unwrap();
-    let h = rd.headers().unwrap().clone();
-    let col = |n: &str| h.iter().position(|x| x == n).unwrap();
-    let (date, event, fighter, body, substance, finding, url) = (
-        col("event_date"),
-        col("event_name"),
-        col("fighter"),
-        col("sanctioning_body"),
-        col("substance"),
-        col("finding_type"),
-        col("source_url"),
-    );
-    for r in rd.records().map(Result::unwrap) {
-        let day = crate::frame::parse_day(&r[date]);
-        for x in bouts.iter_mut().filter(|x| {
-            x.day == day && x.event == r[event] && (x.a == r[fighter] || x.b == r[fighter])
-        }) {
+    let cols = [
+        "event_date",
+        "event_name",
+        "fighter",
+        "sanctioning_body",
+        "substance",
+        "finding_type",
+        "source_url",
+    ];
+    for (i, r) in csv_rows(&path, &cols)?.iter().enumerate() {
+        let (date, event, fighter, body, substance, finding, url) =
+            (&r[0], &r[1], &r[2], &r[3], &r[4], &r[5], &r[6]);
+        let day = parse_day(date)
+            .map_err(|e| Error::at(path.display(), format!("row {}: {e}", i + 2)))?;
+        for x in bouts
+            .iter_mut()
+            .filter(|x| x.day == day && x.event == *event && (x.a == *fighter || x.b == *fighter))
+        {
             x.ped = true;
-            x.ped_fighter = r[fighter].to_string();
-            x.ped_source = format!("curated:{}", &r[body]);
-            x.ped_detail = format!("{}; {}; {}", &r[substance], &r[finding], &r[url]);
+            x.ped_fighter = fighter.to_string();
+            x.ped_source = format!("curated:{body}");
+            x.ped_detail = format!("{substance}; {finding}; {url}");
         }
     }
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `tests/fixtures/rule_parity.json` is also asserted by `tests/test_rule_parity.py`.
+    #[test]
+    fn ped_text_rules_match_the_python_staging() {
+        let cases = crate::names::parity_cases();
+        for c in cases["ped"].as_array().unwrap() {
+            let [text, a, b, ped, fighter] = [0, 1, 2, 3, 4].map(|i| &c[i]);
+            let mut x = Bout::new(
+                a.as_str().unwrap().into(),
+                b.as_str().unwrap().into(),
+                0,
+                Outcome::Draw,
+                f64::NAN,
+            )
+            .unwrap();
+            x.details = text.as_str().unwrap().into();
+            assert_eq!(ped_text(&x.details), ped.as_bool().unwrap(), "{c}");
+            let got = if ped_text(&x.details) {
+                ped_fighter(&x)
+            } else {
+                String::new()
+            };
+            assert_eq!(got, fighter.as_str().unwrap(), "{c}");
+        }
+    }
 
     #[test]
     fn rejects_contradictory_source_outcomes() {

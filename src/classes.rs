@@ -14,37 +14,13 @@ use crate::appearances::Appearance;
 use crate::bouts::Bout;
 use crate::divisions::{normalize, womens, MEN_LIMIT_LB};
 use crate::era::year;
+use crate::error::Error;
 use crate::frame::{Frame, Table};
 use crate::legacy::{points, resume_rows, title_rows, Pricing};
 use crate::orgs::Org;
 use crate::policy::is_ufc;
 use crate::skill::Year;
 use crate::stats::kahan_sum;
-
-/// `public_legacy_eligibility_override`: proven UFC title resumes rank before the 13-period floor.
-pub fn eligibility_override(cur: &Frame) -> Vec<bool> {
-    let n0 = |c: &str| {
-        cur.f64(c)
-            .into_iter()
-            .map(|x| if x.is_nan() { 0.0 } else { x })
-            .collect::<Vec<_>>()
-    };
-    let (periods, score, wins, defences, ufc) = (
-        n0("rating_periods"),
-        n0("public_legacy_score"),
-        n0("public_legacy_title_wins"),
-        n0("public_legacy_title_defenses"),
-        n0("public_legacy_ufc_bouts"),
-    );
-    (0..cur.len())
-        .map(|i| {
-            periods[i] >= 8.0
-                && ufc[i] >= 8.0
-                && score[i] > 0.0
-                && (wins[i] >= 3.0 || wins[i] >= 2.0 && defences[i] >= 1.0)
-        })
-        .collect()
-}
 
 /// The class a bout counts toward: women's billings folded, a men's catchweight to the lightest
 /// class that holds it, open weight and unknown billings to none.
@@ -85,11 +61,11 @@ fn ledger(
     p: &Pricing,
     ctx: &HashMap<String, Org>,
     years: &[Year],
-) -> Vec<Class> {
+) -> Result<Vec<Class>, Error> {
     let gender: HashMap<String, String> = cur
-        .str("fighter")
+        .str("fighter")?
         .into_iter()
-        .zip(cur.str("gender"))
+        .zip(cur.str("gender")?)
         .collect();
     let g = |f: &str| gender.get(f).map_or("", String::as_str);
     let ufc: HashSet<&str> = rated
@@ -198,33 +174,28 @@ fn ledger(
             parts[i].1[j].push(c.part[j]);
         }
     }
-    parts
+    Ok(parts
         .into_iter()
         .map(|(c, v)| Class {
             part: std::array::from_fn(|j| kahan_sum(&v[j])),
             ..c
         })
-        .collect()
+        .collect())
 }
 
 /// `class_scores`: ledger units to All-time points, X_d · 1000 w (X/n)^p / X.
-fn scores(cur: &Frame, ledger: Vec<Class>) -> Vec<(Class, f64)> {
-    let f = cur.str("fighter");
-    let n0 = |c: &str| {
-        cur.f64(c)
-            .into_iter()
-            .map(|x| if x.is_nan() { 0.0 } else { x })
-            .collect::<Vec<_>>()
-    };
+fn scores(cur: &Frame, ledger: Vec<Class>) -> Result<Vec<(Class, f64)>, Error> {
+    let f = cur.str("fighter")?;
+    let n0 = |c: &str| cur.f64_or(c, 0.0);
     let e: Vec<f64> = cur
-        .f64("public_legacy_exposure_factor")
+        .f64("public_legacy_exposure_factor")?
         .into_iter()
         .map(|x| if x.is_nan() { 1.0 } else { x })
         .collect();
     let x = [
-        n0("public_legacy_title_score"),
-        n0("public_legacy_skill_score"),
-        n0("public_legacy_resume_score"),
+        n0("public_legacy_title_score")?,
+        n0("public_legacy_skill_score")?,
+        n0("public_legacy_resume_score")?,
     ];
     let p = points(&x[0], &x[1], &x[2]);
     let mut unit: HashMap<&str, [f64; 3]> = HashMap::new();
@@ -232,7 +203,7 @@ fn scores(cur: &Frame, ledger: Vec<Class>) -> Vec<(Class, f64)> {
         let u = [1000.0, e[i], 1000.0 * e[i]];
         unit.entry(&f[i]).or_insert(std::array::from_fn(|j| if x[j][i] > 0.0 { p[j][i] / x[j][i] } else { 0.0 } * u[j]));
     }
-    ledger
+    Ok(ledger
         .into_iter()
         .map(|c| {
             let u = unit.get(c.fighter.as_str()).copied().unwrap_or([0.0; 3]);
@@ -240,7 +211,7 @@ fn scores(cur: &Frame, ledger: Vec<Class>) -> Vec<(Class, f64)> {
             let s = part[0] + part[1] + part[2];
             (Class { part, ..c }, s)
         })
-        .collect()
+        .collect())
 }
 
 /// `class_board`: each class ranked among the All-time-eligible fighters with credit in it.
@@ -257,12 +228,12 @@ pub fn board(
     ctx: &HashMap<String, Org>,
     years: &[Year],
     eligible: &HashSet<String>,
-) -> Table {
-    let s = scores(cur, ledger(cur, pools, app, rated, p, ctx, years));
+) -> Result<Table, Error> {
+    let s = scores(cur, ledger(cur, pools, app, rated, p, ctx, years)?)?;
     let (f, gender, all) = (
-        cur.str("fighter"),
-        cur.str("gender"),
-        cur.f64("public_legacy_score"),
+        cur.str("fighter")?,
+        cur.str("gender")?,
+        cur.f64("public_legacy_score")?,
     );
     let mut sum: HashMap<&str, f64> = HashMap::new();
     for (c, v) in &s {
@@ -305,7 +276,7 @@ pub fn board(
     let col = |g: &dyn Fn(&(Class, f64, String, f64, i64)) -> f64| {
         b.iter().map(|x| g(x)).collect::<Vec<f64>>()
     };
-    Table::default()
+    Ok(Table::default()
         .str(
             "fighter",
             &b.iter().map(|x| x.0.fighter.as_str()).collect::<Vec<_>>(),
@@ -325,5 +296,5 @@ pub fn board(
             &b.iter().map(|x| x.2.as_str()).collect::<Vec<_>>(),
         )
         .f64("share", &col(&|x| x.3))
-        .i64("rank", &b.iter().map(|x| x.4).collect::<Vec<_>>())
+        .i64("rank", &b.iter().map(|x| x.4).collect::<Vec<_>>()))
 }

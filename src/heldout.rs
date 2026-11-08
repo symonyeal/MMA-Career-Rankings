@@ -253,7 +253,7 @@ mod tests {
             let mut b = Bout::new(
                 "Alice".into(),
                 "Bob".into(),
-                parse_day(date),
+                parse_day(date).unwrap(),
                 Outcome::Win(Corner::A),
                 1.0,
             )

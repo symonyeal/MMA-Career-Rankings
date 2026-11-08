@@ -3,7 +3,8 @@
 
 use std::path::Path;
 
-use crate::frame::{Day, Frame, Table};
+use crate::error::Error;
+use crate::frame::{Day, Table};
 
 #[derive(Clone, Debug, Default)]
 pub struct Appearance {
@@ -28,48 +29,7 @@ pub struct Appearance {
 
 const FILE: &str = "performance_appearances.parquet";
 
-pub fn read(snapshot: &Path) -> Vec<Appearance> {
-    let f = Frame::read(&snapshot.join(FILE));
-    let s = |c: &str| f.str(c);
-    let (url, event, fighter, opponent, division, method) = (
-        s("fight_url"),
-        s("event_name"),
-        s("fighter"),
-        s("opponent"),
-        s("division"),
-        s("method_class"),
-    );
-    let (day, score) = (f.day("event_date"), f.f64("actual_score"));
-    let b = |c: &str| f.bool(c);
-    let (won, draw, title, interim, champion, interim_champion) = (
-        b("is_winner"),
-        b("is_draw"),
-        b("is_championship_bout"),
-        b("is_interim_title_bout"),
-        b("fighter_entered_as_champion"),
-        b("fighter_entered_as_interim_champion"),
-    );
-    (0..f.len())
-        .map(|i| Appearance {
-            url: url[i].clone(),
-            day: day[i].unwrap(),
-            event: event[i].clone(),
-            fighter: fighter[i].clone(),
-            opponent: opponent[i].clone(),
-            division: division[i].clone(),
-            won: won[i],
-            draw: draw[i],
-            score: score[i],
-            method: method[i].clone(),
-            title: title[i],
-            interim: interim[i],
-            champion: champion[i],
-            interim_champion: interim_champion[i],
-        })
-        .collect()
-}
-
-pub fn write(snapshot: &Path, a: &[Appearance]) {
+pub fn write(snapshot: &Path, a: &[Appearance]) -> Result<(), Error> {
     let s = |g: fn(&Appearance) -> &str| a.iter().map(g).collect::<Vec<_>>();
     let b = |g: fn(&Appearance) -> bool| a.iter().map(g).collect::<Vec<_>>();
     Table::default()
@@ -96,5 +56,5 @@ pub fn write(snapshot: &Path, a: &[Appearance]) {
             "fighter_entered_as_interim_champion",
             &b(|x| x.interim_champion),
         )
-        .write(&snapshot.join(FILE));
+        .write(&snapshot.join(FILE))
 }

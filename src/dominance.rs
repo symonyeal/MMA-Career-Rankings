@@ -12,6 +12,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 
 use crate::bouts::Bout;
+use crate::error::Error;
 use crate::frame::{Day, Frame, Table};
 use crate::names::Names;
 use crate::stats::{kahan_mean, psum};
@@ -56,18 +57,22 @@ fn points(s: &str) -> f64 {
 }
 
 /// a-perspective dominance of every rated bout, in bout order.
-fn per_fight(snapshot: &Path, rated: &[Bout], names: &Names) -> Vec<f64> {
-    let r = Frame::read(&snapshot.join("canonical_rounds.parquet"));
-    let (url, fighter) = (r.str("fight_url"), r.str("fighter"));
+fn per_fight(snapshot: &Path, rated: &[Bout], names: &Names) -> Result<Vec<f64>, Error> {
+    let r = Frame::read(
+        &snapshot.join("canonical_rounds.parquet"),
+        &[
+            "fight_url",
+            "fighter",
+            "sig_str_landed",
+            "sub_att",
+            "ctrl_seconds",
+        ],
+    )?;
+    let (url, fighter) = (r.str("fight_url")?, r.str("fighter")?);
     let stats: Vec<Vec<f64>> = ["sig_str_landed", "sub_att", "ctrl_seconds"]
         .iter()
-        .map(|c| {
-            r.f64(c)
-                .into_iter()
-                .map(|x| if x.is_nan() { 0.0 } else { x })
-                .collect()
-        })
-        .collect();
+        .map(|c| r.f64_or(c, 0.0))
+        .collect::<Result<_, _>>()?;
     let mut bout: BTreeMap<(&str, &str), [f64; 3]> = BTreeMap::new();
     for i in 0..r.len() {
         let e = bout
@@ -120,15 +125,24 @@ fn per_fight(snapshot: &Path, rated: &[Bout], names: &Names) -> Vec<f64> {
         dom[i] = if d.is_nan() { 0.0 } else { d };
     }
     // Judge margin, red minus blue, keyed by the unordered name pair and date; later cards win.
-    let s = Frame::read(&snapshot.join("datalab_scorecards.parquet"));
+    let s = Frame::read(
+        &snapshot.join("datalab_scorecards.parquet"),
+        &[
+            "red_fighter_name",
+            "blue_fighter_name",
+            "event_date",
+            "red_fighter_total_pts",
+            "blue_fighter_total_pts",
+        ],
+    )?;
     let (red, blue, day) = (
-        s.str("red_fighter_name"),
-        s.str("blue_fighter_name"),
-        s.day("event_date"),
+        s.str("red_fighter_name")?,
+        s.str("blue_fighter_name")?,
+        s.day("event_date")?,
     );
     let (rp, bp) = (
-        s.str("red_fighter_total_pts"),
-        s.str("blue_fighter_total_pts"),
+        s.str("red_fighter_total_pts")?,
+        s.str("blue_fighter_total_pts")?,
     );
     let mut cards: HashMap<(String, String, Day), (String, f64)> = HashMap::new();
     for i in 0..s.len() {
@@ -185,12 +199,12 @@ fn per_fight(snapshot: &Path, rated: &[Bout], names: &Names) -> Vec<f64> {
             }
         }
     }
-    dom
+    Ok(dom)
 }
 
 /// fighter, wins, mean_dominance: winners only, rows in name order.
-pub fn fighters(snapshot: &Path, rated: &[Bout], names: &Names) -> Table {
-    let dom = per_fight(snapshot, rated, names);
+pub fn fighters(snapshot: &Path, rated: &[Bout], names: &Names) -> Result<Table, Error> {
+    let dom = per_fight(snapshot, rated, names)?;
     let mut wins: BTreeMap<&str, Vec<f64>> = BTreeMap::new();
     for (b, d) in rated.iter().zip(dom) {
         if !b.winner().is_empty() && (b.winner() == b.a() || b.winner() == b.b()) {
@@ -200,7 +214,7 @@ pub fn fighters(snapshot: &Path, rated: &[Bout], names: &Names) -> Table {
         }
     }
     let f: Vec<&str> = wins.keys().copied().collect();
-    Table::default()
+    Ok(Table::default()
         .str("fighter", &f)
         .i64(
             "wins",
@@ -209,5 +223,5 @@ pub fn fighters(snapshot: &Path, rated: &[Bout], names: &Names) -> Table {
         .f64(
             "mean_dominance",
             &wins.values().map(|v| kahan_mean(v)).collect::<Vec<_>>(),
-        )
+        ))
 }

@@ -19,6 +19,7 @@ use crate::appearances::Appearance;
 use crate::bouts::Bout;
 use crate::divisions::{normalize, ufc_title};
 use crate::era::{contender_bar, year, CAREER_N};
+use crate::error::Error;
 use crate::fm;
 use crate::frame::{Day, Frame, Table};
 use crate::history::{History, Row};
@@ -484,10 +485,10 @@ pub fn score(
     rated: &[Bout],
     p: &Pricing,
     rules: &Rules,
-) -> Table {
-    let fighters = cur.str("fighter");
+) -> Result<Table, Error> {
+    let fighters = cur.str("fighter")?;
     let mass: Vec<f64> = cur
-        .f64("symon_career_skill_mass")
+        .f64("symon_career_skill_mass")?
         .into_iter()
         .map(|x| if x.is_nan() { 0.0 } else { x })
         .collect();
@@ -520,7 +521,7 @@ pub fn score(
     let total = total(&points(&ts, &ks, &rs));
     let int = |g: &dyn Fn(usize) -> i64| (0..n).map(g).collect::<Vec<i64>>();
     let exi = |f: &str, i: usize| ex.get(f).map_or(0, |x| [x.1, x.2, x.3][i]);
-    Table::default()
+    Ok(Table::default()
         .str("fighter", &fighters)
         .f64("public_legacy_score", &total)
         .f64("public_legacy_skill_mass", &mass)
@@ -556,5 +557,5 @@ pub fn score(
         .i64(
             "public_legacy_unknown_org_bouts",
             &int(&|i| exi(&fighters[i], 2)),
-        )
+        ))
 }

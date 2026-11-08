@@ -12,6 +12,7 @@ use std::collections::{BTreeMap, HashMap};
 use crate::appearances::Appearance;
 use crate::bouts::Bout;
 use crate::divisions::female;
+use crate::error::Error;
 use crate::frame::{Day, Frame, Table};
 use crate::history::History;
 use crate::integrity::{DQ, MISSED_WEIGHT, PED};
@@ -53,19 +54,19 @@ pub struct Current {
 }
 
 impl Current {
-    pub fn new(c: &Frame) -> Current {
-        Current {
-            fighter: c.str("fighter"),
-            gender: c.str("gender"),
-            periods: c.i64("rating_periods"),
-            legacy: c.f64("public_legacy_score"),
-            title_wins: c.f64("public_legacy_title_wins"),
-            title_defenses: c.f64("public_legacy_title_defenses"),
-            ufc_bouts: c.f64("public_legacy_ufc_bouts"),
-            current_score: c.f64("current_score"),
-            months_since_ufc: c.f64("months_since_ufc"),
-            mu_whr: c.f64("mu_whr"),
-        }
+    pub fn new(c: &Frame) -> Result<Current, Error> {
+        Ok(Current {
+            fighter: c.str("fighter")?,
+            gender: c.str("gender")?,
+            periods: c.i64("rating_periods")?,
+            legacy: c.f64("public_legacy_score")?,
+            title_wins: c.f64("public_legacy_title_wins")?,
+            title_defenses: c.f64("public_legacy_title_defenses")?,
+            ufc_bouts: c.f64("public_legacy_ufc_bouts")?,
+            current_score: c.f64("current_score")?,
+            months_since_ufc: c.f64("months_since_ufc")?,
+            mu_whr: c.f64("mu_whr")?,
+        })
     }
 
     /// Row indices of one gender's population, in table order.
@@ -259,19 +260,19 @@ pub struct Debit {
 
 /// `integrity_ledger`: one row per flagged appearance, sorted by (fighter, date, reason).
 /// `integrity` is integrity_appearances; `rated` supplies each bout's date, names and citations.
-pub fn ledger(integrity: &Frame, rated: &[Bout]) -> Vec<Debit> {
+pub fn ledger(integrity: &Frame, rated: &[Bout]) -> Result<Vec<Debit>, Error> {
     let mut meta: HashMap<&str, &Bout> = HashMap::new();
     for b in rated {
         meta.entry(&b.url).or_insert(b);
     }
     let (url, fighter, weight) = (
-        integrity.str("fight_url"),
-        integrity.str("fighter"),
-        integrity.f64("integrity_weight"),
+        integrity.str("fight_url")?,
+        integrity.str("fighter")?,
+        integrity.f64("integrity_weight")?,
     );
     let mut out = Vec::new();
     for (reason, factor, label) in REASONS {
-        let f = integrity.f64(&format!("integrity_factor_{reason}"));
+        let f = integrity.f64(&format!("integrity_factor_{reason}"))?;
         for i in (0..f.len()).filter(|&i| !f[i].is_nan() && f[i] < 1.0) {
             let b = meta[url[i].as_str()];
             let extra = match reason {
@@ -297,7 +298,7 @@ pub fn ledger(integrity: &Frame, rated: &[Bout]) -> Vec<Debit> {
         }
     }
     out.sort_by(|x, y| (&x.fighter, x.day, x.reason).cmp(&(&y.fighter, y.day, y.reason)));
-    out
+    Ok(out)
 }
 
 pub struct Boards {
@@ -325,8 +326,8 @@ pub fn build(
     staged: &[Bout],
     integrity: &Frame,
     appearances: &[Appearance],
-) -> Boards {
-    let c = Current::new(current);
+) -> Result<Boards, Error> {
+    let c = Current::new(current)?;
     let decades = decades(appearances, history, staged);
     let pick = |rows: &[usize], v: &[f64]| rows.iter().map(|&i| v[i]).collect::<Vec<f64>>();
     let names = |rows: &[usize], b: &Board| {
@@ -477,7 +478,7 @@ pub fn build(
         );
     }
 
-    let debits = ledger(integrity, rated);
+    let debits = ledger(integrity, rated)?;
     let integrity_ledger = Table::default()
         .str(
             "fighter",
@@ -520,7 +521,7 @@ pub fn build(
     let two = |v: Vec<Table>| -> [Table; 2] { v.try_into().ok().unwrap() };
     let two_m =
         |v: Vec<HashMap<String, i64>>| -> [HashMap<String, i64>; 2] { v.try_into().ok().unwrap() };
-    Boards {
+    Ok(Boards {
         all_time: two(all_time),
         prime: two(prime),
         current: two(cur),
@@ -533,7 +534,7 @@ pub fn build(
         current_top: current_top.try_into().ok().unwrap(),
         decades,
         prime_ranked,
-    }
+    })
 }
 
 /// `integrity_discounted_board`: mu_whr less a stated debit per flagged win, the debit falling on the winner alone.
