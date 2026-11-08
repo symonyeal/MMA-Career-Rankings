@@ -787,8 +787,9 @@ Windows, glibc on Linux) rounds `exp`, `ln` and `pow` differently in the last bi
 2026-11-08 every such call moved to the pure-Rust `libm` crate (`src/fm.rs`), the FFI
 into the C library in `glicko.rs` was removed, and the release was republished once from the
 Windows build (the difference against the previous publication is recorded below). CI runs the
-exact regeneration check on Windows and on Ubuntu (`model-linux`). The Ubuntu result is the
-open evidence: until that job has passed, cross-platform identity is expected, not shown.
+exact regeneration check on Windows and on Ubuntu (`model-linux`). Both jobs passed on
+commit d0efa09 (checks run 42510372569): the Ubuntu rebuild matches the committed Windows
+bytes.
 
 Republication difference (Windows UCRT bytes against `libm` bytes, 2026-11-08, measured on
 this machine; it shows the size of a last-bit difference, not the Ubuntu one). README.md,
