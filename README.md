@@ -1,92 +1,53 @@
 # MMA Career Rankings
 
-<p align="center">
-  <a href="https://symonyeal.github.io/MMA-Career-Rankings/"><img alt="Open the interactive rankings site" src="https://img.shields.io/badge/Interactive%20rankings-Open%20the%20site-38bdf8?style=for-the-badge"></a>
-</p>
+Interactive site: <https://symonyeal.github.io/MMA-Career-Rankings/>
 
-<p align="center"><b><a href="https://symonyeal.github.io/MMA-Career-Rankings/">symonyeal.github.io/MMA-Career-Rankings</a></b>
-· every ranking and analysis in the browser, no install</p>
+## Problem
 
-[![The interactive site: the published boards, filtered by roster, weight class and depth](docs/site/rankings.png)](https://symonyeal.github.io/MMA-Career-Rankings/)
+- Rank fighters by their whole career (All-time), their best ten years (Prime) and their recent form
+  (Current), for men and women.
+- All-time and Prime rankings cover the UFC, PRIDE, WEC, Strikeforce, Affliction, Bellator and RIZIN.
+  The rating uses recorded professional fights from all promotions and the regional circuit.
+- Current and weight-class boards cover UFC fighters.
 
-## Rankings
+## Methods
 
-The project publishes All-time and Prime career rankings for men and women from the UFC, PRIDE, WEC, Strikeforce, Affliction, Bellator and RIZIN. The rating model uses recorded professional fights across all promotions and the regional circuit. Current and weight-class boards cover UFC fighters.
+### Rating
 
-The [interactive site](https://symonyeal.github.io/MMA-Career-Rankings/) filters boards and analysis by roster, weight class, board size and minimum rated bouts.
+- **Whole-History Rating** (after Coulom, 2008). A one-pass rating like Elo never goes back; here a win
+  counts for more when the beaten opponent later becomes a champion. Fitting all careers together also
+  keeps fighters from different decades on one scale.
+- **Solver**: not Coulom's exact fit. It takes one Newton step per fighter per pass, clipped to 1.5 on
+  the natural scale, runs a fixed 50 passes, and re-centres the mean rating after each pass.
+  `rating_run.json` records the order of magnitude of the largest rating change in the last pass.
+- **Neutral starting bout**: without it a fighter at 2-0 has no upper limit and can top the board. With it
+  an unbeaten record has to keep growing against real opposition to climb.
+- **Graded results**: a knockout says more about who was better than a split decision does.
+- **Contender line for each year**: the rating scale drifts upward over time, so each year is measured
+  against that year's contenders. A 2007 win and a 2023 win then compare fairly.
+- **Win probability raised to a power**: a long run of borderline wins cannot outscore a few elite ones.
+  The third power was chosen after tests of powers from 1 to 6.
+- **Promotion weights, pulled toward average**: keeping promotion out of the rating lets results decide
+  how strong each pool was. The weight then accounts for depth of competition, and pulling thin evidence
+  toward the average stops a handful of labelled fights from deciding a whole career.
+- **Best ten-year window**: measures a peak without punishing a fighter for a long career before or after it.
 
-## Rating model
+### Rules
 
-| Design choice | Rationale |
-| --- | --- |
-| **Whole-History Rating, re-centred** (after Coulom, 2008) | A one-pass rating like Elo never goes back. If an opponent you beat later becomes a champion, that win should count for more, and here it does. Fitting all careers together also keeps fighters from different decades on one scale. The solver is not Coulom's exact fit: it takes one Newton step per fighter per pass, clipped to 1.5 on the natural scale, runs a fixed 50 passes, and re-centres the mean rating after each pass. `rating_run.json` records the order of magnitude of the largest rating change in the last pass. |
-| **A neutral starting bout** | Without it, a fighter at 2-0 has no upper limit and can top the board. With it, an unbeaten record has to keep growing against real opposition to climb. |
-| **Graded results** | A knockout says more about who was better than a split decision does. |
-| **A contender line for each year** | The rating scale drifts upward over time. Measuring against that year's contenders compares a 2007 win and a 2023 win fairly. |
-| **Win probability raised to a power** | One win over an elite contender is worth about five wins over borderline ones, so a long run of borderline wins cannot outscore a few elite ones. The third power was chosen after tests of powers from 1 to 6. |
-| **Promotion weights, pulled toward average** | Keeping promotion out of the rating lets results decide how strong each pool was. The weight then accounts for depth of competition, and pulling thin evidence toward the average stops a handful of labelled fights from deciding a whole career. |
-| **Square roots on a common scale** | It puts the three parts on one scale and rewards a career that is strong in all three more than one huge number in a single part. |
-| **Best ten-year window** | It measures a peak without punishing a fighter for a long career before or after it. |
+- Weight classes are separate pools. Career division is where a fighter competed most; current division
+  changes only after a UFC title win. Men and women remain separate.
+- Each year is measured against its division's top ten percent, roughly the fifth-best fighter. Classes
+  with fewer than 30 fighter-years use the sport-wide line.
+- The fight rating ignores promotion. Exposure is applied later: UFC `1.00`, PRIDE `0.95`, Affliction
+  `0.90`, WEC and Strikeforce `0.88`, Bellator `0.65`, and PFL, RIZIN, ONE and DREAM `0.60`. Thin
+  evidence shrinks toward the average.
+- Result values: a knockout or submission `1.00`, a unanimous decision `0.95`, a split or majority
+  decision `0.90`, a disqualification `0.85`, and a draw `0.50` for each fighter. No-contests are excluded.
+- Careers are fitted together, so later results can revalue earlier fights. Ratings sit around 1,500, and
+  a neutral virtual bout checks tiny unbeaten records.
+- Duplicate fights are removed and whole careers are required.
 
-The model has not yet been shown to predict fights better than a simpler rating; that test
-is recorded as open in the [release check](docs/RELEASE_CHECK.md). The rankings are a
-measured judgement of careers, not a betting model.
-
-## Site features
-
-| Feature | What you can do |
-| --- | --- |
-| [**Rankings**](https://symonyeal.github.io/MMA-Career-Rankings/#rankings) | All-time, Prime and Current, exactly as published below. Pick a weight class for that class's own board: the All-time score earned in UFC bouts in that class. |
-| [**Weight-class boards**](https://symonyeal.github.io/MMA-Career-Rankings/#rankings) | UFC only. A champion in two classes is ranked in both, with the share of their All-time score earned in each. |
-| [**Score anatomy**](https://symonyeal.github.io/MMA-Career-Rankings/#anatomy) | See each score split into championships, career skill and contender résumé. Move two sliders to change the exchange rate and watch the board re-rank. |
-| [**Rating method**](https://symonyeal.github.io/MMA-Career-Rankings/#math) | Each method behind the rankings, what it does and why it was chosen, in ordinary words. |
-| [**Career arcs and tale of the tape**](https://symonyeal.github.io/MMA-Career-Rankings/#fighters) | Overlay up to six fighters' ratings fight by fight and compare their records, ranks and class placements side by side. |
-| [**Where a career score comes from**](https://symonyeal.github.io/MMA-Career-Rankings/#careers) | A year-by-year receipt that sums to the career score. |
-| [**Risers, fallers and streaks**](https://symonyeal.github.io/MMA-Career-Rankings/#movers) | The biggest rating moves of any year, and the longest UFC win streaks placed by length and by the strength of who they beat. |
-| [**Biggest upsets**](https://symonyeal.github.io/MMA-Career-Rankings/#upsets) | The UFC wins the betting market rated least likely, and how often favourites win. |
-| [**Weight classes and eras**](https://symonyeal.github.io/MMA-Career-Rankings/#divisions) | UFC only: how strong each class has been year by year, its top five in any year, and how fights end. |
-| [**Title lineage**](https://symonyeal.github.io/MMA-Career-Rankings/#lineage) | Every reign in every class, with defences. |
-| [**Age and layoffs against the odds**](https://symonyeal.github.io/MMA-Career-Rankings/#age) | Win rate against the market's price by age and by time since the last fight, with 95% intervals. |
-| [**Integrity policy and outside check**](https://symonyeal.github.io/MMA-Career-Rankings/#policy) | The PED, disqualification and missed-weight ledger, and where the board disagrees with FightMatrix. |
-| [**Forecast accuracy**](https://symonyeal.github.io/MMA-Career-Rankings/#checks) | A leak-free stats model, the rating alone and no-vig betting odds, each scored on the same UFC bouts with every year forecast from earlier years ([method](docs/FORECAST.md)); and how often favourites won against the probability they were given, with 95% intervals. |
-
-Each chart includes a finding calculated from the data under the current controls.
-The page follows the reader's light or dark setting.
-
-On a phone, open **Explore the rankings** to change the filters. Wide tables scroll
-inside their panels. Weight-class buttons work with a keyboard, and the page follows
-the reader's reduced-motion setting.
-
-To check the interface locally, run `npm ci`, `npx playwright install chromium`, then
-`npm test`. The browser checks cover search positions, roster filters, fighter
-comparisons, analysis charts, phone layouts and dark mode. They also run in CI.
-
-| Weight-class board | Score anatomy and exchange rates |
-| --- | --- |
-| [![Heavyweight class board](docs/site/class-board.png)](https://symonyeal.github.io/MMA-Career-Rankings/#rankings) | [![Score anatomy](docs/site/score-anatomy.png)](https://symonyeal.github.io/MMA-Career-Rankings/#anatomy) |
-| **Career arcs and tale of the tape** | **Weight classes over time** |
-| [![Career arcs](docs/site/career-arcs.png)](https://symonyeal.github.io/MMA-Career-Rankings/#fighters) | [![Division strength](docs/site/weight-classes.png)](https://symonyeal.github.io/MMA-Career-Rankings/#divisions) |
-
-## Model rules
-
-Weight classes are separate pools. Career division is where a fighter competed
-most; current division changes only after a UFC title win. Each year is measured
-against its division's top ten percent, roughly the fifth-best fighter; classes
-with fewer than 30 fighter-years use the sport-wide line. Men and women remain
-separate.
-
-The fight rating ignores promotion. Exposure is applied later: UFC is `1.00`,
-PRIDE `0.95`, Affliction `0.90`, WEC and Strikeforce `0.88`, Bellator `0.65`, and
-PFL, RIZIN, ONE and DREAM `0.60`. Thin evidence shrinks toward the average.
-
-A knockout or submission scores `1.00`, a unanimous decision `0.95`, a split or
-majority decision `0.90`, a disqualification `0.85`, and a draw `0.50` for each
-fighter; no-contests are excluded. Careers are fitted together, so later results
-can revalue earlier fights. Ratings sit around 1,500, and a neutral virtual bout
-checks tiny unbeaten records. Duplicate fights are removed and whole careers
-are required.
-
-## What the score measures
+### Score
 
 ```text
 All-time = 1,000 × (30% √title + 17.5% √skill + 52.5% √résumé)
@@ -143,9 +104,10 @@ remainder. A champion in two classes is ranked in both.
 
 ## Published rankings
 
-The men's headline boards are published below so the rankings are visible on
-the repository front page. The full [Published MMA Rankings](RANKINGS.md) adds
-the three women's boards and the weight-class boards.
+The full boards are in [Published MMA Rankings](RANKINGS.md) and on the
+[interactive site](https://symonyeal.github.io/MMA-Career-Rankings/). The men's
+headline boards are repeated below; RANKINGS.md adds the three women's boards and
+the weight-class boards. These blocks are generated: edit the generator in `src/`, not the tables.
 
 <!-- PUBLICATION:RELEASE:BEGIN -->
 
@@ -164,11 +126,11 @@ the three women's boards and the weight-class boards.
 
 <!-- PUBLICATION:RELEASE:END -->
 
-### All-time — men, top 100
+### All-time, men, top 100
 
 **Prime** and **Prime rank** come from the Prime board below, and **Elite
 wins** is the evidence behind that rank. A blank rank means the fighter did not
-qualify, not that they placed last.
+qualify.
 
 <!-- BOARD:TOP100:BEGIN -->
 
@@ -277,9 +239,9 @@ qualify, not that they placed last.
 
 <!-- BOARD:TOP100:END -->
 
-### Prime, elite-tested — men, top 50
+### Prime, elite-tested, men, top 50
 
-The table prints both inputs instead of the internal ordering index.
+The table prints both inputs, not the internal ordering index.
 
 <!-- BOARD:ELITEPRIME50:BEGIN -->
 
@@ -338,7 +300,7 @@ The table prints both inputs instead of the internal ordering index.
 
 <!-- BOARD:ELITEPRIME50:END -->
 
-### Current — men, top 30
+### Current, men, top 30
 
 <!-- BOARD:CURRENT30:BEGIN -->
 
@@ -379,25 +341,69 @@ The table prints both inputs instead of the internal ordering index.
 
 ## Limitations
 
-All-time is retrospective, elite wins reward opportunity, and the age curve
-misses decline in fighters who never returned. Promotion labels are missing from 54% of rated fights;
-11% of filled weight classes are estimated wrong. Whole-career coverage is
-complete for every eligible fighter, and none has an evidenced source-ID
-conflict. See the [decision register](docs/DECISIONS.md).
+- All-time is retrospective, elite wins reward opportunity, and the age curve misses decline in fighters
+  who never returned.
+- Promotion labels are missing from 54% of rated fights; 11% of filled weight classes are estimated wrong.
+- Whole-career coverage is complete for every eligible fighter, and none has an evidenced source-ID
+  conflict.
+- The model has not yet been shown to predict fights better than a simpler rating. That test is recorded
+  as open in the [release check](docs/RELEASE_CHECK.md).
+- The rankings are a measured judgement of careers, not a betting model.
+
+See the [decision register](docs/DECISIONS.md).
+
+## Interactive site
+
+Published at <https://symonyeal.github.io/MMA-Career-Rankings/>; open `site/index.html` locally. Sections:
+
+- [Rankings](https://symonyeal.github.io/MMA-Career-Rankings/#rankings): All-time, Prime and Current,
+  filtered by roster, weight class, board size and minimum rated bouts. A weight-class board shows each
+  champion's share of their All-time score earned in that class.
+- [Score anatomy](https://symonyeal.github.io/MMA-Career-Rankings/#anatomy): each score split into
+  championships, career skill and contender résumé; two sliders change the exchange rate and re-rank the board.
+- [Rating method](https://symonyeal.github.io/MMA-Career-Rankings/#math): each method behind the rankings,
+  and why it was chosen.
+- [Career arcs and tale of the tape](https://symonyeal.github.io/MMA-Career-Rankings/#fighters): up to six
+  fighters' ratings overlaid fight by fight; records, ranks and class placements side by side.
+- [Where a career score comes from](https://symonyeal.github.io/MMA-Career-Rankings/#careers): a
+  year-by-year breakdown that sums to the career score.
+- [Risers, fallers and streaks](https://symonyeal.github.io/MMA-Career-Rankings/#movers): the biggest
+  rating moves of any year, and the longest UFC win streaks by length and by the strength of the
+  opponents beaten.
+- [Biggest upsets](https://symonyeal.github.io/MMA-Career-Rankings/#upsets): the UFC wins the betting
+  market rated least likely, and how often favourites win.
+- [Weight classes and eras](https://symonyeal.github.io/MMA-Career-Rankings/#divisions): UFC only. Class
+  strength year by year, each class's top five in any year, and how fights end.
+- [Title lineage](https://symonyeal.github.io/MMA-Career-Rankings/#lineage): every reign in every class,
+  with defences.
+- [Age and layoffs against the odds](https://symonyeal.github.io/MMA-Career-Rankings/#age): win rate against
+  the market's price by age and by time since the last fight, with 95% intervals.
+- [Integrity policy and outside check](https://symonyeal.github.io/MMA-Career-Rankings/#policy): the PED,
+  disqualification and missed-weight ledger, and where the board disagrees with FightMatrix.
+- [Forecast accuracy](https://symonyeal.github.io/MMA-Career-Rankings/#checks): a stats model that uses
+  no information from after each fight, the rating alone and no-vig betting odds, each scored on the same UFC
+  bouts with every year forecast from earlier years ([method](docs/FORECAST.md)); and how often favourites
+  won against the probability they were given, with 95% intervals.
+
+Each chart includes a finding calculated from the data under the current controls. The page follows the
+reader's light or dark setting and reduced-motion setting. On a phone, **Explore the rankings** opens the
+filters, and wide tables scroll inside their panels. Weight-class buttons work with a keyboard.
 
 ## Repository files
 
-| Path | Use it for |
-| --- | --- |
-| [`RANKINGS.md`](RANKINGS.md) | Full rankings |
-| `src/` | The model in Rust: ratings, scores, boards, this README's tables and figures, site data |
-| `loaders/`, `refresh.py`, `build_sherdog_*.py` | Source acquisition and staging in Python |
-| `data/snapshots/<date>/` | The release: inputs, fitted ratings and boards, all versioned |
-| [`docs/`](docs/) | Method and decisions |
-| [`docs/FORECAST.md`](docs/FORECAST.md) | The pre-fight forecast benchmark against betting odds, and the selection leak it avoids |
-| [`docs/RELEASE_CHECK.md`](docs/RELEASE_CHECK.md) | Source freshness, fresh-checkout reproduction and the limits of current predictive evidence |
-| [`site/`](site/) | Interactive analysis site, published at <https://symonyeal.github.io/MMA-Career-Rankings/>; open `site/index.html` locally |
-| `tests/` | Staging tests (Python) and the site browser test |
+- [`RANKINGS.md`](RANKINGS.md): full rankings.
+- `src/`: the model in Rust: ratings, scores, boards, this README's tables and figures, site data.
+- `loaders/`, `refresh.py`, `build_sherdog_*.py`: source acquisition and staging in Python.
+- `data/snapshots/<date>/`: the release: inputs, fitted ratings and boards, all versioned.
+- [`docs/`](docs/): method and decisions.
+- [`docs/FORECAST.md`](docs/FORECAST.md): the pre-fight forecast benchmark against betting odds, and the
+  selection leak it avoids.
+- [`docs/RELEASE_CHECK.md`](docs/RELEASE_CHECK.md): source freshness, fresh-checkout reproduction and the
+  limits of current predictive evidence.
+- [`site/`](site/): the interactive site.
+- `tests/`: staging tests (Python) and the site browser test.
+
+## Execution
 
 Rebuild every published output from the committed snapshot with a Rust toolchain
 ([rustup](https://rustup.rs)):
@@ -406,14 +412,14 @@ Rebuild every published output from the committed snapshot with a Rust toolchain
 cargo run --release -- data/snapshots/2026-10-24
 ```
 
-It writes the fitted ratings and boards into the snapshot, `RANKINGS.md`, this README's tables and
-narrative figures, `site/data.js`, plus a local top-100 audit in `data/model_tuning/` that is not committed. CI
-runs it on a fresh clone and fails if a committed text or Parquet output changes.
-Each rebuild records source, input and output hashes in the snapshot's
-`release_manifest.json`. It computes a separate generation before updating the
-checkout; recovery and reader guarantees are documented in
-[the decision register](docs/DECISIONS.md#valid-inputs-and-accepted-releases-2026-11-06).
-Pages deploys the accepted site's artifact only after all checks pass.
+- It writes the fitted ratings and boards into the snapshot, `RANKINGS.md`, this README's tables and
+  narrative figures, and `site/data.js`, plus a local top-100 audit in `data/model_tuning/` that is not
+  committed.
+- CI runs it on a fresh clone and fails if a committed text or Parquet output changes.
+- Each rebuild records source, input and output hashes in the snapshot's `release_manifest.json`. It
+  computes a separate generation before updating the checkout; recovery and reader guarantees are in
+  [the decision register](docs/DECISIONS.md#valid-inputs-and-accepted-releases-2026-11-06).
+- Pages deploys the accepted site's artifact only after all checks pass.
 
 `refresh.py` stages new source data into a dated snapshot and then runs the same command. The
 staging code is Python; use the system Python:
@@ -424,11 +430,20 @@ python -m pytest -q
 python refresh.py --snapshot-date <YYYY-MM-DD>
 ```
 
+Site browser checks (search positions, roster filters, fighter comparisons, analysis charts, phone layouts
+and dark mode; also run in CI):
+
+```text
+npm ci
+npx playwright install chromium
+npm test
+```
+
 `index.html` loads each asset as `name?v=<content hash>`, so a browser never pairs the page with a
 cached older asset. The rebuild re-stamps it; after editing `app.js` or `style.css` alone, run
 `cargo run --release -- stamp`.
 
 A rating change must pass the held-out test first: `cargo run --release -- heldout
-data/snapshots/2026-10-24` scores the published WHR against a candidate setting on rolling-origin
-predictions. Both this comparison and the forecast benchmark restrict history to
+data/snapshots/2026-10-24` scores the published rating against a candidate setting on predictions made
+from a moving cut-off date. Both this comparison and the forecast benchmark restrict history to
 card-enumerated sources, excluding retrospectively selected whole-career crawls.
