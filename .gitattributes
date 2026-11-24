@@ -1,2 +1,13 @@
 # Preserve the committed bytes of frozen sources and release receipts on every platform.
 * -text
+
+# Third-party datasets and scraped pages, versioned as received.
+data/external/api_sources/** linguist-vendored
+data/external/fightmatrix/html/** linguist-vendored
+
+# Written by the Sherdog crawl, Python staging or `mma <snapshot>`; never edited by hand.
+data/external/sherdog/crossorg_bouts.parquet linguist-generated
+data/external/sherdog/profile_birth_dates.csv linguist-generated
+data/external/sherdog/career_pages_incorporated.json linguist-generated
+data/snapshots/** linguist-generated
+site/data.js linguist-generated

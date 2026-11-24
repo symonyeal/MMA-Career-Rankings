@@ -379,10 +379,62 @@ pub fn write(
     let published = ranked(c, &men, SCORE)?;
     let published_women = ranked(c, &women, SCORE)?;
     let skill = ranked(c, &men, SKILL)?;
+    std::fs::create_dir_all(dir).map_err(|e| Error::at(dir.display(), e))?;
+    write_parquet(
+        &comparison(&names, &published, &skill),
+        &dir.join("top100_score_comparison.parquet"),
+    )?;
 
-    // Score comparison: outer join on fighter, sorted by name.
+    let mut top = Top::new(
+        &names, &published, rated, canonical, history, births, &anchors,
+    );
+    top.read(c)?;
+    let audit = c
+        .take(&top.rows.iter().map(|p| Some(p.0)).collect::<Vec<_>>())?
+        .hstack(&[&top.columns(&anchors)]);
+    write_parquet(&audit, &dir.join("top100_audit.parquet"))?;
+    write_text(&dir.join("top100_audit.csv"), &csv(&audit))?;
+
+    // Anchors absent from the 100, best rank first.
+    let in_top: HashSet<String> = top.who.iter().map(|f| key(f)).collect();
+    let mut missing: Vec<(i64, String)> = anchors
+        .rows
+        .iter()
+        .filter(|(k, _)| !in_top.contains(k))
+        .map(|(k, rows)| {
+            (
+                rows.iter().map(|r| r.1).min().unwrap(),
+                anchors.name[k].clone(),
+            )
+        })
+        .collect();
+    missing.sort();
+    let mut m =
+        String::from("fighter,public_anchor_rank,public_reason,recommended_fix_or_explanation\n");
+    for (r, f) in &missing {
+        let _ = writeln!(
+            m,
+            "{},{r},{},{}",
+            cell(f),
+            cell(&anchors.reason(f)),
+            cell(MISSING_FIX)
+        );
+    }
+    write_text(&dir.join("public_anchor_missing_from_model_top100.csv"), &m)?;
+
+    let boards = [("men", &published[..]), ("women", &published_women[..])];
+    let summary = top.summary(snapshot, &names, boards, &anchors, &missing);
+    write_text(
+        &dir.join("top100_audit.json"),
+        &(python_json(&summary) + "\n"),
+    )
+}
+
+/// Score comparison of the published and skill-mass boards: outer join on fighter, sorted by
+/// name; ranks are integers when every fighter is on both boards.
+fn comparison(names: &[String], published: &[(usize, f64)], skill: &[(usize, f64)]) -> Frame {
     let mut cmp: BTreeMap<&str, [Option<(i64, f64)>; 2]> = BTreeMap::new();
-    for (side, board) in [&published, &skill].into_iter().enumerate() {
+    for (side, board) in [published, skill].into_iter().enumerate() {
         for (r, &(i, s)) in board.iter().enumerate() {
             cmp.entry(&names[i]).or_default()[side] = Some((r as i64 + 1, s));
         }
@@ -419,226 +471,271 @@ pub fn write(
     } else {
         t.f64("rank_change_vs_skill_mass", &change)
     };
-    std::fs::create_dir_all(dir).map_err(|e| Error::at(dir.display(), e))?;
-    write_parquet(&t.frame(), &dir.join("top100_score_comparison.parquet"))?;
+    t.frame()
+}
 
-    // The top 100 with coverage and connectivity.
-    let top: Vec<(usize, f64)> = published.iter().take(100).copied().collect();
-    let who: Vec<&str> = top.iter().map(|&(i, _)| names[i].as_str()).collect();
-    let mut bouts: HashMap<&str, (i64, i64)> = HashMap::new();
-    for b in rated {
-        for f in [b.a(), b.b()] {
-            let e = bouts.entry(f).or_default();
-            e.0 += 1;
-            e.1 += i64::from(b.source == "ufc");
+/// The published men's top 100, in rank order: each fighter's coverage, connectivity, public
+/// anchor and, after `read`, the plain reading of their score and gap.
+struct Top<'a> {
+    /// (row of `current`, published score).
+    rows: Vec<(usize, f64)>,
+    who: Vec<&'a str>,
+    first: Vec<Option<Day>>,
+    last: Vec<Option<Day>>,
+    total: Vec<i64>,
+    ufc: Vec<i64>,
+    paths: Vec<f64>,
+    rankable: Vec<bool>,
+    born: Vec<bool>,
+    active: Vec<bool>,
+    external: Vec<bool>,
+    anchor: Vec<Option<i64>>,
+    has: Vec<bool>,
+    reasons: Vec<String>,
+    classes: Vec<&'static str>,
+    fixes: Vec<&'static str>,
+}
+
+impl<'a> Top<'a> {
+    fn new(
+        names: &'a [String],
+        published: &[(usize, f64)],
+        rated: &[Bout],
+        canonical: &[(String, String)],
+        history: &History,
+        births: &HashMap<String, Day>,
+        anchors: &Anchors,
+    ) -> Top<'a> {
+        let rows: Vec<(usize, f64)> = published.iter().take(100).copied().collect();
+        let who: Vec<&str> = rows.iter().map(|&(i, _)| names[i].as_str()).collect();
+        let mut bouts: HashMap<&str, (i64, i64)> = HashMap::new();
+        for b in rated {
+            for f in [b.a(), b.b()] {
+                let e = bouts.entry(f).or_default();
+                e.0 += 1;
+                e.1 += i64::from(b.source == "ufc");
+            }
         }
-    }
-    let core: HashSet<&str> = canonical
-        .iter()
-        .flat_map(|(a, b)| [a.as_str(), b.as_str()])
-        .collect();
-    let mut counts: HashMap<String, usize> = HashMap::new();
-    for (a, b) in canonical {
-        for f in [a, b].into_iter().filter(|f| !f.is_empty()) {
-            *counts.entry(f.clone()).or_default() += 1;
-        }
-    }
-    let graph = Graph::new(
-        rated.iter().map(|b| (b.a().as_str(), b.b().as_str())),
-        &counts,
-    );
-    let span = |f: &str| {
-        let rows = history.of(f);
-        (
-            rows.iter().map(|r| r.day).min(),
-            rows.iter().map(|r| r.day).max(),
-        )
-    };
-    let (first, last): (Vec<Option<Day>>, Vec<Option<Day>>) = who.iter().map(|f| span(f)).unzip();
-    let total: Vec<i64> = who.iter().map(|f| bouts[f].0).collect();
-    let ufc: Vec<i64> = who.iter().map(|f| bouts[f].1).collect();
-    let paths: Vec<f64> = who
-        .iter()
-        .map(|f| graph.paths(f).map_or(f64::NAN, |p| p as f64))
-        .collect();
-    let rankable: Vec<bool> = who
-        .iter()
-        .zip(&paths)
-        .map(|(f, p)| core.contains(f) || *p >= MIN_PATHS as f64)
-        .collect();
-    let born: Vec<bool> = who.iter().map(|f| births.contains_key(*f)).collect();
-    let active: Vec<bool> = last
-        .iter()
-        .map(|d| d.is_some_and(|d| year(d) >= 2024))
-        .collect();
-    let external: Vec<bool> = ufc.iter().map(|&u| u == 0).collect();
-    let anchor: Vec<Option<i64>> = who.iter().map(|f| anchors.rank(f)).collect();
-    let has: Vec<bool> = who.iter().map(|f| anchors.has(f)).collect();
-
-    let g = |n: &str| c.f64(n);
-    let (skill_mass, skill_score, exposure, resume, contender, tw, td, tdiv) = (
-        g(SKILL)?,
-        g("public_legacy_skill_score")?,
-        g("public_legacy_exposure_factor")?,
-        g("public_legacy_resume_score")?,
-        g("public_legacy_contender_wins")?,
-        g("public_legacy_title_wins")?,
-        g("public_legacy_title_defenses")?,
-        g("public_legacy_title_win_divisions")?,
-    );
-    let (mut reasons, mut classes, mut fixes) = (vec![], vec![], vec![]);
-    for (k, &(i, s)) in top.iter().enumerate() {
-        let int = |x: f64| x as i64;
-        let source = if ufc[k] == 0 {
-            "external-only".to_string()
-        } else {
-            format!("{}/{} UFC-rated", ufc[k], total[k])
-        };
-        reasons.push(format!(
-            "{SCORE} {}; skill mass {}; evaluated skill {} (exposure {}); contender resume {} ({} wins); \
-             title ledger {} wins/{} defenses/{} divisions; {source}",
-            num(s, 1), num(skill_mass[i], 1), num(skill_score[i], 1), num(exposure[i], 2), num(resume[i], 1),
-            int(contender[i]), int(tw[i]), int(td[i]), int(tdiv[i]),
-        ));
-        let r = Row {
-            rank: k as i64 + 1,
-            anchor: anchor[k],
-            has_anchor: has[k],
-            external: external[k],
-            active: active[k],
-            title_wins: int(tw[i]),
-        };
-        let class = outlier(&r);
-        classes.push(class);
-        fixes.push(recommendation(&r, class));
-    }
-    let added = Table::default()
-        .f64("score", &top.iter().map(|p| p.1).collect::<Vec<_>>())
-        .i64("model_rank", &(1..=top.len() as i64).collect::<Vec<_>>())
-        .day("first_appearance", &first)
-        .day("last_appearance", &last)
-        .i64("total_bouts", &total)
-        .i64("ufc_bouts", &ufc)
-        .f64("disjoint_paths", &paths)
-        .bool("rankable", &rankable)
-        .bool("birth_date_known", &born)
-        .bool("active_2024_plus", &active)
-        .bool("external_only", &external)
-        .f64(
-            "public_anchor_rank",
-            &anchor
-                .iter()
-                .map(|a| a.map_or(f64::NAN, |a| a as f64))
-                .collect::<Vec<_>>(),
-        )
-        .f64(
-            "delta",
-            &anchor
-                .iter()
-                .enumerate()
-                .map(|(k, a)| a.map_or(f64::NAN, |a| (k as i64 + 1 - a) as f64))
-                .collect::<Vec<_>>(),
-        )
-        .bool("has_public_anchor", &has)
-        .str(
-            "public_reason",
-            &who.iter().map(|f| anchors.reason(f)).collect::<Vec<_>>(),
-        )
-        .str("model_reason", &reasons)
-        .str("outlier_class", &classes)
-        .str("recommended_fix_or_explanation", &fixes)
-        .frame();
-    let audit = c
-        .take(&top.iter().map(|p| Some(p.0)).collect::<Vec<_>>())?
-        .hstack(&[&added]);
-    write_parquet(&audit, &dir.join("top100_audit.parquet"))?;
-    write_text(&dir.join("top100_audit.csv"), &csv(&audit))?;
-
-    // Anchors absent from the 100, best rank first.
-    let in_top: HashSet<String> = who.iter().map(|f| key(f)).collect();
-    let mut missing: Vec<(i64, String)> = anchors
-        .rows
-        .iter()
-        .filter(|(k, _)| !in_top.contains(k))
-        .map(|(k, rows)| {
-            (
-                rows.iter().map(|r| r.1).min().unwrap(),
-                anchors.name[k].clone(),
-            )
-        })
-        .collect();
-    missing.sort();
-    let mut m =
-        String::from("fighter,public_anchor_rank,public_reason,recommended_fix_or_explanation\n");
-    for (r, f) in &missing {
-        let _ = writeln!(
-            m,
-            "{},{r},{},{}",
-            cell(f),
-            cell(&anchors.reason(f)),
-            cell(MISSING_FIX)
-        );
-    }
-    write_text(&dir.join("public_anchor_missing_from_model_top100.csv"), &m)?;
-
-    // Summary.
-    let mut on_board: HashMap<String, (i64, &str)> = HashMap::new();
-    for (board, rows) in [("men", &published), ("women", &published_women)] {
-        for (r, &(i, _)) in rows.iter().enumerate() {
-            on_board.insert(key(&names[i]), (r as i64 + 1, board));
-        }
-    }
-    let below40: Vec<Value> = WATCH_BELOW_40
-        .iter()
-        .filter_map(|f| {
-            let found = on_board.get(&key(f));
-            (found.is_none_or(|p| p.0 > 40)).then(|| {
-                json!({"fighter": f, "model_rank": found.map(|p| p.0), "board": found.map(|p| p.1),
-                       "reason": anchors.reason(f)})
-            })
-        })
-        .collect();
-    let pick = |n: usize, keep: &dyn Fn(usize) -> bool| -> Vec<&str> {
-        (0..n.min(who.len()))
-            .filter(|&k| keep(k))
-            .map(|k| who[k])
-            .collect()
-    };
-    let debut = |keep: fn(i32) -> bool| {
-        first
+        let core: HashSet<&str> = canonical
             .iter()
-            .filter(|d| d.is_some_and(|d| keep(year(d))))
-            .count()
-    };
-    let summary = json!({
-        "snapshot": snapshot.file_name().unwrap().to_string_lossy(),
-        "scope": crate::bouts::SCOPE.trim(),
-        "published_score": SCORE,
-        "diagnostic_score": SKILL,
-        "board": "men (the published default)",
-        "ranked_fighters": published.len(),
-        "ranked_fighters_women_board": published_women.len(),
-        "top100_birth_date_coverage": py_round(born.iter().filter(|&&b| b).count() as f64 / born.len() as f64, 4),
-        "top100_active_2024_plus": active.iter().filter(|&&b| b).count(),
-        "top100_external_only": external.iter().filter(|&&b| b).count(),
-        "top100_connectivity_rankable": rankable.iter().filter(|&&b| b).count(),
-        "external_only_names": pick(100, &|k| external[k]),
-        "top100_debut_before_2000": debut(|y| y < 2000),
-        "top100_debut_2015_plus": debut(|y| y >= 2015),
-        "top25_unanchored_count": pick(25, &|k| !has[k]).len(),
-        "top25_unanchored_names": pick(25, &|k| !has[k]),
-        "top10_active_external_unanchored": pick(10, &|k| external[k] && active[k] && !has[k]),
-        "watch_names_below_40_or_missing": below40,
-        "missing_public_anchor_names": missing.iter().map(|(r, f)| json!({
-            "fighter": f, "public_anchor_rank": r, "public_reason": anchors.reason(f),
-            "recommended_fix_or_explanation": MISSING_FIX})).collect::<Vec<_>>(),
-        "top10": (0..10.min(top.len())).map(|k| json!({
-            "model_rank": k + 1, "fighter": who[k], "score": top[k].1, "model_reason": reasons[k]})).collect::<Vec<_>>(),
-    });
-    write_text(
-        &dir.join("top100_audit.json"),
-        &(python_json(&summary) + "\n"),
-    )
+            .flat_map(|(a, b)| [a.as_str(), b.as_str()])
+            .collect();
+        let mut counts: HashMap<String, usize> = HashMap::new();
+        for (a, b) in canonical {
+            for f in [a, b].into_iter().filter(|f| !f.is_empty()) {
+                *counts.entry(f.clone()).or_default() += 1;
+            }
+        }
+        let graph = Graph::new(
+            rated.iter().map(|b| (b.a().as_str(), b.b().as_str())),
+            &counts,
+        );
+        let span = |f: &str| {
+            let rows = history.of(f);
+            (
+                rows.iter().map(|r| r.day).min(),
+                rows.iter().map(|r| r.day).max(),
+            )
+        };
+        let (first, last): (Vec<Option<Day>>, Vec<Option<Day>>) =
+            who.iter().map(|f| span(f)).unzip();
+        let total: Vec<i64> = who.iter().map(|f| bouts[f].0).collect();
+        let ufc: Vec<i64> = who.iter().map(|f| bouts[f].1).collect();
+        let paths: Vec<f64> = who
+            .iter()
+            .map(|f| graph.paths(f).map_or(f64::NAN, |p| p as f64))
+            .collect();
+        let rankable: Vec<bool> = who
+            .iter()
+            .zip(&paths)
+            .map(|(f, p)| core.contains(f) || *p >= MIN_PATHS as f64)
+            .collect();
+        let born: Vec<bool> = who.iter().map(|f| births.contains_key(*f)).collect();
+        let active: Vec<bool> = last
+            .iter()
+            .map(|d| d.is_some_and(|d| year(d) >= 2024))
+            .collect();
+        let external: Vec<bool> = ufc.iter().map(|&u| u == 0).collect();
+        let anchor: Vec<Option<i64>> = who.iter().map(|f| anchors.rank(f)).collect();
+        let has: Vec<bool> = who.iter().map(|f| anchors.has(f)).collect();
+        Top {
+            rows,
+            who,
+            first,
+            last,
+            total,
+            ufc,
+            paths,
+            rankable,
+            born,
+            active,
+            external,
+            anchor,
+            has,
+            reasons: vec![],
+            classes: vec![],
+            fixes: vec![],
+        }
+    }
+
+    /// Fills `reasons`, `classes` and `fixes` from the score components in `c`.
+    fn read(&mut self, c: &Frame) -> Result<(), Error> {
+        let [skill_mass, skill_score, exposure, resume, contender, tw, td, tdiv] = c.cols(
+            Frame::f64,
+            [
+                SKILL,
+                "public_legacy_skill_score",
+                "public_legacy_exposure_factor",
+                "public_legacy_resume_score",
+                "public_legacy_contender_wins",
+                "public_legacy_title_wins",
+                "public_legacy_title_defenses",
+                "public_legacy_title_win_divisions",
+            ],
+        )?;
+        for (k, &(i, s)) in self.rows.iter().enumerate() {
+            let int = |x: f64| x as i64;
+            let source = if self.ufc[k] == 0 {
+                "external-only".to_string()
+            } else {
+                format!("{}/{} UFC-rated", self.ufc[k], self.total[k])
+            };
+            self.reasons.push(format!(
+                "{SCORE} {}; skill mass {}; evaluated skill {} (exposure {}); contender resume {} ({} wins); \
+                 title ledger {} wins/{} defenses/{} divisions; {source}",
+                num(s, 1), num(skill_mass[i], 1), num(skill_score[i], 1), num(exposure[i], 2), num(resume[i], 1),
+                int(contender[i]), int(tw[i]), int(td[i]), int(tdiv[i]),
+            ));
+            let r = Row {
+                rank: k as i64 + 1,
+                anchor: self.anchor[k],
+                has_anchor: self.has[k],
+                external: self.external[k],
+                active: self.active[k],
+                title_wins: int(tw[i]),
+            };
+            let class = outlier(&r);
+            self.classes.push(class);
+            self.fixes.push(recommendation(&r, class));
+        }
+        Ok(())
+    }
+
+    /// The columns the audit table adds to the `current` rows.
+    fn columns(&self, anchors: &Anchors) -> Frame {
+        Table::default()
+            .f64("score", &self.rows.iter().map(|p| p.1).collect::<Vec<_>>())
+            .i64(
+                "model_rank",
+                &(1..=self.rows.len() as i64).collect::<Vec<_>>(),
+            )
+            .day("first_appearance", &self.first)
+            .day("last_appearance", &self.last)
+            .i64("total_bouts", &self.total)
+            .i64("ufc_bouts", &self.ufc)
+            .f64("disjoint_paths", &self.paths)
+            .bool("rankable", &self.rankable)
+            .bool("birth_date_known", &self.born)
+            .bool("active_2024_plus", &self.active)
+            .bool("external_only", &self.external)
+            .f64(
+                "public_anchor_rank",
+                &self
+                    .anchor
+                    .iter()
+                    .map(|a| a.map_or(f64::NAN, |a| a as f64))
+                    .collect::<Vec<_>>(),
+            )
+            .f64(
+                "delta",
+                &self
+                    .anchor
+                    .iter()
+                    .enumerate()
+                    .map(|(k, a)| a.map_or(f64::NAN, |a| (k as i64 + 1 - a) as f64))
+                    .collect::<Vec<_>>(),
+            )
+            .bool("has_public_anchor", &self.has)
+            .str(
+                "public_reason",
+                &self
+                    .who
+                    .iter()
+                    .map(|f| anchors.reason(f))
+                    .collect::<Vec<_>>(),
+            )
+            .str("model_reason", &self.reasons)
+            .str("outlier_class", &self.classes)
+            .str("recommended_fix_or_explanation", &self.fixes)
+            .frame()
+    }
+
+    /// The JSON summary; `boards` are the published (men, women) rankings, `missing` the
+    /// anchors absent from the 100.
+    fn summary(
+        &self,
+        snapshot: &Path,
+        names: &[String],
+        boards: [(&'static str, &[(usize, f64)]); 2],
+        anchors: &Anchors,
+        missing: &[(i64, String)],
+    ) -> Value {
+        let mut on_board: HashMap<String, (i64, &str)> = HashMap::new();
+        for (board, rows) in boards {
+            for (r, &(i, _)) in rows.iter().enumerate() {
+                on_board.insert(key(&names[i]), (r as i64 + 1, board));
+            }
+        }
+        let below40: Vec<Value> = WATCH_BELOW_40
+            .iter()
+            .filter_map(|f| {
+                let found = on_board.get(&key(f));
+                (found.is_none_or(|p| p.0 > 40)).then(|| {
+                    json!({"fighter": f, "model_rank": found.map(|p| p.0), "board": found.map(|p| p.1),
+                           "reason": anchors.reason(f)})
+                })
+            })
+            .collect();
+        let who = &self.who;
+        let pick = |n: usize, keep: &dyn Fn(usize) -> bool| -> Vec<&str> {
+            (0..n.min(who.len()))
+                .filter(|&k| keep(k))
+                .map(|k| who[k])
+                .collect()
+        };
+        let debut = |keep: fn(i32) -> bool| {
+            self.first
+                .iter()
+                .filter(|d| d.is_some_and(|d| keep(year(d))))
+                .count()
+        };
+        let (born, active, external, has) = (&self.born, &self.active, &self.external, &self.has);
+        json!({
+            "snapshot": snapshot.file_name().unwrap().to_string_lossy(),
+            "scope": crate::bouts::SCOPE.trim(),
+            "published_score": SCORE,
+            "diagnostic_score": SKILL,
+            "board": "men (the published default)",
+            "ranked_fighters": boards[0].1.len(),
+            "ranked_fighters_women_board": boards[1].1.len(),
+            "top100_birth_date_coverage": py_round(born.iter().filter(|&&b| b).count() as f64 / born.len() as f64, 4),
+            "top100_active_2024_plus": active.iter().filter(|&&b| b).count(),
+            "top100_external_only": external.iter().filter(|&&b| b).count(),
+            "top100_connectivity_rankable": self.rankable.iter().filter(|&&b| b).count(),
+            "external_only_names": pick(100, &|k| external[k]),
+            "top100_debut_before_2000": debut(|y| y < 2000),
+            "top100_debut_2015_plus": debut(|y| y >= 2015),
+            "top25_unanchored_count": pick(25, &|k| !has[k]).len(),
+            "top25_unanchored_names": pick(25, &|k| !has[k]),
+            "top10_active_external_unanchored": pick(10, &|k| external[k] && active[k] && !has[k]),
+            "watch_names_below_40_or_missing": below40,
+            "missing_public_anchor_names": missing.iter().map(|(r, f)| json!({
+                "fighter": f, "public_anchor_rank": r, "public_reason": anchors.reason(f),
+                "recommended_fix_or_explanation": MISSING_FIX})).collect::<Vec<_>>(),
+            "top10": (0..10.min(self.rows.len())).map(|k| json!({
+                "model_rank": k + 1, "fighter": who[k], "score": self.rows[k].1, "model_reason": self.reasons[k]})).collect::<Vec<_>>(),
+        })
+    }
 }
 
 /// Parquet as pandas writes it: strings as `large_string`.
@@ -787,28 +884,7 @@ fn python_json(v: &Value) -> String {
                 Some(i) if !n.is_f64() => out.push_str(&i.to_string()),
                 _ => out.push_str(&py_repr(n.as_f64().unwrap())),
             },
-            Value::String(s) => {
-                out.push('"');
-                for ch in s.chars() {
-                    match ch {
-                        '"' => out.push_str("\\\""),
-                        '\\' => out.push_str("\\\\"),
-                        '\n' => out.push_str("\\n"),
-                        '\r' => out.push_str("\\r"),
-                        '\t' => out.push_str("\\t"),
-                        '\u{8}' => out.push_str("\\b"),
-                        '\u{c}' => out.push_str("\\f"),
-                        c if (c as u32) < 0x20 || (c as u32) > 0x7f => {
-                            let mut buf = [0u16; 2];
-                            for u in c.encode_utf16(&mut buf) {
-                                let _ = write!(out, "\\u{u:04x}");
-                            }
-                        }
-                        c => out.push(c),
-                    }
-                }
-                out.push('"');
-            }
+            Value::String(s) => quoted(s, out),
             Value::Array(a) if a.is_empty() => out.push_str("[]"),
             Value::Object(o) if o.is_empty() => out.push_str("{}"),
             Value::Array(a) => {
@@ -825,7 +901,7 @@ fn python_json(v: &Value) -> String {
                 out.push_str("{\n");
                 for (k, (name, x)) in o.iter().enumerate() {
                     out.push_str(&pad(depth + 1));
-                    go(&Value::String(name.clone()), depth + 1, out);
+                    quoted(name, out);
                     out.push_str(": ");
                     go(x, depth + 1, out);
                     out.push_str(if k + 1 < o.len() { ",\n" } else { "\n" });
@@ -838,4 +914,28 @@ fn python_json(v: &Value) -> String {
     let mut out = String::new();
     go(v, 0, &mut out);
     out
+}
+
+/// `s` as a `json.dumps` string: quoted, with every non-ASCII or control character escaped.
+fn quoted(s: &str, out: &mut String) {
+    out.push('"');
+    for ch in s.chars() {
+        match ch {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            '\u{8}' => out.push_str("\\b"),
+            '\u{c}' => out.push_str("\\f"),
+            c if (c as u32) < 0x20 || (c as u32) > 0x7f => {
+                let mut buf = [0u16; 2];
+                for u in c.encode_utf16(&mut buf) {
+                    let _ = write!(out, "\\u{u:04x}");
+                }
+            }
+            c => out.push(c),
+        }
+    }
+    out.push('"');
 }

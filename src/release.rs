@@ -396,31 +396,13 @@ pub fn build(
     let (id, stage) = writer.generation()?;
     let authored = Authored::capture(&root, true)?;
     authored.copy(&root, &stage, true)?;
-    let mut inputs: Vec<PathBuf> = files(&snapshot)?
-        .into_iter()
-        .filter(|p| !TABLES.iter().any(|name| p == Path::new(name)))
-        .map(|p| relative_snapshot.join(p))
-        .collect();
-    // Previous outputs are not inputs: a forgotten producer must fail admission,
-    // rather than silently reuse an old table from the copied snapshot.
-    for p in &inputs {
-        copy(&root.join(p), &stage.join(p))?;
-    }
-    for p in EXTERNAL {
-        copy(&root.join(p), &stage.join(p))?;
-        inputs.push(PathBuf::from(p));
-    }
+    let (input_paths, inputs) = admit(&root, &stage, &snapshot, relative_snapshot)?;
     let mut code = files(&root.join("src"))?
         .into_iter()
         .map(|p| PathBuf::from("src").join(p))
         .collect::<Vec<_>>();
     code.extend([PathBuf::from("Cargo.toml"), PathBuf::from("Cargo.lock")]);
     let source = receipt(&root, &code)?;
-    let input_paths = inputs;
-    let inputs = receipt(&stage, &input_paths)?;
-    if receipt(&root, &input_paths)? != inputs {
-        return Err(invalid("release inputs changed while being copied"));
-    }
     compute(&stage.join(relative_snapshot), &stage).map_err(|e| invalid(e.0))?;
     if receipt(&root, &input_paths)? != inputs || receipt(&root, &code)? != source {
         return Err(invalid(
@@ -428,6 +410,69 @@ pub fn build(
         ));
     }
     authored.check(&root)?;
+    let mut outputs = inventory(&stage, relative_snapshot)?;
+    outputs.push(manifest(
+        &stage,
+        relative_snapshot,
+        &source,
+        &inputs,
+        &outputs,
+    )?);
+    authored.check(&root)?;
+    writer.promote(&id, &outputs, Pointer::Release, None)
+}
+
+/// Writes the release manifest, the receipts of `source`, `inputs` and the staged `outputs`,
+/// into the staged snapshot and beside the generation; returns its path in the snapshot.
+fn manifest(
+    stage: &Path,
+    relative_snapshot: &Path,
+    source: &BTreeMap<String, String>,
+    inputs: &BTreeMap<String, String>,
+    outputs: &[PathBuf],
+) -> io::Result<PathBuf> {
+    let hashes = receipt(stage, outputs)?;
+    let manifest = serde_json::to_vec_pretty(
+        &json!({"schema": 1, "snapshot": relative_snapshot.to_string_lossy().replace('\\', "/"), "source_sha256": source, "input_sha256": inputs, "output_sha256": hashes}),
+    )?;
+    let path = relative_snapshot.join("release_manifest.json");
+    fs::write(stage.join(&path), &manifest)?;
+    fs::write(stage.parent().unwrap().join("manifest.json"), &manifest)?;
+    Ok(path)
+}
+
+/// Copy the release inputs from `root` into `stage` and return them with their receipt: the
+/// snapshot's files except previous outputs, then `EXTERNAL`. Previous outputs are not inputs:
+/// a forgotten producer must fail admission, rather than silently reuse an old table from the
+/// copied snapshot.
+fn admit(
+    root: &Path,
+    stage: &Path,
+    snapshot: &Path,
+    relative_snapshot: &Path,
+) -> io::Result<(Vec<PathBuf>, BTreeMap<String, String>)> {
+    let mut inputs: Vec<PathBuf> = files(snapshot)?
+        .into_iter()
+        .filter(|p| !TABLES.iter().any(|name| p == Path::new(name)))
+        .map(|p| relative_snapshot.join(p))
+        .collect();
+    for p in &inputs {
+        copy(&root.join(p), &stage.join(p))?;
+    }
+    for p in EXTERNAL {
+        copy(&root.join(p), &stage.join(p))?;
+        inputs.push(PathBuf::from(p));
+    }
+    let staged = receipt(stage, &inputs)?;
+    if receipt(root, &inputs)? != staged {
+        return Err(invalid("release inputs changed while being copied"));
+    }
+    Ok((inputs, staged))
+}
+
+/// The outputs a release must produce, without the manifest: the snapshot tables, the
+/// documents and every staged site file, sorted, then the top-100 audit.
+fn inventory(stage: &Path, relative_snapshot: &Path) -> io::Result<Vec<PathBuf>> {
     let mut outputs = TABLES[..TABLES.len() - 1]
         .iter()
         .map(|p| relative_snapshot.join(p))
@@ -453,16 +498,7 @@ pub fn build(
             .iter()
             .map(|p| PathBuf::from("data/model_tuning/top100-audit").join(p)),
     );
-    let hashes = receipt(&stage, &outputs)?;
-    let manifest = serde_json::to_vec_pretty(
-        &json!({"schema": 1, "snapshot": relative_snapshot.to_string_lossy().replace('\\', "/"), "source_sha256": source, "input_sha256": inputs, "output_sha256": hashes}),
-    )?;
-    let manifest_path = relative_snapshot.join("release_manifest.json");
-    fs::write(stage.join(&manifest_path), &manifest)?;
-    fs::write(stage.parent().unwrap().join("manifest.json"), &manifest)?;
-    outputs.push(manifest_path);
-    authored.check(&root)?;
-    writer.promote(&id, &outputs, Pointer::Release, None)
+    Ok(outputs)
 }
 
 /// Stamp a copied site under the same writer ownership as a model release.

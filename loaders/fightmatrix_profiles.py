@@ -214,16 +214,25 @@ def parse_profile_html(profile_html: str, profile_url: str) -> tuple[dict, pd.Da
         "last_ufc_fight_date": _parse_date(_match(summary_text, r"Last UFC Fight:\s*(\d{4}-\d{2}-\d{2})")),
     }
 
-    history_table = None
-    for table in tables[1:]:
-        header = " ".join(table.find("tr").get_text(" ", strip=True).split()) if table.find("tr") else ""
-        if "Opponent" in header and "Outcome" in header:
-            history_table = table
-            break
+    history_table = _history_table(tables[1:])
     if history_table is None:
         return profile, pd.DataFrame(columns=BOUT_COLUMNS)
+    return profile, pd.DataFrame(_history_bouts(history_table, profile), columns=BOUT_COLUMNS)
 
-    rows = history_table.find_all("tr")
+
+def _history_table(tables):
+    """The first table whose header row names an Opponent and an Outcome column, else ``None``."""
+    for table in tables:
+        header = " ".join(table.find("tr").get_text(" ", strip=True).split()) if table.find("tr") else ""
+        if "Opponent" in header and "Outcome" in header:
+            return table
+    return None
+
+
+def _history_bouts(table, profile: dict) -> list[dict]:
+    """Bout rows of a profile's fight history: each result row (W, L, D or NC, with an opponent
+    link) pairs with the event row below it; other rows are skipped."""
+    rows = table.find_all("tr")
     bouts: list[dict] = []
     i = 1
     while i < len(rows):
@@ -234,53 +243,54 @@ def parse_profile_html(profile_html: str, profile_url: str) -> tuple[dict, pd.Da
         if result not in {"W", "L", "D", "NC"} or opponent_link is None or i + 1 >= len(rows):
             i += 1
             continue
-
-        event_row = rows[i + 1]
-        event_link = event_row.select_one('a[href*="/event/"]')
-        opponent = opponent_link.get_text(" ", strip=True)
-        opponent_url = urljoin(BASE_URL, opponent_link.get("href"))
-        opponent_context = result_row.find("em")
-        context_text = opponent_context.get_text(" ", strip=True) if opponent_context else ""
-        context_match = re.match(r"#(\d+)\s+(.+)", context_text)
-        method_cell = cells[-1].get_text(" ", strip=True) if len(cells) >= 3 else ""
-        round_match = re.search(r"\bRound\s+(\d+)\b", method_cell, flags=re.IGNORECASE)
-        method_raw = re.sub(r"\s*\bRound\s+\d+\b.*$", "", method_cell, flags=re.IGNORECASE).strip()
-        event_url = urljoin(BASE_URL, event_link.get("href")) if event_link else None
-        event_id = _id_from_url(event_url, "event")
-        event_name = event_link.get_text(" ", strip=True) if event_link else None
-        date_node = event_row.find("em")
-        event_date = _parse_date(date_node.get_text(" ", strip=True) if date_node else None)
-        flag = event_row.select_one('img[src*="/images/flag/"]')
-        flag_match = re.search(r"/flag/([A-Za-z]+)\.png", flag.get("src", "")) if flag else None
-        result_name = {"W": "win", "L": "loss", "D": "draw", "NC": "nc"}[result]
-
-        bouts.append({
-            "fight_key": _fight_key(event_id, event_date, fighter or "", opponent),
-            "event_id": event_id,
-            "event_url": event_url,
-            "event_name": event_name,
-            "event_date": event_date,
-            "event_country_code": flag_match.group(1).upper() if flag_match else None,
-            "fighter": fighter,
-            "fighter_profile_id": profile_id,
-            "opponent": opponent,
-            "opponent_profile_id": _id_from_url(opponent_url, "fighter-profile"),
-            "opponent_profile_url": opponent_url,
-            "result": result_name,
-            "opponent_prefight_rank": int(context_match.group(1)) if context_match else None,
-            "opponent_prefight_division": context_match.group(2) if context_match else None,
-            "method_raw": method_raw or None,
-            "method_class": classify_method(method_raw),
-            "end_round": int(round_match.group(1)) if round_match else None,
-            "end_time_seconds": None,
-            "org": _event_org(event_name),
-            "is_title_fight": is_title_event(event_name),
-            "source": "fightmatrix_public",
-            "source_profile_url": profile_url,
-        })
+        bouts.append(_history_bout(result_row, cells, result, opponent_link, rows[i + 1], profile))
         i += 2
+    return bouts
 
-    return profile, pd.DataFrame(bouts, columns=BOUT_COLUMNS)
+
+def _history_bout(result_row, cells, result: str, opponent_link, event_row, profile: dict) -> dict:
+    """One bout from its result row (with that row's ``cells``, ``result`` and opponent link) and its event row."""
+    fighter, profile_url = profile["fighter"], profile["profile_url"]
+    event_link = event_row.select_one('a[href*="/event/"]')
+    opponent = opponent_link.get_text(" ", strip=True)
+    opponent_url = urljoin(BASE_URL, opponent_link.get("href"))
+    opponent_context = result_row.find("em")
+    context_text = opponent_context.get_text(" ", strip=True) if opponent_context else ""
+    context_match = re.match(r"#(\d+)\s+(.+)", context_text)
+    method_cell = cells[-1].get_text(" ", strip=True) if len(cells) >= 3 else ""
+    round_match = re.search(r"\bRound\s+(\d+)\b", method_cell, flags=re.IGNORECASE)
+    method_raw = re.sub(r"\s*\bRound\s+\d+\b.*$", "", method_cell, flags=re.IGNORECASE).strip()
+    event_url = urljoin(BASE_URL, event_link.get("href")) if event_link else None
+    event_id = _id_from_url(event_url, "event")
+    event_name = event_link.get_text(" ", strip=True) if event_link else None
+    date_node = event_row.find("em")
+    event_date = _parse_date(date_node.get_text(" ", strip=True) if date_node else None)
+    flag = event_row.select_one('img[src*="/images/flag/"]')
+    flag_match = re.search(r"/flag/([A-Za-z]+)\.png", flag.get("src", "")) if flag else None
+    return {
+        "fight_key": _fight_key(event_id, event_date, fighter or "", opponent),
+        "event_id": event_id,
+        "event_url": event_url,
+        "event_name": event_name,
+        "event_date": event_date,
+        "event_country_code": flag_match.group(1).upper() if flag_match else None,
+        "fighter": fighter,
+        "fighter_profile_id": profile["profile_id"],
+        "opponent": opponent,
+        "opponent_profile_id": _id_from_url(opponent_url, "fighter-profile"),
+        "opponent_profile_url": opponent_url,
+        "result": {"W": "win", "L": "loss", "D": "draw", "NC": "nc"}[result],
+        "opponent_prefight_rank": int(context_match.group(1)) if context_match else None,
+        "opponent_prefight_division": context_match.group(2) if context_match else None,
+        "method_raw": method_raw or None,
+        "method_class": classify_method(method_raw),
+        "end_round": int(round_match.group(1)) if round_match else None,
+        "end_time_seconds": None,
+        "org": _event_org(event_name),
+        "is_title_fight": is_title_event(event_name),
+        "source": "fightmatrix_public",
+        "source_profile_url": profile_url,
+    }
 
 
 def _seed_profiles(snapshot_dir: Path) -> pd.DataFrame:

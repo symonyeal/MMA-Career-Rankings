@@ -255,6 +255,21 @@ impl Frame {
         Ok((0..c.len()).map(|i| c.value(i)).collect())
     }
 
+    /// The columns `names`, each read by `get` (`Frame::str`, `Frame::f64`, `Frame::bool`, …);
+    /// the error is the first column's, in `names` order.
+    pub fn cols<T, const N: usize>(
+        &self,
+        get: fn(&Frame, &str) -> Result<T, Error>,
+        names: [&str; N],
+    ) -> Result<[T; N], Error> {
+        let v = names
+            .iter()
+            .map(|n| get(self, n))
+            .collect::<Result<Vec<T>, Error>>()?;
+        Ok(v.try_into()
+            .unwrap_or_else(|_| unreachable!("one column per name")))
+    }
+
     pub fn batch(&self) -> &RecordBatch {
         &self.batch
     }

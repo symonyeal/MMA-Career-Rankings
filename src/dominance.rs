@@ -56,8 +56,9 @@ fn points(s: &str) -> f64 {
     }
 }
 
-/// a-perspective dominance of every rated bout, in bout order.
-fn per_fight(snapshot: &Path, rated: &[Bout], names: &Names) -> Result<Vec<f64>, Error> {
+/// Sum of the z-scored a-minus-b per-minute rates of every rated bout, in bout order; 0 for a bout
+/// without both sides' rounds.
+fn rates(snapshot: &Path, rated: &[Bout]) -> Result<Vec<f64>, Error> {
     let r = Frame::read(
         &snapshot.join("canonical_rounds.parquet"),
         &[
@@ -124,7 +125,12 @@ fn per_fight(snapshot: &Path, rated: &[Bout], names: &Names) -> Result<Vec<f64>,
         let d = zs[0][k] + zs[1][k] + zs[2][k];
         dom[i] = if d.is_nan() { 0.0 } else { d };
     }
-    // Judge margin, red minus blue, keyed by the unordered name pair and date; later cards win.
+    Ok(dom)
+}
+
+/// a-perspective mean judge margin of every rated decision, in bout order; NaN without a card.
+/// Cards are keyed by the unordered name pair and date; later cards win.
+fn margins(snapshot: &Path, rated: &[Bout], names: &Names) -> Result<Vec<f64>, Error> {
     let s = Frame::read(
         &snapshot.join("datalab_scorecards.parquet"),
         &[
@@ -162,7 +168,7 @@ fn per_fight(snapshot: &Path, rated: &[Bout], names: &Names) -> Result<Vec<f64>,
         };
         cards.insert((pair.0, pair.1, d), (r, m));
     }
-    let gap: Vec<f64> = rated
+    Ok(rated
         .iter()
         .map(|b| {
             let (a, o) = (names.key(b.a(), false), names.key(b.b(), false));
@@ -182,7 +188,14 @@ fn per_fight(snapshot: &Path, rated: &[Bout], names: &Names) -> Result<Vec<f64>,
                 _ => f64::NAN,
             }
         })
-        .collect();
+        .collect())
+}
+
+/// a-perspective dominance of every rated bout, in bout order: the rates, plus the z-scored
+/// margin of each decision with a card, floored at ±`FINISH_FLOOR_Z` for a finish's winner.
+fn per_fight(snapshot: &Path, rated: &[Bout], names: &Names) -> Result<Vec<f64>, Error> {
+    let mut dom = rates(snapshot, rated)?;
+    let gap = margins(snapshot, rated, names)?;
     let scored: Vec<usize> = (0..rated.len()).filter(|&i| !gap[i].is_nan()).collect();
     for (k, zk) in z(&scored.iter().map(|&i| gap[i]).collect::<Vec<_>>())
         .into_iter()

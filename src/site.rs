@@ -370,12 +370,40 @@ fn fighters(x: &Inputs, e: &[usize], names: &[String]) -> Result<J, Error> {
             .map(|&i| Some(c[i]).filter(|v| !v.is_nan()))
             .collect::<Vec<_>>()
     };
-    let int = |c: &str| -> Result<Vec<Option<i64>>, Error> {
-        let v = rc.i64(c)?;
-        Ok(e.iter().map(|&i| Some(v[i])).collect())
-    };
-    let col = |c: &str| rc.f64(c).map(|v| at(&v));
+    let int = |v: &[i64]| ints(&e.iter().map(|&i| Some(v[i])).collect::<Vec<_>>(), 1);
     let f1 = |v: Vec<Option<f64>>, nd: usize| J::Arr(v.into_iter().map(|x| opt(x, nd)).collect());
+    let col = |v: &[f64]| f1(at(v), 1);
+    let [n, w, l, d, tw, cw, cy, ay] = rc.cols(
+        Frame::i64,
+        [
+            "rating_periods",
+            "wins",
+            "losses",
+            "draws",
+            "public_legacy_qualifying_title_wins",
+            "public_legacy_contender_wins",
+            "symon_career_contributing_years",
+            "symon_career_active_years",
+        ],
+    )?;
+    let [score, mass, whr, glicko] = rc.cols(
+        Frame::f64,
+        [
+            "public_legacy_score",
+            "symon_career_skill_mass",
+            "mu_whr",
+            "mu_canonical",
+        ],
+    )?;
+    let [title, skill, resume] = rc.cols(
+        Frame::f64,
+        [
+            "public_legacy_title_score",
+            "public_legacy_skill_score",
+            "public_legacy_resume_score",
+        ],
+    )?;
+    let part = |c: &[f64]| f1(at(&scaled(c)), 3);
     let gender = rc.str("gender")?;
     let div = |c: &str| -> Result<J, Error> {
         let d = rc.str(c)?;
@@ -392,28 +420,16 @@ fn fighters(x: &Inputs, e: &[usize], names: &[String]) -> Result<J, Error> {
     );
     let rank = |b: &Board| f1(names.iter().map(|n| b.rank(n)).collect(), 1);
     let last = rc.day("whr_last_event_date")?;
-    let part = |c: &str| -> Result<J, Error> {
-        let t = scaled(&rc.f64(&format!("public_legacy_{c}_score"))?);
-        Ok(f1(at(&t), 3))
-    };
-    let mut peak: HashMap<&str, f64> = HashMap::new();
-    for r in x.history.rows() {
-        if !r.era.is_nan() {
-            let p = peak.entry(&r.fighter).or_insert(f64::NEG_INFINITY);
-            *p = p.max(r.era);
-        }
-    }
-    let dom = index(x.dominance)?;
-    let (dmean, dwins) = (x.dominance.f64("mean_dominance")?, x.dominance.i64("wins")?);
+    let (dom, domw) = dominance(x.dominance, names)?;
     let obj: Vec<(&str, J)> = vec![
         ("name", J::Arr(names.iter().map(|n| s(n)).collect())),
         ("g", J::Arr(e.iter().map(|&i| opt_s(&gender[i])).collect())),
         ("div", div("career_division")?),
         ("cdiv", div("current_division")?),
-        ("n", ints(&int("rating_periods")?, 1)),
-        ("w", ints(&int("wins")?, 1)),
-        ("l", ints(&int("losses")?, 1)),
-        ("d", ints(&int("draws")?, 1)),
+        ("n", int(&n)),
+        ("w", int(&w)),
+        ("l", int(&l)),
+        ("d", int(&d)),
         (
             "last",
             J::Arr(
@@ -423,15 +439,15 @@ fn fighters(x: &Inputs, e: &[usize], names: &[String]) -> Result<J, Error> {
             ),
         ),
         ("at", rank(&at_b)),
-        ("score", f1(col("public_legacy_score")?, 1)),
-        ("T", part("title")?),
-        ("S", part("skill")?),
-        ("R", part("resume")?),
-        ("tw", ints(&int("public_legacy_qualifying_title_wins")?, 1)),
-        ("cw", ints(&int("public_legacy_contender_wins")?, 1)),
-        ("cy", ints(&int("symon_career_contributing_years")?, 1)),
-        ("ay", ints(&int("symon_career_active_years")?, 1)),
-        ("mass", f1(col("symon_career_skill_mass")?, 1)),
+        ("score", col(&score)),
+        ("T", part(&title)),
+        ("S", part(&skill)),
+        ("R", part(&resume)),
+        ("tw", int(&tw)),
+        ("cw", int(&cw)),
+        ("cy", int(&cy)),
+        ("ay", int(&ay)),
+        ("mass", col(&mass)),
         ("pr", rank(&pr)),
         ("plevel", f1(pr.f64("elite_level", names)?, 1)),
         ("pwins", f1(pr.f64("tested_opponent_wins", names)?, 1)),
@@ -440,42 +456,47 @@ fn fighters(x: &Inputs, e: &[usize], names: &[String]) -> Result<J, Error> {
         ("cr", rank(&cu)),
         ("cur", f1(cu.f64("current_board_score", names)?, 1)),
         ("ufc", ints(&cu.i64("tested_opponent_wins", names)?, 1)),
-        ("whr", f1(col("mu_whr")?, 1)),
-        (
-            "peak",
-            f1(
-                names
-                    .iter()
-                    .map(|n| peak.get(n.as_str()).copied())
-                    .collect(),
-                1,
-            ),
-        ),
-        ("glicko", f1(col("mu_canonical")?, 1)),
-        (
-            "dom",
-            f1(
-                names
-                    .iter()
-                    .map(|n| dom.get(n).map(|&i| dmean[i]).filter(|v| !v.is_nan()))
-                    .collect(),
-                1,
-            ),
-        ),
-        (
-            "domw",
-            ints(
-                &names
-                    .iter()
-                    .map(|n| dom.get(n).map(|&i| dwins[i]))
-                    .collect::<Vec<_>>(),
-                1,
-            ),
-        ),
+        ("whr", col(&whr)),
+        ("peak", peak(x.history, names)),
+        ("glicko", col(&glicko)),
+        ("dom", dom),
+        ("domw", domw),
     ];
     Ok(J::Obj(
         obj.into_iter().map(|(k, v)| (k.to_string(), v)).collect(),
     ))
+}
+
+/// Each listed fighter's highest era-adjusted rating, null without one.
+fn peak(h: &History, names: &[String]) -> J {
+    let mut peak: HashMap<&str, f64> = HashMap::new();
+    for r in h.rows() {
+        if !r.era.is_nan() {
+            let p = peak.entry(&r.fighter).or_insert(f64::NEG_INFINITY);
+            *p = p.max(r.era);
+        }
+    }
+    J::Arr(
+        names
+            .iter()
+            .map(|n| opt(peak.get(n.as_str()).copied(), 1))
+            .collect(),
+    )
+}
+
+/// Each listed fighter's mean dominance and win count, null when absent (or a NaN mean).
+fn dominance(d: &Frame, names: &[String]) -> Result<(J, J), Error> {
+    let dom = index(d)?;
+    let (dmean, dwins) = (d.f64("mean_dominance")?, d.i64("wins")?);
+    let mean = names
+        .iter()
+        .map(|n| opt(dom.get(n).map(|&i| dmean[i]).filter(|v| !v.is_nan()), 1))
+        .collect();
+    let wins: Vec<Option<i64>> = names
+        .iter()
+        .map(|n| dom.get(n).map(|&i| dwins[i]))
+        .collect();
+    Ok((J::Arr(mean), ints(&wins, 1)))
 }
 
 /// Class-board rows of the established fighters, components back on the scale of T, S, R.
@@ -879,22 +900,21 @@ fn streaks(x: &Inputs) -> Result<J, Error> {
             "is_excluded",
         ],
     )?;
-    let (a, b, w) = (
-        cf.str("fighter_a")?,
-        cf.str("fighter_b")?,
-        cf.str("winner")?,
-    );
-    let (wc, method, day) = (
-        cf.str("weight_class")?,
-        cf.str("method_class")?,
-        cf.day("event_date")?,
-    );
-    let (draw, nc, title, excl) = (
-        cf.bool("is_draw")?,
-        cf.bool("is_nc")?,
-        cf.bool("is_title_fight")?,
-        cf.bool("is_excluded")?,
-    );
+    let [a, b, w, wc, method] = cf.cols(
+        Frame::str,
+        [
+            "fighter_a",
+            "fighter_b",
+            "winner",
+            "weight_class",
+            "method_class",
+        ],
+    )?;
+    let day = cf.day("event_date")?;
+    let [draw, nc, title, excl] = cf.cols(
+        Frame::bool,
+        ["is_draw", "is_nc", "is_title_fight", "is_excluded"],
+    )?;
     let rc = x.current;
     let mu: HashMap<String, f64> = rc
         .str("fighter")?
@@ -924,12 +944,30 @@ fn streaks(x: &Inputs) -> Result<J, Error> {
         }
     }
     long.sort_by(|p, q| (p.0, p.1).cmp(&(q.0, q.1)));
-    struct Streak<'a> {
-        f: &'a str,
-        run: Vec<(Day, &'a str, usize)>,
-        ended: String,
-        ongoing: bool,
-    }
+    let mut rows: Vec<(usize, f64, i64, J)> = runs(&long, &w, &draw, &nc)
+        .iter()
+        .map(|st| row(st, &wc, &method, &title, &mu, &gender))
+        .collect();
+    rows.sort_by(|p, q| q.0.cmp(&p.0).then(desc(p.1, q.1)).then(q.2.cmp(&p.2)));
+    Ok(J::Arr(rows.into_iter().map(|r| r.3).collect()))
+}
+
+/// One win streak: its fighter, its bouts `(day, opponent, bout)` in order, and how it ended.
+struct Streak<'a> {
+    f: &'a str,
+    run: Vec<(Day, &'a str, usize)>,
+    ended: String,
+    ongoing: bool,
+}
+
+/// Runs of three or more consecutive wins in `long` (fighter, day, opponent, bout), sorted by
+/// fighter and day; a no-contest is skipped, a draw or loss ends the run.
+fn runs<'a>(
+    long: &[(&'a str, Day, &'a str, usize)],
+    w: &[String],
+    draw: &[bool],
+    nc: &[bool],
+) -> Vec<Streak<'a>> {
     let mut out: Vec<Streak> = Vec::new();
     let mut i = 0;
     while i < long.len() {
@@ -965,62 +1003,67 @@ fn streaks(x: &Inputs) -> Result<J, Error> {
         }
         i = j;
     }
-    let rows: Vec<(usize, f64, i64, J)> = out
+    out
+}
+
+/// A streak's site row, with its sort keys: length, mean opponent rating, title wins;
+/// `wc`, `method` and `title` are `canonical_fights` columns, indexed by bout.
+fn row(
+    st: &Streak,
+    wc: &[String],
+    method: &[String],
+    title: &[bool],
+    mu: &HashMap<String, f64>,
+    gender: &HashMap<String, String>,
+) -> (usize, f64, i64, J) {
+    let divs: Vec<String> = st
+        .run
         .iter()
-        .map(|st| {
-            let divs: Vec<String> = st
-                .run
-                .iter()
-                .filter(|r| !wc[r.2].is_empty())
-                .map(|r| display(&wc[r.2]))
-                .collect();
-            let mut tally: BTreeMap<&str, usize> = BTreeMap::new();
-            for d in &divs {
-                *tally.entry(d).or_default() += 1;
-            }
-            let top = tally.values().copied().max();
-            let modal = tally
-                .iter()
-                .find(|p| Some(*p.1) == top)
-                .map(|p| p.0.to_string());
-            let opp: Vec<f64> = st
-                .run
-                .iter()
-                .filter_map(|r| mu.get(r.1).copied())
-                .filter(|v| !v.is_nan())
-                .collect();
-            let avg = if opp.is_empty() {
-                f64::NAN
-            } else {
-                psum(&opp) / opp.len() as f64
-            };
-            let tw = st.run.iter().filter(|r| title[r.2]).count() as i64;
-            let fin = st
-                .run
-                .iter()
-                .filter(|r| matches!(method[r.2].as_str(), "KO/TKO" | "Submission"))
-                .count() as i64;
-            let uniq: BTreeSet<&String> = divs.iter().collect();
-            let row = J::Arr(vec![
-                s(st.f),
-                J::Int(st.run.len() as i64),
-                J::Int(st.run[0].0 as i64),
-                J::Int(st.run.last().unwrap().0 as i64),
-                modal.map_or(J::Null, J::Str),
-                J::Arr(uniq.into_iter().map(|d| s(d)).collect()),
-                J::Int(tw),
-                J::Int(fin),
-                num(avg, 0),
-                J::Bool(st.ongoing),
-                s(&st.ended),
-                gender.get(st.f).map_or(J::Null, |g| opt_s(g)),
-            ]);
-            (st.run.len(), avg, tw, row)
-        })
+        .filter(|r| !wc[r.2].is_empty())
+        .map(|r| display(&wc[r.2]))
         .collect();
-    let mut rows = rows;
-    rows.sort_by(|p, q| q.0.cmp(&p.0).then(desc(p.1, q.1)).then(q.2.cmp(&p.2)));
-    Ok(J::Arr(rows.into_iter().map(|r| r.3).collect()))
+    let mut tally: BTreeMap<&str, usize> = BTreeMap::new();
+    for d in &divs {
+        *tally.entry(d).or_default() += 1;
+    }
+    let top = tally.values().copied().max();
+    let modal = tally
+        .iter()
+        .find(|p| Some(*p.1) == top)
+        .map(|p| p.0.to_string());
+    let opp: Vec<f64> = st
+        .run
+        .iter()
+        .filter_map(|r| mu.get(r.1).copied())
+        .filter(|v| !v.is_nan())
+        .collect();
+    let avg = if opp.is_empty() {
+        f64::NAN
+    } else {
+        psum(&opp) / opp.len() as f64
+    };
+    let tw = st.run.iter().filter(|r| title[r.2]).count() as i64;
+    let fin = st
+        .run
+        .iter()
+        .filter(|r| matches!(method[r.2].as_str(), "KO/TKO" | "Submission"))
+        .count() as i64;
+    let uniq: BTreeSet<&String> = divs.iter().collect();
+    let row = J::Arr(vec![
+        s(st.f),
+        J::Int(st.run.len() as i64),
+        J::Int(st.run[0].0 as i64),
+        J::Int(st.run.last().unwrap().0 as i64),
+        modal.map_or(J::Null, J::Str),
+        J::Arr(uniq.into_iter().map(|d| s(d)).collect()),
+        J::Int(tw),
+        J::Int(fin),
+        num(avg, 0),
+        J::Bool(st.ongoing),
+        s(&st.ended),
+        gender.get(st.f).map_or(J::Null, |g| opt_s(g)),
+    ]);
+    (st.run.len(), avg, tw, row)
 }
 
 /// Top 100 established men by All-time score against Fight Matrix's all-time list.
@@ -1238,12 +1281,10 @@ fn market(x: &Inputs) -> Result<(J, J, J, J), Error> {
             "event_date",
         ],
     )?;
-    let (q, url, fa, fb) = (
-        od.str("odds_data_quality")?,
-        od.str("fight_url")?,
-        od.str("fighter_a")?,
-        od.str("fighter_b")?,
-    );
+    let [q, url, fa, fb] = od.cols(
+        Frame::str,
+        ["odds_data_quality", "fight_url", "fighter_a", "fighter_b"],
+    )?;
     let (pa, oday) = (od.f64("implied_prob_a_no_vig")?, od.days("event_date")?);
     let mut bouts: HashMap<&str, Vec<&Bout>> = HashMap::new();
     for b in x
@@ -1266,17 +1307,48 @@ fn market(x: &Inputs) -> Result<(J, J, J, J), Error> {
         .map(|(i, b)| (i, b, if *b.winner() == fa[i] { 1.0 } else { 0.0 }))
         .filter(|&(i, _, _)| (0.001..=0.999).contains(&pa[i]))
         .collect();
+    let lines = Lines {
+        fa: &fa,
+        fb: &fb,
+        pa: &pa,
+        day: &oday,
+    };
+    let c = corners(x, &m, &lines);
+    Ok((
+        J::from(x.market),
+        upsets(&m, &lines),
+        bands(&c, |c| c.0, &AGE_BANDS),
+        bands(&c, |c| c.1, &LAYOFF_BANDS),
+    ))
+}
 
-    let pw = |r: &(usize, &Bout, f64)| if r.2 == 1.0 { pa[r.0] } else { 1.0 - pa[r.0] };
+/// The odds-line columns read per matched bout, indexed by odds row.
+struct Lines<'a> {
+    fa: &'a [String],
+    fb: &'a [String],
+    /// No-vig price of corner a.
+    pa: &'a [f64],
+    day: &'a [Day],
+}
+
+/// The fifteen lowest-priced winners of `m` (odds row, bout, y = 1 if corner a won).
+fn upsets(m: &[(usize, &Bout, f64)], o: &Lines) -> J {
+    let pw = |r: &(usize, &Bout, f64)| {
+        if r.2 == 1.0 {
+            o.pa[r.0]
+        } else {
+            1.0 - o.pa[r.0]
+        }
+    };
     let mut up: Vec<&(usize, &Bout, f64)> = m.iter().collect();
     up.sort_by(|a, b| asc(pw(a), pw(b)));
     let strip = Regex::new(r"\b(UFC|Interim|Title|Bout)\b").unwrap();
-    let upsets = J::Arr(
+    J::Arr(
         up.iter()
             .take(15)
             .map(|r| {
                 let (i, b) = (r.0, r.1);
-                let loser = if r.2 == 1.0 { &fb[i] } else { &fa[i] };
+                let loser = if r.2 == 1.0 { &o.fb[i] } else { &o.fa[i] };
                 let wc = if b.weight_class.is_empty() {
                     J::Null
                 } else {
@@ -1289,7 +1361,7 @@ fn market(x: &Inputs) -> Result<(J, J, J, J), Error> {
                     )
                 };
                 J::Arr(vec![
-                    s(&iso(oday[i])),
+                    s(&iso(o.day[i])),
                     s(b.winner()),
                     s(loser),
                     num(pw(r), 3),
@@ -1299,9 +1371,12 @@ fn market(x: &Inputs) -> Result<(J, J, J, J), Error> {
                 ])
             })
             .collect(),
-    );
+    )
+}
 
-    // Months since each fighter's previous distinct bout date, any promotion.
+/// (age, layoff months, won, priced) per corner of `m`, a-sides first. The layoff counts from
+/// the fighter's previous distinct bout date, any promotion; NaN when unknown.
+fn corners(x: &Inputs, m: &[(usize, &Bout, f64)], o: &Lines) -> Vec<(f64, f64, f64, f64)> {
     let mut seen: Vec<(&str, Day)> = x
         .staged
         .iter()
@@ -1314,19 +1389,22 @@ fn market(x: &Inputs) -> Result<(J, J, J, J), Error> {
         .filter(|w| w[0].0 == w[1].0)
         .map(|w| (w[1], (w[1].1 - w[0].1) as f64 / DAYS_PER_MONTH))
         .collect();
-    // (age, layoff, won, priced) per corner, a-sides first.
     let mut corners: Vec<(f64, f64, f64, f64)> = Vec::new();
     for side in [true, false] {
-        for r in &m {
+        for r in m {
             let i = r.0;
-            let f = if side { fa[i].as_str() } else { fb[i].as_str() };
-            let d = oday[i];
+            let f = if side {
+                o.fa[i].as_str()
+            } else {
+                o.fb[i].as_str()
+            };
+            let d = o.day[i];
             let age = x
                 .births
                 .get(f)
                 .map_or(f64::NAN, |b| (d - b) as f64 / JULIAN_YEAR_DAYS);
             let won = if side { r.2 } else { 1.0 - r.2 };
-            let priced = if side { pa[i] } else { 1.0 - pa[i] };
+            let priced = if side { o.pa[i] } else { 1.0 - o.pa[i] };
             corners.push((
                 age,
                 lay.get(&(f, d)).copied().unwrap_or(f64::NAN),
@@ -1335,33 +1413,34 @@ fn market(x: &Inputs) -> Result<(J, J, J, J), Error> {
             ));
         }
     }
-    let bands = |col: fn(&(f64, f64, f64, f64)) -> f64, b: &[(f64, f64, &str)]| {
-        J::Arr(
-            b.iter()
-                .map(|&(lo, hi, lab)| {
-                    let r: Vec<&(f64, f64, f64, f64)> = corners
-                        .iter()
-                        .filter(|c| col(c) >= lo && col(c) < hi)
-                        .collect();
-                    let n = r.len() as f64;
-                    let won: Vec<f64> = r.iter().map(|c| c.2).collect();
-                    let priced: Vec<f64> = r.iter().map(|c| c.3).collect();
-                    let e: Vec<f64> = r.iter().map(|c| c.2 - c.3).collect();
-                    J::Arr(vec![
-                        s(lab),
-                        J::Int(r.len() as i64),
-                        num(psum(&won) / n, 4),
-                        num(psum(&priced) / n, 4),
-                        num(var(&e, 1).sqrt() / n.sqrt(), 4),
-                    ])
-                })
-                .collect(),
-        )
-    };
-    Ok((
-        J::from(x.market),
-        upsets,
-        bands(|c| c.0, &AGE_BANDS),
-        bands(|c| c.1, &LAYOFF_BANDS),
-    ))
+    corners
+}
+
+/// Per band `[lo, hi)` of `col`: [label, n, win rate, mean price, standard error of won − priced].
+fn bands(
+    corners: &[(f64, f64, f64, f64)],
+    col: fn(&(f64, f64, f64, f64)) -> f64,
+    b: &[(f64, f64, &str)],
+) -> J {
+    J::Arr(
+        b.iter()
+            .map(|&(lo, hi, lab)| {
+                let r: Vec<&(f64, f64, f64, f64)> = corners
+                    .iter()
+                    .filter(|c| col(c) >= lo && col(c) < hi)
+                    .collect();
+                let n = r.len() as f64;
+                let won: Vec<f64> = r.iter().map(|c| c.2).collect();
+                let priced: Vec<f64> = r.iter().map(|c| c.3).collect();
+                let e: Vec<f64> = r.iter().map(|c| c.2 - c.3).collect();
+                J::Arr(vec![
+                    s(lab),
+                    J::Int(r.len() as i64),
+                    num(psum(&won) / n, 4),
+                    num(psum(&priced) / n, 4),
+                    num(var(&e, 1).sqrt() / n.sqrt(), 4),
+                ])
+            })
+            .collect(),
+    )
 }

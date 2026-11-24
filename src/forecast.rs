@@ -120,63 +120,7 @@ fn ufc_rates(
     snapshot: &Path,
     secs: &HashMap<String, (Day, f64)>,
 ) -> Result<(HashMap<(String, Day), ([f64; 11], f64)>, [f64; 11]), Error> {
-    let rd = Frame::read(
-        &snapshot.join("canonical_rounds.parquet"),
-        &[
-            "fight_url",
-            "fighter",
-            "sig_str_landed",
-            "sig_str_attempted",
-            "td_landed",
-            "td_attempted",
-            "sub_att",
-            "ctrl_seconds",
-            "kd",
-        ],
-    )?;
-    let q = [
-        "sig_str_landed",
-        "sig_str_attempted",
-        "td_landed",
-        "td_attempted",
-        "sub_att",
-        "ctrl_seconds",
-        "kd",
-    ];
-    let cols: Vec<Vec<f64>> = q.iter().map(|c| rd.f64(c)).collect::<Result<_, _>>()?;
-    let (url, fighter) = (rd.str("fight_url")?, rd.str("fighter")?);
-    let mut g: BTreeMap<(&str, &str), [f64; 7]> = BTreeMap::new();
-    for i in 0..rd.len() {
-        let e = g.entry((&url[i], &fighter[i])).or_insert([0.0; 7]);
-        for (k, c) in cols.iter().enumerate() {
-            if !c[i].is_nan() {
-                e[k] += c[i];
-            }
-        }
-    }
-    // Own totals, opponent totals and seconds, summed per (fighter, day): 15 columns.
-    let mut by: BTreeMap<(String, Day), [f64; 15]> = BTreeMap::new();
-    let keys: Vec<_> = g.keys().copied().collect();
-    let mut i = 0;
-    while i < keys.len() {
-        let j = i + keys[i..].iter().take_while(|k| k.0 == keys[i].0).count();
-        if let Some(&(day, s)) = secs.get(keys[i].0) {
-            for x in &keys[i..j] {
-                for o in &keys[i..j] {
-                    if x.1 == o.1 {
-                        continue;
-                    }
-                    let e = by.entry((x.1.to_string(), day)).or_insert([0.0; 15]);
-                    for k in 0..7 {
-                        e[k] += g[x][k];
-                        e[7 + k] += g[o][k];
-                    }
-                    e[14] += s;
-                }
-            }
-        }
-        i = j;
-    }
+    let by = totals(snapshot, secs)?;
     let y0 = parse_day(&format!("{Y0}-01-01"))?;
     let mut pre = [0.0; 15];
     for ((_, d), v) in &by {
@@ -232,6 +176,71 @@ fn ufc_rates(
         *x = psum(&v) / v.len() as f64;
     }
     Ok((out, debut))
+}
+
+/// Own totals, opponent totals and seconds of every UFC bout with a known duration, summed per
+/// (fighter, day): 15 columns, own `sl sa tl ta sub ctrl kd`, then the opponent's, then seconds.
+fn totals(
+    snapshot: &Path,
+    secs: &HashMap<String, (Day, f64)>,
+) -> Result<BTreeMap<(String, Day), [f64; 15]>, Error> {
+    let rd = Frame::read(
+        &snapshot.join("canonical_rounds.parquet"),
+        &[
+            "fight_url",
+            "fighter",
+            "sig_str_landed",
+            "sig_str_attempted",
+            "td_landed",
+            "td_attempted",
+            "sub_att",
+            "ctrl_seconds",
+            "kd",
+        ],
+    )?;
+    let q = [
+        "sig_str_landed",
+        "sig_str_attempted",
+        "td_landed",
+        "td_attempted",
+        "sub_att",
+        "ctrl_seconds",
+        "kd",
+    ];
+    let cols: Vec<Vec<f64>> = q.iter().map(|c| rd.f64(c)).collect::<Result<_, _>>()?;
+    let (url, fighter) = (rd.str("fight_url")?, rd.str("fighter")?);
+    let mut g: BTreeMap<(&str, &str), [f64; 7]> = BTreeMap::new();
+    for i in 0..rd.len() {
+        let e = g.entry((&url[i], &fighter[i])).or_insert([0.0; 7]);
+        for (k, c) in cols.iter().enumerate() {
+            if !c[i].is_nan() {
+                e[k] += c[i];
+            }
+        }
+    }
+    let mut by: BTreeMap<(String, Day), [f64; 15]> = BTreeMap::new();
+    let keys: Vec<_> = g.keys().copied().collect();
+    let mut i = 0;
+    while i < keys.len() {
+        let j = i + keys[i..].iter().take_while(|k| k.0 == keys[i].0).count();
+        if let Some(&(day, s)) = secs.get(keys[i].0) {
+            for x in &keys[i..j] {
+                for o in &keys[i..j] {
+                    if x.1 == o.1 {
+                        continue;
+                    }
+                    let e = by.entry((x.1.to_string(), day)).or_insert([0.0; 15]);
+                    for k in 0..7 {
+                        e[k] += g[x][k];
+                        e[7 + k] += g[o][k];
+                    }
+                    e[14] += s;
+                }
+            }
+        }
+        i = j;
+    }
+    Ok(by)
 }
 
 /// NumPy `std(axis=0)` of the rows `a` and their mirror `−a`, summed row by row.
@@ -367,20 +376,19 @@ fn bout_frame(
             "end_time_seconds",
         ],
     )?;
-    let (url, event, a, b, winner) = (
-        cf.str("fight_url")?,
-        cf.str("event_name")?,
-        cf.str("fighter_a")?,
-        cf.str("fighter_b")?,
-        cf.str("winner")?,
-    );
+    let [url, event, a, b, winner] = cf.cols(
+        Frame::str,
+        [
+            "fight_url",
+            "event_name",
+            "fighter_a",
+            "fighter_b",
+            "winner",
+        ],
+    )?;
     let day = cf.days("event_date")?;
-    let (excl, draw, nc) = (
-        cf.bool("is_excluded")?,
-        cf.bool("is_draw")?,
-        cf.bool("is_nc")?,
-    );
-    let (er, et) = (cf.f64("end_round")?, cf.f64("end_time_seconds")?);
+    let [excl, draw, nc] = cf.cols(Frame::bool, ["is_excluded", "is_draw", "is_nc"])?;
+    let [er, et] = cf.cols(Frame::f64, ["end_round", "end_time_seconds"])?;
     let secs: HashMap<String, (Day, f64)> = (0..cf.len())
         .map(|i| (url[i].clone(), (day[i], (er[i] - 1.0) * 300.0 + et[i])))
         .collect();
@@ -397,40 +405,8 @@ fn bout_frame(
         gl.entry((g.names()[r.fighter].as_str(), r.day))
             .or_insert(r.pre);
     }
-    let fi = Frame::read(
-        &snapshot.join("canonical_fighters.parquet"),
-        &["fighter", "height_inches", "reach_inches"],
-    )?;
-    let mut body: HashMap<String, (f64, f64)> = HashMap::new();
-    for ((f, h), r) in fi
-        .str("fighter")?
-        .into_iter()
-        .zip(fi.f64("height_inches")?)
-        .zip(fi.f64("reach_inches")?)
-    {
-        body.entry(f).or_insert((h, r));
-    }
-    let od = Frame::read(
-        &snapshot.join("odds_lines.parquet"),
-        &[
-            "fight_url",
-            "odds_data_quality",
-            "fighter_a",
-            "implied_prob_a_no_vig",
-        ],
-    )?;
-    let mut odds: HashMap<String, (String, f64)> = HashMap::new();
-    for (((u, q), fa), p) in od
-        .str("fight_url")?
-        .into_iter()
-        .zip(od.str("odds_data_quality")?)
-        .zip(od.str("fighter_a")?)
-        .zip(od.f64("implied_prob_a_no_vig")?)
-    {
-        if q == "ok" && (0.001..=0.999).contains(&p) {
-            odds.insert(u, (fa, p));
-        }
-    }
+    let body = bodies(snapshot)?;
+    let odds = prices(snapshot)?;
 
     let d = |x: f64, y: f64| if (x - y).is_nan() { 0.0 } else { x - y };
     // np.maximum keeps NaN.
@@ -502,6 +478,51 @@ fn bout_frame(
         });
     }
     Ok(out)
+}
+
+/// Height and reach in inches by fighter, from each fighter's first row of `canonical_fighters`.
+fn bodies(snapshot: &Path) -> Result<HashMap<String, (f64, f64)>, Error> {
+    let fi = Frame::read(
+        &snapshot.join("canonical_fighters.parquet"),
+        &["fighter", "height_inches", "reach_inches"],
+    )?;
+    let mut body: HashMap<String, (f64, f64)> = HashMap::new();
+    for ((f, h), r) in fi
+        .str("fighter")?
+        .into_iter()
+        .zip(fi.f64("height_inches")?)
+        .zip(fi.f64("reach_inches")?)
+    {
+        body.entry(f).or_insert((h, r));
+    }
+    Ok(body)
+}
+
+/// Usable odds lines by fight_url: (fighter_a, no-vig price of a), quality "ok" and price in
+/// [0.001, 0.999]; a later line for the same fight replaces an earlier one.
+fn prices(snapshot: &Path) -> Result<HashMap<String, (String, f64)>, Error> {
+    let od = Frame::read(
+        &snapshot.join("odds_lines.parquet"),
+        &[
+            "fight_url",
+            "odds_data_quality",
+            "fighter_a",
+            "implied_prob_a_no_vig",
+        ],
+    )?;
+    let mut odds: HashMap<String, (String, f64)> = HashMap::new();
+    for (((u, q), fa), p) in od
+        .str("fight_url")?
+        .into_iter()
+        .zip(od.str("odds_data_quality")?)
+        .zip(od.str("fighter_a")?)
+        .zip(od.f64("implied_prob_a_no_vig")?)
+    {
+        if q == "ok" && (0.001..=0.999).contains(&p) {
+            odds.insert(u, (fa, p));
+        }
+    }
+    Ok(odds)
 }
 
 /// p_1 and p_3: each test year forecast by fits on bouts dated before that year.
@@ -681,8 +702,28 @@ pub fn market(
             ])
         })
         .collect();
+    let (fav, years) = favourites(snapshot, staged)?;
+    let mut events: Vec<&str> = ev.clone();
+    events.sort_unstable();
+    events.dedup();
+    let iso = |d: Day| crate::frame::iso(d);
+    Ok(json!({
+        "n": e.len(),
+        "events": events.len(),
+        "span": [iso(e.iter().map(|t| t.day).min().unwrap()), iso(e.iter().map(|t| t.day).max().unwrap())],
+        "first_test_year": Y0,
+        "odds_bouts": fav.len(),
+        "fav": psum(&fav) / fav.len() as f64,
+        "years": [years.iter().min(), years.iter().max()],
+        "rows": rows,
+        "cal_market": cal(&forecasts[3].2, &y),
+        "cal_model": cal(&forecasts[2].2, &y),
+    }))
+}
 
-    // Every priced UFC bout of the whole table with a known winner.
+/// Every priced UFC bout of the whole table with a known winner: 1 where the favourite won
+/// (a price of exactly ½ counts corner a as the favourite), and the bout's year.
+fn favourites(snapshot: &Path, staged: &[Bout]) -> Result<(Vec<f64>, Vec<i32>), Error> {
     let mut won: HashMap<&str, Vec<&str>> = HashMap::new();
     for b in staged
         .iter()
@@ -700,13 +741,8 @@ pub fn market(
             "event_date",
         ],
     )?;
-    let (ou, oq, oa, op, od_day) = (
-        od.str("fight_url")?,
-        od.str("odds_data_quality")?,
-        od.str("fighter_a")?,
-        od.f64("implied_prob_a_no_vig")?,
-        od.days("event_date")?,
-    );
+    let [ou, oq, oa] = od.cols(Frame::str, ["fight_url", "odds_data_quality", "fighter_a"])?;
+    let (op, od_day) = (od.f64("implied_prob_a_no_vig")?, od.days("event_date")?);
     let (mut fav, mut years) = (Vec::new(), Vec::new());
     for i in 0..od.len() {
         if oq[i] != "ok" || !(0.001..=0.999).contains(&op[i]) {
@@ -718,22 +754,7 @@ pub fn market(
             years.push(year(od_day[i]));
         }
     }
-    let mut events: Vec<&str> = ev.clone();
-    events.sort_unstable();
-    events.dedup();
-    let iso = |d: Day| crate::frame::iso(d);
-    Ok(json!({
-        "n": e.len(),
-        "events": events.len(),
-        "span": [iso(e.iter().map(|t| t.day).min().unwrap()), iso(e.iter().map(|t| t.day).max().unwrap())],
-        "first_test_year": Y0,
-        "odds_bouts": fav.len(),
-        "fav": psum(&fav) / fav.len() as f64,
-        "years": [years.iter().min(), years.iter().max()],
-        "rows": rows,
-        "cal_market": cal(&forecasts[3].2, &y),
-        "cal_model": cal(&forecasts[2].2, &y),
-    }))
+    Ok((fav, years))
 }
 
 #[cfg(test)]

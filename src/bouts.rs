@@ -217,37 +217,40 @@ const STAGED: [&str; 22] = [
 /// Every staged row, in file order, with the staged winner score.
 pub fn staged(snapshot: &Path) -> Result<Vec<Bout>, Error> {
     let f = Frame::read(&snapshot.join("combined_fights.parquet"), &STAGED)?;
-    let s = |c: &str| f.str(c);
-    let (url, event, a, b, winner, loser) = (
-        s("fight_url")?,
-        s("event_name")?,
-        s("fighter_a")?,
-        s("fighter_b")?,
-        s("winner")?,
-        s("loser")?,
-    );
-    let (wc, method, details, source, org, corpus, corpora) = (
-        s("weight_class")?,
-        s("method_class")?,
-        s("details_text")?,
-        s("source")?,
-        s("org")?,
-        s("source_corpus")?,
-        s("available_in_corpora")?,
-    );
+    let [url, event, a, b, winner, loser, wc, method, details, source, org, corpus, corpora] = f
+        .cols(
+            Frame::str,
+            [
+                "fight_url",
+                "event_name",
+                "fighter_a",
+                "fighter_b",
+                "winner",
+                "loser",
+                "weight_class",
+                "method_class",
+                "details_text",
+                "source",
+                "org",
+                "source_corpus",
+                "available_in_corpora",
+            ],
+        )?;
     let day = f.day("event_date")?;
-    let (draw, nc, excluded, title, model) = (
-        f.bool("is_draw")?,
-        f.bool("is_nc")?,
-        f.bool("is_excluded")?,
-        f.bool("is_title_fight")?,
-        f.bool("is_model_bout")?,
-    );
-    let (score, end_round, end_secs) = (
-        f.f64("method_score_winner")?,
-        f.f64("end_round")?,
-        f.f64("end_time_seconds")?,
-    );
+    let [draw, nc, excluded, title, model] = f.cols(
+        Frame::bool,
+        [
+            "is_draw",
+            "is_nc",
+            "is_excluded",
+            "is_title_fight",
+            "is_model_bout",
+        ],
+    )?;
+    let [score, end_round, end_secs] = f.cols(
+        Frame::f64,
+        ["method_score_winner", "end_round", "end_time_seconds"],
+    )?;
     (0..f.len())
         .map(|i| {
             let at = |e: &str| Error::at(format!("combined_fights row {i}"), e);

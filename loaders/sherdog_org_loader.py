@@ -26,7 +26,8 @@ from __future__ import annotations
 
 import re
 import time
-from dataclasses import dataclass
+from collections.abc import Callable
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import pandas as pd
@@ -367,75 +368,85 @@ def parse_fighter_career(html: str, fighter_id: str) -> list[dict]:
     """
     if not html:
         return []
-    soup = _soup(html)
-    table = None
+    table = _record_table(_soup(html))
+    if table is None:
+        return []
+    rows = []
+    for tr in table.find_all("tr")[1:]:
+        tds = tr.find_all("td")
+        row = _career_row(tds, fighter_id) if len(tds) >= 6 else None
+        if row is not None:
+            rows.append(row)
+    return rows
+
+
+def _record_table(soup):
+    """The first table whose header row names a Result and a Method column, else ``None``."""
     for candidate in soup.find_all("table"):
         first = candidate.find("tr")
         head = [c.get_text(strip=True) for c in first.find_all(["th", "td"])] if first else []
         if "Result" in head and any("Method" in h for h in head):
-            table = candidate
-            break
-    if table is None:
-        return []
+            return candidate
+    return None
 
-    rows = []
-    for tr in table.find_all("tr")[1:]:
-        tds = tr.find_all("td")
-        if len(tds) < 6:
-            continue
-        result = tds[0].get_text(strip=True).lower()
-        if result not in _RESULTS:
-            continue
-        opp_link = tds[1].find("a", href=_FIGHTER_ID_RE)
-        opponent_id = fighter_key(opp_link["href"]) if opp_link else None
-        if not opponent_id or opponent_id == fighter_id:
-            continue
 
-        event_link = tds[2].find("a", href=re.compile(r"^/events/"))
-        event_href = event_link["href"].split("?")[0] if event_link else None
-        text = tds[2].get_text(" ", strip=True)
-        dm = _FIGHTER_DATE_RE.search(text)
-        date = None
-        if dm:
-            try:
-                date = str(pd.Timestamp(f"{dm.group(1)} {int(dm.group(2))} {dm.group(3)}").date())
-            except ValueError:
-                date = None
+def _career_row(tds, fighter_id: str) -> dict | None:
+    """One record-page row as a bout of ``fighter_id``; ``None`` for a scheduled bout, an
+    unidentified opponent or the fighter themself."""
+    result = tds[0].get_text(strip=True).lower()
+    if result not in _RESULTS:
+        return None
+    opp_link = tds[1].find("a", href=_FIGHTER_ID_RE)
+    opponent_id = fighter_key(opp_link["href"]) if opp_link else None
+    if not opponent_id or opponent_id == fighter_id:
+        return None
 
-        method = re.sub(r"\s*VIEW PLAY-BY-PLAY\s*", "",
-                        tds[3].get_text(" ", strip=True), flags=re.IGNORECASE).strip()
-        ref = tds[3].find("a", href=re.compile(r"^/referee/"))
-        if ref is not None:
-            method = method.replace(_clean(ref), "").strip()
+    event_link = tds[2].find("a", href=re.compile(r"^/events/"))
+    event_href = event_link["href"].split("?")[0] if event_link else None
+    method = re.sub(r"\s*VIEW PLAY-BY-PLAY\s*", "",
+                    tds[3].get_text(" ", strip=True), flags=re.IGNORECASE).strip()
+    ref = tds[3].find("a", href=re.compile(r"^/referee/"))
+    if ref is not None:
+        method = method.replace(_clean(ref), "").strip()
 
-        outcome = "nc" if result.startswith("no") else result
-        rows.append({
-            "event_href": event_href,
-            "event_id": event_key(event_href) if event_href else None,
-            "event_name": _clean(event_link) if event_link else None,
-            "event_date": date,
-            "event_location": None,
-            "org": None,
-            "org_id": None,
-            "match_order": None,
-            "fighter_a_id": fighter_id,
-            "fighter_a": None,
-            "fighter_a_href": f"/fighter/x-{fighter_id}",
-            "fighter_b_id": opponent_id,
-            "fighter_b": _clean(tds[1]) or None,
-            "fighter_b_href": opp_link["href"],
-            "fighter_a_outcome": outcome,
-            "fighter_b_outcome": {"win": "loss", "loss": "win"}.get(outcome, outcome),
-            "weight_class": None,
-            "method_raw": method or None,
-            "referee": _clean(ref) if ref is not None else None,
-            "end_round": _int_or_none(tds[4].get_text(strip=True)),
-            "end_time_seconds": _seconds(tds[5].get_text(strip=True)),
-            "is_title_fight": False,
-            "is_main_event": False,
-            "source": "fighter_page",
-        })
-    return rows
+    outcome = "nc" if result.startswith("no") else result
+    return {
+        "event_href": event_href,
+        "event_id": event_key(event_href) if event_href else None,
+        "event_name": _clean(event_link) if event_link else None,
+        "event_date": _career_date(tds[2].get_text(" ", strip=True)),
+        "event_location": None,
+        "org": None,
+        "org_id": None,
+        "match_order": None,
+        "fighter_a_id": fighter_id,
+        "fighter_a": None,
+        "fighter_a_href": f"/fighter/x-{fighter_id}",
+        "fighter_b_id": opponent_id,
+        "fighter_b": _clean(tds[1]) or None,
+        "fighter_b_href": opp_link["href"],
+        "fighter_a_outcome": outcome,
+        "fighter_b_outcome": {"win": "loss", "loss": "win"}.get(outcome, outcome),
+        "weight_class": None,
+        "method_raw": method or None,
+        "referee": _clean(ref) if ref is not None else None,
+        "end_round": _int_or_none(tds[4].get_text(strip=True)),
+        "end_time_seconds": _seconds(tds[5].get_text(strip=True)),
+        "is_title_fight": False,
+        "is_main_event": False,
+        "source": "fighter_page",
+    }
+
+
+def _career_date(text: str) -> str | None:
+    """The ISO date in an event cell such as ``Dec / 22 / 2000``; ``None`` when absent or invalid."""
+    dm = _FIGHTER_DATE_RE.search(text)
+    if not dm:
+        return None
+    try:
+        return str(pd.Timestamp(f"{dm.group(1)} {int(dm.group(2))} {dm.group(3)}").date())
+    except ValueError:
+        return None
 
 
 def _pair_key(a: object, b: object) -> tuple:
@@ -573,82 +584,98 @@ def crawl(
                 print(f"    [skip] unreachable: {exc}", flush=True)
             return None
 
-    events_seen: dict[str, dict] = {}
-    bouts: list[dict] = []
-    fighters_seen: set[str] = set()
-    event_frontier: list[str] = []
-    rejected: set[str] = set()
-    truncated: set[int] = set()
-
-    for org in orgs:
-        html = _get(f"/organizations/{org.slug}", "orgs", str(org.org_id))
-        if html is None:
-            continue
-        hrefs = parse_event_hrefs(html)
-        event_frontier.extend(hrefs)
-        capped = len(hrefs) >= ORG_LISTING_CAP
-        if capped:
-            truncated.add(org.org_id)
-        if progress:
-            print(f"  seed {org.label:<12} {len(hrefs):>4} events listed"
-                  f"{'  [TRUNCATED -> will expand]' if capped else ''}", flush=True)
-
+    state = _Crawl(_get, progress)
+    event_frontier = state.seed(orgs)
     for rnd in range(1, max_rounds + 1):
         new_events = [h for h in dict.fromkeys(event_frontier)
-                      if h not in events_seen and h not in rejected]
-        event_frontier = []
+                      if h not in state.events and h not in state.rejected]
         if not new_events:
             break
         if progress:
             print(f"round {rnd}: {len(new_events)} candidate events", flush=True)
-
-        fighter_frontier: set[str] = set()
-        for i, href in enumerate(new_events, 1):
-            key = event_key(href)
-            if key is None:
-                rejected.add(href)
-                continue
-            html = _get(href, "events", key)
-            if html is None:
-                rejected.add(href)
-                continue
-            event, rows = parse_event(html, href)
-            if event is None:
-                rejected.add(href)
-                continue
-            events_seen[href] = event
-            bouts.extend(rows)
-            if event["org_id"] in truncated:
-                for r in rows:
-                    for fid in (r["fighter_a_id"], r["fighter_b_id"]):
-                        if fid and fid not in fighters_seen:
-                            fighter_frontier.add(fid)
-            if progress and i % 100 == 0:
-                print(f"    events {i}/{len(new_events)}  bouts={len(bouts)}", flush=True)
-
+        fighter_frontier = state.read_events(new_events)
         # Read each newly seen fighter's record for target-org events the
         # organization page never listed (Bellator pre-2019, mostly).
         if progress and fighter_frontier:
             print(f"round {rnd}: {len(fighter_frontier)} new fighters to expand", flush=True)
-        for j, fid in enumerate(sorted(fighter_frontier), 1):
-            fighters_seen.add(fid)
-            html = _get(f"/fighter/x-{fid}", "fighters", fid)
-            if html is None:
-                continue
-            for href in parse_event_hrefs(html):
-                if href in events_seen or href in rejected:
-                    continue
-                if SLUG_HINTS.search(href):
-                    event_frontier.append(href)
-            if progress and j % 200 == 0:
-                print(f"    fighters {j}/{len(fighter_frontier)}", flush=True)
+        event_frontier = state.expand(fighter_frontier)
 
     if unreachable and progress:
         print(f"[warn] {len(unreachable)} pages unreachable this pass; "
               f"rerun to pick them up", flush=True)
-    bouts_df, events_df = _frames(bouts, list(events_seen.values()))
+    bouts_df, events_df = _frames(state.bouts, list(state.events.values()))
     events_df.attrs["unreachable"] = unreachable
     return bouts_df, events_df
+
+
+@dataclass
+class _Crawl:
+    """State of one crawl to fixpoint.
+
+    ``get(path, kind, key)`` returns a page or ``None`` when it is missing or unreachable;
+    ``events`` maps each accepted event href to its metadata; ``bouts`` are their rows;
+    ``fighters`` are those already expanded; ``rejected`` holds hrefs that are not target-org
+    events; ``truncated`` the ids of orgs whose listing hit ``ORG_LISTING_CAP``.
+    """
+
+    get: Callable[[str, str, str], str | None]
+    progress: bool
+    events: dict[str, dict] = field(default_factory=dict)
+    bouts: list[dict] = field(default_factory=list)
+    fighters: set[str] = field(default_factory=set)
+    rejected: set[str] = field(default_factory=set)
+    truncated: set[int] = field(default_factory=set)
+
+    def seed(self, orgs: tuple[Org, ...]) -> list[str]:
+        """Event hrefs listed on each organization page, marking the truncated listings."""
+        frontier: list[str] = []
+        for org in orgs:
+            html = self.get(f"/organizations/{org.slug}", "orgs", str(org.org_id))
+            if html is None:
+                continue
+            hrefs = parse_event_hrefs(html)
+            frontier.extend(hrefs)
+            capped = len(hrefs) >= ORG_LISTING_CAP
+            if capped:
+                self.truncated.add(org.org_id)
+            if self.progress:
+                print(f"  seed {org.label:<12} {len(hrefs):>4} events listed"
+                      f"{'  [TRUNCATED -> will expand]' if capped else ''}", flush=True)
+        return frontier
+
+    def read_events(self, hrefs: list[str]) -> set[str]:
+        """Parse each event page; returns the unexpanded fighters of truncated-org events."""
+        fighters: set[str] = set()
+        for i, href in enumerate(hrefs, 1):
+            key = event_key(href)
+            html = None if key is None else self.get(href, "events", key)
+            event, rows = (None, []) if html is None else parse_event(html, href)
+            if event is None:
+                self.rejected.add(href)
+                continue
+            self.events[href] = event
+            self.bouts.extend(rows)
+            if event["org_id"] in self.truncated:
+                fighters.update(fid for r in rows for fid in (r["fighter_a_id"], r["fighter_b_id"])
+                                if fid and fid not in self.fighters)
+            if self.progress and i % 100 == 0:
+                print(f"    events {i}/{len(hrefs)}  bouts={len(self.bouts)}", flush=True)
+        return fighters
+
+    def expand(self, fighters: set[str]) -> list[str]:
+        """Unread target-org event hrefs on each fighter's record page, by the slug prefilter."""
+        frontier: list[str] = []
+        for j, fid in enumerate(sorted(fighters), 1):
+            self.fighters.add(fid)
+            html = self.get(f"/fighter/x-{fid}", "fighters", fid)
+            if html is None:
+                continue
+            frontier.extend(href for href in parse_event_hrefs(html)
+                            if href not in self.events and href not in self.rejected
+                            and SLUG_HINTS.search(href))
+            if self.progress and j % 200 == 0:
+                print(f"    fighters {j}/{len(fighters)}", flush=True)
+        return frontier
 
 
 def _frames(bouts: list[dict], events: list[dict]) -> tuple[pd.DataFrame, pd.DataFrame]:

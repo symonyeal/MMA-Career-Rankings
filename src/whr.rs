@@ -102,6 +102,42 @@ fn thomas(a: &[f64], b: &[f64], y: &[f64], x: &mut [f64], c: &mut [f64], d: &mut
     }
 }
 
+/// Scratch rows of one fighter's Newton step, each as long as the longest career: own and
+/// opponent ratings rk, ok; win probability pr; gradient g; Hessian diagonal h, negated in a;
+/// off-diagonal b; step x; Wiener pulls e; and `thomas`'s c, d.
+struct Block {
+    rk: Vec<f64>,
+    ok: Vec<f64>,
+    pr: Vec<f64>,
+    g: Vec<f64>,
+    h: Vec<f64>,
+    a: Vec<f64>,
+    b: Vec<f64>,
+    x: Vec<f64>,
+    e: Vec<f64>,
+    c: Vec<f64>,
+    d: Vec<f64>,
+}
+
+impl Block {
+    fn new(km: usize) -> Block {
+        let z = || vec![0.0f64; km];
+        Block {
+            rk: z(),
+            ok: z(),
+            pr: z(),
+            g: z(),
+            h: z(),
+            a: z(),
+            b: z(),
+            x: z(),
+            e: z(),
+            c: z(),
+            d: z(),
+        }
+    }
+}
+
 /// The appearance graph of a bout list.
 pub struct Graph {
     fighter: Vec<String>,
@@ -228,91 +264,22 @@ impl Graph {
     /// fit has converged when it is near zero, and nothing else in the loop tests for that.
     /// (The Newton step itself stays nonzero under re-centring, so it is no test.)
     pub fn fit_traced(&self, p: &Settings, age_drift: bool) -> (Vec<f64>, Vec<f64>, f64) {
-        let (o, s, pt, ix, gp, bn) = (&self.o, &self.s, &self.pt, &self.ix, &self.gp, &self.bn);
-        let n = o.len();
+        let pt = &self.pt;
+        let n = self.o.len();
         let nf = pt.len() - 1;
-        let (w2, ip, vg, cl) = (p.w2, 1.0 / p.prior_var, p.vg, p.clip);
         let lim = 25.0 / (elo_per_nat() * YEAR_DAYS);
         let mut r = vec![0.0f64; n];
         let mut dr = vec![0.0f64; NB];
         let tot = p.passes * if age_drift { 2 } else { 1 };
-        let iw: Vec<f64> = gp.iter().map(|&q| 1.0 / (w2 * q)).collect();
+        let iw: Vec<f64> = self.gp.iter().map(|&q| 1.0 / (p.w2 * q)).collect();
         let km = (0..nf).map(|f| pt[f + 1] - pt[f]).max().unwrap_or(0);
-        let z = || vec![0.0f64; km];
-        let (mut rk, mut ok, mut pr, mut g, mut h, mut a, mut b, mut x) =
-            (z(), z(), z(), z(), z(), z(), z(), z());
-        let (mut e, mut c, mut d) = (z(), z(), z());
+        let mut w = Block::new(km);
         let mut shift = 0.0f64;
         let mut before = r.clone();
         for pass in 0..tot {
             before.copy_from_slice(&r);
             for f in 0..nf {
-                let lo = pt[f];
-                let nd = &ix[lo..pt[f + 1]];
-                let k = nd.len();
-                for j in 0..k {
-                    rk[j] = r[nd[j]];
-                    ok[j] = r[o[nd[j]]];
-                }
-                for j in 0..k {
-                    pr[j] = 1.0 / (1.0 + fm::exp(-(rk[j] - ok[j])));
-                    g[j] = s[nd[j]] - pr[j];
-                    h[j] = -pr[j] * (1.0 - pr[j]);
-                }
-                let an = ip / k as f64;
-                for j in 0..k {
-                    g[j] -= rk[j] * an;
-                    h[j] -= an;
-                }
-                if vg > 0.0 {
-                    let v = vg / k as f64;
-                    for j in 0..k {
-                        let p0 = 1.0 / (1.0 + fm::exp(-rk[j]));
-                        g[j] += v * (0.5 - p0);
-                        h[j] -= v * p0 * (1.0 - p0);
-                    }
-                }
-                if k > 1 {
-                    // numpy applied g[:-1] += … to the whole slice before g[1:] -= …,
-                    // so each interior entry adds its own transition first.
-                    let iv = &iw[lo..lo + k - 1];
-                    for j in 0..k - 1 {
-                        let mut res = rk[j + 1] - rk[j];
-                        if age_drift && bn[lo + j] >= 0 {
-                            res -= dr[bn[lo + j] as usize] * gp[lo + j];
-                        }
-                        e[j] = res * iv[j];
-                    }
-                    for j in 0..k - 1 {
-                        g[j] += e[j];
-                    }
-                    for j in 0..k - 1 {
-                        g[j + 1] -= e[j];
-                    }
-                    for j in 0..k - 1 {
-                        h[j] -= iv[j];
-                    }
-                    for j in 0..k - 1 {
-                        h[j + 1] -= iv[j];
-                    }
-                    for j in 0..k - 1 {
-                        b[j] = -iv[j];
-                    }
-                }
-                for j in 0..k {
-                    a[j] = -h[j];
-                }
-                thomas(
-                    &a[..k],
-                    &b[..k.saturating_sub(1)],
-                    &g[..k],
-                    &mut x[..k],
-                    &mut c,
-                    &mut d,
-                );
-                for j in 0..k {
-                    r[nd[j]] = rk[j] + x[j].clamp(-cl, cl);
-                }
+                self.step(f, &mut r, age_drift.then_some(&dr[..]), p, &iw, &mut w);
             }
             if p.center {
                 let m = psum(&r) / n as f64;
@@ -330,6 +297,101 @@ impl Graph {
             }
         }
         (r, dr, shift)
+    }
+
+    /// One clipped Newton step on fighter `f`'s tridiagonal block, in place in `r`: likelihood,
+    /// anchor, virtual games and, between consecutive nodes, the Wiener prior with inverse
+    /// variance `iw`, each change less the age drift `dr` when one is given.
+    fn step(
+        &self,
+        f: usize,
+        r: &mut [f64],
+        dr: Option<&[f64]>,
+        p: &Settings,
+        iw: &[f64],
+        w: &mut Block,
+    ) {
+        let (o, s, ix, gp, bn) = (&self.o, &self.s, &self.ix, &self.gp, &self.bn);
+        let (ip, vg, cl) = (1.0 / p.prior_var, p.vg, p.clip);
+        let Block {
+            rk,
+            ok,
+            pr,
+            g,
+            h,
+            a,
+            b,
+            x,
+            e,
+            c,
+            d,
+        } = w;
+        let lo = self.pt[f];
+        let nd = &ix[lo..self.pt[f + 1]];
+        let k = nd.len();
+        for j in 0..k {
+            rk[j] = r[nd[j]];
+            ok[j] = r[o[nd[j]]];
+        }
+        for j in 0..k {
+            pr[j] = 1.0 / (1.0 + fm::exp(-(rk[j] - ok[j])));
+            g[j] = s[nd[j]] - pr[j];
+            h[j] = -pr[j] * (1.0 - pr[j]);
+        }
+        let an = ip / k as f64;
+        for j in 0..k {
+            g[j] -= rk[j] * an;
+            h[j] -= an;
+        }
+        if vg > 0.0 {
+            let v = vg / k as f64;
+            for j in 0..k {
+                let p0 = 1.0 / (1.0 + fm::exp(-rk[j]));
+                g[j] += v * (0.5 - p0);
+                h[j] -= v * p0 * (1.0 - p0);
+            }
+        }
+        if k > 1 {
+            // numpy applied g[:-1] += … to the whole slice before g[1:] -= …,
+            // so each interior entry adds its own transition first.
+            let iv = &iw[lo..lo + k - 1];
+            for j in 0..k - 1 {
+                let mut res = rk[j + 1] - rk[j];
+                if let Some(dr) = dr.filter(|_| bn[lo + j] >= 0) {
+                    res -= dr[bn[lo + j] as usize] * gp[lo + j];
+                }
+                e[j] = res * iv[j];
+            }
+            for j in 0..k - 1 {
+                g[j] += e[j];
+            }
+            for j in 0..k - 1 {
+                g[j + 1] -= e[j];
+            }
+            for j in 0..k - 1 {
+                h[j] -= iv[j];
+            }
+            for j in 0..k - 1 {
+                h[j + 1] -= iv[j];
+            }
+            for j in 0..k - 1 {
+                b[j] = -iv[j];
+            }
+        }
+        for j in 0..k {
+            a[j] = -h[j];
+        }
+        thomas(
+            &a[..k],
+            &b[..k.saturating_sub(1)],
+            &g[..k],
+            &mut x[..k],
+            c,
+            d,
+        );
+        for j in 0..k {
+            r[nd[j]] = rk[j] + x[j].clamp(-cl, cl);
+        }
     }
 
     /// Mean rating change per day in each age bucket, relative to the first, clipped to ±25 Elo/yr.

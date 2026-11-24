@@ -7,13 +7,18 @@
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
+use mma_rankings::appearances::Appearance;
+use mma_rankings::bouts::Bout;
 use mma_rankings::error::Error;
-use mma_rankings::frame::{read_text, write_text, Frame, Table};
+use mma_rankings::frame::{read_text, write_text, Day, Frame, Table};
+use mma_rankings::glicko::Glicko;
+use mma_rankings::history::History;
 use mma_rankings::layoff::Layoff;
 use mma_rankings::legacy::Pricing;
 use mma_rankings::names::Names;
-use mma_rankings::orgs::Rules;
+use mma_rankings::orgs::{Org, Rules};
 use mma_rankings::publish::Release;
+use mma_rankings::skill::Year;
 use mma_rankings::{
     age, appearances, audit, boards, bouts, classes, current, dominance, era, figures, forecast,
     glicko, heldout, integrity, legacy, narrative, publish, release, roster, site, skill, whr,
@@ -131,19 +136,116 @@ fn stamp(site: &Path) -> Result<(), Error> {
     write_text(&p, &h)
 }
 
-fn build(s: &Path, root: &Path) -> Result<(), Error> {
+/// A snapshot's bouts, fits and scored `ratings_current`: what every published output reads.
+struct Fit {
+    names: Names,
+    prepared: Vec<Bout>,
+    rated: Vec<Bout>,
+    staged: Vec<Bout>,
+    births: HashMap<String, Day>,
+    glicko: Glicko,
+    /// The WHR path, era-adjusted.
+    history: History,
+    apps: Vec<Appearance>,
+    /// `shift_bound` of the WHR fit.
+    shift: String,
+    layoff: Layoff,
+    ctx: HashMap<String, Org>,
+    pools: HashMap<String, Option<String>>,
+    years: Vec<Year>,
+    /// ratings_current: `CURRENT` columns, ordered by mu_canonical.
+    cur: Frame,
+}
+
+impl Fit {
+    /// Opponents priced at their era-adjusted rating.
+    fn era(&self) -> Pricing<'_> {
+        Pricing {
+            h: &self.history,
+            rating: |r| r.era,
+            layoff: &self.layoff,
+        }
+    }
+}
+
+/// Ratings, then scores: Glicko streams, WHR path and roster facts, then Prime and career
+/// skill, All-time legacy and Current.
+fn fit(s: &Path, root: &Path) -> Result<Fit, Error> {
     let names = Names::load(root)?;
     let prepared = bouts::prepared(s, root, &names)?;
     let rated = bouts::rated(&prepared);
     let staged = bouts::staged(s)?;
     let births = age::births(s)?;
-
-    // Ratings: Glicko streams, WHR path, roster facts; ratings_current is ordered by mu_canonical.
     let g = glicko::run(&rated);
     let w = whr::run(&rated, &births);
-    let whr_shift = shift_bound(w.shift);
     let mut history = w.history;
     let apps = mma_rankings::perf::appearances(&rated);
+    let cur = ratings(s, &g, w.current, &prepared, &rated, &history, &apps)?;
+    let female: HashSet<String> = cur
+        .str("fighter")?
+        .into_iter()
+        .zip(cur.str("gender")?)
+        .filter(|(_, g)| g == "F")
+        .map(|(f, _)| f)
+        .collect();
+    era::apply(&mut history, |f| female.contains(f));
+
+    let layoff = Layoff::new(&history);
+    let rules = Rules::load(root)?;
+    let ctx = rules.context(&rated);
+    let era_p = Pricing {
+        h: &history,
+        rating: |r| r.era,
+        layoff: &layoff,
+    };
+    let mu_p = Pricing {
+        h: &history,
+        rating: |r| r.mu,
+        layoff: &layoff,
+    };
+    let pools = skill::pools(&cur)?;
+    let years = skill::years(&history, |r| r.era, &pools);
+    let order = cur.str("fighter")?;
+    let mut cur = cur.hstack(&[&align(&skill::prime(&history, &cur)?.frame(), &order)?]);
+    cur = cur.hstack(&[&align(&skill::career(&years).frame(), &order)?]);
+    cur = cur.hstack(&[&align(
+        &legacy::score(&cur, &pools, &apps, &rated, &era_p, &rules)?.frame(),
+        &order,
+    )?]);
+    cur = cur.hstack(&[&align(
+        &current::score(&cur, &pools, &rated, &prepared, &mu_p, &ctx)?.frame(),
+        &order,
+    )?]);
+    let cur = cur.select(&CURRENT)?;
+    Ok(Fit {
+        names,
+        prepared,
+        rated,
+        staged,
+        births,
+        glicko: g,
+        history,
+        apps,
+        shift: shift_bound(w.shift),
+        layoff,
+        ctx,
+        pools,
+        years,
+        cur,
+    })
+}
+
+/// The Glicko current table ordered by mu_canonical (descending, then name), beside the WHR
+/// current table and the roster columns aligned to it.
+fn ratings(
+    s: &Path,
+    g: &Glicko,
+    whr_current: Table,
+    prepared: &[Bout],
+    rated: &[Bout],
+    history: &History,
+    apps: &[Appearance],
+) -> Result<Frame, Error> {
     let max = rated
         .iter()
         .map(|b| b.day)
@@ -160,91 +262,18 @@ fn build(s: &Path, root: &Path) -> Result<(), Error> {
     let base = base.take(&ix.iter().map(|&i| Some(i)).collect::<Vec<_>>())?;
     let order = base.str("fighter")?;
     let roster = align(
-        &roster::columns(&prepared, &rated, &history, &apps, max)?,
+        &roster::columns(prepared, rated, history, apps, max)?,
         &order,
     )?;
-    let mut cur = base.hstack(&[&align(&w.current.frame(), &order)?, &roster]);
-    let female: HashSet<String> = cur
-        .str("fighter")?
-        .into_iter()
-        .zip(cur.str("gender")?)
-        .filter(|(_, g)| g == "F")
-        .map(|(f, _)| f)
-        .collect();
-    era::apply(&mut history, |f| female.contains(f));
+    Ok(base.hstack(&[&align(&whr_current.frame(), &order)?, &roster]))
+}
 
-    // Scores: Prime and career skill, All-time legacy, Current.
-    let layoff = Layoff::new(&history);
-    let rules = Rules::load(root)?;
-    let ctx = rules.context(&rated);
-    let era_p = Pricing {
-        h: &history,
-        rating: |r| r.era,
-        layoff: &layoff,
-    };
-    let mu_p = Pricing {
-        h: &history,
-        rating: |r| r.mu,
-        layoff: &layoff,
-    };
-    let pools = skill::pools(&cur)?;
-    let years = skill::years(&history, |r| r.era, &pools);
-    cur = cur.hstack(&[&align(&skill::prime(&history, &cur)?.frame(), &order)?]);
-    cur = cur.hstack(&[&align(&skill::career(&years).frame(), &order)?]);
-    cur = cur.hstack(&[&align(
-        &legacy::score(&cur, &pools, &apps, &rated, &era_p, &rules)?.frame(),
-        &order,
-    )?]);
-    cur = cur.hstack(&[&align(
-        &current::score(&cur, &pools, &rated, &prepared, &mu_p, &ctx)?.frame(),
-        &order,
-    )?]);
-    let cur = cur.select(&CURRENT)?;
-    cur.write(&s.join("ratings_current.parquet"))?;
-    Table::default()
-        .str(
-            "fighter",
-            &history
-                .rows()
-                .iter()
-                .map(|r| r.fighter.as_str())
-                .collect::<Vec<_>>(),
-        )
-        .day(
-            "event_date",
-            &history
-                .rows()
-                .iter()
-                .map(|r| Some(r.day))
-                .collect::<Vec<_>>(),
-        )
-        .str(
-            "event_name",
-            &history
-                .rows()
-                .iter()
-                .map(|r| r.event.as_str())
-                .collect::<Vec<_>>(),
-        )
-        .f64(
-            "mu_whr",
-            &history.rows().iter().map(|r| r.mu).collect::<Vec<_>>(),
-        )
-        .f64(
-            "mu_era",
-            &history.rows().iter().map(|r| r.era).collect::<Vec<_>>(),
-        )
-        .write(&s.join("ratings_history_whr.parquet"))?;
-    appearances::write(s, &apps)?;
-    let integ = integrity::appearances(&rated).frame();
-    integ.write(&s.join("integrity_appearances.parquet"))?;
-    let dom = dominance::fighters(s, &rated, &names)?.frame();
-    dom.write(&s.join("fighter_dominance.parquet"))?;
-    let cal = glicko::calibration(&g, &rated).frame();
-    cal.write(&s.join("calibration_residuals.parquet"))?;
+fn build(s: &Path, root: &Path) -> Result<(), Error> {
+    let m = fit(s, root)?;
+    let (integ, dom, cal) = tables(s, &m)?;
 
     // Boards and the class ledger.
-    let b = boards::build(&cur, &history, &rated, &staged, &integ, &apps)?;
+    let b = boards::build(&m.cur, &m.history, &m.rated, &m.staged, &integ, &m.apps)?;
     let fr = |t: &Table| t.clone().frame();
     let (at, pr, cu) = (
         b.all_time.each_ref().map(fr),
@@ -264,6 +293,94 @@ fn build(s: &Path, root: &Path) -> Result<(), Error> {
     ] {
         f.write(&s.join(format!("{name}.parquet")))?;
     }
+    let class = class_board(&m, &at)?;
+    class.write(&s.join("class_board.parquet"))?;
+
+    // Run record, then RANKINGS.md and README.md.
+    let (eligible, merged) = run_record(s, &m)?;
+    let snapshot = s
+        .file_name()
+        .ok_or_else(|| Error::at(s.display(), "snapshot path has no folder name"))?
+        .to_string_lossy()
+        .into_owned();
+    let through = m
+        .prepared
+        .iter()
+        .map(|b| b.day)
+        .max()
+        .map(mma_rankings::frame::iso)
+        .ok_or_else(|| Error::at(s.display(), "no bouts"))?;
+    let rel = Release {
+        snapshot: &snapshot,
+        through: &through,
+        rated_bouts: m.rated.len() as i64,
+        records: m.staged.len() as i64,
+        eligible,
+        merged,
+    };
+    docs(root, &m, &b, &class, &rel, &pr[0])?;
+
+    // Site data, then the asset stamp.
+    let market = forecast::market(s, &m.staged, &m.births)?;
+    let data = site::data(&site::Inputs {
+        snapshot: s,
+        rated_bouts: m.rated.len() as i64,
+        fighters: m.cur.len() as i64,
+        current: &m.cur,
+        all_time: [&at[0], &at[1]],
+        prime: [&pr[0], &pr[1]],
+        current_board: [&cu[0], &cu[1]],
+        class: &class,
+        integrity: &ib,
+        ledger: &ledger,
+        dominance: &dom,
+        calib: &cal,
+        history: &m.history,
+        apps: &m.apps,
+        staged: &m.staged,
+        names: &m.names,
+        births: &m.births,
+        years: &m.years,
+        market: &market,
+    })?;
+    write_text(&root.join("site/data.js"), &data)?;
+    stamp(&root.join("site"))?;
+    top100(s, root, &m)
+}
+
+/// Writes ratings_current and the per-appearance tables; returns the integrity appearances,
+/// fighter dominance and calibration residuals, which the boards and the site read.
+fn tables(s: &Path, m: &Fit) -> Result<(Frame, Frame, Frame), Error> {
+    let h = m.history.rows();
+    m.cur.write(&s.join("ratings_current.parquet"))?;
+    Table::default()
+        .str(
+            "fighter",
+            &h.iter().map(|r| r.fighter.as_str()).collect::<Vec<_>>(),
+        )
+        .day(
+            "event_date",
+            &h.iter().map(|r| Some(r.day)).collect::<Vec<_>>(),
+        )
+        .str(
+            "event_name",
+            &h.iter().map(|r| r.event.as_str()).collect::<Vec<_>>(),
+        )
+        .f64("mu_whr", &h.iter().map(|r| r.mu).collect::<Vec<_>>())
+        .f64("mu_era", &h.iter().map(|r| r.era).collect::<Vec<_>>())
+        .write(&s.join("ratings_history_whr.parquet"))?;
+    appearances::write(s, &m.apps)?;
+    let integ = integrity::appearances(&m.rated).frame();
+    integ.write(&s.join("integrity_appearances.parquet"))?;
+    let dom = dominance::fighters(s, &m.rated, &m.names)?.frame();
+    dom.write(&s.join("fighter_dominance.parquet"))?;
+    let cal = glicko::calibration(&m.glicko, &m.rated).frame();
+    cal.write(&s.join("calibration_residuals.parquet"))?;
+    Ok((integ, dom, cal))
+}
+
+/// The class board of the fighters ranked on either All-time board (`at`: men, women).
+fn class_board(m: &Fit, at: &[Frame; 2]) -> Result<Frame, Error> {
     let ranked: HashSet<String> = at
         .iter()
         .map(|f| Ok(f.str("fighter")?.into_iter().zip(f.str("status")?)))
@@ -273,10 +390,22 @@ fn build(s: &Path, root: &Path) -> Result<(), Error> {
         .filter(|(_, st)| st == "ranked")
         .map(|(f, _)| f)
         .collect();
-    let class = classes::board(&cur, &pools, &apps, &rated, &era_p, &ctx, &years, &ranked)?.frame();
-    class.write(&s.join("class_board.parquet"))?;
+    Ok(classes::board(
+        &m.cur,
+        &m.pools,
+        &m.apps,
+        &m.rated,
+        &m.era(),
+        &m.ctx,
+        &m.years,
+        &ranked,
+    )?
+    .frame())
+}
 
-    // Run record.
+/// Writes rating_run.json; returns whole-career coverage, (eligible, merged): fighters with at
+/// least `COVERAGE_MIN_UFC` UFC bouts, and those of them whose whole career is merged.
+fn run_record(s: &Path, m: &Fit) -> Result<(i64, i64), Error> {
     let cov = Frame::read(
         &s.join("career_coverage.parquet"),
         &["ufc_bouts", "whole_career_merged"],
@@ -293,19 +422,13 @@ fn build(s: &Path, root: &Path) -> Result<(), Error> {
         .filter(|(m, e)| **m && **e)
         .count() as i64;
     let eligible = eligible.iter().filter(|e| **e).count() as i64;
-    let events: HashSet<(mma_rankings::frame::Day, &str)> =
-        rated.iter().map(|b| (b.day, b.event.as_str())).collect();
-    let snapshot = s
-        .file_name()
-        .ok_or_else(|| Error::at(s.display(), "snapshot path has no folder name"))?
-        .to_string_lossy()
-        .into_owned();
+    let events: HashSet<(Day, &str)> = m.rated.iter().map(|b| (b.day, b.event.as_str())).collect();
     let run = json!({
-        "rated_bouts": rated.len(),
-        "birth_dates": births.len(),
-        "history_rows": history.rows().len(),
-        "whr_final_shift_below": whr_shift,
-        "current_fighters": cur.len(),
+        "rated_bouts": m.rated.len(),
+        "birth_dates": m.births.len(),
+        "history_rows": m.history.rows().len(),
+        "whr_final_shift_below": m.shift,
+        "current_fighters": m.cur.len(),
         "events_processed": events.len(),
         "career_coverage": {"eligible": eligible, "whole_career_merged": merged},
     });
@@ -313,71 +436,44 @@ fn build(s: &Path, root: &Path) -> Result<(), Error> {
         &s.join("rating_run.json"),
         &(serde_json::to_string_pretty(&run).map_err(|e| Error::at("rating_run.json", e))? + "\n"),
     )?;
+    Ok((eligible, merged))
+}
 
-    // RANKINGS.md and README.md: generated blocks, then the README narrative.
-    let through = prepared
-        .iter()
-        .map(|b| b.day)
-        .max()
-        .map(mma_rankings::frame::iso)
-        .ok_or_else(|| Error::at(s.display(), "no bouts"))?;
-    let rel = Release {
-        snapshot: &snapshot,
-        through: &through,
-        rated_bouts: rated.len() as i64,
-        records: staged.len() as i64,
-        eligible,
-        merged,
-    };
-    let blocks = publish::blocks(&b, &cur, &history, &class, &rel)?;
+/// RANKINGS.md and README.md: generated blocks, then the README narrative; `elite` is the
+/// men's Prime board.
+fn docs(
+    root: &Path,
+    m: &Fit,
+    b: &boards::Boards,
+    class: &Frame,
+    rel: &Release,
+    elite: &Frame,
+) -> Result<(), Error> {
+    let blocks = publish::blocks(b, &m.cur, &m.history, class, rel)?;
     let rk = root.join("RANKINGS.md");
     write_text(
         &rk,
         &publish::splice(&read_text(&rk)?, &blocks, &publish::RANKINGS),
     )?;
-    let elite: HashMap<String, f64> = pr[0]
+    let elite: HashMap<String, f64> = elite
         .str("fighter")?
         .into_iter()
-        .zip(pr[0].f64("elite_level")?)
+        .zip(elite.f64("elite_level")?)
         .collect();
     let mut readme = publish::splice(
         &read_text(&root.join("README.md"))?,
         &blocks,
         &publish::README,
     );
-    let figs = figures::values(&cur, &rated, &era_p, &history, &elite)?;
+    let figs = figures::values(&m.cur, &m.rated, &m.era(), &m.history, &elite)?;
     for (start, text) in figures::paragraphs(&figs) {
         readme = narrative::splice(&readme, start, &text).map_err(|e| Error::at("README.md", e))?;
     }
-    write_text(&root.join("README.md"), &readme)?;
+    write_text(&root.join("README.md"), &readme)
+}
 
-    // Site data, then the asset stamp.
-    let market = forecast::market(s, &staged, &births)?;
-    let data = site::data(&site::Inputs {
-        snapshot: s,
-        rated_bouts: rated.len() as i64,
-        fighters: cur.len() as i64,
-        current: &cur,
-        all_time: [&at[0], &at[1]],
-        prime: [&pr[0], &pr[1]],
-        current_board: [&cu[0], &cu[1]],
-        class: &class,
-        integrity: &ib,
-        ledger: &ledger,
-        dominance: &dom,
-        calib: &cal,
-        history: &history,
-        apps: &apps,
-        staged: &staged,
-        names: &names,
-        births: &births,
-        years: &years,
-        market: &market,
-    })?;
-    write_text(&root.join("site/data.js"), &data)?;
-    stamp(&root.join("site"))?;
-
-    // Top-100 audit.
+/// The top-100 audit against the rated core, `canonical_fights`.
+fn top100(s: &Path, root: &Path, m: &Fit) -> Result<(), Error> {
     let cf = Frame::read(
         &s.join("canonical_fights.parquet"),
         &["fighter_a", "fighter_b"],
@@ -389,7 +485,7 @@ fn build(s: &Path, root: &Path) -> Result<(), Error> {
         .collect();
     let out = root.join("data/model_tuning/top100-audit");
     std::fs::create_dir_all(&out).map_err(|e| Error::at(out.display(), e))?;
-    audit::write(&out, s, &cur, &history, &rated, &canonical, &births)
+    audit::write(&out, s, &m.cur, &m.history, &m.rated, &canonical, &m.births)
 }
 
 /// The decade above the WHR fit's largest rating change in its last pass, as text ("1e-12"):

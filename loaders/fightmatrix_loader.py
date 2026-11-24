@@ -86,77 +86,79 @@ def parse_rankings_html(html: str, division: str) -> pd.DataFrame:
             "opponent_540_metric", "win_finish_pct", "combat_age",
             "last_five_results",
         ])
+    rows = (_ranking_row(tr, division) for tr in table.select("tr"))
+    return pd.DataFrame([row for row in rows if row is not None])
 
-    rows = []
-    for tr in table.select("tr"):
-        cells = [td.get_text(" ", strip=True) for td in tr.select("td")]
-        if len(cells) < 4:
-            continue
-        rank_text = cells[0]
-        if not re.match(r"^\d+$", rank_text):
-            continue
 
-        link = tr.select_one('a[href*="fighter-profile"]')
-        fighter_cell = cells[3] if len(cells) >= 6 else cells[1]
-        record_cell = cells[4] if len(cells) >= 6 else cells[2]
-        points_cell = cells[5] if len(cells) >= 6 else cells[3]
-        last_cell = cells[6] if len(cells) >= 7 else None
-        next_cell = cells[7] if len(cells) >= 8 else None
-        fighter_text = link.get_text(" ", strip=True) if link else fighter_cell
-        fighter, age = _parse_name_age(fighter_text)
-        profile_url = urljoin(BASE_URL, link.get("href")) if link else None
-        full_text = tr.get_text(" ", strip=True)
-        flag = tr.select_one('img[src*="/images/flag/"]')
-        flag_match = re.search(r"/flag/([A-Za-z]+)\.png", flag.get("src", "")) if flag else None
+def _ranking_row(tr, division: str) -> dict | None:
+    """One ranked fighter, or ``None`` for a header or short row. Division pages hold the
+    fighter, record and points in cells 3-5 with last and next fights after; the all-time
+    page holds them in cells 1-3."""
+    cells = [td.get_text(" ", strip=True) for td in tr.select("td")]
+    if len(cells) < 4 or not re.match(r"^\d+$", cells[0]):
+        return None
+    wide = len(cells) >= 6
+    fighter_cell, record_cell, points_cell = cells[3:6] if wide else cells[1:4]
+    link = tr.select_one('a[href*="fighter-profile"]')
+    fighter, age = _parse_name_age(link.get_text(" ", strip=True) if link else fighter_cell)
+    flag = tr.select_one('img[src*="/images/flag/"]')
+    flag_match = re.search(r"/flag/([A-Za-z]+)\.png", flag.get("src", "")) if flag else None
+    tooltip_values, last_five_results = _tooltip(tr.get("onmouseover", ""))
 
-        tooltip_values: list[str] = []
-        last_five_results: list[str] = []
-        mouseover = tr.get("onmouseover", "")
-        tooltip = re.search(
-            r"LoadCustomDataWithRecs\(\s*'stat'\s*,\s*'(.*?)'\s*,\s*'rec'\s*,\s*'(.*?)'\s*\)",
-            mouseover,
-        )
-        if tooltip:
-            tooltip_values = [value.strip() for value in tooltip.group(1).split("|")]
-            last_five_results = [value for value in tooltip.group(2).split("|") if value]
+    def tip(index: int) -> str | None:
+        return tooltip_values[index] if index < len(tooltip_values) and tooltip_values[index] else None
 
-        def tip(index: int, _tv: list[str] = tooltip_values):
-            return _tv[index] if index < len(_tv) and _tv[index] else None
+    last_fight, next_fight = _fight_texts(cells, tr.get_text(" ", strip=True))
+    return {
+        "division": division,
+        "rank": int(cells[0]),
+        "fighter": fighter,
+        "age": age,
+        "record": record_cell,
+        "points": pd.to_numeric(points_cell, errors="coerce"),
+        "profile_url": urljoin(BASE_URL, link.get("href")) if link else None,
+        "last_fight_text": last_fight,
+        "next_fight_text": next_fight,
+        "nationality_code": flag_match.group(1).upper() if flag_match else None,
+        "association": tip(1),
+        "pro_debut_date": pd.to_datetime(tip(2), errors="coerce"),
+        "last_three_years_record": tip(3),
+        "big_league_record": tip(4),
+        "last_quality_performance_date": pd.to_datetime(tip(5), errors="coerce"),
+        "quality_performance_pct": pd.to_numeric(str(tip(6) or "").rstrip("%"), errors="coerce"),
+        "opponent_540_metric": pd.to_numeric(tip(7), errors="coerce"),
+        "win_finish_pct": pd.to_numeric(str(tip(8) or "").rstrip("%"), errors="coerce"),
+        "combat_age": pd.to_numeric(tip(9), errors="coerce"),
+        "last_five_results": "|".join(last_five_results) if last_five_results else None,
+    }
 
-        last_fight = None
-        next_fight = None
-        if last_cell:
-            last_fight = last_cell.replace("Last Fight:", "").strip()
-        elif "Last Fight:" in full_text:
-            last_fight = full_text.split("Last Fight:", 1)[1].split("Next Fight:", 1)[0].strip()
-        if next_cell:
-            next_fight = next_cell.replace("Next Fight:", "").strip()
-        elif "Next Fight:" in full_text:
-            next_fight = full_text.split("Next Fight:", 1)[1].strip()
 
-        rows.append({
-            "division": division,
-            "rank": int(rank_text),
-            "fighter": fighter,
-            "age": age,
-            "record": record_cell,
-            "points": pd.to_numeric(points_cell, errors="coerce"),
-            "profile_url": profile_url,
-            "last_fight_text": last_fight,
-            "next_fight_text": next_fight,
-            "nationality_code": flag_match.group(1).upper() if flag_match else None,
-            "association": tip(1),
-            "pro_debut_date": pd.to_datetime(tip(2), errors="coerce"),
-            "last_three_years_record": tip(3),
-            "big_league_record": tip(4),
-            "last_quality_performance_date": pd.to_datetime(tip(5), errors="coerce"),
-            "quality_performance_pct": pd.to_numeric(str(tip(6) or "").rstrip("%"), errors="coerce"),
-            "opponent_540_metric": pd.to_numeric(tip(7), errors="coerce"),
-            "win_finish_pct": pd.to_numeric(str(tip(8) or "").rstrip("%"), errors="coerce"),
-            "combat_age": pd.to_numeric(tip(9), errors="coerce"),
-            "last_five_results": "|".join(last_five_results) if last_five_results else None,
-        })
-    return pd.DataFrame(rows)
+def _tooltip(mouseover: str) -> tuple[list[str], list[str]]:
+    """A row's hover data: its stat fields and its last results, both empty without one."""
+    tooltip = re.search(
+        r"LoadCustomDataWithRecs\(\s*'stat'\s*,\s*'(.*?)'\s*,\s*'rec'\s*,\s*'(.*?)'\s*\)",
+        mouseover,
+    )
+    if not tooltip:
+        return [], []
+    return ([value.strip() for value in tooltip.group(1).split("|")],
+            [value for value in tooltip.group(2).split("|") if value])
+
+
+def _fight_texts(cells: list[str], full_text: str) -> tuple[str | None, str | None]:
+    """The last and next fight texts: from cells 6 and 7 when present, else from the row text."""
+    last_cell = cells[6] if len(cells) >= 7 else None
+    next_cell = cells[7] if len(cells) >= 8 else None
+    last_fight = next_fight = None
+    if last_cell:
+        last_fight = last_cell.replace("Last Fight:", "").strip()
+    elif "Last Fight:" in full_text:
+        last_fight = full_text.split("Last Fight:", 1)[1].split("Next Fight:", 1)[0].strip()
+    if next_cell:
+        next_fight = next_cell.replace("Next Fight:", "").strip()
+    elif "Next Fight:" in full_text:
+        next_fight = full_text.split("Next Fight:", 1)[1].strip()
+    return last_fight, next_fight
 
 
 def build_snapshot(

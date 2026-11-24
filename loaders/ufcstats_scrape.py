@@ -145,27 +145,7 @@ def parse_fight_page(html: str, event_name: str) -> dict | None:
         furls.append(a.get("href") if a else None)
     if len(names) != 2:
         return None
-    fa, fb = names[0], names[1]
-    bout = f"{fa} vs. {fb}"
-
-    method = round_ = time_ = time_fmt = referee = ""
-    first = soup.select_one("i.b-fight-details__text-item_first")
-    if first and ":" in _txt(first):
-        method = _txt(first).split(":", 1)[1].strip()
-    for it in soup.select("i.b-fight-details__text-item"):
-        t = _txt(it)
-        if ":" not in t:
-            continue
-        label, _, value = t.partition(":")
-        label, value = label.strip().lower(), value.strip()
-        if label == "round":
-            round_ = value
-        elif label == "time":
-            time_ = value
-        elif label == "time format":
-            time_fmt = value
-        elif label == "referee":
-            referee = value
+    bout = f"{names[0]} vs. {names[1]}"
 
     details = ""
     for p in soup.select("p.b-fight-details__text"):
@@ -177,10 +157,29 @@ def parse_fight_page(html: str, event_name: str) -> dict | None:
     result = {
         "EVENT": event_name, "BOUT": bout, "OUTCOME": f"{statuses[0]}/{statuses[1]}",
         "WEIGHTCLASS": _txt(soup.select_one("i.b-fight-details__fight-title")),
-        "METHOD": method, "ROUND": round_, "TIME": time_, "TIME FORMAT": time_fmt,
-        "REFEREE": referee, "DETAILS": details,
+        **_fight_items(soup), "DETAILS": details,
     }
+    return {"result": result, "stats": _round_stats(soup, event_name, bout, names),
+            "fighters": list(zip(names, furls))}
 
+
+def _fight_items(soup) -> dict[str, str]:
+    """METHOD, ROUND, TIME, TIME FORMAT and REFEREE from the labelled result items; empty when absent."""
+    items = {"METHOD": "", "ROUND": "", "TIME": "", "TIME FORMAT": "", "REFEREE": ""}
+    first = soup.select_one("i.b-fight-details__text-item_first")
+    if first and ":" in _txt(first):
+        items["METHOD"] = _txt(first).split(":", 1)[1].strip()
+    for it in soup.select("i.b-fight-details__text-item"):
+        label, colon, value = _txt(it).partition(":")
+        key = label.strip().lower()
+        if colon and key in {"round", "time", "time format", "referee"}:
+            items[key.upper()] = value.strip()
+    return items
+
+
+def _round_stats(soup, event_name: str, bout: str, names: list[str]) -> list[dict]:
+    """Per-round STAT_COLS rows of both fighters, from the per-round totals (table 2) and
+    significant strikes (table 4); a missing table or cell reads empty."""
     tables = soup.select("table")
     totals_pr = tables[1] if len(tables) >= 2 else None
     sig_pr = tables[3] if len(tables) >= 4 else None
@@ -201,12 +200,11 @@ def parse_fight_page(html: str, event_name: str) -> dict | None:
             "HEAD": val(tds_s, 3), "BODY": val(tds_s, 4), "LEG": val(tds_s, 5),
             "DISTANCE": val(tds_s, 6), "CLINCH": val(tds_s, 7), "GROUND": val(tds_s, 8),
         }
-        for fi, fighter in enumerate((fa, fb)):
+        for fi, fighter in enumerate(names):
             row = {"EVENT": event_name, "BOUT": bout, "ROUND": f"Round {ri + 1}", "FIGHTER": fighter}
             row.update({k: v[fi] for k, v in cols.items()})
             stat_rows.append(row)
-
-    return {"result": result, "stats": stat_rows, "fighters": list(zip(names, furls))}
+    return stat_rows
 
 
 def parse_fighter_page(html: str) -> tuple[dict, dict]:
@@ -247,17 +245,10 @@ def _append(old_df: pd.DataFrame, new_rows: list[dict], cols: list[str],
     return pd.concat([old_df[cols], new_df], ignore_index=True)
 
 
-def scrape_new_events(old_raw: Path, out_raw: Path, *, sleep: float = 0.3,
-                      session: requests.Session | None = None) -> dict:
-    """Scrape events newer than `old_raw` and write a full Greco bundle to `out_raw`."""
-    session = session or make_session()
-    old = _read_old(old_raw)
-    existing_event_urls = set(old["events"]["URL"])
-    existing_fighter_urls = set(old["fighters"]["URL"])
-    max_date = pd.to_datetime(old["events"]["DATE"], format="%B %d, %Y",
-                              errors="coerce").max().date()
-
-    soup = BeautifulSoup(get(session, f"{BASE}/statistics/events/completed?page=all").text, "lxml")
+def _new_events(html: str, max_date: dt.date, known: set[str]) -> list[tuple[dt.date, str, str]]:
+    """(date, name, url) of each event on the completed-events listing dated after `max_date`
+    and not in `known`, in date order; rows without a link or a readable date are skipped."""
+    soup = BeautifulSoup(html, "lxml")
     new_events = []
     for row in soup.select("tr.b-statistics__table-row"):
         a = row.select_one("a.b-link")
@@ -268,9 +259,23 @@ def scrape_new_events(old_raw: Path, out_raw: Path, *, sleep: float = 0.3,
             ed = dt.datetime.strptime(d.get_text(strip=True), "%B %d, %Y").date()  # noqa: DTZ007 - an event date carries no time of day, so no zone applies
         except ValueError:
             continue
-        if ed > max_date and a.get("href") not in existing_event_urls:
+        if ed > max_date and a.get("href") not in known:
             new_events.append((ed, a.get_text(strip=True), a.get("href")))
     new_events.sort()
+    return new_events
+
+
+def scrape_new_events(old_raw: Path, out_raw: Path, *, sleep: float = 0.3,
+                      session: requests.Session | None = None) -> dict:
+    """Scrape events newer than `old_raw` and write a full Greco bundle to `out_raw`."""
+    session = session or make_session()
+    old = _read_old(old_raw)
+    existing_event_urls = set(old["events"]["URL"])
+    existing_fighter_urls = set(old["fighters"]["URL"])
+    max_date = pd.to_datetime(old["events"]["DATE"], format="%B %d, %Y",
+                              errors="coerce").max().date()
+    new_events = _new_events(get(session, f"{BASE}/statistics/events/completed?page=all").text,
+                             max_date, existing_event_urls)
 
     ev_rows, det_rows, res_rows, stat_rows, fdet_rows, tott_rows = [], [], [], [], [], []
     seen_new_fighters: set[str] = set()
