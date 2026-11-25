@@ -26,7 +26,9 @@ const MENS_ONLY: [&str; 5] = [
     "Lightweight",
 ];
 
-fn women(rated: &[Bout]) -> HashSet<&str> {
+/// The fighters of each connected component of `rated` where women's divisions outnumber
+/// men's-only ones: the `gender` "F" of `columns`.
+pub fn women(rated: &[Bout]) -> HashSet<&str> {
     let mut adj: HashMap<&str, Vec<&str>> = HashMap::new();
     for b in rated
         .iter()
@@ -69,14 +71,18 @@ fn women(rated: &[Bout]) -> HashSet<&str> {
 }
 
 /// `prepared` holds every recorded bout of the scope (inactivity and integrity counts read it);
-/// `rated` the bouts that enter the rating; `snapshot_max` the latest rated date.
+/// `rated` the bouts that enter the rating; months of inactivity count to the latest rated date.
 pub fn columns(
     prepared: &[Bout],
     rated: &[Bout],
     history: &History,
     apps: &[Appearance],
-    snapshot_max: Day,
 ) -> Result<Frame, Error> {
+    let snapshot_max = rated
+        .iter()
+        .map(|b| b.day)
+        .max()
+        .ok_or_else(|| Error::at("roster", "no rated bouts"))?;
     // Record and latest division over rated sides in pandas order: a-sides, then b-sides.
     let sides = || {
         rated

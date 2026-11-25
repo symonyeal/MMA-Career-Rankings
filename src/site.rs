@@ -926,68 +926,99 @@ fn streaks(x: &Inputs) -> Result<J, Error> {
         .into_iter()
         .zip(rc.str("gender")?)
         .collect();
-    // (fighter, day, opponent, bout)
-    let mut long: Vec<(&str, Day, &str, usize)> = Vec::new();
+    let mut long: Vec<Played> = Vec::new();
     for side in [true, false] {
         for i in (0..cf.len()).filter(|&i| !excl[i]) {
             let (f, o) = if side { (&a[i], &b[i]) } else { (&b[i], &a[i]) };
             if !f.is_empty() {
-                long.push((
+                long.push(Played {
                     f,
-                    day[i].ok_or_else(|| {
-                        Error::at(format!("canonical_fights row {i}"), "no event_date")
-                    })?,
-                    o,
-                    i,
-                ));
+                    nc: nc[i],
+                    draw: draw[i],
+                    won: !draw[i] && w[i] == *f,
+                    win: Win {
+                        day: day[i].ok_or_else(|| {
+                            Error::at(format!("canonical_fights row {i}"), "no event_date")
+                        })?,
+                        opp: o,
+                        division: &wc[i],
+                        finish: matches!(method[i].as_str(), "KO/TKO" | "Submission"),
+                        title: title[i],
+                    },
+                });
             }
         }
     }
-    long.sort_by(|p, q| (p.0, p.1).cmp(&(q.0, q.1)));
-    let mut rows: Vec<(usize, f64, i64, J)> = runs(&long, &w, &draw, &nc)
-        .iter()
-        .map(|st| row(st, &wc, &method, &title, &mu, &gender))
-        .collect();
-    rows.sort_by(|p, q| q.0.cmp(&p.0).then(desc(p.1, q.1)).then(q.2.cmp(&p.2)));
-    Ok(J::Arr(rows.into_iter().map(|r| r.3).collect()))
+    long.sort_by(|p, q| (p.f, p.win.day).cmp(&(q.f, q.win.day)));
+    let mut rows: Vec<(Key, J)> = runs(&long).iter().map(|st| row(st, &mu, &gender)).collect();
+    rows.sort_by(|p, q| {
+        q.0.len
+            .cmp(&p.0.len)
+            .then(desc(p.0.avg, q.0.avg))
+            .then(q.0.title.cmp(&p.0.title))
+    });
+    Ok(J::Arr(rows.into_iter().map(|r| r.1).collect()))
 }
 
-/// One win streak: its fighter, its bouts `(day, opponent, bout)` in order, and how it ended.
+/// A bout of a fighter's `canonical_fights` record, with its outcome for them (`won` is false
+/// for a draw).
+struct Played<'a> {
+    f: &'a str,
+    nc: bool,
+    draw: bool,
+    won: bool,
+    win: Win<'a>,
+}
+
+/// A bout of a streak: its day, opponent, division (empty when unrecorded), whether it ended by
+/// KO/TKO or submission, and whether it was for a title.
+#[derive(Clone, Copy)]
+struct Win<'a> {
+    day: Day,
+    opp: &'a str,
+    division: &'a str,
+    finish: bool,
+    title: bool,
+}
+
+/// One win streak: its fighter, its bouts in order, and how it ended.
 struct Streak<'a> {
     f: &'a str,
-    run: Vec<(Day, &'a str, usize)>,
+    run: Vec<Win<'a>>,
     ended: String,
     ongoing: bool,
 }
 
-/// Runs of three or more consecutive wins in `long` (fighter, day, opponent, bout), sorted by
-/// fighter and day; a no-contest is skipped, a draw or loss ends the run.
-fn runs<'a>(
-    long: &[(&'a str, Day, &'a str, usize)],
-    w: &[String],
-    draw: &[bool],
-    nc: &[bool],
-) -> Vec<Streak<'a>> {
+/// A streak's sort key, longest and strongest first: length, mean opponent rating, title wins.
+struct Key {
+    len: usize,
+    avg: f64,
+    title: i64,
+}
+
+/// Runs of three or more consecutive wins in `long`, sorted by fighter and day; a no-contest is
+/// skipped, a draw or loss ends the run.
+fn runs<'a>(long: &[Played<'a>]) -> Vec<Streak<'a>> {
     let mut out: Vec<Streak> = Vec::new();
     let mut i = 0;
     while i < long.len() {
-        let f = long[i].0;
-        let j = i + long[i..].iter().take_while(|r| r.0 == f).count();
-        let mut run: Vec<(Day, &str, usize)> = Vec::new();
-        for &(_, d, o, k) in &long[i..j] {
-            if nc[k] {
+        let f = long[i].f;
+        let j = i + long[i..].iter().take_while(|r| r.f == f).count();
+        let mut run: Vec<Win> = Vec::new();
+        for p in &long[i..j] {
+            if p.nc {
                 continue;
             }
-            if !draw[k] && w[k] == f {
-                run.push((d, o, k));
+            if p.won {
+                run.push(p.win);
                 continue;
             }
             if run.len() >= 3 {
-                let verb = if draw[k] { "Draw with" } else { "Loss to" };
+                let verb = if p.draw { "Draw with" } else { "Loss to" };
                 out.push(Streak {
                     f,
                     run: std::mem::take(&mut run),
-                    ended: format!("{verb} {o}"),
+                    ended: format!("{verb} {}", p.win.opp),
                     ongoing: false,
                 });
             }
@@ -1006,21 +1037,13 @@ fn runs<'a>(
     out
 }
 
-/// A streak's site row, with its sort keys: length, mean opponent rating, title wins;
-/// `wc`, `method` and `title` are `canonical_fights` columns, indexed by bout.
-fn row(
-    st: &Streak,
-    wc: &[String],
-    method: &[String],
-    title: &[bool],
-    mu: &HashMap<String, f64>,
-    gender: &HashMap<String, String>,
-) -> (usize, f64, i64, J) {
+/// A streak's site row and its sort key.
+fn row(st: &Streak, mu: &HashMap<String, f64>, gender: &HashMap<String, String>) -> (Key, J) {
     let divs: Vec<String> = st
         .run
         .iter()
-        .filter(|r| !wc[r.2].is_empty())
-        .map(|r| display(&wc[r.2]))
+        .filter(|r| !r.division.is_empty())
+        .map(|r| display(r.division))
         .collect();
     let mut tally: BTreeMap<&str, usize> = BTreeMap::new();
     for d in &divs {
@@ -1034,7 +1057,7 @@ fn row(
     let opp: Vec<f64> = st
         .run
         .iter()
-        .filter_map(|r| mu.get(r.1).copied())
+        .filter_map(|r| mu.get(r.opp).copied())
         .filter(|v| !v.is_nan())
         .collect();
     let avg = if opp.is_empty() {
@@ -1042,18 +1065,14 @@ fn row(
     } else {
         psum(&opp) / opp.len() as f64
     };
-    let tw = st.run.iter().filter(|r| title[r.2]).count() as i64;
-    let fin = st
-        .run
-        .iter()
-        .filter(|r| matches!(method[r.2].as_str(), "KO/TKO" | "Submission"))
-        .count() as i64;
+    let tw = st.run.iter().filter(|r| r.title).count() as i64;
+    let fin = st.run.iter().filter(|r| r.finish).count() as i64;
     let uniq: BTreeSet<&String> = divs.iter().collect();
     let row = J::Arr(vec![
         s(st.f),
         J::Int(st.run.len() as i64),
-        J::Int(st.run[0].0 as i64),
-        J::Int(st.run.last().unwrap().0 as i64),
+        J::Int(st.run[0].day as i64),
+        J::Int(st.run.last().unwrap().day as i64),
         modal.map_or(J::Null, J::Str),
         J::Arr(uniq.into_iter().map(|d| s(d)).collect()),
         J::Int(tw),
@@ -1063,7 +1082,14 @@ fn row(
         s(&st.ended),
         gender.get(st.f).map_or(J::Null, |g| opt_s(g)),
     ]);
-    (st.run.len(), avg, tw, row)
+    (
+        Key {
+            len: st.run.len(),
+            avg,
+            title: tw,
+        },
+        row,
+    )
 }
 
 /// Top 100 established men by All-time score against Fight Matrix's all-time list.

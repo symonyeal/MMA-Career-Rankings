@@ -385,10 +385,13 @@ pub fn write(
         &dir.join("top100_score_comparison.parquet"),
     )?;
 
-    let mut top = Top::new(
-        &names, &published, rated, canonical, history, births, &anchors,
-    );
-    top.read(c)?;
+    let ev = Evidence {
+        rated,
+        canonical,
+        history,
+        births,
+    };
+    let top = Top::new(c, &names, &published, &ev, &anchors)?;
     let audit = c
         .take(&top.rows.iter().map(|p| Some(p.0)).collect::<Vec<_>>())?
         .hstack(&[&top.columns(&anchors)]);
@@ -474,8 +477,88 @@ fn comparison(names: &[String], published: &[(usize, f64)], skill: &[(usize, f64
     t.frame()
 }
 
+/// What the audit reads beside `current`: the rated bouts, the canonical (fighter_a, fighter_b)
+/// pairs, the WHR history and the known birth dates.
+struct Evidence<'a> {
+    rated: &'a [Bout],
+    canonical: &'a [(String, String)],
+    history: &'a History,
+    births: &'a HashMap<String, Day>,
+}
+
+/// Bout counts and appearance span of each fighter in `who`.
+struct Coverage {
+    first: Vec<Option<Day>>,
+    last: Vec<Option<Day>>,
+    total: Vec<i64>,
+    ufc: Vec<i64>,
+}
+
+impl Coverage {
+    fn new(who: &[&str], rated: &[Bout], history: &History) -> Coverage {
+        let mut bouts: HashMap<&str, (i64, i64)> = HashMap::new();
+        for b in rated {
+            for f in [b.a(), b.b()] {
+                let e = bouts.entry(f).or_default();
+                e.0 += 1;
+                e.1 += i64::from(b.source == "ufc");
+            }
+        }
+        let span = |f: &str| {
+            let rows = history.of(f);
+            (
+                rows.iter().map(|r| r.day).min(),
+                rows.iter().map(|r| r.day).max(),
+            )
+        };
+        let (first, last) = who.iter().map(|f| span(f)).unzip();
+        Coverage {
+            first,
+            last,
+            total: who.iter().map(|f| bouts[f].0).collect(),
+            ufc: who.iter().map(|f| bouts[f].1).collect(),
+        }
+    }
+}
+
+/// Disjoint paths to the rated core of each fighter in `who`, and whether the fighter is rankable
+/// (in the core or with at least `MIN_PATHS` paths).
+struct Connectivity {
+    paths: Vec<f64>,
+    rankable: Vec<bool>,
+}
+
+impl Connectivity {
+    fn new(who: &[&str], rated: &[Bout], canonical: &[(String, String)]) -> Connectivity {
+        let core: HashSet<&str> = canonical
+            .iter()
+            .flat_map(|(a, b)| [a.as_str(), b.as_str()])
+            .collect();
+        let mut counts: HashMap<String, usize> = HashMap::new();
+        for (a, b) in canonical {
+            for f in [a, b].into_iter().filter(|f| !f.is_empty()) {
+                *counts.entry(f.clone()).or_default() += 1;
+            }
+        }
+        let graph = Graph::new(
+            rated.iter().map(|b| (b.a().as_str(), b.b().as_str())),
+            &counts,
+        );
+        let paths: Vec<f64> = who
+            .iter()
+            .map(|f| graph.paths(f).map_or(f64::NAN, |p| p as f64))
+            .collect();
+        let rankable = who
+            .iter()
+            .zip(&paths)
+            .map(|(f, p)| core.contains(f) || *p >= MIN_PATHS as f64)
+            .collect();
+        Connectivity { paths, rankable }
+    }
+}
+
 /// The published men's top 100, in rank order: each fighter's coverage, connectivity, public
-/// anchor and, after `read`, the plain reading of their score and gap.
+/// anchor and the plain reading of their score and gap.
 struct Top<'a> {
     /// (row of `current`, published score).
     rows: Vec<(usize, f64)>,
@@ -497,68 +580,32 @@ struct Top<'a> {
 }
 
 impl<'a> Top<'a> {
+    /// The top 100 of `published` (row of `current`, score), read against the score components in `c`.
     fn new(
+        c: &Frame,
         names: &'a [String],
         published: &[(usize, f64)],
-        rated: &[Bout],
-        canonical: &[(String, String)],
-        history: &History,
-        births: &HashMap<String, Day>,
+        ev: &Evidence,
         anchors: &Anchors,
-    ) -> Top<'a> {
+    ) -> Result<Top<'a>, Error> {
         let rows: Vec<(usize, f64)> = published.iter().take(100).copied().collect();
         let who: Vec<&str> = rows.iter().map(|&(i, _)| names[i].as_str()).collect();
-        let mut bouts: HashMap<&str, (i64, i64)> = HashMap::new();
-        for b in rated {
-            for f in [b.a(), b.b()] {
-                let e = bouts.entry(f).or_default();
-                e.0 += 1;
-                e.1 += i64::from(b.source == "ufc");
-            }
-        }
-        let core: HashSet<&str> = canonical
-            .iter()
-            .flat_map(|(a, b)| [a.as_str(), b.as_str()])
-            .collect();
-        let mut counts: HashMap<String, usize> = HashMap::new();
-        for (a, b) in canonical {
-            for f in [a, b].into_iter().filter(|f| !f.is_empty()) {
-                *counts.entry(f.clone()).or_default() += 1;
-            }
-        }
-        let graph = Graph::new(
-            rated.iter().map(|b| (b.a().as_str(), b.b().as_str())),
-            &counts,
-        );
-        let span = |f: &str| {
-            let rows = history.of(f);
-            (
-                rows.iter().map(|r| r.day).min(),
-                rows.iter().map(|r| r.day).max(),
-            )
-        };
-        let (first, last): (Vec<Option<Day>>, Vec<Option<Day>>) =
-            who.iter().map(|f| span(f)).unzip();
-        let total: Vec<i64> = who.iter().map(|f| bouts[f].0).collect();
-        let ufc: Vec<i64> = who.iter().map(|f| bouts[f].1).collect();
-        let paths: Vec<f64> = who
-            .iter()
-            .map(|f| graph.paths(f).map_or(f64::NAN, |p| p as f64))
-            .collect();
-        let rankable: Vec<bool> = who
-            .iter()
-            .zip(&paths)
-            .map(|(f, p)| core.contains(f) || *p >= MIN_PATHS as f64)
-            .collect();
-        let born: Vec<bool> = who.iter().map(|f| births.contains_key(*f)).collect();
-        let active: Vec<bool> = last
+        let Coverage {
+            first,
+            last,
+            total,
+            ufc,
+        } = Coverage::new(&who, ev.rated, ev.history);
+        let Connectivity { paths, rankable } = Connectivity::new(&who, ev.rated, ev.canonical);
+        let born = who.iter().map(|f| ev.births.contains_key(*f)).collect();
+        let active = last
             .iter()
             .map(|d| d.is_some_and(|d| year(d) >= 2024))
             .collect();
-        let external: Vec<bool> = ufc.iter().map(|&u| u == 0).collect();
-        let anchor: Vec<Option<i64>> = who.iter().map(|f| anchors.rank(f)).collect();
-        let has: Vec<bool> = who.iter().map(|f| anchors.has(f)).collect();
-        Top {
+        let external = ufc.iter().map(|&u| u == 0).collect();
+        let anchor = who.iter().map(|f| anchors.rank(f)).collect();
+        let has = who.iter().map(|f| anchors.has(f)).collect();
+        let mut top = Top {
             rows,
             who,
             first,
@@ -575,7 +622,9 @@ impl<'a> Top<'a> {
             reasons: vec![],
             classes: vec![],
             fixes: vec![],
-        }
+        };
+        top.read(c)?;
+        Ok(top)
     }
 
     /// Fills `reasons`, `classes` and `fixes` from the score components in `c`.

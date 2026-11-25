@@ -235,21 +235,24 @@ def _history_bouts(table, profile: dict) -> list[dict]:
     rows = table.find_all("tr")
     bouts: list[dict] = []
     i = 1
-    while i < len(rows):
-        result_row = rows[i]
-        cells = result_row.find_all("td", recursive=False)
-        result = cells[0].get_text(" ", strip=True).upper() if cells else ""
-        opponent_link = result_row.select_one('a[href*="fighter-profile"]')
-        if result not in {"W", "L", "D", "NC"} or opponent_link is None or i + 1 >= len(rows):
+    while i + 1 < len(rows):
+        bout = _history_bout(rows[i], rows[i + 1], profile)
+        if bout is None:
             i += 1
-            continue
-        bouts.append(_history_bout(result_row, cells, result, opponent_link, rows[i + 1], profile))
-        i += 2
+        else:
+            bouts.append(bout)
+            i += 2
     return bouts
 
 
-def _history_bout(result_row, cells, result: str, opponent_link, event_row, profile: dict) -> dict:
-    """One bout from its result row (with that row's ``cells``, ``result`` and opponent link) and its event row."""
+def _history_bout(result_row, event_row, profile: dict) -> dict | None:
+    """One bout from a result row (W, L, D or NC, with an opponent link) and the event row below it;
+    ``None`` when ``result_row`` is not a result row."""
+    cells = result_row.find_all("td", recursive=False)
+    result = cells[0].get_text(" ", strip=True).upper() if cells else ""
+    opponent_link = result_row.select_one('a[href*="fighter-profile"]')
+    if result not in {"W", "L", "D", "NC"} or opponent_link is None:
+        return None
     fighter, profile_url = profile["fighter"], profile["profile_url"]
     event_link = event_row.select_one('a[href*="/event/"]')
     opponent = opponent_link.get_text(" ", strip=True)

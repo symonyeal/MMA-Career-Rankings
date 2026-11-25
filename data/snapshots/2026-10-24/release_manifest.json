@@ -6,7 +6,7 @@
     "Cargo.toml": "6386ceac03be716515f3df15fec573f43f9b5a73a58e87c1486da5a11d9763c2",
     "src/age.rs": "cd9ea2e38eaf6ec6d974e7aa131341eaaf059f5720efef648325c2ca83ea519e",
     "src/appearances.rs": "3f5209ef0dc0ce6ed5a7ba8a74bad6f7d9dbae4eaee2859bf97f3cdc326c2a91",
-    "src/audit.rs": "805b9769b7fe15733a3e759c7a4ba4e0250a5222a3eaadc941b04bdbd8e27d2f",
+    "src/audit.rs": "32996371a72543b17272f097d9e404856c5ab28bdf1ef004605571df3271c65c",
     "src/boards.rs": "9880a6b8894b5ebfae4eb96fcd5a9c592a4b3d4912f9bcb521016cdbe2324e0b",
     "src/bouts.rs": "9ce09c73cf1fa7846930c9164b3b612dd8f98ac1fcc602a3dcc215d4127d1224",
     "src/classes.rs": "93bf43fa4c1b8aad6a38136695f8a3ee0159b5693c1d43bd39ef205745368122",
@@ -28,7 +28,7 @@
     "src/layoff.rs": "d85ce9f53f84ffb6edbafdddea71a336111079dcdd3b63cfb2074704eda21bb2",
     "src/legacy.rs": "66cbf7f7c95bfdd4059cd4d53d0e913eccef8d0cfdf170166fec2dd3481fcd68",
     "src/lib.rs": "40456e041b0962eb47e8652805e20b7b5be732cd6684588388321c79e92dea33",
-    "src/main.rs": "441d26727a0d2bcedefd26957ea22be171d9250c5c3638604be4fc6b84d74d4b",
+    "src/main.rs": "c12d0ecd967c845f52137ad125560f152810d29edf88dc4f0dd4f046d26e34b1",
     "src/names.rs": "ebb3d5796fe569c604f9044b77ca6abafc14287593f0696f637248876c53e2f2",
     "src/narrative.rs": "9176ea43e441c1c315faa21f1d61d767b0d249ee70435ad27401d6dc36970c3a",
     "src/orgs.rs": "15b6090c2a464ea61b136709c4b857be6ae74f8f36d3d294968990f7143d678d",
@@ -37,12 +37,12 @@
     "src/publish.rs": "031a91621af97eea88ac2fb8d6393dd65a41f6664c531be0869370515138a107",
     "src/pyjson.rs": "649a83e88a8c766e4154a88b8efe64fb6e127240aa5b4e881fe4a0d6fecbada8",
     "src/release.rs": "e4aeed684ba4c237ff114475de43dc761abb0327ce5fa9d1b8e104b73ccb8677",
-    "src/roster.rs": "a2e1acee897aa8050d46405d74f02a4ea374e6bff8ab83b14a7a98f191ec64a3",
+    "src/roster.rs": "be7905a84d1611833acda08c1e14066f707fbe5b1a9a3e1acca8b10b858a74e3",
     "src/scope.txt": "13054e3f0faf11bfe9a19cbe4c0b4e710709f7586a6608cdb7948f6264cee907",
-    "src/site.rs": "41b7908d9727ddc7e71e8f38fc23cff67bf129316fc1cfc43dc519c24bf187e5",
+    "src/site.rs": "6a0177dd8bc8e9c7941528887a1705faf6d1f3a77af9d3e92d88da40b2eeb4ba",
     "src/skill.rs": "50a7715064f01438db731799227a41ea4b9be428c7ced7f8063529f4ac594afe",
     "src/stats.rs": "20610026c29aa09ce74ba6cd58ca5ddd59183f6981375a97dca1ce998b9f0acb",
-    "src/whr.rs": "00fff1cb5f5da04cd9bb64d5434c597ac6bfbde32a4f0217dbd9d606be072b25"
+    "src/whr.rs": "3140f998d19ad0bbedc51211f3d8358bde13e21a70541eb99985f6e30e4a57df"
   },
   "input_sha256": {
     "data/external/aliases/fighter_aliases.csv": "92f40dd04885325dfc13b7c73a75fcd0b3768642f973e601892a1afce6bc7fb4",

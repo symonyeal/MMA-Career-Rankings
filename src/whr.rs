@@ -264,22 +264,18 @@ impl Graph {
     /// fit has converged when it is near zero, and nothing else in the loop tests for that.
     /// (The Newton step itself stays nonzero under re-centring, so it is no test.)
     pub fn fit_traced(&self, p: &Settings, age_drift: bool) -> (Vec<f64>, Vec<f64>, f64) {
-        let pt = &self.pt;
         let n = self.o.len();
-        let nf = pt.len() - 1;
+        let nf = self.pt.len() - 1;
         let lim = 25.0 / (elo_per_nat() * YEAR_DAYS);
         let mut r = vec![0.0f64; n];
-        let mut dr = vec![0.0f64; NB];
         let tot = p.passes * if age_drift { 2 } else { 1 };
-        let iw: Vec<f64> = self.gp.iter().map(|&q| 1.0 / (p.w2 * q)).collect();
-        let km = (0..nf).map(|f| pt[f + 1] - pt[f]).max().unwrap_or(0);
-        let mut w = Block::new(km);
+        let mut newton = Newton::new(self, p, age_drift);
         let mut shift = 0.0f64;
         let mut before = r.clone();
         for pass in 0..tot {
             before.copy_from_slice(&r);
             for f in 0..nf {
-                self.step(f, &mut r, age_drift.then_some(&dr[..]), p, &iw, &mut w);
+                newton.step(f, &mut r);
             }
             if p.center {
                 let m = psum(&r) / n as f64;
@@ -292,27 +288,89 @@ impl Graph {
                 .zip(&before)
                 .fold(0.0, |m, (a, b)| m.max((a - b).abs()));
             if age_drift && pass == p.passes - 1 {
-                dr = self.drift(&r, lim);
+                newton.drift = Some(self.drift(&r, lim));
                 r.fill(0.0);
             }
         }
-        (r, dr, shift)
+        (r, newton.drift.unwrap_or_else(|| vec![0.0; NB]), shift)
+    }
+
+    /// Mean rating change per day in each age bucket, relative to the first, clipped to ±25 Elo/yr.
+    fn drift(&self, r: &[f64], lim: f64) -> Vec<f64> {
+        let (pt, ix, gp, bn) = (&self.pt, &self.ix, &self.gp, &self.bn);
+        let (mut cs, mut ds) = (vec![0.0f64; NB], vec![0.0f64; NB]);
+        for f in 0..pt.len() - 1 {
+            let lo = pt[f];
+            let nd = &ix[lo..pt[f + 1]];
+            if nd.len() < 2 {
+                continue;
+            }
+            for q in 0..NB {
+                let (mut ch, mut dy) = (vec![], vec![]);
+                for j in 0..nd.len() - 1 {
+                    if bn[lo + j] == q as i64 {
+                        ch.push(r[nd[j + 1]] - r[nd[j]]);
+                        dy.push(gp[lo + j]);
+                    }
+                }
+                if !ch.is_empty() {
+                    cs[q] += psum(&ch);
+                    ds[q] += psum(&dy);
+                }
+            }
+        }
+        let raw: Vec<f64> = (0..NB)
+            .map(|q| if ds[q] > 0.0 { cs[q] / ds[q] } else { 0.0 })
+            .collect();
+        let bl = if ds[0] > 0.0 { raw[0] } else { 0.0 };
+        (0..NB)
+            .map(|q| if ds[q] == 0.0 { 0.0 } else { raw[q] - bl }.clamp(-lim, lim))
+            .collect()
+    }
+}
+
+/// The coordinate-ascent state of one fit of `graph`: the settings, the Wiener inverse variances
+/// `iw` of each node's step to the next, the age drift per bucket (`None` without age drift,
+/// replaced as the fit estimates it) and the scratch `Block`, sized once for the longest career.
+struct Newton<'a> {
+    graph: &'a Graph,
+    p: Settings,
+    iw: Vec<f64>,
+    drift: Option<Vec<f64>>,
+    w: Block,
+}
+
+impl<'a> Newton<'a> {
+    fn new(graph: &'a Graph, p: &Settings, age_drift: bool) -> Newton<'a> {
+        let pt = &graph.pt;
+        let km = (0..pt.len() - 1)
+            .map(|f| pt[f + 1] - pt[f])
+            .max()
+            .unwrap_or(0);
+        Newton {
+            graph,
+            p: *p,
+            iw: graph.gp.iter().map(|&q| 1.0 / (p.w2 * q)).collect(),
+            drift: age_drift.then(|| vec![0.0; NB]),
+            w: Block::new(km),
+        }
     }
 
     /// One clipped Newton step on fighter `f`'s tridiagonal block, in place in `r`: likelihood,
     /// anchor, virtual games and, between consecutive nodes, the Wiener prior with inverse
-    /// variance `iw`, each change less the age drift `dr` when one is given.
-    fn step(
-        &self,
-        f: usize,
-        r: &mut [f64],
-        dr: Option<&[f64]>,
-        p: &Settings,
-        iw: &[f64],
-        w: &mut Block,
-    ) {
-        let (o, s, ix, gp, bn) = (&self.o, &self.s, &self.ix, &self.gp, &self.bn);
-        let (ip, vg, cl) = (1.0 / p.prior_var, p.vg, p.clip);
+    /// variance `iw`, each change less the age drift when there is one.
+    fn step(&mut self, f: usize, r: &mut [f64]) {
+        let Graph {
+            o,
+            s,
+            pt,
+            ix,
+            gp,
+            bn,
+            ..
+        } = self.graph;
+        let (ip, vg, cl) = (1.0 / self.p.prior_var, self.p.vg, self.p.clip);
+        let (iw, dr) = (&self.iw, self.drift.as_deref());
         let Block {
             rk,
             ok,
@@ -325,9 +383,9 @@ impl Graph {
             e,
             c,
             d,
-        } = w;
-        let lo = self.pt[f];
-        let nd = &ix[lo..self.pt[f + 1]];
+        } = &mut self.w;
+        let lo = pt[f];
+        let nd = &ix[lo..pt[f + 1]];
         let k = nd.len();
         for j in 0..k {
             rk[j] = r[nd[j]];
@@ -392,39 +450,6 @@ impl Graph {
         for j in 0..k {
             r[nd[j]] = rk[j] + x[j].clamp(-cl, cl);
         }
-    }
-
-    /// Mean rating change per day in each age bucket, relative to the first, clipped to ±25 Elo/yr.
-    fn drift(&self, r: &[f64], lim: f64) -> Vec<f64> {
-        let (pt, ix, gp, bn) = (&self.pt, &self.ix, &self.gp, &self.bn);
-        let (mut cs, mut ds) = (vec![0.0f64; NB], vec![0.0f64; NB]);
-        for f in 0..pt.len() - 1 {
-            let lo = pt[f];
-            let nd = &ix[lo..pt[f + 1]];
-            if nd.len() < 2 {
-                continue;
-            }
-            for q in 0..NB {
-                let (mut ch, mut dy) = (vec![], vec![]);
-                for j in 0..nd.len() - 1 {
-                    if bn[lo + j] == q as i64 {
-                        ch.push(r[nd[j + 1]] - r[nd[j]]);
-                        dy.push(gp[lo + j]);
-                    }
-                }
-                if !ch.is_empty() {
-                    cs[q] += psum(&ch);
-                    ds[q] += psum(&dy);
-                }
-            }
-        }
-        let raw: Vec<f64> = (0..NB)
-            .map(|q| if ds[q] > 0.0 { cs[q] / ds[q] } else { 0.0 })
-            .collect();
-        let bl = if ds[0] > 0.0 { raw[0] } else { 0.0 };
-        (0..NB)
-            .map(|q| if ds[q] == 0.0 { 0.0 } else { raw[q] - bl }.clamp(-lim, lim))
-            .collect()
     }
 }
 

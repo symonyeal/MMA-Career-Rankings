@@ -105,8 +105,10 @@ const CURRENT: [&str; 71] = [
 /// Whole-career coverage counts fighters with at least this many UFC bouts.
 const COVERAGE_MIN_UFC: i64 = 3;
 
-/// Rows of `f` reordered to `order` by `fighter`, without the key; absent fighters read null.
-fn align(f: &Frame, order: &[String]) -> Result<Frame, Error> {
+/// `cur` with the columns of stage `f` appended, its rows reordered to `cur`'s `fighter` order and
+/// without the key; fighters absent from `f` read null.
+fn append(cur: &Frame, f: &Frame) -> Result<Frame, Error> {
+    let order = cur.str("fighter")?;
     let mut at = HashMap::new();
     for (i, fighter) in f.str("fighter")?.into_iter().enumerate() {
         assert!(!fighter.is_empty(), "stage has an empty fighter key");
@@ -119,8 +121,10 @@ fn align(f: &Frame, order: &[String]) -> Result<Frame, Error> {
     assert_eq!(unique.len(), order.len(), "duplicate target fighter keys");
     let rest: Vec<String> = f.names().into_iter().filter(|c| c != "fighter").collect();
     let rest: Vec<&str> = rest.iter().map(String::as_str).collect();
-    f.take(&order.iter().map(|k| at.get(k).copied()).collect::<Vec<_>>())?
-        .select(&rest)
+    let stage = f
+        .take(&order.iter().map(|k| at.get(k).copied()).collect::<Vec<_>>())?
+        .select(&rest)?;
+    Ok(cur.hstack(&[&stage]))
 }
 
 fn stamp(site: &Path) -> Result<(), Error> {
@@ -180,14 +184,9 @@ fn fit(s: &Path, root: &Path) -> Result<Fit, Error> {
     let w = whr::run(&rated, &births);
     let mut history = w.history;
     let apps = mma_rankings::perf::appearances(&rated);
-    let cur = ratings(s, &g, w.current, &prepared, &rated, &history, &apps)?;
-    let female: HashSet<String> = cur
-        .str("fighter")?
-        .into_iter()
-        .zip(cur.str("gender")?)
-        .filter(|(_, g)| g == "F")
-        .map(|(f, _)| f)
-        .collect();
+    let mut cur = append(&ordered_current(&g)?, &w.current.frame())?;
+    cur = append(&cur, &roster::columns(&prepared, &rated, &history, &apps)?)?;
+    let female = roster::women(&rated);
     era::apply(&mut history, |f| female.contains(f));
 
     let layoff = Layoff::new(&history);
@@ -205,17 +204,16 @@ fn fit(s: &Path, root: &Path) -> Result<Fit, Error> {
     };
     let pools = skill::pools(&cur)?;
     let years = skill::years(&history, |r| r.era, &pools);
-    let order = cur.str("fighter")?;
-    let mut cur = cur.hstack(&[&align(&skill::prime(&history, &cur)?.frame(), &order)?]);
-    cur = cur.hstack(&[&align(&skill::career(&years).frame(), &order)?]);
-    cur = cur.hstack(&[&align(
+    let mut cur = append(&cur, &skill::prime(&history, &cur)?.frame())?;
+    cur = append(&cur, &skill::career(&years).frame())?;
+    cur = append(
+        &cur,
         &legacy::score(&cur, &pools, &apps, &rated, &era_p, &rules)?.frame(),
-        &order,
-    )?]);
-    cur = cur.hstack(&[&align(
+    )?;
+    cur = append(
+        &cur,
         &current::score(&cur, &pools, &rated, &prepared, &mu_p, &ctx)?.frame(),
-        &order,
-    )?]);
+    )?;
     let cur = cur.select(&CURRENT)?;
     Ok(Fit {
         names,
@@ -235,22 +233,8 @@ fn fit(s: &Path, root: &Path) -> Result<Fit, Error> {
     })
 }
 
-/// The Glicko current table ordered by mu_canonical (descending, then name), beside the WHR
-/// current table and the roster columns aligned to it.
-fn ratings(
-    s: &Path,
-    g: &Glicko,
-    whr_current: Table,
-    prepared: &[Bout],
-    rated: &[Bout],
-    history: &History,
-    apps: &[Appearance],
-) -> Result<Frame, Error> {
-    let max = rated
-        .iter()
-        .map(|b| b.day)
-        .max()
-        .ok_or_else(|| Error::at(s.display(), "no rated bouts"))?;
+/// The Glicko current table ordered by mu_canonical (descending, then name).
+fn ordered_current(g: &Glicko) -> Result<Frame, Error> {
     let base = g.current().frame();
     let (fighter, mu) = (base.str("fighter")?, base.f64("mu_canonical")?);
     let mut ix: Vec<usize> = (0..base.len()).collect();
@@ -259,13 +243,7 @@ fn ratings(
             .total_cmp(&mu[i])
             .then_with(|| fighter[i].cmp(&fighter[j]))
     });
-    let base = base.take(&ix.iter().map(|&i| Some(i)).collect::<Vec<_>>())?;
-    let order = base.str("fighter")?;
-    let roster = align(
-        &roster::columns(prepared, rated, history, apps, max)?,
-        &order,
-    )?;
-    Ok(base.hstack(&[&align(&whr_current.frame(), &order)?, &roster]))
+    base.take(&ix.iter().map(|&i| Some(i)).collect::<Vec<_>>())
 }
 
 fn build(s: &Path, root: &Path) -> Result<(), Error> {
